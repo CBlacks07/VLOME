@@ -1,8 +1,11 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 /* ================= Données ================= */
-type State = { page: string; slide: number; fmt: string; scope: string; game: string; cat: string; cart: number };
+type TournCard = { name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
+type State = { page: string; slide: number; fmt: string; scope: string; game: string; cat: string; cart: number; tourns: TournCard[] | null };
 
 const NAV = ["Accueil", "Tournois", "Classements", "Boutique", "Profil"];
 
@@ -143,6 +146,7 @@ function chips(list: string[], active: string, attr: string, color = "#22D3EE") 
 /* ================= Pages ================= */
 function pAccueil(S: State) {
   const s = SLIDES[S.slide];
+  const tourns = S.tourns ?? TOURN;
   const dots = SLIDES.map((_, i) => { const on = i === S.slide; return `<span data-slide="${i}" style="width:${on ? 26 : 10}px;height:6px;border-radius:99px;background:${on ? "#22D3EE" : "#33334A"};cursor:pointer"></span>`; }).join("");
   const hero = `<section class="grid2" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:stretch;margin-bottom:34px">
     <div style="display:flex;flex-direction:column;justify-content:center;padding:34px 32px;border-radius:20px;border:1px solid #282838;background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(124,130,255,.06) 55%,#0E0E16);position:relative;overflow:hidden">
@@ -167,7 +171,7 @@ function pAccueil(S: State) {
       <div style="display:flex;gap:8px;position:relative">${dots}</div></div></section>`;
 
   const tournHead = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
-  const tournGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${TOURN.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
+  const tournGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
 
   const rankRows = RANK.slice(0, 5).map((r, i) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0)}</span><div><div style="font-weight:650">${r.name}</div><div style="font-size:11px;color:#5D5E72">${r.club}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${r.game}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.pts}</td></tr>`).join("");
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
@@ -183,7 +187,8 @@ function pAccueil(S: State) {
 }
 
 function pTournois(S: State) {
-  const list = S.fmt === "Tous" ? TOURN : TOURN.filter((t) => t.format === S.fmt);
+  const source = S.tourns ?? TOURN;
+  const list = S.fmt === "Tous" ? source : source.filter((t) => t.format === S.fmt);
   const head = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Tournois</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Module Challonge · tous formats · scores &amp; arbitrage en temps réel</p></div><button style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 20px;font-weight:750;font-size:14px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.plus)}Créer un tournoi</button></div>`;
   const filt = `<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
   const queue = ["Ayi", "Nadia", "Sena", "Koffi"].map((q) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#8E8FA6;background:#14141D;border:1px solid #282838;border-radius:999px;padding:5px 11px">${q}</span>`).join("");
@@ -237,8 +242,18 @@ function renderPage(S: State) {
 
 /* ================= Composant ================= */
 export default function Page() {
-  const [S, setS] = useState<State>({ page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", cart: 2 });
+  const [S, setS] = useState<State>({ page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", cart: 2, tourns: null });
   const html = useMemo(() => renderPage(S), [S]);
+
+  // Charge les tournois depuis l'API (repli sur les données statiques si indisponible).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/tournaments`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: TournCard[]) => { if (!cancelled && Array.isArray(data) && data.length) setS((s) => ({ ...s, tourns: data })); })
+      .catch(() => { /* API hors ligne : on garde le repli statique */ });
+    return () => { cancelled = true; };
+  }, []);
 
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-add]");

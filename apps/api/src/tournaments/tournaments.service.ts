@@ -25,10 +25,10 @@ export class TournamentsService {
   /** Carte pour le listing (dérive joueurs/cagnotte depuis l'état du moteur). */
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
-    date: Date | null; place: string | null; pointsPerPlayer: number; engineState: string | null;
+    date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
   }) {
-    let players = 0;
-    try { players = (JSON.parse(r.engineState || '{}').players || []).length; } catch { /* ignore */ }
+    const st = r.engineState as { players?: unknown[] } | null;
+    const players = st && Array.isArray(st.players) ? st.players.length : 0;
     return {
       id: r.id,
       name: r.name,
@@ -53,9 +53,7 @@ export class TournamentsService {
   async findOne(id: string) {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) return null;
-    let state: unknown = null;
-    try { state = r.engineState ? JSON.parse(r.engineState) : null; } catch { /* ignore */ }
-    return { ...this.toCard(r), engine: state };
+    return { ...this.toCard(r), engine: r.engineState ?? null };
   }
 
   async create(dto: CreateTournamentDto) {
@@ -66,10 +64,10 @@ export class TournamentsService {
     Engine.setPlayers(t, dto.players ?? []);
     const r = await this.prisma.tournament.create({
       data: {
-        name: dto.name, game: dto.game ?? null, format: dto.format ?? 'SURVIVAL',
+        name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
-        engineState: JSON.stringify(t),
+        engineState: JSON.parse(JSON.stringify(t)),
       },
     });
     return this.toCard(r);
@@ -95,9 +93,9 @@ export class TournamentsService {
       Engine.setPlayers(t, d.players ?? []);
       await this.prisma.tournament.create({
         data: {
-          name: d.name, game: d.game ?? null, format: d.format ?? 'SURVIVAL', status: d.status,
+          name: d.name, game: d.game ?? null, format: (d.format ?? 'SURVIVAL') as any, status: d.status as any,
           place: d.place ?? null, date: d.date ? new Date(d.date) : null,
-          pointsPerPlayer: d.pointsPerPlayer ?? 5, nbPools: d.nbPools ?? 2, engineState: JSON.stringify(t),
+          pointsPerPlayer: d.pointsPerPlayer ?? 5, nbPools: d.nbPools ?? 2, engineState: JSON.parse(JSON.stringify(t)),
         },
       });
     }

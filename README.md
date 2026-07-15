@@ -10,27 +10,24 @@ Hub de l'esport togolais & ouest-africain. Monorepo pnpm.
 - **Paiements** (à intégrer) : agrégateur africain (CinetPay / PayDunya) → Flooz, Mixx by Yas, cartes
 
 ## Prérequis
-- Node ≥ 20, pnpm. **Aucun Docker requis en dev** (base SQLite locale).
+- Node ≥ 20, pnpm, **PostgreSQL** (base `vlome`). Redis en option (temps réel, plus tard).
 
-## Démarrer (dev, sans infrastructure)
+## Démarrer
 ```bash
 pnpm install                 # installe tout le workspace
-pnpm dev:web                 # http://localhost:3000  (frontend, marche seul)
-pnpm dev:api                 # http://localhost:4000/api/health
-```
-Base de données de dev (SQLite, fichier local — aucun serveur) :
-```bash
-cd apps/api && npx prisma migrate dev   # crée apps/api/dev.db  (déjà fait : init)
-```
-> Le fichier `apps/api/.env` contient `DATABASE_URL="file:./dev.db"`.
 
-## Production (PostgreSQL + Redis)
-```bash
-docker compose up -d         # Postgres (5432) + Redis (6379)   ← ou une base cloud
-# puis dans apps/api/.env : DATABASE_URL=postgresql://...
-# et dans prisma/schema.prisma : provider = "postgresql" (+ enums/Json natifs)
-pnpm --filter @vlome/api exec prisma migrate deploy
+# Base : renseigner apps/api/.env avec ton DATABASE_URL Postgres (voir .env.example)
+cd apps/api && npx prisma migrate dev   # applique le schéma à la base vlome
+cd ../..
+
+pnpm dev:api                 # http://localhost:4000/api/health
+pnpm dev:web                 # http://localhost:3000
 ```
+Amorcer des tournois de démo : `POST http://localhost:4000/api/tournaments/seed`.
+
+> `apps/api/.env` (non committé) contient le `DATABASE_URL` Postgres.
+> Sans Postgres local, tu peux pointer `DATABASE_URL` vers une base cloud (Neon/Supabase),
+> ou lancer Postgres+Redis via `docker compose up -d`.
 
 ## Vérifier
 - Web : http://localhost:3000 (accueil, tournois, classements, boutique, profil)

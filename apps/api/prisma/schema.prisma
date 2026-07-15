@@ -1,23 +1,41 @@
-// VLOME Esport — schéma de dev (SQLite, sans infrastructure)
-// PROD : passer provider="postgresql" + DATABASE_URL Postgres, et remettre
-// des enums natifs / le type Json là où c'est indiqué (voir commentaires).
+// VLOME Esport — schéma PostgreSQL
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// PROD (Postgres) : enum Role { PLAYER ORGANIZER ADMIN }
-// Valeurs autorisées : "PLAYER" | "ORGANIZER" | "ADMIN"
+enum Role {
+  PLAYER
+  ORGANIZER
+  ADMIN
+}
+
+enum TournamentFormat {
+  SURVIVAL
+  SINGLE_ELIM
+  DOUBLE_ELIM
+  SWISS
+  ROUND_ROBIN
+  POOLS
+  BATTLE_ROYALE
+}
+
+enum TournamentStatus {
+  DRAFT
+  LIVE
+  FINISHED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
   displayName  String
-  role         String   @default("PLAYER")
+  role         Role     @default(PLAYER)
   createdAt    DateTime @default(now())
   player       Player?
 }
@@ -43,22 +61,19 @@ model Player {
   createdAt DateTime @default(now())
 }
 
-// PROD (Postgres) : format/status en enum ; engineState en Json.
-// format  : "SURVIVAL" | "SINGLE_ELIM" | "DOUBLE_ELIM" | "SWISS" | "ROUND_ROBIN" | "POOLS" | "BATTLE_ROYALE"
-// status  : "DRAFT" | "LIVE" | "FINISHED"
 model Tournament {
-  id              String   @id @default(cuid())
+  id              String           @id @default(cuid())
   name            String
   game            String?
-  format          String   @default("SURVIVAL")
-  status          String   @default("DRAFT")
+  format          TournamentFormat @default(SURVIVAL)
+  status          TournamentStatus @default(DRAFT)
   date            DateTime?
   place           String?
-  pointsPerPlayer Int      @default(5)
-  nbPools         Int      @default(2)
-  // état complet du moteur @vlome/engine, sérialisé en JSON (String en SQLite, Json en Postgres)
-  engineState     String?
-  createdAt       DateTime @default(now())
+  pointsPerPlayer Int              @default(5)
+  nbPools         Int              @default(2)
+  // état complet du moteur @vlome/engine (JSON natif Postgres)
+  engineState     Json?
+  createdAt       DateTime         @default(now())
   matches         Match[]
 }
 

@@ -5,7 +5,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 /* ================= Données ================= */
 type TournCard = { name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
-type State = { page: string; slide: number; fmt: string; scope: string; game: string; cat: string; cart: number; tourns: TournCard[] | null };
+type State = { page: string; slide: number; fmt: string; scope: string; game: string; cat: string; cart: number; tourns: TournCard[] | null; creating: boolean; busy: boolean };
+
+const FORMAT_OPTIONS: [string, string][] = [
+  ["SURVIVAL", "Survival"], ["SINGLE_ELIM", "Bracket simple"], ["DOUBLE_ELIM", "Double élim"],
+  ["SWISS", "Swiss"], ["ROUND_ROBIN", "Round Robin"], ["POOLS", "Poules"], ["BATTLE_ROYALE", "Battle Royale"],
+];
 
 const NAV = ["Accueil", "Tournois", "Classements", "Boutique", "Profil"];
 
@@ -189,7 +194,28 @@ function pAccueil(S: State) {
 function pTournois(S: State) {
   const source = S.tourns ?? TOURN;
   const list = S.fmt === "Tous" ? source : source.filter((t) => t.format === S.fmt);
-  const head = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Tournois</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Module Challonge · tous formats · scores &amp; arbitrage en temps réel</p></div><button style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 20px;font-weight:750;font-size:14px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.plus)}Créer un tournoi</button></div>`;
+  const head = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Tournois</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Module Challonge · tous formats · scores &amp; arbitrage en temps réel</p></div><button data-act="${S.creating ? "create-cancel" : "create-open"}" style="display:inline-flex;align-items:center;gap:8px;background:${S.creating ? "#1B1B27" : "linear-gradient(135deg,#22D3EE,#12aec4)"};color:${S.creating ? "#F4F5FB" : "#04222a"};border:${S.creating ? "1px solid #33334A" : "0"};border-radius:12px;padding:13px 20px;font-weight:750;font-size:14px;cursor:pointer;box-shadow:${S.creating ? "none" : "0 0 30px rgba(34,211,238,.22)"}">${S.creating ? ic(I.arrow) + "Fermer" : ic(I.plus) + "Créer un tournoi"}</button></div>`;
+
+  const inputStyle = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px";
+  const labelStyle = "font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-bottom:6px";
+  const field = (label: string, inner: string) => `<div><label style="${labelStyle}">${label}</label>${inner}</div>`;
+  const form = S.creating ? `<section style="border:1px solid rgba(34,211,238,.3);border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;margin-bottom:24px">
+    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0 0 16px">Nouveau tournoi</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:14px">
+      ${field("Nom du tournoi", `<input id="c-name" placeholder="Survival Cup Lomé" style="${inputStyle}" />`)}
+      ${field("Jeu", `<input id="c-game" placeholder="EA FC 26, Tekken 8…" style="${inputStyle}" />`)}
+      ${field("Format", `<select id="c-format" style="${inputStyle}">${FORMAT_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>`)}
+      ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
+      ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
+      ${field("Points / joueur", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
+    </div>
+    ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button data-act="create-submit" ${S.busy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 20px;font-weight:750;font-size:14px;cursor:${S.busy ? "default" : "pointer"};opacity:${S.busy ? ".6" : "1"}">${ic(I.plus)}${S.busy ? "Création…" : "Créer le tournoi"}</button>
+      <button data-act="create-cancel" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
+    </div>
+  </section>` : "";
+
   const filt = `<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
   const queue = ["Ayi", "Nadia", "Sena", "Koffi"].map((q) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#8E8FA6;background:#14141D;border:1px solid #282838;border-radius:999px;padding:5px 11px">${q}</span>`).join("");
   const pool = [["1", "K9", "11"], ["2", "Prince", "8"], ["3", "Nadia", "5"], ["4", "Sena", "2"]].map((p) => `<tr style="border-top:1px solid #282838"><td style="padding:8px 4px;font-family:'Bebas Neue',sans-serif;font-size:16px;color:#5D5E72;width:24px">${p[0]}</td><td style="padding:8px 4px;font-weight:650">${p[1]}</td><td style="padding:8px 4px;text-align:right;font-weight:750;color:#22D3EE">${p[2]}</td></tr>`).join("");
@@ -204,7 +230,7 @@ function pTournois(S: State) {
       <div style="border:1px solid #282838;border-radius:14px;background:#14141D;padding:16px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Classement de poule</div><table style="width:100%;border-collapse:collapse;font-size:13.5px">${pool}</table>
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid #282838"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px"><span style="color:#8E8FA6">Cagnotte</span><span style="font-weight:750">96 / 160 pts</span></div><div style="height:11px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:60%;border-radius:99px;background:linear-gradient(90deg,#34D399,#10b981)"></span></div><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:7px"><span style="color:#34D399;font-weight:700">64 pts disponibles</span><span style="color:#5D5E72">Écart 0</span></div></div></div></div></section>`;
   const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">${list.map((t) => tournCard(t, true)).join("")}</div>`;
-  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${head}${filt}${S.fmt === "Tous" || S.fmt === "Survival" ? survival : ""}${grid}</main>`;
+  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${head}${form}${filt}${S.fmt === "Tous" || S.fmt === "Survival" ? survival : ""}${grid}</main>`;
 }
 
 function pClassements(S: State) {
@@ -242,21 +268,49 @@ function renderPage(S: State) {
 
 /* ================= Composant ================= */
 export default function Page() {
-  const [S, setS] = useState<State>({ page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", cart: 2, tourns: null });
+  const [S, setS] = useState<State>({ page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", cart: 2, tourns: null, creating: false, busy: false });
   const html = useMemo(() => renderPage(S), [S]);
 
-  // Charge les tournois depuis l'API (repli sur les données statiques si indisponible).
+  async function loadTournaments() {
+    try {
+      const r = await fetch(`${API}/api/tournaments`);
+      if (!r.ok) return;
+      const data: TournCard[] = await r.json();
+      if (Array.isArray(data) && data.length) setS((s) => ({ ...s, tourns: data }));
+    } catch { /* API hors ligne : repli statique */ }
+  }
+
+  // Charge les tournois depuis l'API au montage ; #creer ouvre directement le formulaire.
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API}/api/tournaments`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: TournCard[]) => { if (!cancelled && Array.isArray(data) && data.length) setS((s) => ({ ...s, tourns: data })); })
-      .catch(() => { /* API hors ligne : on garde le repli statique */ });
-    return () => { cancelled = true; };
+    loadTournaments();
+    if (typeof window !== "undefined" && window.location.hash === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
   }, []);
 
+  async function submitCreate() {
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    const name = val("c-name").trim();
+    if (!name) { (document.getElementById("c-name") as HTMLInputElement)?.focus(); return; }
+    const players = val("c-players").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const body = {
+      name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
+      date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
+    };
+    setS((s) => ({ ...s, busy: true }));
+    try {
+      const r = await fetch(`${API}/api/tournaments`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error();
+      await loadTournaments();
+      setS((s) => ({ ...s, busy: false, creating: false, fmt: "Tous" }));
+    } catch {
+      setS((s) => ({ ...s, busy: false }));
+      alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");
+    }
+  }
+
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-add]");
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-add],[data-act]");
     if (!el) return;
     const d = el.dataset;
     if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
@@ -266,6 +320,9 @@ export default function Page() {
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));
     else if (d.add) setS((s) => ({ ...s, cart: s.cart + 1 }));
+    else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));
+    else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
+    else if (d.act === "create-submit") submitCreate();
   }
 
   return (

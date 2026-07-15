@@ -1,0 +1,20 @@
+node_modules/
+.pnpm-store/
+dist/
+.next/
+out/
+build/
+coverage/
+*.log
+.env
+.env.local
+.DS_Store
+.turbo/
+
+# Bases de données locales (SQLite dev)
+*.db
+*.db-journal
+*.sqlite
+
+# Prisma
+apps/api/prisma/*.db*

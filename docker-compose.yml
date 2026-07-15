@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vlome-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vlome
+      POSTGRES_PASSWORD: vlome
+      POSTGRES_DB: vlome
+    ports:
+      - "5432:5432"
+    volumes:
+      - vlome-pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: vlome-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - vlome-redis:/data
+
+volumes:
+  vlome-pg:
+  vlome-redis:

@@ -1,0 +1,105 @@
+// VLOME Esport — schéma de dev (SQLite, sans infrastructure)
+// PROD : passer provider="postgresql" + DATABASE_URL Postgres, et remettre
+// des enums natifs / le type Json là où c'est indiqué (voir commentaires).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// PROD (Postgres) : enum Role { PLAYER ORGANIZER ADMIN }
+// Valeurs autorisées : "PLAYER" | "ORGANIZER" | "ADMIN"
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  role         String   @default("PLAYER")
+  createdAt    DateTime @default(now())
+  player       Player?
+}
+
+model Club {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  city    String?
+  players Player[]
+}
+
+model Player {
+  id        String   @id @default(cuid())
+  name      String
+  city      String?
+  game      String?
+  elo       Int      @default(1000)
+  points    Int      @default(0)
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+  clubId    String?
+  club      Club?    @relation(fields: [clubId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// PROD (Postgres) : format/status en enum ; engineState en Json.
+// format  : "SURVIVAL" | "SINGLE_ELIM" | "DOUBLE_ELIM" | "SWISS" | "ROUND_ROBIN" | "POOLS" | "BATTLE_ROYALE"
+// status  : "DRAFT" | "LIVE" | "FINISHED"
+model Tournament {
+  id              String   @id @default(cuid())
+  name            String
+  game            String?
+  format          String   @default("SURVIVAL")
+  status          String   @default("DRAFT")
+  date            DateTime?
+  place           String?
+  pointsPerPlayer Int      @default(5)
+  nbPools         Int      @default(2)
+  // état complet du moteur @vlome/engine, sérialisé en JSON (String en SQLite, Json en Postgres)
+  engineState     String?
+  createdAt       DateTime @default(now())
+  matches         Match[]
+}
+
+model Match {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  stage        String
+  playerAId    String?
+  playerBId    String?
+  scoreA       Int        @default(0)
+  scoreB       Int        @default(0)
+  winnerId     String?
+  playedAt     DateTime?
+}
+
+model NewsPost {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  category  String
+  body      String
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  category  String
+  priceXof  Int // prix en FCFA
+  stock     Int      @default(0)
+  imageUrl  String?
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  reference     String   @unique
+  totalXof      Int
+  paymentMethod String // Flooz, Mixx by Yas, Visa...
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+}

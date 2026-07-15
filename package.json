@@ -1,0 +1,16 @@
+{
+  "name": "vlome-esport",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VLOME Esport Platform — hub de l'esport togolais & ouest-africain",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "dev:web": "pnpm --filter @vlome/web dev",
+    "dev:api": "pnpm --filter @vlome/api start:dev",
+    "build": "pnpm -r build",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "test": "pnpm -r test"
+  }
+}

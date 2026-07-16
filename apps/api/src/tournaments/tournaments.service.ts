@@ -162,7 +162,8 @@ export class TournamentsService {
     return {
       id, name: t.name, game: t.game || '', status: t.status,
       champion: t.champion ? Engine.playerName(t, t.champion) : null,
-      cagnotte: Engine.cagnotte(t), allPoolsDone: Engine.allPoolsDone(t),
+      cagnotte: Engine.cagnotte(t), distributed: Engine.distributed(t),
+      allPoolsDone: Engine.allPoolsDone(t),
       pools, finals,
     };
   }

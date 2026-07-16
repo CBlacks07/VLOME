@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 /* ================= Données ================= */
-type TournCard = { name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number };
 type AuthUser = { displayName: string; role: string; email: string };
 type State = {
@@ -12,6 +14,7 @@ type State = {
   tourns: TournCard[] | null; creating: boolean; busy: boolean;
   cartItems: CartItem[]; cartOpen: boolean;
   user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string;
+  openId: string | null; detail: Detail | null; detailBusy: boolean;
 };
 
 const FORMAT_OPTIONS: [string, string][] = [
@@ -140,10 +143,11 @@ function header(S: State) {
 }
 
 /* ================= Composants ================= */
-function tournCard(t: (typeof TOURN)[number], big: boolean) {
+function tournCard(t: TournCard, big: boolean) {
   const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
   const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:#8E8FA6;font-weight:600">${t.status}</span>`;
-  return `<div data-go="tournois" style="border:1px solid #282838;border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,#14141D,#0E0E16)">
+  const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
+  return `<div ${openAttr} style="border:1px solid #282838;border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,#14141D,#0E0E16)">
     <div style="height:${big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))">
       <span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${badge}</div>
     <div style="padding:${big ? "15px 16px 17px" : "14px 15px 16px"}">
@@ -270,6 +274,80 @@ function pProfil() {
   return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:26px"><div style="display:grid;place-items:center;width:84px;height:84px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:40px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">K9</div><div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.5vw,46px);letter-spacing:1px;margin:0;line-height:1">KOSSI « K9 » ADJEODA</h1><div style="color:#8E8FA6;font-size:14px;margin-top:6px">Team Mawu · Lomé, Togo · EA FC 26</div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px"><span style="font-size:12px;font-weight:700;color:#7C82FF;background:rgba(124,130,255,.1);border:1px solid rgba(124,130,255,.4);border-radius:999px;padding:6px 12px">ELO 2145</span><span style="font-size:12px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.4);border-radius:999px;padding:6px 12px">Survival Rating S+</span><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:6px 12px">${ic(I.crown, 14)}4 titres</span></div></div><div style="flex:1"></div><button style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">Modifier le profil</button></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:28px">${stats}</div><section class="grid2" style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-bottom:26px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Historique récent</h3><div style="display:flex;flex-direction:column;gap:2px">${hist}</div></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Badges &amp; récompenses</h3><div style="display:flex;flex-direction:column;gap:10px">${badges}</div></div></section><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Inscriptions à venir</h3><div style="display:flex;flex-direction:column;gap:10px">${upc}</div></div></main>`;
 }
 
+function pTournoi(S: State) {
+  const t = S.detail;
+  if (!t) return `<main style="max-width:1220px;margin:0 auto;padding:40px 22px;text-align:center;color:#8E8FA6">Chargement du tournoi…</main>`;
+  const statusMap: Record<string, [string, string]> = { setup: ["À lancer", "#8E8FA6"], live: ["En direct", "#22D3EE"], finished: ["Terminé", "#FBBF24"] };
+  const [slabel, scolor] = statusMap[t.status] || ["", "#8E8FA6"];
+  const dist = t.distributed || 0, total = t.cagnotte?.total || 0;
+  const pct = total ? Math.min(100, (dist / total) * 100) : 0;
+
+  const head = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+    <button data-back="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer">← Tournois</button>
+    <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${t.name}</h1><div style="color:#8E8FA6;font-size:13px;margin-top:4px">${t.game || ""}</div></div>
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(34,211,238,.06);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
+    <div style="flex:1"></div>
+    <div style="min-width:220px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
+  </div>`;
+
+  // À lancer
+  if (t.status === "setup") {
+    return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px">${head}
+      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">Prêt à démarrer</div>
+        <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé.</p>
+        <button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : "Lancer le tournoi"}</button>
+      </div></main>`;
+  }
+
+  // Poule (match courant cliquable + classement)
+  const poolCard = (p: Detail) => {
+    let body: string;
+    if (p.current) {
+      const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
+      const stageLabel: Record<string, string> = { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
+      body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""} — touche le vainqueur</div>
+        <div style="display:flex;align-items:stretch;gap:12px"><div style="flex:1">${side(p.current.aId, p.current.aName, "surv", p.current.stage === "poolFinal" ? "Champ. vainqueurs" : "Survivant")}</div><div style="display:flex;align-items:center;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div><div style="flex:1">${side(p.current.bId, p.current.bName, "chal", p.current.stage === "poolFinal" ? "Champ. perdants" : "Challenger")}</div></div>`;
+    } else if (p.done) {
+      body = `<div style="text-align:center;padding:14px 0"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#34D399;font-weight:700;margin-bottom:12px">Poule terminée — qualifiés</div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><span style="font-size:13px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:8px 14px">1. ${p.top1}</span>${p.top2 ? `<span style="font-size:13px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:8px 14px">2. ${p.top2}</span>` : ""}</div></div>`;
+    } else {
+      body = `<div style="color:#5D5E72;text-align:center;padding:14px 0">En attente…</div>`;
+    }
+    const rank = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px">${p.ranking.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 4px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:15px;width:22px">${i + 1}</td><td style="padding:7px 4px;font-weight:600">${r.name}</td><td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.wins}V</td><td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</table>`;
+    return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:18px"><div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${p.name}</div>${body}${rank}</div>`;
+  };
+
+  const poolsHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">${t.pools.map(poolCard).join("")}</div>`;
+
+  // Bouton phase finale
+  const finalsBtn = t.allPoolsDone && !t.finals
+    ? `<div style="text-align:center;margin:24px 0"><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale</button></div>`
+    : "";
+
+  // Bracket finale
+  let finalsHtml = "";
+  if (t.finals) {
+    const champ = t.finals.champion
+      ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${t.finals.champion}</div></div>`
+      : "";
+    const rounds = t.finals.rounds.map((round: Detail) => {
+      const matches = round.matches.map((m: Detail) => {
+        const line = (name: string | null, id: string | null, win: boolean, playable: boolean) => {
+          if (!name) return `<div style="padding:9px 11px;color:#5D5E72;font-style:italic">à venir</div>`;
+          if (playable) return `<button data-reportf="${m.matchId}|${id}" style="display:block;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px">${name}</button>`;
+          return `<div style="padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}">${name}${win ? " ✓" : ""}</div>`;
+        };
+        if (m.bye) return `<div style="border:1px solid #282838;border-radius:10px;overflow:hidden;background:#14141D">${line(m.aName, m.aId, true, false)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #22222F">exempt</div></div>`;
+        return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${line(m.aName, m.aId, m.winnerId === m.aId, m.playable)}<div style="border-top:1px solid #22222F">${line(m.bName, m.bId, m.winnerId === m.bId, m.playable)}</div></div>`;
+      }).join("");
+      return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${round.label}</div>${matches}</div>`;
+    }).join("");
+    finalsHtml = `<div style="margin-top:26px">${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds}</div></div>`;
+  }
+
+  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${head}${finalsHtml || poolsHtml + finalsBtn}</main>`;
+}
+
 function authModal(S: State) {
   if (!S.authOpen) return "";
   const isLogin = S.authTab === "login";
@@ -306,7 +384,7 @@ function cartDrawer(S: State) {
 }
 
 function renderPage(S: State) {
-  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: () => pProfil() };
+  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: () => pProfil(), tournoi: pTournoi };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
   return header(S) + body + footer + authModal(S) + cartDrawer(S);
@@ -319,8 +397,27 @@ export default function Page() {
     tourns: null, creating: false, busy: false,
     cartItems: [], cartOpen: false,
     user: null, authOpen: false, authTab: "login", authBusy: false, authError: "",
+    openId: null, detail: null, detailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
+
+  /* ---------- Pilotage d'un tournoi ---------- */
+  async function openDetail(id: string) {
+    setS((s) => ({ ...s, page: "tournoi", openId: id, detail: null }));
+    window.scrollTo({ top: 0 });
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}/state`);
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); }
+    } catch { /* API hors ligne */ }
+  }
+  async function act(url: string, body?: unknown) {
+    setS((s) => ({ ...s, detailBusy: true }));
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d, detailBusy: false })); loadTournaments(); }
+      else setS((s) => ({ ...s, detailBusy: false }));
+    } catch { setS((s) => ({ ...s, detailBusy: false })); }
+  }
 
   async function submitAuth() {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
@@ -364,7 +461,8 @@ export default function Page() {
       if (u) setS((s) => ({ ...s, user: JSON.parse(u) }));
     } catch { /* ignore */ }
     const h = typeof window !== "undefined" ? window.location.hash : "";
-    if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
+    if (h.startsWith("#t=")) openDetail(h.slice(3));
+    else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
     else if (h === "#connexion") setS((s) => ({ ...s, authOpen: true }));
     else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
   }, []);
@@ -396,11 +494,17 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
-    if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
+    if (d.open) { openDetail(d.open); }
+    else if (d.back !== undefined) { setS((s) => ({ ...s, page: "tournois", detail: null, openId: null })); }
+    else if (d.launch) { act(`${API}/api/tournaments/${d.launch}/launch`); }
+    else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`); }
+    else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }
+    else if (d.reportf) { const [matchId, winnerId] = d.reportf.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { matchId, winnerId }); }
+    else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.fmt) setS((s) => ({ ...s, fmt: d.fmt! }));
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));

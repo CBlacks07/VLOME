@@ -16,8 +16,9 @@ type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean;
   cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string }[] | null;
-  user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string;
+  user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
+  admin: { overview: Detail; users: Detail[] } | null;
 };
 
 const FORMAT_OPTIONS: [string, string][] = [
@@ -271,12 +272,62 @@ function pBoutique(S: State) {
   return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;color:#F4F5FB;cursor:pointer"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cartItems.length} article(s)</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
 }
 
-function pProfil() {
-  const stats = STATS.map((s) => `<div style="border:1px solid #282838;border-radius:15px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;color:${s.color}">${s.v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${s.k}</div></div>`).join("");
-  const hist = HISTORY.map((h) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid #22222F"><div style="min-width:0"><div style="font-weight:650;font-size:14px">${h.t}</div><div style="font-size:12px;color:#8E8FA6">${h.r} · ${h.d}</div></div><span style="font-weight:750;color:#34D399;white-space:nowrap;font-size:13px">${h.p} pts</span></div>`).join("");
-  const badges = BADGES.map((b) => `<div style="display:flex;align-items:center;gap:11px;background:#14141D;border:1px solid #282838;border-radius:12px;padding:11px 13px"><span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(251,191,36,.1);color:#FBBF24;flex:none">${ic(I.medal, 18)}</span><span style="font-weight:650;font-size:13.5px">${b}</span></div>`).join("");
-  const upc = UPCOMING.map((u) => { const st = u.ok ? "color:#34D399;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4)" : "color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4)"; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:#14141D;border:1px solid #282838;border-radius:12px;padding:13px 15px;flex-wrap:wrap"><div><div style="font-weight:650;font-size:14.5px">${u.t}</div><div style="font-size:12px;color:#8E8FA6">${u.d}</div></div><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:999px;padding:6px 12px;${st}">${u.s}</span></div>`; }).join("");
-  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:26px"><div style="display:grid;place-items:center;width:84px;height:84px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:40px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">K9</div><div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.5vw,46px);letter-spacing:1px;margin:0;line-height:1">KOSSI « K9 » ADJEODA</h1><div style="color:#8E8FA6;font-size:14px;margin-top:6px">Team Mawu · Lomé, Togo · EA FC 26</div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px"><span style="font-size:12px;font-weight:700;color:#7C82FF;background:rgba(124,130,255,.1);border:1px solid rgba(124,130,255,.4);border-radius:999px;padding:6px 12px">ELO 2145</span><span style="font-size:12px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.4);border-radius:999px;padding:6px 12px">Survival Rating S+</span><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:6px 12px">${ic(I.crown, 14)}4 titres</span></div></div><div style="flex:1"></div><button style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">Modifier le profil</button></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:28px">${stats}</div><section class="grid2" style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-bottom:26px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Historique récent</h3><div style="display:flex;flex-direction:column;gap:2px">${hist}</div></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Badges &amp; récompenses</h3><div style="display:flex;flex-direction:column;gap:10px">${badges}</div></div></section><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Inscriptions à venir</h3><div style="display:flex;flex-direction:column;gap:10px">${upc}</div></div></main>`;
+const ROLE_LABEL: Record<string, string> = { PLAYER: "Joueur", ORGANIZER: "Organisateur", ADMIN: "Administrateur" };
+const ROLE_COLOR: Record<string, string> = { PLAYER: "#22D3EE", ORGANIZER: "#7C82FF", ADMIN: "#FBBF24" };
+const card = (inner: string, pad = "20px") => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:${pad}">${inner}</div>`;
+
+function pDashboard(S: State) {
+  const wrap = (inner: string) => `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${inner}</main>`;
+  if (!S.user) {
+    return wrap(`<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center">
+      <div style="display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#22D3EE;margin:0 auto 16px">${ic(I.user, 28)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;margin-bottom:8px">Espace membre</div>
+      <p style="color:#8E8FA6;font-size:14px;max-width:420px;margin:0 auto 22px">Connecte-toi ou crée un compte pour accéder à ton tableau de bord.</p>
+      <button data-auth-open="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">Se connecter / S'inscrire</button></div>`);
+  }
+  const u = S.user;
+  const rc = ROLE_COLOR[u.role] || "#22D3EE";
+  const header = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:24px">
+    <div style="display:grid;place-items:center;width:78px;height:78px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:36px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
+    <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${u.displayName}</h1>
+      <div style="color:#8E8FA6;font-size:13.5px;margin-top:5px">${u.email}</div>
+      <span style="display:inline-block;margin-top:10px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${rc};background:${rc}18;border:1px solid ${rc}66;border-radius:999px;padding:6px 12px">${ROLE_LABEL[u.role] || u.role}</span></div>
+    <div style="flex:1"></div>
+    <button data-logout="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.logout, 15)}Déconnexion</button>
+  </div>`;
+  let body: string;
+  if (u.role === "ADMIN") body = adminPanel(S);
+  else if (u.role === "ORGANIZER") body = organizerPanel();
+  else body = playerPanel();
+  return wrap(header + body);
+}
+
+function playerPanel() {
+  return card(`<h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px">Bienvenue !</h3>
+    <p style="color:#8E8FA6;font-size:14px;margin:0 0 18px">Inscris-toi aux tournois, suis tes résultats et ta progression. Tes statistiques et ton classement apparaîtront ici au fil de tes matchs.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button data-go="tournois" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">Voir les tournois</button><button data-go="classements" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Classements</button></div>`, "24px");
+}
+
+function organizerPanel() {
+  return card(`<h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px">Espace organisateur</h3>
+    <p style="color:#8E8FA6;font-size:14px;margin:0 0 18px">Crée et pilote tes tournois : poules, mode Survival, scores, phase finale, classement en direct.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button data-createnav="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button><button data-go="tournois" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Gérer les tournois</button></div>`, "24px");
+}
+
+function adminPanel(S: State) {
+  const a = S.admin;
+  if (!a) return card(`<div style="color:#8E8FA6;text-align:center;padding:20px">Chargement du panneau admin…</div>`);
+  const ov = a.overview;
+  const stat = (v: number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:#14141D;padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
+  const overview = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-bottom:20px">
+    ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.orders, "Commandes")}${stat(ov.products, "Produits")}</div>`;
+  const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "#282838"};color:${on ? ROLE_COLOR[role] : "#8E8FA6"}">${ROLE_LABEL[role]}</button>`; };
+  const rows = a.users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
+    <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${usr.displayName}</div><div style="font-size:11.5px;color:#5D5E72">${usr.email}</div></div></div></td>
+    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div></td></tr>`).join("");
+  const users = card(`<h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Utilisateurs · rôles</h3>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:520px"><tbody>${rows}</tbody></table></div>`);
+  return overview + users;
 }
 
 function pTournoi(S: State) {
@@ -292,6 +343,7 @@ function pTournoi(S: State) {
     <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${t.name}</h1><div style="color:#8E8FA6;font-size:13px;margin-top:4px">${t.game || ""}</div></div>
     <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(34,211,238,.06);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
     <div style="flex:1"></div>
+    <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
     <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>
     <div style="min-width:200px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
@@ -378,7 +430,10 @@ function authModal(S: State) {
     <div data-stop="1" style="width:100%;max-width:420px;background:linear-gradient(180deg,#14141D,#0E0E16);border:1px solid #33334A;border-radius:20px;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.6)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">${isLogin ? "Connexion" : "Inscription"}</span><span data-auth-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
       <div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:16px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>
-      ${isLogin ? "" : `<label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="a-name" placeholder="Kossi K9" style="${inputStyle}" /></label>`}
+      ${isLogin ? "" : `<label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="a-name" placeholder="Kossi K9" style="${inputStyle}" /></label>
+      <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600;margin-bottom:6px">Je m'inscris en tant que</div><div style="display:flex;gap:8px">
+        ${["PLAYER", "ORGANIZER"].map((r) => { const on = S.authRole === r; const lbl = r === "PLAYER" ? "Joueur" : "Organisateur"; return `<button data-authrole="${r}" style="flex:1;padding:11px;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;font-size:13.5px;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${lbl}</button>`; }).join("")}
+      </div></div>`}
       <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inputStyle}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inputStyle}" /></label>
       ${S.authError ? `<div style="color:#FB7185;font-size:12.5px;margin-top:12px">${S.authError}</div>` : ""}
@@ -404,8 +459,35 @@ function cartDrawer(S: State) {
     </div></div>`;
 }
 
+function pShow(S: State) {
+  const t = S.detail;
+  const close = `<button data-showclose="1" style="position:absolute;top:16px;right:18px;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;z-index:5">Fermer</button>`;
+  const brand = `<div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:2vh"><span style="display:grid;place-items:center;width:4.2vh;height:4.2vh;border-radius:1vh;background:linear-gradient(140deg,#22D3EE,#7C82FF);color:#04222a">${ic(I.bolt, 20)}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:3vh;letter-spacing:2.5px;color:#8E8FA6">VLOME <span style="color:#22D3EE">ESPORT</span></span></div>`;
+  if (!t) return `<div style="min-height:100vh;display:grid;place-items:center;color:#8E8FA6">${close}Chargement de l'affichage…</div>`;
+  if (t.status === "finished" && t.champion) {
+    return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
+      <div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:1vh;color:#FBBF24;font-size:2vh;letter-spacing:2px;text-transform:uppercase;font-weight:800">${ic(I.crown, 22)} Champion du tournoi</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:14vh;line-height:.9;color:#22D3EE;letter-spacing:1px;margin-top:1vh">${t.champion}</div>
+      <div style="color:#8E8FA6;font-size:2.4vh;margin-top:1vh">${t.name}</div></div></div>`;
+  }
+  const title = `<div style="text-align:center;margin-bottom:1vh"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${t.name}</div><div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "#8E8FA6"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct` : t.status === "setup" ? "À lancer" : ""}</div></div>`;
+  const poolCard = (p: Detail) => {
+    let match: string;
+    if (p.current) {
+      match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
+    } else if (p.done) {
+      match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${p.top1}${p.top2 ? ", " + p.top2 : ""}</div>`;
+    } else match = `<div style="text-align:center;color:#5D5E72;padding:1vh 0">En attente du lancement…</div>`;
+    const lead = p.ranking?.[0] ? `<div style="text-align:center;color:#8E8FA6;font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:#F4F5FB">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
+    return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:#8E8FA6">${p.name}</div>${match}${lead}</div>`;
+  };
+  const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,92vw),1fr));gap:2vh;margin-top:2.4vh">${t.pools.map(poolCard).join("")}</div>`;
+  return `<div style="min-height:100vh;padding:4vh 3vw;position:relative">${close}${brand}${title}${grid}</div>`;
+}
+
 function renderPage(S: State) {
-  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: () => pProfil(), tournoi: pTournoi };
+  if (S.page === "show") return pShow(S);
+  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
   return header(S) + body + footer + authModal(S) + cartDrawer(S);
@@ -417,14 +499,14 @@ export default function Page() {
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous",
     tourns: null, creating: false, busy: false,
     cartItems: [], cartOpen: false, products: null,
-    user: null, authOpen: false, authTab: "login", authBusy: false, authError: "",
-    openId: null, detail: null, detailBusy: false, editing: false,
+    user: null, authOpen: false, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
+    openId: null, detail: null, detailBusy: false, editing: false, admin: null,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
   /* ---------- Pilotage d'un tournoi ---------- */
-  async function openDetail(id: string) {
-    setS((s) => ({ ...s, page: "tournoi", openId: id, detail: null }));
+  async function openDetail(id: string, page = "tournoi") {
+    setS((s) => ({ ...s, page, openId: id, detail: null }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -469,7 +551,7 @@ export default function Page() {
     try {
       const r = await fetch(`${API}/api/auth/${isLogin ? "login" : "register"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isLogin ? { email, password } : { email, password, displayName }),
+        body: JSON.stringify(isLogin ? { email, password } : { email, password, displayName, role: S.authRole }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
@@ -514,6 +596,37 @@ export default function Page() {
     } catch { /* ignore */ }
   }
 
+  async function loadAdmin() {
+    try {
+      const [ovR, usR] = await Promise.all([
+        fetch(`${API}/api/admin/overview`, { headers: authHeaders() }),
+        fetch(`${API}/api/admin/users`, { headers: authHeaders() }),
+      ]);
+      if (ovR.ok && usR.ok) { const overview = await ovR.json(); const users = await usR.json(); setS((s) => ({ ...s, admin: { overview, users } })); }
+    } catch { /* ignore */ }
+  }
+  async function setRole(uid: string, role: string) {
+    try {
+      const r = await fetch(`${API}/api/admin/users/${uid}/role`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ role }) });
+      if (r.ok) loadAdmin();
+    } catch { /* ignore */ }
+  }
+
+  // Charge le panneau admin quand on ouvre l'espace membre en tant qu'ADMIN.
+  useEffect(() => {
+    if (S.page === "profil" && S.user?.role === "ADMIN" && !S.admin) loadAdmin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.user]);
+
+  // Mode Show : rafraîchit l'état en direct.
+  useEffect(() => {
+    if (S.page !== "show" || !S.openId) return;
+    const id = setInterval(async () => {
+      try { const r = await fetch(`${API}/api/tournaments/${S.openId}/state`); if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); } } catch { /* ignore */ }
+    }, 2500);
+    return () => clearInterval(id);
+  }, [S.page, S.openId]);
+
   // Montage : charge les tournois, restaure la session, gère #creer.
   useEffect(() => {
     loadTournaments();
@@ -523,7 +636,8 @@ export default function Page() {
       if (u) setS((s) => ({ ...s, user: JSON.parse(u) }));
     } catch { /* ignore */ }
     const h = typeof window !== "undefined" ? window.location.hash : "";
-    if (h.startsWith("#t=")) openDetail(h.slice(3));
+    if (h.startsWith("#show=")) openDetail(h.slice(6), "show");
+    else if (h.startsWith("#t=")) openDetail(h.slice(3));
     else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
     else if (h === "#connexion") setS((s) => ({ ...s, authOpen: true }));
     else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
@@ -558,7 +672,7 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -597,7 +711,12 @@ export default function Page() {
     else if (d.authOpen !== undefined) setS((s) => ({ ...s, authOpen: true, authError: "" }));
     else if (d.authClose !== undefined) setS((s) => ({ ...s, authOpen: false }));
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));
+    else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
+    else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
+    else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
+    else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
+    else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
     else if (d.act === "create-submit") submitCreate();

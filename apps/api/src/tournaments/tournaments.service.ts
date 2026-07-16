@@ -101,6 +101,109 @@ export class TournamentsService {
     }
     return { seeded: true, count: demos.length };
   }
+
+  /* ---------- Pilotage (état du moteur persisté) ---------- */
+
+  private async loadEngine(id: string): Promise<{ record: { id: string }; t: Engine.Tournament } | null> {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r || !r.engineState) return null;
+    return { record: r, t: r.engineState as unknown as Engine.Tournament };
+  }
+
+  private dbStatus(t: Engine.Tournament): 'DRAFT' | 'LIVE' | 'FINISHED' {
+    return t.status === 'finished' ? 'FINISHED' : t.status === 'live' ? 'LIVE' : 'DRAFT';
+  }
+
+  private async persist(id: string, t: Engine.Tournament) {
+    await this.prisma.tournament.update({
+      where: { id },
+      data: { engineState: JSON.parse(JSON.stringify(t)), status: this.dbStatus(t) as any },
+    });
+  }
+
+  private poolRanking(t: Engine.Tournament, pool: Engine.Pool) {
+    const wins: Record<string, number> = {};
+    t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
+    return pool.playerIds.slice()
+      .sort((a, b) => (t.points[b] || 0) - (t.points[a] || 0) || (wins[b] || 0) - (wins[a] || 0))
+      .map((pid) => ({ id: pid, name: Engine.playerName(t, pid), pts: t.points[pid] || 0, wins: wins[pid] || 0 }));
+  }
+
+  /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
+  private toState(id: string, t: Engine.Tournament) {
+    const pools = t.pools.map((p) => {
+      const m = Engine.currentMatch(p);
+      return {
+        id: p.id, name: p.name, phase: p.phase, done: p.phase === 'done',
+        top1: p.top1 ? Engine.playerName(t, p.top1) : null,
+        top2: p.top2 ? Engine.playerName(t, p.top2) : null,
+        current: m && m.a && m.b
+          ? { poolId: p.id, aId: m.a, bId: m.b, aName: Engine.playerName(t, m.a), bName: Engine.playerName(t, m.b), stage: m.stage, streak: m.streak }
+          : null,
+        ranking: this.poolRanking(t, p),
+      };
+    });
+    let finals: unknown = null;
+    if (t.finals) {
+      const total = t.finals.rounds.length;
+      finals = {
+        champion: t.champion ? Engine.playerName(t, t.champion) : null,
+        rounds: t.finals.rounds.map((round, r) => ({
+          label: this.roundLabel(r, total),
+          matches: round.map((mm) => ({
+            matchId: mm.id, bye: mm.bye,
+            aName: mm.a ? Engine.playerName(t, mm.a) : null, bName: mm.b ? Engine.playerName(t, mm.b) : null,
+            aId: mm.a, bId: mm.b, winnerId: mm.winner,
+            playable: !!(mm.a && mm.b && !mm.winner && !mm.bye),
+          })),
+        })),
+      };
+    }
+    return {
+      id, name: t.name, game: t.game || '', status: t.status,
+      champion: t.champion ? Engine.playerName(t, t.champion) : null,
+      cagnotte: Engine.cagnotte(t), allPoolsDone: Engine.allPoolsDone(t),
+      pools, finals,
+    };
+  }
+
+  private roundLabel(r: number, total: number) {
+    const fe = total - r;
+    return fe === 1 ? 'Finale' : fe === 2 ? 'Demi-finales' : fe === 3 ? 'Quarts' : '1/' + Math.pow(2, fe - 1);
+  }
+
+  async getState(id: string) {
+    const l = await this.loadEngine(id);
+    return l ? this.toState(id, l.t) : null;
+  }
+
+  async launch(id: string) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    const { t } = l;
+    if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
+    Engine.launch(t);
+    await this.persist(id, t);
+    return this.toState(id, t);
+  }
+
+  async startFinals(id: string) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    Engine.startFinals(l.t);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t);
+  }
+
+  async report(id: string, dto: { poolId?: string; matchId?: string; winnerId: string }) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    const { t } = l;
+    if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId);
+    else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId);
+    await this.persist(id, t);
+    return this.toState(id, t);
+  }
 }
 
 function gen(n: number): string[] {

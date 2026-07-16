@@ -5,7 +5,14 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 /* ================= Données ================= */
 type TournCard = { name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
-type State = { page: string; slide: number; fmt: string; scope: string; game: string; cat: string; cart: number; tourns: TournCard[] | null; creating: boolean; busy: boolean };
+type CartItem = { name: string; price: number };
+type AuthUser = { displayName: string; role: string; email: string };
+type State = {
+  page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
+  tourns: TournCard[] | null; creating: boolean; busy: boolean;
+  cartItems: CartItem[]; cartOpen: boolean;
+  user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string;
+};
 
 const FORMAT_OPTIONS: [string, string][] = [
   ["SURVIVAL", "Survival"], ["SINGLE_ELIM", "Bracket simple"], ["DOUBLE_ELIM", "Double élim"],
@@ -102,6 +109,8 @@ const I = {
   tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',
   flame: '<path d="M12 3c1 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1.2.4-2 1-2.8C8.8 9.8 9 11 10 11c0-2.2 1-4.2 2-8Z"/>',
   medal: '<circle cx="12" cy="9" r="5"/><path d="M8.5 13 6 22l6-3 6 3-2.5-9"/>', crown: '<path d="M4 8l3.5 3L12 5l4.5 6L20 8l-1.5 10h-13L4 8Z"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -122,9 +131,11 @@ function header(S: State) {
     <div style="position:relative;min-width:170px">
       <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 16)}</span>
       <input placeholder="Joueur, tournoi, jeu…" style="width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px 9px 36px" /></div>
-    <button data-go="boutique" style="position:relative;display:grid;place-items:center;width:42px;height:42px;background:#1B1B27;border:1px solid #33334A;border-radius:11px;color:#F4F5FB;cursor:pointer">${ic(I.cart, 19)}
-      <span style="position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:11px;font-weight:800;border-radius:99px">${S.cart}</span></button>
-    <button data-go="profil" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">Connexion</button>
+    <button data-cart-open="1" style="position:relative;display:grid;place-items:center;width:42px;height:42px;background:#1B1B27;border:1px solid #33334A;border-radius:11px;color:#F4F5FB;cursor:pointer">${ic(I.cart, 19)}
+      ${S.cartItems.length ? `<span style="position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:11px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
+    ${S.user
+      ? `<button data-menu-user="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:7px 13px 7px 8px;font-weight:700;font-size:13.5px;cursor:pointer"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:13px">${(S.user.displayName || "?").charAt(0).toUpperCase()}</span>${S.user.displayName}<span data-logout="1" title="Déconnexion" style="color:#8E8FA6;margin-left:2px">${ic(I.logout, 15)}</span></button>`
+      : `<button data-auth-open="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">Connexion</button>`}
     </header>`;
 }
 
@@ -246,9 +257,9 @@ function pClassements(S: State) {
 
 function pBoutique(S: State) {
   const list = S.cat === "Tous" ? SHOP : SHOP.filter((p) => p.cat === S.cat);
-  const grid = list.map((p) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:170px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
+  const grid = list.map((p) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:170px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
   const pay = PAYMENTS.map((m) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#F4F5FB;font-weight:700;font-size:13px">${m}</span>`).join("");
-  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><span style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cart} article(s)</span></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
+  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;color:#F4F5FB;cursor:pointer"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cartItems.length} article(s)</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
 }
 
 function pProfil() {
@@ -259,17 +270,82 @@ function pProfil() {
   return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:26px"><div style="display:grid;place-items:center;width:84px;height:84px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:40px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">K9</div><div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.5vw,46px);letter-spacing:1px;margin:0;line-height:1">KOSSI « K9 » ADJEODA</h1><div style="color:#8E8FA6;font-size:14px;margin-top:6px">Team Mawu · Lomé, Togo · EA FC 26</div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px"><span style="font-size:12px;font-weight:700;color:#7C82FF;background:rgba(124,130,255,.1);border:1px solid rgba(124,130,255,.4);border-radius:999px;padding:6px 12px">ELO 2145</span><span style="font-size:12px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.4);border-radius:999px;padding:6px 12px">Survival Rating S+</span><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:999px;padding:6px 12px">${ic(I.crown, 14)}4 titres</span></div></div><div style="flex:1"></div><button style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">Modifier le profil</button></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:28px">${stats}</div><section class="grid2" style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-bottom:26px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Historique récent</h3><div style="display:flex;flex-direction:column;gap:2px">${hist}</div></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Badges &amp; récompenses</h3><div style="display:flex;flex-direction:column;gap:10px">${badges}</div></div></section><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 16px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Inscriptions à venir</h3><div style="display:flex;flex-direction:column;gap:10px">${upc}</div></div></main>`;
 }
 
+function authModal(S: State) {
+  if (!S.authOpen) return "";
+  const isLogin = S.authTab === "login";
+  const inputStyle = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:12px 13px;margin-top:6px";
+  const tab = (k: string, label: string) => `<button data-auth-tab="${k}" style="flex:1;padding:11px;border:0;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;font-size:14px;background:${S.authTab === k ? "#22222F" : "transparent"};color:${S.authTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+  return `<div data-auth-close="1" style="position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
+    <div data-stop="1" style="width:100%;max-width:420px;background:linear-gradient(180deg,#14141D,#0E0E16);border:1px solid #33334A;border-radius:20px;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.6)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">${isLogin ? "Connexion" : "Inscription"}</span><span data-auth-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
+      <div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:16px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>
+      ${isLogin ? "" : `<label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="a-name" placeholder="Kossi K9" style="${inputStyle}" /></label>`}
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inputStyle}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inputStyle}" /></label>
+      ${S.authError ? `<div style="color:#FB7185;font-size:12.5px;margin-top:12px">${S.authError}</div>` : ""}
+      <button data-auth-submit="1" ${S.authBusy ? "disabled" : ""} style="width:100%;margin-top:18px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${S.authBusy ? "default" : "pointer"};opacity:${S.authBusy ? ".6" : "1"}">${S.authBusy ? "…" : isLogin ? "Se connecter" : "Créer mon compte"}</button>
+    </div></div>`;
+}
+
+function cartDrawer(S: State) {
+  if (!S.cartOpen) return "";
+  const total = S.cartItems.reduce((a, i) => a + i.price, 0);
+  const rows = S.cartItems.length
+    ? S.cartItems.map((i, idx) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #22222F"><div><div style="font-weight:600;font-size:14px">${i.name}</div><div style="font-size:12.5px;color:#22D3EE;font-weight:700">${money(i.price)}</div></div><button data-cart-remove="${idx}" style="display:grid;place-items:center;width:32px;height:32px;background:transparent;border:1px solid #282838;border-radius:9px;color:#8E8FA6;cursor:pointer">${ic(I.trash, 15)}</button></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:14px;text-align:center;padding:40px 0">Ton panier est vide.<br>Ajoute des articles depuis la boutique.</div>`;
+  return `<div data-cart-close="1" style="position:fixed;inset:0;z-index:200;background:rgba(6,6,10,.6);backdrop-filter:blur(4px)">
+    <div data-stop="1" style="position:absolute;top:0;right:0;height:100%;width:min(420px,92vw);background:#0E0E16;border-left:1px solid #282838;padding:22px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">Panier</span><span data-cart-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
+      <div style="flex:1;overflow-y:auto">${rows}</div>
+      <div style="border-top:1px solid #282838;padding-top:16px;margin-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:#8E8FA6;font-size:14px">Total</span><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:#22D3EE">${money(total)}</span></div>
+        <button ${S.cartItems.length ? "" : "disabled"} data-checkout="1" style="width:100%;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${S.cartItems.length ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">Commander</button>
+        ${S.cartItems.length ? `<button data-cart-clear="1" style="width:100%;margin-top:8px;background:transparent;border:1px solid #282838;color:#8E8FA6;border-radius:12px;padding:11px;font-weight:600;font-size:13px;cursor:pointer">Vider le panier</button>` : ""}
+      </div>
+    </div></div>`;
+}
+
 function renderPage(S: State) {
   const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: () => pProfil() };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
-  return header(S) + body + footer;
+  return header(S) + body + footer + authModal(S) + cartDrawer(S);
 }
 
 /* ================= Composant ================= */
 export default function Page() {
-  const [S, setS] = useState<State>({ page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", cart: 2, tourns: null, creating: false, busy: false });
+  const [S, setS] = useState<State>({
+    page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous",
+    tourns: null, creating: false, busy: false,
+    cartItems: [], cartOpen: false,
+    user: null, authOpen: false, authTab: "login", authBusy: false, authError: "",
+  });
   const html = useMemo(() => renderPage(S), [S]);
+
+  async function submitAuth() {
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const email = val("a-email").trim(), password = val("a-pass"), displayName = val("a-name").trim();
+    const isLogin = S.authTab === "login";
+    if (!email || !password) { setS((s) => ({ ...s, authError: "Email et mot de passe requis." })); return; }
+    setS((s) => ({ ...s, authBusy: true, authError: "" }));
+    try {
+      const r = await fetch(`${API}/api/auth/${isLogin ? "login" : "register"}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isLogin ? { email, password } : { email, password, displayName }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
+      localStorage.setItem("vlome_token", data.token);
+      localStorage.setItem("vlome_user", JSON.stringify(data.user));
+      setS((s) => ({ ...s, authBusy: false, authOpen: false, user: data.user }));
+    } catch {
+      setS((s) => ({ ...s, authBusy: false, authError: "API injoignable — démarre pnpm dev:api." }));
+    }
+  }
+  function logout() {
+    localStorage.removeItem("vlome_token"); localStorage.removeItem("vlome_user");
+    setS((s) => ({ ...s, user: null }));
+  }
 
   async function loadTournaments() {
     try {
@@ -280,10 +356,17 @@ export default function Page() {
     } catch { /* API hors ligne : repli statique */ }
   }
 
-  // Charge les tournois depuis l'API au montage ; #creer ouvre directement le formulaire.
+  // Montage : charge les tournois, restaure la session, gère #creer.
   useEffect(() => {
     loadTournaments();
-    if (typeof window !== "undefined" && window.location.hash === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
+    try {
+      const u = localStorage.getItem("vlome_user");
+      if (u) setS((s) => ({ ...s, user: JSON.parse(u) }));
+    } catch { /* ignore */ }
+    const h = typeof window !== "undefined" ? window.location.hash : "";
+    if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
+    else if (h === "#connexion") setS((s) => ({ ...s, authOpen: true }));
+    else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
   }, []);
 
   async function submitCreate() {
@@ -310,16 +393,29 @@ export default function Page() {
   }
 
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
-    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-add],[data-act]");
+    const target = e.target as HTMLElement;
+    // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
+    if (target.closest("[data-logout]")) { logout(); return; }
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop]");
     if (!el) return;
     const d = el.dataset;
+    if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
     if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.fmt) setS((s) => ({ ...s, fmt: d.fmt! }));
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));
-    else if (d.add) setS((s) => ({ ...s, cart: s.cart + 1 }));
+    else if (d.addName) setS((s) => ({ ...s, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0") }] }));
+    else if (d.cartOpen !== undefined) setS((s) => ({ ...s, cartOpen: true }));
+    else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false }));
+    else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
+    else if (d.cartClear !== undefined) setS((s) => ({ ...s, cartItems: [] }));
+    else if (d.checkout !== undefined) { alert("Paiement à venir : Flooz, Mixx by Yas, carte (agrégateur)."); }
+    else if (d.authOpen !== undefined) setS((s) => ({ ...s, authOpen: true, authError: "" }));
+    else if (d.authClose !== undefined) setS((s) => ({ ...s, authOpen: false }));
+    else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));
+    else if (d.authSubmit !== undefined) submitAuth();
     else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
     else if (d.act === "create-submit") submitCreate();

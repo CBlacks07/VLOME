@@ -1,26 +1,25 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
+import { CreateTournamentDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import { JwtUser } from '../common/jwt-auth.guard';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
   SWISS: 'Swiss', ROUND_ROBIN: 'Round Robin', POOLS: 'Poules', BATTLE_ROYALE: 'Battle Royale',
 };
 
-export interface CreateTournamentDto {
-  name: string;
-  game?: string;
-  format?: string;
-  place?: string;
-  date?: string;
-  nbPools?: number;
-  pointsPerPlayer?: number;
-  players?: string[];
-}
-
 @Injectable()
 export class TournamentsService {
   constructor(private prisma: PrismaService) {}
+
+  // Seul le propriétaire (ou un ADMIN) peut piloter/éditer. Les tournois sans
+  // propriétaire (démo) sont pilotables par tout utilisateur authentifié.
+  private assertCanManage(record: { createdById: string | null }, user: JwtUser) {
+    if (record.createdById && record.createdById !== user.sub && user.role !== 'ADMIN') {
+      throw new ForbiddenException('Seul l\'organisateur peut gérer ce tournoi.');
+    }
+  }
 
   /** Carte pour le listing (dérive joueurs/cagnotte depuis l'état du moteur). */
   private toCard(r: {
@@ -56,7 +55,7 @@ export class TournamentsService {
     return { ...this.toCard(r), engine: r.engineState ?? null };
   }
 
-  async create(dto: CreateTournamentDto) {
+  async create(dto: CreateTournamentDto, userId?: string) {
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
       nbPools: dto.nbPools ?? 2, pointsPerPlayer: dto.pointsPerPlayer ?? 5,
@@ -67,10 +66,32 @@ export class TournamentsService {
         name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
-        engineState: JSON.parse(JSON.stringify(t)),
+        engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
     return this.toCard(r);
+  }
+
+  async update(id: string, dto: UpdateTournamentDto, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const data: Record<string, unknown> = {};
+    if (dto.name !== undefined) data.name = dto.name.trim() || r.name;
+    if (dto.game !== undefined) data.game = dto.game.trim() || null;
+    if (dto.place !== undefined) data.place = dto.place.trim() || null;
+    if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
+    const upd = await this.prisma.tournament.update({ where: { id }, data });
+    return this.toCard(upd);
+  }
+
+  async remove(id: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    await this.prisma.match.deleteMany({ where: { tournamentId: id } });
+    await this.prisma.tournament.delete({ where: { id } });
+    return { deleted: true };
   }
 
   /** Insère des tournois de démonstration si la table est vide. */
@@ -104,7 +125,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: r.engineState as unknown as Engine.Tournament };
@@ -178,9 +199,10 @@ export class TournamentsService {
     return l ? this.toState(id, l.t) : null;
   }
 
-  async launch(id: string) {
+  async launch(id: string, user: JwtUser) {
     const l = await this.loadEngine(id);
     if (!l) return null;
+    this.assertCanManage(l.record, user);
     const { t } = l;
     if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
     Engine.launch(t);
@@ -188,20 +210,23 @@ export class TournamentsService {
     return this.toState(id, t);
   }
 
-  async startFinals(id: string) {
+  async startFinals(id: string, user: JwtUser) {
     const l = await this.loadEngine(id);
     if (!l) return null;
+    this.assertCanManage(l.record, user);
     Engine.startFinals(l.t);
     await this.persist(id, l.t);
     return this.toState(id, l.t);
   }
 
-  async report(id: string, dto: { poolId?: string; matchId?: string; winnerId: string }) {
+  async report(id: string, dto: ReportDto, user: JwtUser) {
     const l = await this.loadEngine(id);
     if (!l) return null;
+    this.assertCanManage(l.record, user);
     const { t } = l;
-    if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId);
-    else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId);
+    const sa = dto.scoreA ?? 0, sb = dto.scoreB ?? 0;
+    if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+    else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
     return this.toState(id, t);
   }

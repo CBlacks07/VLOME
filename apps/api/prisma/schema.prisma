@@ -73,6 +73,7 @@ model Tournament {
   nbPools         Int              @default(2)
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState     Json?
+  createdById     String?          // propriétaire (organisateur)
   createdAt       DateTime         @default(now())
   matches         Match[]
 }

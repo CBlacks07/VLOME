@@ -35,6 +35,7 @@ export interface LogEntry {
   id: string; poolId: string; stage: Stage;
   a: string | null; b: string | null; winner: string;
   pts: number; ts: number; reason?: string;
+  sa?: number; sb?: number; // scores FT du match (côté a / côté b)
 }
 
 export type Status = 'setup' | 'live' | 'finished';
@@ -231,17 +232,19 @@ function award(t: Tournament, playerId: string, pts: number): void {
 
 /* ---------- Résultat (poules) ---------- */
 
-export function reportResult(t: Tournament, poolId: string, winnerId: string): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
+export function reportResult(t: Tournament, poolId: string, winnerId: string, sa = 0, sb = 0): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
   const pool = t.pools.find(p => p.id === poolId);
   if (!pool) return null;
   const m = currentMatch(pool);
   if (!m) return null;
+  // Scores FT : le vainqueur est le côté avec le plus de manches.
+  if (sa || sb) winnerId = sa >= sb ? m.a : m.b;
   if (winnerId !== m.a && winnerId !== m.b) return null;
 
   const loserId = winnerId === m.a ? m.b : m.a;
   const pts = stagePoints(t, m.stage);
   award(t, winnerId, pts);
-  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now() });
+  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb });
 
   if (m.stage === 'survival') {
     pool.wLosers.push(loserId);
@@ -289,17 +292,18 @@ export function startFinals(t: Tournament): void {
   t.finals = buildBracket(qualifiers(t));
 }
 
-export function reportFinals(t: Tournament, matchId: string, winnerId: string): { winnerId: string; pts: number } | null {
+export function reportFinals(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0): { winnerId: string; pts: number } | null {
   if (!t.finals) return null;
   for (const round of t.finals.rounds) {
     const m = round.find(x => x.id === matchId);
     if (!m) continue;
     if (m.bye || m.winner || !m.a || !m.b) return null;
+    if (sa || sb) winnerId = sa >= sb ? m.a : m.b;
     if (winnerId !== m.a && winnerId !== m.b) return null;
     m.winner = winnerId;
     const pts = t.scoring.finalsWin;
     award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now() });
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb });
     propagateBracket(t.finals);
     const champ = bracketChampion(t.finals);
     if (champ) {

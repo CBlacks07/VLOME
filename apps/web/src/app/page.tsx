@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
+function token(): string | null { return typeof window !== "undefined" ? localStorage.getItem("vlome_token") : null; }
+function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
+
 /* ================= Données ================= */
 type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -12,9 +15,9 @@ type AuthUser = { displayName: string; role: string; email: string };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean;
-  cartItems: CartItem[]; cartOpen: boolean;
+  cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string }[] | null;
   user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string;
-  openId: string | null; detail: Detail | null; detailBusy: boolean;
+  openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
 };
 
 const FORMAT_OPTIONS: [string, string][] = [
@@ -114,6 +117,7 @@ const I = {
   medal: '<circle cx="12" cy="9" r="5"/><path d="M8.5 13 6 22l6-3 6 3-2.5-9"/>', crown: '<path d="M4 8l3.5 3L12 5l4.5 6L20 8l-1.5 10h-13L4 8Z"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -260,7 +264,8 @@ function pClassements(S: State) {
 }
 
 function pBoutique(S: State) {
-  const list = S.cat === "Tous" ? SHOP : SHOP.filter((p) => p.cat === S.cat);
+  const source = S.products ?? SHOP;
+  const list = S.cat === "Tous" ? source : source.filter((p) => p.cat === S.cat);
   const grid = list.map((p) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:170px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
   const pay = PAYMENTS.map((m) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#F4F5FB;font-weight:700;font-size:13px">${m}</span>`).join("");
   return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;color:#F4F5FB;cursor:pointer"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cartItems.length} article(s)</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
@@ -287,12 +292,26 @@ function pTournoi(S: State) {
     <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${t.name}</h1><div style="color:#8E8FA6;font-size:13px;margin-top:4px">${t.game || ""}</div></div>
     <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(34,211,238,.06);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
     <div style="flex:1"></div>
-    <div style="min-width:220px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
+    <button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
+    <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>
+    <div style="min-width:200px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
   </div>`;
+
+  const inpE = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
+  const editCard = S.editing ? `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:20px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Modifier le tournoi</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="e-name" value="${(t.name || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu<input id="e-game" value="${(t.game || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
 
   // À lancer
   if (t.status === "setup") {
-    return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px">${head}
+    return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px">${head}${editCard}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center">
         <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">Prêt à démarrer</div>
         <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé.</p>
@@ -306,8 +325,10 @@ function pTournoi(S: State) {
     if (p.current) {
       const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
       const stageLabel: Record<string, string> = { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
-      body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""} — touche le vainqueur</div>
-        <div style="display:flex;align-items:stretch;gap:12px"><div style="flex:1">${side(p.current.aId, p.current.aName, "surv", p.current.stage === "poolFinal" ? "Champ. vainqueurs" : "Survivant")}</div><div style="display:flex;align-items:center;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div><div style="flex:1">${side(p.current.bId, p.current.bName, "chal", p.current.stage === "poolFinal" ? "Champ. perdants" : "Challenger")}</div></div>`;
+      const inp = "width:56px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:9px;color:#F4F5FB;padding:8px;font-family:inherit;font-size:15px";
+      body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""} — saisis le score (FT) ou touche un vainqueur</div>
+        <div style="display:flex;align-items:stretch;gap:12px"><div style="flex:1">${side(p.current.aId, p.current.aName, "surv", p.current.stage === "poolFinal" ? "Champ. vainqueurs" : "Survivant")}</div><div style="display:flex;align-items:center;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div><div style="flex:1">${side(p.current.bId, p.current.bName, "chal", p.current.stage === "poolFinal" ? "Champ. perdants" : "Challenger")}</div></div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px"><input id="sc-a-${p.current.poolId}" type="number" min="0" value="0" style="${inp}" /><span style="color:#5D5E72;font-weight:700">–</span><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" style="${inp}" /><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:9px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">Valider le score</button></div>`;
     } else if (p.done) {
       body = `<div style="text-align:center;padding:14px 0"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#34D399;font-weight:700;margin-bottom:12px">Poule terminée — qualifiés</div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><span style="font-size:13px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:8px 14px">1. ${p.top1}</span>${p.top2 ? `<span style="font-size:13px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:8px 14px">2. ${p.top2}</span>` : ""}</div></div>`;
     } else {
@@ -345,7 +366,7 @@ function pTournoi(S: State) {
     finalsHtml = `<div style="margin-top:26px">${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds}</div></div>`;
   }
 
-  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${head}${finalsHtml || poolsHtml + finalsBtn}</main>`;
+  return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both">${head}${editCard}${finalsHtml || poolsHtml + finalsBtn}</main>`;
 }
 
 function authModal(S: State) {
@@ -395,9 +416,9 @@ export default function Page() {
   const [S, setS] = useState<State>({
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous",
     tourns: null, creating: false, busy: false,
-    cartItems: [], cartOpen: false,
+    cartItems: [], cartOpen: false, products: null,
     user: null, authOpen: false, authTab: "login", authBusy: false, authError: "",
-    openId: null, detail: null, detailBusy: false,
+    openId: null, detail: null, detailBusy: false, editing: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -410,13 +431,33 @@ export default function Page() {
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); }
     } catch { /* API hors ligne */ }
   }
-  async function act(url: string, body?: unknown) {
+  async function act(url: string, body?: unknown, method = "POST") {
+    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
     setS((s) => ({ ...s, detailBusy: true }));
     try {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      const r = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
+      if (r.status === 401) { setS((s) => ({ ...s, detailBusy: false, authOpen: true, user: null })); return; }
+      if (r.status === 403) { setS((s) => ({ ...s, detailBusy: false })); alert("Action réservée à l'organisateur du tournoi."); return; }
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d, detailBusy: false })); loadTournaments(); }
       else setS((s) => ({ ...s, detailBusy: false }));
     } catch { setS((s) => ({ ...s, detailBusy: false })); }
+  }
+  async function editSave(id: string, body: Record<string, string>) {
+    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
+      if (r.status === 403) { alert("Seul l'organisateur peut modifier ce tournoi."); return; }
+      if (r.ok) { await loadTournaments(); await openDetail(id); setS((s) => ({ ...s, editing: false })); }
+    } catch { /* ignore */ }
+  }
+  async function deleteT(id: string) {
+    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!confirm("Supprimer définitivement ce tournoi ?")) return;
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (r.status === 403) { alert("Seul l'organisateur peut supprimer ce tournoi."); return; }
+      if (r.ok) { await loadTournaments(); setS((s) => ({ ...s, page: "tournois", detail: null, openId: null })); }
+    } catch { /* ignore */ }
   }
 
   async function submitAuth() {
@@ -453,9 +494,30 @@ export default function Page() {
     } catch { /* API hors ligne : repli statique */ }
   }
 
+  async function loadProducts() {
+    try {
+      const r = await fetch(`${API}/api/products`);
+      if (!r.ok) return;
+      const rows: { name: string; category: string; priceXof: number }[] = await r.json();
+      if (Array.isArray(rows) && rows.length) {
+        setS((s) => ({ ...s, products: rows.map((p) => ({ cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") })) }));
+      }
+    } catch { /* repli statique */ }
+  }
+  async function checkout() {
+    if (!S.cartItems.length) return;
+    if (!token()) { setS((s) => ({ ...s, cartOpen: false, authOpen: true })); return; }
+    try {
+      const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: "Flooz" }) });
+      if (r.status === 401) { setS((s) => ({ ...s, authOpen: true, user: null })); return; }
+      if (r.ok) { const o = await r.json(); alert("Commande " + o.reference + " enregistrée · " + o.totalXof + " F · paiement " + o.paymentMethod + " (agrégateur à venir)."); setS((s) => ({ ...s, cartItems: [], cartOpen: false })); }
+    } catch { /* ignore */ }
+  }
+
   // Montage : charge les tournois, restaure la session, gère #creer.
   useEffect(() => {
     loadTournaments();
+    loadProducts();
     try {
       const u = localStorage.getItem("vlome_user");
       if (u) setS((s) => ({ ...s, user: JSON.parse(u) }));
@@ -476,11 +538,13 @@ export default function Page() {
       name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
       date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
     };
+    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
     setS((s) => ({ ...s, busy: true }));
     try {
       const r = await fetch(`${API}/api/tournaments`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
       });
+      if (r.status === 401) { setS((s) => ({ ...s, busy: false, authOpen: true, user: null })); return; }
       if (!r.ok) throw new Error();
       await loadTournaments();
       setS((s) => ({ ...s, busy: false, creating: false, fmt: "Tous" }));
@@ -494,7 +558,7 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -504,6 +568,20 @@ export default function Page() {
     else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`); }
     else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }
     else if (d.reportf) { const [matchId, winnerId] = d.reportf.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { matchId, winnerId }); }
+    else if (d.reportscore) {
+      const poolId = d.reportscore;
+      const sa = parseInt((document.getElementById("sc-a-" + poolId) as HTMLInputElement)?.value || "0");
+      const sb = parseInt((document.getElementById("sc-b-" + poolId) as HTMLInputElement)?.value || "0");
+      if (sa === sb) { alert("Le score ne peut pas être une égalité (match FT)."); return; }
+      act(`${API}/api/tournaments/${S.openId}/report`, { poolId, scoreA: sa, scoreB: sb });
+    }
+    else if (d.del) { deleteT(d.del); }
+    else if (d.edit !== undefined) { setS((s) => ({ ...s, editing: true })); }
+    else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
+    else if (d.editsave) {
+      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+      editSave(d.editsave, { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date") });
+    }
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.fmt) setS((s) => ({ ...s, fmt: d.fmt! }));
@@ -515,7 +593,7 @@ export default function Page() {
     else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false }));
     else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
     else if (d.cartClear !== undefined) setS((s) => ({ ...s, cartItems: [] }));
-    else if (d.checkout !== undefined) { alert("Paiement à venir : Flooz, Mixx by Yas, carte (agrégateur)."); }
+    else if (d.checkout !== undefined) { checkout(); }
     else if (d.authOpen !== undefined) setS((s) => ({ ...s, authOpen: true, authError: "" }));
     else if (d.authClose !== undefined) setS((s) => ({ ...s, authOpen: false }));
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));

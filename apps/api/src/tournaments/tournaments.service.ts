@@ -112,9 +112,33 @@ export class TournamentsService {
     for (const d of demos) {
       const t = Engine.newTournament({ name: d.name, game: d.game, place: d.place, nbPools: d.nbPools ?? 2, pointsPerPlayer: d.pointsPerPlayer ?? 5 });
       Engine.setPlayers(t, d.players ?? []);
+      // Rend l'état cohérent : les LIVE sont lancés & partiellement joués, les FINISHED joués jusqu'au champion.
+      if (d.status === 'LIVE' || d.status === 'FINISHED') {
+        Engine.distributePools(t);
+        t.pools.forEach((p) => (p.order = p.playerIds.slice()));
+        Engine.launch(t);
+        let guard = 0;
+        const full = d.status === 'FINISHED';
+        while (!Engine.allPoolsDone(t) && guard++ < 800) {
+          let acted = false;
+          for (const pool of t.pools) { const m = Engine.currentMatch(pool); if (m) { Engine.reportResult(t, pool.id, m.a); acted = true; break; } }
+          if (!acted) break;
+          if (!full && guard >= 4) break; // LIVE : quelques matchs seulement
+        }
+        if (full) {
+          Engine.startFinals(t);
+          guard = 0;
+          while (t.status !== 'finished' && guard++ < 80) {
+            let acted = false;
+            for (const r of t.finals!.rounds) for (const m of r) if (m.a && m.b && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; }
+            if (!acted) break;
+          }
+        }
+      }
+      const dbStatus = t.status === 'finished' ? 'FINISHED' : t.status === 'live' ? 'LIVE' : 'DRAFT';
       await this.prisma.tournament.create({
         data: {
-          name: d.name, game: d.game ?? null, format: (d.format ?? 'SURVIVAL') as any, status: d.status as any,
+          name: d.name, game: d.game ?? null, format: (d.format ?? 'SURVIVAL') as any, status: dbStatus as any,
           place: d.place ?? null, date: d.date ? new Date(d.date) : null,
           pointsPerPlayer: d.pointsPerPlayer ?? 5, nbPools: d.nbPools ?? 2, engineState: JSON.parse(JSON.stringify(t)),
         },

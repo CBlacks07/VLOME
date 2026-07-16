@@ -4,6 +4,8 @@ import { CreateTournamentDto, ReportDto, UpdateTournamentDto } from './tournamen
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @Controller('tournaments')
 export class TournamentsController {
@@ -38,25 +40,29 @@ export class TournamentsController {
   /* ---------- Écriture (authentification requise) ---------- */
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   create(@Body() dto: CreateTournamentDto, @CurrentUser() user: JwtUser) {
     return this.service.create(dto, user.sub);
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   update(@Param('id') id: string, @Body() dto: UpdateTournamentDto, @CurrentUser() user: JwtUser) {
     return this.service.update(id, dto, user);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   remove(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.remove(id, user);
   }
 
   @Post(':id/launch')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   async launch(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.launch(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -64,7 +70,8 @@ export class TournamentsController {
   }
 
   @Post(':id/finals/start')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   async startFinals(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.startFinals(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -72,7 +79,8 @@ export class TournamentsController {
   }
 
   @Post(':id/report')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
   async report(@Param('id') id: string, @Body() dto: ReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.report(id, dto, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');

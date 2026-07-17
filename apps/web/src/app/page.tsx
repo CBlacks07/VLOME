@@ -19,7 +19,9 @@ type State = {
   user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[] } | null;
+  adminTab: string; newsEdit: Detail | null; prodEdit: Detail | null;
+  news: Detail[] | null;
   me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null;
   regIds: string[]; profileMsg: string; passMsg: string; profileEdit: boolean;
 };
@@ -208,7 +210,10 @@ function pAccueil(S: State) {
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
-  const newsGrid = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${NEWS.map((a) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
+  const newsItems = S.news
+    ? S.news.slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date }))
+    : NEWS;
+  const newsGrid = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
 
   const shopSec = `<section style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique VLOME</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${SHOP.slice(0, 4).map((p) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D"><div style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div><div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
 
@@ -404,20 +409,109 @@ function profileSecurity(S: State) {
     ${S.passMsg ? `<div style="color:${ok ? "#34D399" : "#FB7185"};font-size:12.5px;margin-top:10px">${S.passMsg}</div>` : ""}`);
 }
 
+const ADMIN_TABS: [string, string][] = [
+  ["apercu", "Aperçu"], ["users", "Utilisateurs"], ["news", "Actualités"], ["produits", "Produits"], ["commandes", "Commandes"],
+];
+const escAttr = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
+const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
+const btnSm = (attr: string, label: string, color = "#8E8FA6", border = "#282838") =>
+  `<button ${attr} style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;border:1px solid ${border};color:${color}">${label}</button>`;
+const adminInp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
+
 function adminPanel(S: State) {
   const a = S.admin;
   if (!a) return card(`<div style="color:#8E8FA6;text-align:center;padding:20px">Chargement du panneau admin…</div>`);
+  const tabs = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${ADMIN_TABS.map(([k, l]) => {
+    const on = S.adminTab === k;
+    return `<button data-admintab="${k}" style="font-size:13px;font-weight:700;border-radius:999px;padding:9px 16px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${l}</button>`;
+  }).join("")}</div>`;
+  const body =
+    S.adminTab === "users" ? adminUsers(a) :
+    S.adminTab === "news" ? adminNews(S) :
+    S.adminTab === "produits" ? adminProducts(S) :
+    S.adminTab === "commandes" ? adminOrders(a) :
+    adminOverview(a);
+  return tabs + body;
+}
+
+function adminOverview(a: NonNullable<State["admin"]>) {
   const ov = a.overview;
   const stat = (v: number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:#14141D;padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
-  const overview = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-bottom:20px">
-    ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.orders, "Commandes")}${stat(ov.products, "Produits")}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-bottom:20px">
+    ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.news ?? 0, "Articles", "#34D399")}${stat(ov.products, "Produits")}${stat(ov.orders, "Commandes")}</div>`;
+}
+
+function adminUsers(a: NonNullable<State["admin"]>) {
   const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "#282838"};color:${on ? ROLE_COLOR[role] : "#8E8FA6"}">${ROLE_LABEL[role]}</button>`; };
   const rows = a.users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
     <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${usr.displayName}</div><div style="font-size:11.5px;color:#5D5E72">${usr.email}</div></div></div></td>
     <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div></td></tr>`).join("");
-  const users = card(`<h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Utilisateurs · rôles</h3>
+  return card(`${secTitle("Utilisateurs · rôles")}
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:520px"><tbody>${rows}</tbody></table></div>`);
-  return overview + users;
+}
+
+function adminNews(S: State) {
+  const a = S.admin!;
+  const e = S.newsEdit;
+  const editor = e ? `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier l'article" : "Nouvel article"}</div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px" class="grid2b">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre<input id="n-title" value="${escAttr(e.title)}" placeholder="Titre de l'article" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="n-cat" value="${escAttr(e.category)}" placeholder="Esport Togo, EA FC…" style="${adminInp}" /></label>
+    </div>
+    <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="n-body" rows="4" placeholder="Texte de l'article…" style="${adminInp};resize:vertical">${escHtml(e.body)}</textarea></label>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-newssave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Publier l'article"}</button><button data-newscancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const rows = a.news.length ? a.news.map((n: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(n.title)}</div><div style="font-size:12px;color:#5D5E72">${escHtml(n.category)} · ${new Date(n.createdAt).toLocaleDateString("fr-FR")}</div></div>
+      <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${n.published ? "#34D399" : "#8E8FA6"};background:${n.published ? "rgba(52,211,153,.08)" : "#14141D"};border:1px solid ${n.published ? "rgba(52,211,153,.4)" : "#282838"};border-radius:99px;padding:4px 10px">${n.published ? "Publié" : "Brouillon"}</span>
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-newspub="${n.id}|${n.published ? 0 : 1}"`, n.published ? "Masquer" : "Publier", n.published ? "#8E8FA6" : "#34D399", n.published ? "#282838" : "rgba(52,211,153,.4)")}${btnSm(`data-newsedit="${n.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-newsdel="${n.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun article. Crée le premier !</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Actualités (${a.news.length})`)}<button data-newsnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouvel article</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${rows}</div>`;
+}
+
+function adminProducts(S: State) {
+  const a = S.admin!;
+  const e = S.prodEdit;
+  const editor = e ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le produit" : "Nouveau produit"}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="pr-name" value="${escAttr(e.name)}" placeholder="Maillot officiel" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="pr-cat" value="${escAttr(e.category)}" placeholder="Vêtements, Goodies…" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Prix (FCFA)<input id="pr-price" type="number" min="0" value="${e.priceXof ?? 0}" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const rows = a.products.length ? a.products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
+      <td style="padding:10px 8px"><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></td>
+      <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
+      <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
+      <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
+    : `<tr><td style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun produit.</td></tr>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tbody>${rows}</tbody></table></div></div>`;
+}
+
+const ORDER_STATUS: Record<string, [string, string]> = {
+  pending: ["En attente", "#FBBF24"], paid: ["Payée", "#34D399"], delivered: ["Livrée", "#22D3EE"], cancelled: ["Annulée", "#FB7185"],
+};
+
+function adminOrders(a: NonNullable<State["admin"]>) {
+  const rows = a.orders.length ? a.orders.map((o: Detail) => {
+    const [sl, sc] = ORDER_STATUS[o.status] || [o.status, "#8E8FA6"];
+    const items = Array.isArray(o.items) ? o.items.map((i: Detail) => i.name).join(", ") : "";
+    const stBtns = ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
+      .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference} <span style="color:#5D5E72;font-weight:400;font-size:12px">· ${o.user ? escHtml(o.user.displayName) + " (" + escHtml(o.user.email) + ")" : "invité"}</span></div>
+      <div style="font-size:12px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items) || o.paymentMethod} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>
+      <span style="font-weight:800;color:#22D3EE;white-space:nowrap">${money(o.totalXof)}</span>
+      <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${sc};background:${sc}14;border:1px solid ${sc}55;border-radius:99px;padding:4px 10px">${sl}</span>
+      <div style="display:inline-flex;gap:6px">${stBtns}</div></div>`;
+  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune commande.</div>`;
+  return card(secTitle(`Commandes (${a.orders.length})`) + rows);
 }
 
 function pTournoi(S: State) {
@@ -622,6 +716,7 @@ export default function Page() {
     user: null, authOpen: false, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
+    adminTab: "apercu", newsEdit: null, prodEdit: null, news: null,
     me: null, myRegs: null, myOrders: null, myTourns: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
   });
@@ -700,6 +795,15 @@ export default function Page() {
     } catch { /* API hors ligne : repli statique */ }
   }
 
+  async function loadNews() {
+    try {
+      const r = await fetch(`${API}/api/news`);
+      if (!r.ok) return;
+      const rows: Detail[] = await r.json();
+      if (Array.isArray(rows) && rows.length) setS((s) => ({ ...s, news: rows }));
+    } catch { /* repli statique */ }
+  }
+
   async function loadProducts() {
     try {
       const r = await fetch(`${API}/api/products`);
@@ -722,11 +826,29 @@ export default function Page() {
 
   async function loadAdmin() {
     try {
-      const [ovR, usR] = await Promise.all([
-        fetch(`${API}/api/admin/overview`, { headers: authHeaders() }),
-        fetch(`${API}/api/admin/users`, { headers: authHeaders() }),
-      ]);
-      if (ovR.ok && usR.ok) { const overview = await ovR.json(); const users = await usR.json(); setS((s) => ({ ...s, admin: { overview, users } })); }
+      const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
+      const [ovR, usR, nwR, prR, orR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders")]);
+      if (ovR.ok && usR.ok) {
+        const [overview, users, news, products, orders] = await Promise.all([
+          ovR.json(), usR.json(),
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [],
+        ]);
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders } }));
+      }
+    } catch { /* ignore */ }
+  }
+  /** Écriture admin générique puis rafraîchissement (panneau + site public). */
+  async function adminAct(path: string, method: string, body?: unknown) {
+    try {
+      const r = await fetch(`${API}/api/admin/${path}`, {
+        method, headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
+      setS((s) => ({ ...s, newsEdit: null, prodEdit: null }));
+      await loadAdmin();
+      loadNews();
+      loadProducts();
     } catch { /* ignore */ }
   }
   async function setRole(uid: string, role: string) {
@@ -828,6 +950,7 @@ export default function Page() {
   useEffect(() => {
     loadTournaments();
     loadProducts();
+    loadNews();
     try {
       const u = localStorage.getItem("vlome_user");
       if (u) { setS((s) => ({ ...s, user: JSON.parse(u) })); loadRegIds(); }
@@ -835,7 +958,7 @@ export default function Page() {
     const h = typeof window !== "undefined" ? window.location.hash : "";
     // Deep-link de développement : #dev=email:motdepasse — connexion auto (jamais en prod).
     if (process.env.NODE_ENV !== "production" && h.startsWith("#dev=")) {
-      const [email, pass] = decodeURIComponent(h.slice(5)).split(":");
+      const [email, pass, tab] = decodeURIComponent(h.slice(5)).split(":");
       (async () => {
         try {
           const r = await fetch(`${API}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: pass }) });
@@ -843,7 +966,7 @@ export default function Page() {
             const data = await r.json();
             localStorage.setItem("vlome_token", data.token);
             localStorage.setItem("vlome_user", JSON.stringify(data.user));
-            setS((s) => ({ ...s, user: data.user, page: "profil" }));
+            setS((s) => ({ ...s, user: data.user, page: "profil", adminTab: tab || s.adminTab }));
             loadRegIds();
           }
         } catch { /* ignore */ }
@@ -885,7 +1008,7 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -927,6 +1050,31 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
+    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null }));
+    else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
+    else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }
+    else if (d.newscancel !== undefined) setS((s) => ({ ...s, newsEdit: null }));
+    else if (d.newssave) {
+      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+      const body = { title: val("n-title").trim(), category: val("n-cat").trim() || "Actualité", body: val("n-body").trim() };
+      if (!body.title) { alert("Le titre est requis."); return; }
+      if (d.newssave === "new") adminAct("news", "POST", { ...body, published: true });
+      else adminAct(`news/${d.newssave}`, "PATCH", body);
+    }
+    else if (d.newspub) { const [nid, pub] = d.newspub.split("|"); adminAct(`news/${nid}`, "PATCH", { published: pub === "1" }); }
+    else if (d.newsdel) { if (confirm("Supprimer définitivement cet article ?")) adminAct(`news/${d.newsdel}`, "DELETE"); }
+    else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
+    else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
+    else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
+    else if (d.prodsave) {
+      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+      const body = { name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0 };
+      if (!body.name) { alert("Le nom du produit est requis."); return; }
+      if (d.prodsave === "new") adminAct("products", "POST", body);
+      else adminAct(`products/${d.prodsave}`, "PATCH", body);
+    }
+    else if (d.proddel) { if (confirm("Supprimer définitivement ce produit ?")) adminAct(`products/${d.proddel}`, "DELETE"); }
+    else if (d.ordstatus) { const [oid, st] = d.ordstatus.split("|"); adminAct(`orders/${oid}/status`, "PATCH", { status: st }); }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
     else if (d.profileedit !== undefined) setS((s) => ({ ...s, profileEdit: true, profileMsg: "", page: "profil" }));
     else if (d.profilecancel !== undefined) setS((s) => ({ ...s, profileEdit: false, profileMsg: "" }));

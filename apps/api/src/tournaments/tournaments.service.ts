@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
 import { CreateTournamentDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
@@ -83,6 +83,75 @@ export class TournamentsService {
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     const upd = await this.prisma.tournament.update({ where: { id }, data });
     return this.toCard(upd);
+  }
+
+  /** Tournois créés par l'utilisateur (espace organisateur). */
+  async mine(user: JwtUser) {
+    const rows = await this.prisma.tournament.findMany({
+      where: { createdById: user.sub },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => this.toCard(r));
+  }
+
+  /** Inscription d'un joueur connecté à un tournoi non lancé. */
+  async register(id: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    if (r.status !== 'DRAFT') throw new ConflictException('Les inscriptions sont closes : le tournoi a démarré.');
+    const existing = await this.prisma.registration.findUnique({
+      where: { userId_tournamentId: { userId: user.sub, tournamentId: id } },
+    });
+    if (existing) throw new ConflictException('Tu es déjà inscrit à ce tournoi.');
+
+    const u = await this.prisma.user.findUnique({ where: { id: user.sub } });
+    if (!u) throw new NotFoundException('Utilisateur introuvable');
+
+    // Ajoute le joueur à l'état moteur (suffixe si un homonyme existe déjà).
+    const t = (r.engineState ?? Engine.newTournament({ name: r.name })) as Engine.Tournament;
+    const taken = new Set(t.players.map((p) => p.name.toLowerCase()));
+    let playerName = u.displayName.trim() || u.email.split('@')[0];
+    if (taken.has(playerName.toLowerCase())) {
+      let n = 2;
+      while (taken.has(`${playerName} (${n})`.toLowerCase())) n++;
+      playerName = `${playerName} (${n})`;
+    }
+    t.players.push({ id: Engine.uid(), name: playerName, club: u.city || '' });
+
+    await this.prisma.$transaction([
+      this.prisma.registration.create({ data: { userId: user.sub, tournamentId: id, playerName } }),
+      this.prisma.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
+    ]);
+    return { registered: true, playerName, players: t.players.length };
+  }
+
+  /** Désinscription (tant que le tournoi n'a pas démarré). */
+  async unregister(id: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    if (r.status !== 'DRAFT') throw new ConflictException('Le tournoi a démarré : désinscription impossible.');
+    const reg = await this.prisma.registration.findUnique({
+      where: { userId_tournamentId: { userId: user.sub, tournamentId: id } },
+    });
+    if (!reg) throw new NotFoundException('Tu n\'es pas inscrit à ce tournoi.');
+
+    const t = r.engineState as Engine.Tournament | null;
+    if (t) t.players = t.players.filter((p) => p.name !== reg.playerName);
+
+    await this.prisma.$transaction([
+      this.prisma.registration.delete({ where: { id: reg.id } }),
+      this.prisma.tournament.update({
+        where: { id },
+        data: t ? { engineState: JSON.parse(JSON.stringify(t)) } : {},
+      }),
+    ]);
+    return { registered: false, players: t ? t.players.length : 0 };
+  }
+
+  /** Ids des tournois où l'utilisateur est inscrit (pour l'affichage). */
+  async registrationIds(user: JwtUser) {
+    const regs = await this.prisma.registration.findMany({ where: { userId: user.sub }, select: { tournamentId: true } });
+    return regs.map((x) => x.tournamentId);
   }
 
   async remove(id: string, user: JwtUser) {
@@ -209,6 +278,7 @@ export class TournamentsService {
       champion: t.champion ? Engine.playerName(t, t.champion) : null,
       cagnotte: Engine.cagnotte(t), distributed: Engine.distributed(t),
       allPoolsDone: Engine.allPoolsDone(t),
+      players: t.players.map((p) => p.name),
       pools, finals,
     };
   }

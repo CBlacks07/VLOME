@@ -20,6 +20,8 @@ type State = {
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[] } | null;
+  me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null;
+  regIds: string[]; profileMsg: string; passMsg: string; profileEdit: boolean;
 };
 
 const FORMAT_OPTIONS: [string, string][] = [
@@ -292,32 +294,114 @@ function pDashboard(S: State) {
       <button data-auth-open="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">Se connecter / S'inscrire</button></div>`);
   }
   const u = S.user;
+  const me = S.me;
   const rc = ROLE_COLOR[u.role] || "#22D3EE";
+  const sub: string[] = [];
+  if (me?.city) sub.push(me.city);
+  if (me?.favoriteGame) sub.push(me.favoriteGame);
   const header = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:24px">
     <div style="display:grid;place-items:center;width:78px;height:78px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:36px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
     <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${u.displayName}</h1>
-      <div style="color:#8E8FA6;font-size:13.5px;margin-top:5px">${u.email}</div>
+      <div style="color:#8E8FA6;font-size:13.5px;margin-top:5px">${u.email}${sub.length ? " · " + sub.join(" · ") : ""}</div>
+      ${me?.bio ? `<div style="color:#8E8FA6;font-size:13px;margin-top:6px;max-width:560px">${(me.bio as string).replace(/</g, "&lt;")}</div>` : ""}
       <span style="display:inline-block;margin-top:10px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${rc};background:${rc}18;border:1px solid ${rc}66;border-radius:999px;padding:6px 12px">${ROLE_LABEL[u.role] || u.role}</span></div>
     <div style="flex:1"></div>
+    <button data-profileedit="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Modifier le profil</button>
     <button data-logout="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.logout, 15)}Déconnexion</button>
   </div>`;
+  if (!me) return wrap(header + card(`<div style="color:#8E8FA6;text-align:center;padding:22px">Chargement du profil…</div>`));
+  const statTiles = memberStats(S);
+  const editor = S.profileEdit ? profileEditor(S) : "";
   let body: string;
-  if (u.role === "ADMIN") body = adminPanel(S);
-  else if (u.role === "ORGANIZER") body = organizerPanel();
-  else body = playerPanel();
-  return wrap(header + body);
+  if (u.role === "ADMIN") body = adminPanel(S) + grid2(profileSecurity(S), ordersCard(S));
+  else if (u.role === "ORGANIZER") body = myTournsCard(S) + grid2(regsCard(S), ordersCard(S)) + profileSecurity(S);
+  else body = grid2(regsCard(S), ordersCard(S)) + profileSecurity(S);
+  return wrap(header + editor + statTiles + body);
 }
 
-function playerPanel() {
-  return card(`<h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px">Bienvenue !</h3>
-    <p style="color:#8E8FA6;font-size:14px;margin:0 0 18px">Inscris-toi aux tournois, suis tes résultats et ta progression. Tes statistiques et ton classement apparaîtront ici au fil de tes matchs.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><button data-go="tournois" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">Voir les tournois</button><button data-go="classements" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Classements</button></div>`, "24px");
+const grid2 = (a: string, b: string) => `<div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">${a}${b}</div>`;
+
+const secTitle = (t: string) => `<h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${t}</h3>`;
+
+function memberStats(S: State) {
+  const me = S.me!;
+  const since = me.createdAt ? new Date(me.createdAt).toLocaleDateString("fr-FR", { month: "short", year: "numeric" }) : "—";
+  const stat = (v: string | number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
+  const tiles = [
+    stat(me.stats?.registrations ?? 0, "Inscriptions", "#22D3EE"),
+    stat(me.stats?.orders ?? 0, "Commandes", "#7C82FF"),
+    ...(me.role !== "PLAYER" ? [stat(me.stats?.tournaments ?? 0, "Tournois créés", "#FBBF24")] : []),
+    stat(since, "Membre depuis"),
+  ];
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:16px">${tiles.join("")}</div>`;
 }
 
-function organizerPanel() {
-  return card(`<h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px">Espace organisateur</h3>
-    <p style="color:#8E8FA6;font-size:14px;margin:0 0 18px">Crée et pilote tes tournois : poules, mode Survival, scores, phase finale, classement en direct.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><button data-createnav="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button><button data-go="tournois" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Gérer les tournois</button></div>`, "24px");
+function profileEditor(S: State) {
+  const me = S.me!;
+  const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
+  const esc = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
+  return `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Mon profil</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" style="${inp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="p-city" value="${esc(me.city)}" placeholder="Lomé" style="${inp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu favori<input id="p-game" value="${esc(me.favoriteGame)}" placeholder="EA FC 26" style="${inp}" /></label>
+    </div>
+    <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Bio<textarea id="p-bio" rows="2" placeholder="Quelques mots sur toi…" style="${inp};resize:vertical">${(me.bio || "").replace(/</g, "&lt;")}</textarea></label>
+    ${S.profileMsg ? `<div style="color:#FB7185;font-size:12.5px;margin-top:10px">${S.profileMsg}</div>` : ""}
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-profilesave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-profilecancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>`;
+}
+
+function regsCard(S: State) {
+  const regs = S.myRegs ?? [];
+  const rows = regs.length
+    ? regs.map((r: Detail) => `<div data-open="${r.tournament.id}" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;cursor:pointer">
+        <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#22D3EE;flex:none">${ic(I.crown, 15)}</span>
+        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${r.tournament.name}</div><div style="font-size:12px;color:#5D5E72">${r.tournament.game}${r.tournament.date ? " · " + r.tournament.date : ""}${r.tournament.place ? " · " + r.tournament.place : ""}</div></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${r.tournament.live ? "#22D3EE" : r.tournament.status === "Terminé" ? "#FBBF24" : "#8E8FA6"}">${r.tournament.status}</span></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune inscription pour l'instant.<br><button data-go="tournois" style="margin-top:10px;background:#1B1B27;border:1px solid #33334A;color:#22D3EE;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer">Parcourir les tournois</button></div>`;
+  return card(secTitle(`Mes inscriptions (${regs.length})`) + rows);
+}
+
+function ordersCard(S: State) {
+  const orders = S.myOrders ?? [];
+  const rows = orders.length
+    ? orders.map((o: Detail) => {
+        const items = Array.isArray(o.items) ? o.items.map((i: Detail) => i.name).join(", ") : "";
+        return `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F">
+        <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#7C82FF;flex:none">${ic(I.cart, 15)}</span>
+        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference}</div><div style="font-size:12px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${items || o.paymentMethod}</div></div>
+        <div style="text-align:right;flex:none"><div style="font-weight:800;color:#22D3EE;font-size:13.5px">${money(o.totalXof)}</div><div style="font-size:11px;color:${o.status === "pending" ? "#FBBF24" : "#34D399"};font-weight:700;text-transform:uppercase">${o.status === "pending" ? "En attente" : o.status}</div></div></div>`;
+      }).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune commande.<br><button data-go="boutique" style="margin-top:10px;background:#1B1B27;border:1px solid #33334A;color:#7C82FF;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer">Visiter la boutique</button></div>`;
+  return card(secTitle(`Mes commandes (${orders.length})`) + rows);
+}
+
+function myTournsCard(S: State) {
+  const ts = S.myTourns ?? [];
+  const rows = ts.length
+    ? ts.map((t: Detail) => `<div data-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;cursor:pointer">
+        <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#FBBF24;flex:none">${ic(I.bolt, 15)}</span>
+        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${t.name}</div><div style="font-size:12px;color:#5D5E72">${t.game}${t.players ? " · " + t.players + " joueurs" : ""}${t.place ? " · " + t.place : ""}</div></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${t.live ? "#22D3EE" : t.status === "Terminé" ? "#FBBF24" : "#8E8FA6"}">${t.live ? "En direct" : t.status}</span>
+        <span style="color:#5D5E72">${ic(I.arrow, 15)}</span></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Tu n'as pas encore créé de tournoi.</div>`;
+  const createBtn = `<button data-createnav="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi</button>`;
+  return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Mes tournois (${ts.length})`)}${createBtn}</div>${rows}</div>`;
+}
+
+function profileSecurity(S: State) {
+  const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
+  const ok = S.passMsg === "Mot de passe modifié.";
+  return card(secTitle("Sécurité · mot de passe") + `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;align-items:end">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Mot de passe actuel<input id="pw-cur" type="password" placeholder="••••••" style="${inp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nouveau mot de passe<input id="pw-new" type="password" placeholder="6 caractères min." style="${inp}" /></label>
+      <button data-passsave="1" style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Changer</button>
+    </div>
+    ${S.passMsg ? `<div style="color:${ok ? "#34D399" : "#FB7185"};font-size:12.5px;margin-top:10px">${S.passMsg}</div>` : ""}`);
 }
 
 function adminPanel(S: State) {
@@ -368,20 +452,34 @@ function pTournoi(S: State) {
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
 
-  // À lancer
+  // À lancer : inscriptions ouvertes
   if (t.status === "setup") {
-    const action = manage
-      ? `<button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : "Lancer le tournoi"}</button>`
-      : `<div style="display:inline-flex;align-items:center;gap:8px;color:#8E8FA6;font-size:14px;background:#14141D;border:1px solid #282838;border-radius:12px;padding:12px 20px">${ic(I.bolt, 16)}En attente de lancement par l'organisateur</div>`;
+    const isReg = S.openId ? S.regIds.includes(S.openId) : false;
+    let action: string;
+    if (manage) {
+      action = `<button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : "Lancer le tournoi"}</button>`;
+    } else if (!S.user) {
+      action = `<button data-auth-open="1" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.user, 18)}Se connecter pour s'inscrire</button>`;
+    } else if (isReg) {
+      action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button></div>`;
+    } else {
+      action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
+    }
     const sub = manage
       ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
-      : "Le tournoi n'a pas encore démarré. Reviens bientôt ou suis-le en Mode Show une fois lancé.";
+      : "Les inscriptions sont ouvertes jusqu'au lancement par l'organisateur.";
+    const names: string[] = Array.isArray(t.players) ? t.players : [];
+    const participants = names.length
+      ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
+          <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${names.length})</h3>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${names.map((n) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 13px"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${n.charAt(0).toUpperCase()}</span>${n}</span>`).join("")}</div></div>`
+      : "";
     return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px">${head}${editCard}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">Prêt à démarrer</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">${manage ? "Prêt à démarrer" : "Inscriptions ouvertes"}</div>
         <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">${sub}</p>
         ${action}
-      </div></main>`;
+      </div>${participants}</main>`;
   }
 
   // Poule (match courant cliquable + classement)
@@ -524,6 +622,8 @@ export default function Page() {
     user: null, authOpen: false, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
+    me: null, myRegs: null, myOrders: null, myTourns: null,
+    regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -580,14 +680,15 @@ export default function Page() {
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
       localStorage.setItem("vlome_token", data.token);
       localStorage.setItem("vlome_user", JSON.stringify(data.user));
-      setS((s) => ({ ...s, authBusy: false, authOpen: false, user: data.user }));
+      setS((s) => ({ ...s, authBusy: false, authOpen: false, user: data.user, me: null, myRegs: null, myOrders: null, myTourns: null, admin: null }));
+      loadRegIds();
     } catch {
       setS((s) => ({ ...s, authBusy: false, authError: "API injoignable — démarre pnpm dev:api." }));
     }
   }
   function logout() {
     localStorage.removeItem("vlome_token"); localStorage.removeItem("vlome_user");
-    setS((s) => ({ ...s, user: null }));
+    setS((s) => ({ ...s, user: null, me: null, myRegs: null, myOrders: null, myTourns: null, admin: null, regIds: [], page: s.page === "profil" ? "accueil" : s.page }));
   }
 
   async function loadTournaments() {
@@ -615,7 +716,7 @@ export default function Page() {
     try {
       const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: "Flooz" }) });
       if (r.status === 401) { setS((s) => ({ ...s, authOpen: true, user: null })); return; }
-      if (r.ok) { const o = await r.json(); alert("Commande " + o.reference + " enregistrée · " + o.totalXof + " F · paiement " + o.paymentMethod + " (agrégateur à venir)."); setS((s) => ({ ...s, cartItems: [], cartOpen: false })); }
+      if (r.ok) { const o = await r.json(); alert("Commande " + o.reference + " enregistrée · " + o.totalXof + " F · paiement " + o.paymentMethod + " (agrégateur à venir)."); setS((s) => ({ ...s, cartItems: [], cartOpen: false, me: null, myOrders: null })); }
     } catch { /* ignore */ }
   }
 
@@ -635,8 +736,81 @@ export default function Page() {
     } catch { /* ignore */ }
   }
 
-  // Charge le panneau admin quand on ouvre l'espace membre en tant qu'ADMIN.
+  /* ---------- Espace membre : profil, inscriptions, commandes ---------- */
+  async function loadMe() {
+    try {
+      const [meR, regR, ordR] = await Promise.all([
+        fetch(`${API}/api/users/me`, { headers: authHeaders() }),
+        fetch(`${API}/api/users/me/registrations`, { headers: authHeaders() }),
+        fetch(`${API}/api/users/me/orders`, { headers: authHeaders() }),
+      ]);
+      if (!meR.ok) return;
+      const me = await meR.json();
+      const myRegs = regR.ok ? await regR.json() : [];
+      const myOrders = ordR.ok ? await ordR.json() : [];
+      let myTourns: Detail[] | null = null;
+      if (me.role === "ORGANIZER" || me.role === "ADMIN") {
+        const tR = await fetch(`${API}/api/tournaments/mine`, { headers: authHeaders() });
+        if (tR.ok) myTourns = await tR.json();
+      }
+      setS((s) => ({ ...s, me, myRegs, myOrders, myTourns }));
+    } catch { /* ignore */ }
+  }
+  async function loadRegIds() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/tournaments/registrations/mine`, { headers: authHeaders() });
+      if (r.ok) { const ids = await r.json(); setS((s) => ({ ...s, regIds: ids })); }
+    } catch { /* ignore */ }
+  }
+  async function saveProfile() {
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    try {
+      const r = await fetch(`${API}/api/users/me`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ displayName: val("p-name"), city: val("p-city"), favoriteGame: val("p-game"), bio: val("p-bio") }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setS((s) => ({ ...s, profileMsg: data.message || "Erreur d'enregistrement." })); return; }
+      // synchronise le nom affiché dans la session locale
+      const u = { ...S.user!, displayName: data.displayName };
+      localStorage.setItem("vlome_user", JSON.stringify(u));
+      setS((s) => ({ ...s, me: data, user: u, profileEdit: false, profileMsg: "" }));
+    } catch { setS((s) => ({ ...s, profileMsg: "API injoignable." })); }
+  }
+  async function savePassword() {
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const currentPassword = val("pw-cur"), newPassword = val("pw-new");
+    if (!currentPassword || newPassword.length < 6) { setS((s) => ({ ...s, passMsg: "Nouveau mot de passe : 6 caractères minimum." })); return; }
+    try {
+      const r = await fetch(`${API}/api/users/me/password`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await r.json();
+      setS((s) => ({ ...s, passMsg: r.ok ? "Mot de passe modifié." : data.message || "Échec." }));
+    } catch { setS((s) => ({ ...s, passMsg: "API injoignable." })); }
+  }
+  async function toggleReg(id: string, register: boolean) {
+    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}/register`, { method: register ? "POST" : "DELETE", headers: authHeaders() });
+      if (r.status === 401) { setS((s) => ({ ...s, authOpen: true, user: null })); return; }
+      const data = await r.json();
+      if (!r.ok) { alert(data.message || "Action impossible."); return; }
+      await loadRegIds();
+      await loadTournaments();
+      setS((s) => ({ ...s, me: null, myRegs: null })); // le profil se rechargera
+      if (S.openId === id) {
+        const st = await fetch(`${API}/api/tournaments/${id}/state`);
+        if (st.ok) { const d = await st.json(); setS((s) => ({ ...s, detail: d })); }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Charge le tableau de bord quand on ouvre l'espace membre.
   useEffect(() => {
+    if (S.page === "profil" && S.user && !S.me) loadMe();
     if (S.page === "profil" && S.user?.role === "ADMIN" && !S.admin) loadAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
@@ -656,9 +830,25 @@ export default function Page() {
     loadProducts();
     try {
       const u = localStorage.getItem("vlome_user");
-      if (u) setS((s) => ({ ...s, user: JSON.parse(u) }));
+      if (u) { setS((s) => ({ ...s, user: JSON.parse(u) })); loadRegIds(); }
     } catch { /* ignore */ }
     const h = typeof window !== "undefined" ? window.location.hash : "";
+    // Deep-link de développement : #dev=email:motdepasse — connexion auto (jamais en prod).
+    if (process.env.NODE_ENV !== "production" && h.startsWith("#dev=")) {
+      const [email, pass] = decodeURIComponent(h.slice(5)).split(":");
+      (async () => {
+        try {
+          const r = await fetch(`${API}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password: pass }) });
+          if (r.ok) {
+            const data = await r.json();
+            localStorage.setItem("vlome_token", data.token);
+            localStorage.setItem("vlome_user", JSON.stringify(data.user));
+            setS((s) => ({ ...s, user: data.user, page: "profil" }));
+            loadRegIds();
+          }
+        } catch { /* ignore */ }
+      })();
+    }
     if (h.startsWith("#show=")) openDetail(h.slice(6), "show");
     else if (h.startsWith("#t=")) openDetail(h.slice(3));
     else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
@@ -695,7 +885,7 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -738,6 +928,12 @@ export default function Page() {
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
+    else if (d.profileedit !== undefined) setS((s) => ({ ...s, profileEdit: true, profileMsg: "", page: "profil" }));
+    else if (d.profilecancel !== undefined) setS((s) => ({ ...s, profileEdit: false, profileMsg: "" }));
+    else if (d.profilesave !== undefined) saveProfile();
+    else if (d.passsave !== undefined) savePassword();
+    else if (d.reg) toggleReg(d.reg, true);
+    else if (d.unreg) toggleReg(d.unreg, false);
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));

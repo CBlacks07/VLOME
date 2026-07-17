@@ -31,13 +31,31 @@ enum TournamentStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  displayName  String
-  role         Role     @default(PLAYER)
-  createdAt    DateTime @default(now())
-  player       Player?
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  displayName   String
+  role          Role           @default(PLAYER)
+  bio           String?
+  city          String?
+  favoriteGame  String?
+  createdAt     DateTime       @default(now())
+  player        Player?
+  registrations Registration[]
+  orders        Order[]
+}
+
+// Inscription d'un utilisateur à un tournoi (avant lancement)
+model Registration {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  playerName   String
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, tournamentId])
 }
 
 model Club {
@@ -76,6 +94,7 @@ model Tournament {
   createdById     String?          // propriétaire (organisateur)
   createdAt       DateTime         @default(now())
   matches         Match[]
+  registrations   Registration[]
 }
 
 model Match {
@@ -117,5 +136,8 @@ model Order {
   totalXof      Int
   paymentMethod String // Flooz, Mixx by Yas, Visa...
   status        String   @default("pending")
+  items         Json? // [{ name, price }]
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
   createdAt     DateTime @default(now())
 }

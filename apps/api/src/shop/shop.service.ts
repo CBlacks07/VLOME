@@ -28,11 +28,15 @@ export class ShopService {
     return { seeded: true, count: DEMO_PRODUCTS.length };
   }
 
-  async createOrder(dto: CreateOrderDto) {
+  async createOrder(dto: CreateOrderDto, userId?: string) {
     const total = dto.items.reduce((a, i) => a + i.priceXof, 0);
     const reference = 'VL-' + Date.now().toString(36).toUpperCase();
     const order = await this.prisma.order.create({
-      data: { reference, totalXof: total, paymentMethod: dto.paymentMethod, status: 'pending' },
+      data: {
+        reference, totalXof: total, paymentMethod: dto.paymentMethod, status: 'pending',
+        userId: userId ?? null,
+        items: dto.items.map((i) => ({ name: i.name, price: i.priceXof })),
+      },
     });
     return { id: order.id, reference: order.reference, totalXof: order.totalXof, paymentMethod: order.paymentMethod, status: order.status };
   }

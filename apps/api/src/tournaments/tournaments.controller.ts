@@ -23,6 +23,21 @@ export class TournamentsController {
     return this.service.seed();
   }
 
+  /* Déclarées avant ':id' pour ne pas être capturées par la route paramétrée. */
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  mine(@CurrentUser() user: JwtUser) {
+    return this.service.mine(user);
+  }
+
+  @Get('registrations/mine')
+  @UseGuards(JwtAuthGuard)
+  registrationIds(@CurrentUser() user: JwtUser) {
+    return this.service.registrationIds(user);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const t = await this.service.findOne(id);
@@ -58,6 +73,20 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   remove(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.remove(id, user);
+  }
+
+  /* Inscription / désinscription : tout utilisateur connecté. */
+
+  @Post(':id/register')
+  @UseGuards(JwtAuthGuard)
+  register(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.register(id, user);
+  }
+
+  @Delete(':id/register')
+  @UseGuards(JwtAuthGuard)
+  unregister(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.unregister(id, user);
   }
 
   @Post(':id/launch')

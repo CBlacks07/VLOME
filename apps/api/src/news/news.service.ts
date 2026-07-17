@@ -32,7 +32,7 @@ export class NewsService {
     });
     return rows.map((n) => ({
       id: n.id, title: n.title, slug: n.slug, category: n.category,
-      body: n.body,
+      body: n.body, imageUrl: n.imageUrl || null,
       date: this.relativeDate(n.createdAt),
     }));
   }

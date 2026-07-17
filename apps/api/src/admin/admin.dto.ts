@@ -20,6 +20,11 @@ export class NewsDto {
   body!: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  imageUrl?: string;
+
+  @IsOptional()
   @IsBoolean()
   published?: boolean;
 }
@@ -40,6 +45,11 @@ export class NewsUpdateDto {
   @IsString()
   @MaxLength(8000)
   body?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  imageUrl?: string;
 
   @IsOptional()
   @IsBoolean()

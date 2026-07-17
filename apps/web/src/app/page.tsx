@@ -21,6 +21,7 @@ type State = {
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[] } | null;
   adminTab: string; newsEdit: Detail | null; prodEdit: Detail | null;
+  confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
   news: Detail[] | null;
   me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null;
   regIds: string[]; profileMsg: string; passMsg: string; profileEdit: boolean;
@@ -124,6 +125,8 @@ const I = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>', trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/>',
+  warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -173,6 +176,15 @@ function tournCard(t: TournCard, big: boolean) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:13px;border-top:1px solid #282838">${foot}
         <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}${t.cagnotte} pts</span></div></div></div>`;
 }
+/** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
+function filePicker(id: string, label = "Choisir une image") {
+  return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0">
+    <input id="${id}" type="file" accept="image/*" style="display:none" />
+    <button data-filepick="${id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;flex:none">${ic(I.image, 16)}${label}</button>
+    <span id="${id}-name" style="font-size:12.5px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Aucun fichier</span>
+  </div>`;
+}
+
 function chips(list: string[], active: string, attr: string, color = "#22D3EE") {
   return list.map((l) => {
     const on = l === active;
@@ -214,10 +226,10 @@ function pAccueil(S: State) {
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
-  const newsItems = S.news
-    ? S.news.slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date }))
+  const newsItems: { cat: string; ph: string; t: string; date: string; img?: string | null }[] = S.news
+    ? S.news.slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date, img: n.imageUrl }))
     : NEWS;
-  const newsGrid = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
+  const newsGrid = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div style="height:132px;background-image:url('${API}${a.img}');background-size:cover;background-position:center"></div>` : `<div style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
 
   const shopSec = `<section style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique VLOME</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${(S.products ?? SHOP).slice(0, 4).map((p: { name: string; price: number; ph: string; img?: string | null }) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
 
@@ -253,7 +265,7 @@ function pTournois(S: State) {
       ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
       ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
       ${field("Points / joueur", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
-      ${field("Affiche du tournoi (image, 3 Mo max)", `<input id="c-img" type="file" accept="image/*" style="${inputStyle};padding:9px 13px" />`)}
+      ${field("Affiche du tournoi (image, 3 Mo max)", filePicker("c-img", "Choisir l'affiche"))}
     </div>
     ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
     <div style="display:flex;gap:10px;margin-top:16px">
@@ -468,9 +480,14 @@ function adminNews(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="n-cat" value="${escAttr(e.category)}" placeholder="Esport Togo, EA FC…" style="${adminInp}" /></label>
     </div>
     <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="n-body" rows="4" placeholder="Texte de l'article…" style="${adminInp};resize:vertical">${escHtml(e.body)}</textarea></label>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
+      ${e.imageUrl ? `<img src="${API}${e.imageUrl}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #282838" />` : ""}
+      <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — 3 Mo max)</div>${filePicker("n-img")}</div>
+    </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-newssave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Publier l'article"}</button><button data-newscancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const rows = a.news.length ? a.news.map((n: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      ${n.imageUrl ? `<img src="${API}${n.imageUrl}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.image, 17)}</span>`}
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(n.title)}</div><div style="font-size:12px;color:#5D5E72">${escHtml(n.category)} · ${new Date(n.createdAt).toLocaleDateString("fr-FR")}</div></div>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${n.published ? "#34D399" : "#8E8FA6"};background:${n.published ? "rgba(52,211,153,.08)" : "#14141D"};border:1px solid ${n.published ? "rgba(52,211,153,.4)" : "#282838"};border-radius:99px;padding:4px 10px">${n.published ? "Publié" : "Brouillon"}</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-newspub="${n.id}|${n.published ? 0 : 1}"`, n.published ? "Masquer" : "Publier", n.published ? "#8E8FA6" : "#34D399", n.published ? "#282838" : "rgba(52,211,153,.4)")}${btnSm(`data-newsedit="${n.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-newsdel="${n.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
@@ -492,7 +509,7 @@ function adminProducts(S: State) {
     </div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
       ${e.imageUrl ? `<img src="${API}${e.imageUrl}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #282838" />` : ""}
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600;flex:1;min-width:220px">Image du produit (jpg, png, webp — 3 Mo max)<input id="pr-img" type="file" accept="image/*" style="${adminInp};padding:9px 13px" /></label>
+      <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — 3 Mo max)</div>${filePicker("pr-img")}</div>
     </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
@@ -554,7 +571,7 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu<input id="e-game" value="${(t.game || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)<input id="e-img" type="file" accept="image/*" style="${inpE};padding:9px 13px" /></label>
+      <div><div style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche")}</div>
     </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
@@ -668,6 +685,26 @@ function authModal(S: State) {
     </div></div>`;
 }
 
+/** Modale de confirmation (suppression, déconnexion…). */
+function confirmModal(S: State) {
+  const c = S.confirmBox;
+  if (!c) return "";
+  const danger = c.action !== "logout";
+  const okColor = danger
+    ? "background:linear-gradient(135deg,#FB7185,#e35065);color:#fff"
+    : "background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a";
+  return `<div data-confirm-cancel="1" style="position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
+    <div data-stop="1" style="width:100%;max-width:400px;background:linear-gradient(180deg,#14141D,#0E0E16);border:1px solid #33334A;border-radius:20px;padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6);text-align:center;animation:fadeUp .18s ease both">
+      <div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:${danger ? "rgba(251,113,133,.1)" : "rgba(34,211,238,.08)"};border:1px solid ${danger ? "rgba(251,113,133,.4)" : "rgba(34,211,238,.35)"};color:${danger ? "#FB7185" : "#22D3EE"};margin:0 auto 14px">${ic(danger ? I.warn : I.logout, 24)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:8px">${c.title}</div>
+      <p style="color:#8E8FA6;font-size:14px;line-height:1.55;margin:0 0 20px">${c.message}</p>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button data-confirm-cancel="1" style="flex:1;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
+        <button data-confirm-ok="1" style="flex:1;border:0;border-radius:12px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer;${okColor}">${c.okLabel}</button>
+      </div>
+    </div></div>`;
+}
+
 function cartDrawer(S: State) {
   if (!S.cartOpen) return "";
   const total = S.cartItems.reduce((a, i) => a + i.price, 0);
@@ -717,7 +754,7 @@ function renderPage(S: State) {
   const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
-  return header(S) + body + footer + authModal(S) + cartDrawer(S);
+  return header(S) + body + footer + authModal(S) + cartDrawer(S) + confirmModal(S);
 }
 
 /* ================= Composant ================= */
@@ -729,7 +766,7 @@ export default function Page() {
     user: null, authOpen: false, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
-    adminTab: "apercu", newsEdit: null, prodEdit: null, news: null,
+    adminTab: "apercu", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
     me: null, myRegs: null, myOrders: null, myTourns: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
   });
@@ -766,7 +803,6 @@ export default function Page() {
   }
   async function deleteT(id: string) {
     if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
-    if (!confirm("Supprimer définitivement ce tournoi ?")) return;
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "DELETE", headers: authHeaders() });
       if (r.status === 403) { alert("Seul l'organisateur peut supprimer ce tournoi."); return; }
@@ -865,6 +901,16 @@ export default function Page() {
       throw new Error("upload");
     }
     return (await r.json()).url as string;
+  }
+
+  /** Enregistre un article (avec envoi de l'image si un fichier est choisi). */
+  async function saveNews(id: string) {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    const body: Detail = { title: val("n-title").trim(), category: val("n-cat").trim() || "Actualité", body: val("n-body").trim() };
+    if (!body.title) { alert("Le titre est requis."); return; }
+    try { const img = await uploadFile("n-img"); if (img) body.imageUrl = img; } catch { return; }
+    if (id === "new") adminAct("news", "POST", { ...body, published: true });
+    else adminAct(`news/${id}`, "PATCH", body);
   }
 
   /** Enregistre un produit (avec envoi de l'image si un fichier est choisi). */
@@ -1053,8 +1099,11 @@ export default function Page() {
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
-    if (target.closest("[data-logout]")) { logout(); return; }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus]");
+    if (target.closest("[data-logout]")) {
+      setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
+      return;
+    }
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1071,7 +1120,10 @@ export default function Page() {
       if (sa === sb) { alert("Le score ne peut pas être une égalité (match FT)."); return; }
       act(`${API}/api/tournaments/${S.openId}/report`, { poolId, scoreA: sa, scoreB: sb });
     }
-    else if (d.del) { deleteT(d.del); }
+    else if (d.del) {
+      const name = S.detail?.name ? ` « ${S.detail.name} »` : "";
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le tournoi", message: `Le tournoi${name} et tous ses résultats seront définitivement supprimés.`, okLabel: "Supprimer", action: `delT|${d.del}` } }));
+    }
     else if (d.edit !== undefined) { setS((s) => ({ ...s, editing: true })); }
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
@@ -1100,21 +1152,34 @@ export default function Page() {
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
     else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }
     else if (d.newscancel !== undefined) setS((s) => ({ ...s, newsEdit: null }));
-    else if (d.newssave) {
-      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
-      const body = { title: val("n-title").trim(), category: val("n-cat").trim() || "Actualité", body: val("n-body").trim() };
-      if (!body.title) { alert("Le titre est requis."); return; }
-      if (d.newssave === "new") adminAct("news", "POST", { ...body, published: true });
-      else adminAct(`news/${d.newssave}`, "PATCH", body);
-    }
+    else if (d.newssave) saveNews(d.newssave);
     else if (d.newspub) { const [nid, pub] = d.newspub.split("|"); adminAct(`news/${nid}`, "PATCH", { published: pub === "1" }); }
-    else if (d.newsdel) { if (confirm("Supprimer définitivement cet article ?")) adminAct(`news/${d.newsdel}`, "DELETE"); }
+    else if (d.newsdel) {
+      const n = S.admin?.news.find((x: Detail) => x.id === d.newsdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer l'article", message: `« ${n?.title || "Cet article"} » sera définitivement supprimé du site.`, okLabel: "Supprimer", action: `newsdel|${d.newsdel}` } }));
+    }
     else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
     else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
     else if (d.prodsave) saveProd(d.prodsave);
-    else if (d.proddel) { if (confirm("Supprimer définitivement ce produit ?")) adminAct(`products/${d.proddel}`, "DELETE"); }
+    else if (d.proddel) {
+      const p = S.admin?.products.find((x: Detail) => x.id === d.proddel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le produit", message: `« ${p?.name || "Ce produit"} » sera retiré définitivement de la boutique.`, okLabel: "Supprimer", action: `proddel|${d.proddel}` } }));
+    }
     else if (d.ordstatus) { const [oid, st] = d.ordstatus.split("|"); adminAct(`orders/${oid}/status`, "PATCH", { status: st }); }
+    else if (d.filepick) (document.getElementById(d.filepick) as HTMLInputElement | null)?.click();
+    else if (d.confirmCancel !== undefined) setS((s) => ({ ...s, confirmBox: null }));
+    else if (d.confirmOk !== undefined) {
+      const c = S.confirmBox;
+      setS((s) => ({ ...s, confirmBox: null }));
+      if (c) {
+        const [act, arg] = c.action.split("|");
+        if (act === "logout") logout();
+        else if (act === "delT") deleteT(arg);
+        else if (act === "newsdel") adminAct(`news/${arg}`, "DELETE");
+        else if (act === "proddel") adminAct(`products/${arg}`, "DELETE");
+      }
+    }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
     else if (d.profileedit !== undefined) setS((s) => ({ ...s, profileEdit: true, profileMsg: "", page: "profil" }));
     else if (d.profilecancel !== undefined) setS((s) => ({ ...s, profileEdit: false, profileMsg: "" }));
@@ -1128,6 +1193,16 @@ export default function Page() {
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
     else if (d.act === "create-submit") submitCreate();
     else if (d.clearq !== undefined) setS((s) => ({ ...s, q: "" }));
+  }
+
+  // Affiche le nom du fichier choisi à côté du bouton d'envoi d'image.
+  // (mise à jour DOM directe : pas de re-rendu, l'input garde son fichier)
+  function onChange(e: React.ChangeEvent<HTMLDivElement>) {
+    const t = e.target as HTMLInputElement;
+    if (t.type === "file" && t.id) {
+      const span = document.getElementById(t.id + "-name");
+      if (span) span.textContent = t.files?.[0]?.name || "Aucun fichier";
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -1148,6 +1223,7 @@ export default function Page() {
       }}
       onClick={onClick}
       onKeyDown={onKeyDown}
+      onChange={onChange}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

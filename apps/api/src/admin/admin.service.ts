@@ -53,6 +53,7 @@ export class AdminService {
       data: {
         title: dto.title.trim(), slug: this.slugify(dto.title),
         category: dto.category.trim() || 'Actualité', body: dto.body,
+        imageUrl: dto.imageUrl || null,
         published: dto.published ?? true,
       },
     });
@@ -65,6 +66,7 @@ export class AdminService {
     if (dto.title !== undefined) data.title = dto.title.trim() || n.title;
     if (dto.category !== undefined) data.category = dto.category.trim() || n.category;
     if (dto.body !== undefined) data.body = dto.body;
+    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.published !== undefined) data.published = dto.published;
     return this.prisma.newsPost.update({ where: { id }, data });
   }

@@ -117,6 +117,7 @@ model NewsPost {
   slug      String   @unique
   category  String
   body      String
+  imageUrl  String?
   published Boolean  @default(false)
   createdAt DateTime @default(now())
 }

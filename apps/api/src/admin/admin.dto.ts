@@ -63,6 +63,11 @@ export class ProductDto {
   @IsInt()
   @Min(0)
   stock!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  imageUrl?: string;
 }
 
 export class ProductUpdateDto {
@@ -86,6 +91,11 @@ export class ProductUpdateDto {
   @IsInt()
   @Min(0)
   stock?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  imageUrl?: string;
 }
 
 export class OrderStatusDto {

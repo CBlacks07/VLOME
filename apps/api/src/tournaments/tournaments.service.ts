@@ -25,6 +25,7 @@ export class TournamentsService {
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
+    imageUrl?: string | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -39,6 +40,7 @@ export class TournamentsService {
       place: r.place || '',
       players,
       cagnotte: players * r.pointsPerPlayer,
+      imageUrl: r.imageUrl || null,
     };
   }
 
@@ -66,6 +68,7 @@ export class TournamentsService {
         name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
+        imageUrl: dto.imageUrl || null,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
@@ -81,6 +84,7 @@ export class TournamentsService {
     if (dto.game !== undefined) data.game = dto.game.trim() || null;
     if (dto.place !== undefined) data.place = dto.place.trim() || null;
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
+    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     const upd = await this.prisma.tournament.update({ where: { id }, data });
     return this.toCard(upd);
   }

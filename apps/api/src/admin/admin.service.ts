@@ -84,7 +84,10 @@ export class AdminService {
 
   createProduct(dto: ProductDto) {
     return this.prisma.product.create({
-      data: { name: dto.name.trim(), category: dto.category.trim() || 'Goodies', priceXof: dto.priceXof, stock: dto.stock },
+      data: {
+        name: dto.name.trim(), category: dto.category.trim() || 'Goodies',
+        priceXof: dto.priceXof, stock: dto.stock, imageUrl: dto.imageUrl || null,
+      },
     });
   }
 
@@ -96,6 +99,7 @@ export class AdminService {
     if (dto.category !== undefined) data.category = dto.category.trim() || p.category;
     if (dto.priceXof !== undefined) data.priceXof = dto.priceXof;
     if (dto.stock !== undefined) data.stock = dto.stock;
+    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     return this.prisma.product.update({ where: { id }, data });
   }
 

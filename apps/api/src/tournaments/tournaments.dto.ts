@@ -9,6 +9,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
+  @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
 }
 
 export class UpdateTournamentDto {
@@ -16,6 +17,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() game?: string;
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() place?: string;
+  @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
 }
 
 export class ReportDto {

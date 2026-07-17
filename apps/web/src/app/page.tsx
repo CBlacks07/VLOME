@@ -7,7 +7,7 @@ function token(): string | null { return typeof window !== "undefined" ? localSt
 function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
 
 /* ================= Données ================= */
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string; imageUrl?: string | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number };
@@ -15,7 +15,7 @@ type AuthUser = { displayName: string; role: string; email: string };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean;
-  cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string }[] | null;
+  cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string; img?: string | null }[] | null;
   user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -160,8 +160,12 @@ function tournCard(t: TournCard, big: boolean) {
   const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
   const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:#8E8FA6;font-weight:600">${t.status}</span>`;
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
+  // Bandeau : image du tournoi si fournie, sinon dégradé par défaut.
+  const bannerBg = t.imageUrl
+    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.55)),url('${API}${t.imageUrl}');background-size:cover;background-position:center`
+    : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
   return `<div ${openAttr} style="border:1px solid #282838;border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,#14141D,#0E0E16)">
-    <div style="height:${big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))">
+    <div style="height:${t.imageUrl ? (big ? 130 : 110) : big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;${bannerBg}">
       <span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${badge}</div>
     <div style="padding:${big ? "15px 16px 17px" : "14px 15px 16px"}">
       <h4 style="margin:0 0 6px;font-size:${big ? 18 : 17}px">${t.name}</h4>
@@ -215,7 +219,7 @@ function pAccueil(S: State) {
     : NEWS;
   const newsGrid = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
 
-  const shopSec = `<section style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique VLOME</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${SHOP.slice(0, 4).map((p) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D"><div style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div><div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
+  const shopSec = `<section style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique VLOME</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${(S.products ?? SHOP).slice(0, 4).map((p: { name: string; price: number; ph: string; img?: string | null }) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
 
   const partners = `<div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${PARTNERS.map((p) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p}</span>`).join("")}</div></div>`;
 
@@ -249,6 +253,7 @@ function pTournois(S: State) {
       ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
       ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
       ${field("Points / joueur", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
+      ${field("Affiche du tournoi (image, 3 Mo max)", `<input id="c-img" type="file" accept="image/*" style="${inputStyle};padding:9px 13px" />`)}
     </div>
     ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
     <div style="display:flex;gap:10px;margin-top:16px">
@@ -279,7 +284,10 @@ function pClassements(S: State) {
 function pBoutique(S: State) {
   const source = S.products ?? SHOP;
   const list = S.cat === "Tous" ? source : source.filter((p) => p.cat === S.cat);
-  const grid = list.map((p) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)"><div style="height:170px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div><div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
+  const pImg = (p: { ph: string; img?: string | null }, h: number) => p.img
+    ? `<div style="height:${h}px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>`
+    : `<div style="height:${h}px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
+  const grid = list.map((p) => `<div style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${pImg(p, 170)}<div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
   const pay = PAYMENTS.map((m) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#F4F5FB;font-weight:700;font-size:13px">${m}</span>`).join("");
   return `<main style="max-width:1220px;margin:0 auto;padding:28px 22px 60px;animation:fadeUp .4s ease both"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;color:#F4F5FB;cursor:pointer"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cartItems.length} article(s)</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
 }
@@ -482,10 +490,14 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Prix (FCFA)<input id="pr-price" type="number" min="0" value="${e.priceXof ?? 0}" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
+      ${e.imageUrl ? `<img src="${API}${e.imageUrl}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #282838" />` : ""}
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600;flex:1;min-width:220px">Image du produit (jpg, png, webp — 3 Mo max)<input id="pr-img" type="file" accept="image/*" style="${adminInp};padding:9px 13px" /></label>
+    </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const rows = a.products.length ? a.products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
-      <td style="padding:10px 8px"><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></td>
+      <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${API}${p.imageUrl}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
       <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
       <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
       <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
@@ -542,6 +554,7 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu<input id="e-game" value="${(t.game || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)<input id="e-img" type="file" accept="image/*" style="${inpE};padding:9px 13px" /></label>
     </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
@@ -744,6 +757,7 @@ export default function Page() {
   }
   async function editSave(id: string, body: Record<string, string>) {
     if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    try { const img = await uploadFile("e-img"); if (img) body.imageUrl = img; } catch { return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
       if (r.status === 403) { alert("Seul l'organisateur peut modifier ce tournoi."); return; }
@@ -808,9 +822,9 @@ export default function Page() {
     try {
       const r = await fetch(`${API}/api/products`);
       if (!r.ok) return;
-      const rows: { name: string; category: string; priceXof: number }[] = await r.json();
+      const rows: { name: string; category: string; priceXof: number; imageUrl?: string | null }[] = await r.json();
       if (Array.isArray(rows) && rows.length) {
-        setS((s) => ({ ...s, products: rows.map((p) => ({ cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") })) }));
+        setS((s) => ({ ...s, products: rows.map((p) => ({ cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null })) }));
       }
     } catch { /* repli statique */ }
   }
@@ -837,6 +851,32 @@ export default function Page() {
       }
     } catch { /* ignore */ }
   }
+  /** Envoie le fichier choisi dans <input type=file> et renvoie son URL (/uploads/…). */
+  async function uploadFile(inputId: string): Promise<string | null> {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    const f = el?.files?.[0];
+    if (!f) return null;
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await fetch(`${API}/api/uploads`, { method: "POST", headers: authHeaders(), body: fd });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({} as Detail));
+      alert(d.message || "Échec de l'envoi de l'image.");
+      throw new Error("upload");
+    }
+    return (await r.json()).url as string;
+  }
+
+  /** Enregistre un produit (avec envoi de l'image si un fichier est choisi). */
+  async function saveProd(id: string) {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const body: Detail = { name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0 };
+    if (!body.name) { alert("Le nom du produit est requis."); return; }
+    try { const img = await uploadFile("pr-img"); if (img) body.imageUrl = img; } catch { return; }
+    if (id === "new") adminAct("products", "POST", body);
+    else adminAct(`products/${id}`, "PATCH", body);
+  }
+
   /** Écriture admin générique puis rafraîchissement (panneau + site public). */
   async function adminAct(path: string, method: string, body?: unknown) {
     try {
@@ -975,6 +1015,9 @@ export default function Page() {
     if (h.startsWith("#show=")) openDetail(h.slice(6), "show");
     else if (h.startsWith("#t=")) openDetail(h.slice(3));
     else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
+    else if (h === "#tournois") setS((s) => ({ ...s, page: "tournois" }));
+    else if (h === "#boutique") setS((s) => ({ ...s, page: "boutique" }));
+    else if (h === "#classements") setS((s) => ({ ...s, page: "classements" }));
     else if (h === "#connexion") setS((s) => ({ ...s, authOpen: true }));
     else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
   }, []);
@@ -984,12 +1027,15 @@ export default function Page() {
     const name = val("c-name").trim();
     if (!name) { (document.getElementById("c-name") as HTMLInputElement)?.focus(); return; }
     const players = val("c-players").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    const body = {
+    const body: Detail = {
       name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
       date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
     };
     if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
     setS((s) => ({ ...s, busy: true }));
+    // Affiche du tournoi (optionnelle)
+    try { const img = await uploadFile("c-img"); if (img) body.imageUrl = img; }
+    catch { setS((s) => ({ ...s, busy: false })); return; }
     try {
       const r = await fetch(`${API}/api/tournaments`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
@@ -1066,13 +1112,7 @@ export default function Page() {
     else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
     else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
-    else if (d.prodsave) {
-      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
-      const body = { name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0 };
-      if (!body.name) { alert("Le nom du produit est requis."); return; }
-      if (d.prodsave === "new") adminAct("products", "POST", body);
-      else adminAct(`products/${d.prodsave}`, "PATCH", body);
-    }
+    else if (d.prodsave) saveProd(d.prodsave);
     else if (d.proddel) { if (confirm("Supprimer définitivement ce produit ?")) adminAct(`products/${d.proddel}`, "DELETE"); }
     else if (d.ordstatus) { const [oid, st] = d.ordstatus.split("|"); adminAct(`orders/${oid}/status`, "PATCH", { status: st }); }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }

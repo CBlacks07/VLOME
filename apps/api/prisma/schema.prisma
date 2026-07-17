@@ -89,6 +89,7 @@ model Tournament {
   place           String?
   pointsPerPlayer Int              @default(5)
   nbPools         Int              @default(2)
+  imageUrl        String?
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState     Json?
   createdById     String?          // propriétaire (organisateur)

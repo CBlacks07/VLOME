@@ -111,6 +111,12 @@ model Match {
   playedAt     DateTime?
 }
 
+// Réglages éditables du site (identité, héro, slider, partenaires…)
+model Setting {
+  key   String @id
+  value Json
+}
+
 model NewsPost {
   id        String   @id @default(cuid())
   title     String

@@ -1,6 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
+
+/** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners'] as const;
+export const DEFAULT_SETTINGS: Record<string, unknown> = {
+  brand: { name1: 'VLOME', name2: 'ESPORT', logoUrl: null },
+  hero: {
+    kicker: 'VLOME Esport · Togo',
+    title: "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN",
+    subtitle: 'Compétitions, classements, communauté et boutique — une seule plateforme pour fédérer les gamers du Togo et professionnaliser l\'esport de la région.',
+    stats: [
+      { v: '2 400+', k: 'Joueurs' },
+      { v: '18', k: 'Tournois / an' },
+      { v: '24', k: 'Clubs' },
+    ],
+  },
+  slides: [
+    { tag: 'Grand tournoi', title: 'SURVIVAL CUP LOMÉ 2026', sub: '32 joueurs, mode Survival — le vainqueur reste sur le terrain. Cagnotte 160 points.', cta: "S'inscrire" },
+    { tag: 'Nouveau', title: 'FREE FIRE TOGO SERIES', sub: '48 joueurs en Battle Royale sur 3 jours. Qualifications en ligne ouvertes.', cta: 'Voir le tournoi' },
+    { tag: 'Communauté', title: 'GAMING ARENA LOMÉ', sub: 'LAN mensuelle : viens jouer, streamer et rencontrer la communauté esport togolaise.', cta: 'Découvrir' },
+  ],
+  partners: ['Gaming Arena Lomé', 'Yas Togo', 'Moov Africa', 'Université de Lomé', 'CIC Lomé', 'Togocom'],
+};
 
 @Injectable()
 export class AdminService {
@@ -110,6 +132,28 @@ export class AdminService {
     if (!p) throw new NotFoundException('Produit introuvable');
     await this.prisma.product.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /* ---------- Réglages du site ---------- */
+
+  /** Réglages fusionnés : valeurs stockées, défauts sinon. */
+  async getSettings() {
+    const rows = await this.prisma.setting.findMany();
+    const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+    rows.forEach((r) => { out[r.key] = r.value; });
+    return out;
+  }
+
+  setSetting(key: string, value: unknown) {
+    if (!(SETTING_KEYS as readonly string[]).includes(key)) {
+      throw new BadRequestException('Clé de réglage inconnue.');
+    }
+    const v = JSON.parse(JSON.stringify(value ?? null));
+    return this.prisma.setting.upsert({
+      where: { key },
+      update: { value: v },
+      create: { key, value: v },
+    });
   }
 
   /* ---------- Commandes ---------- */

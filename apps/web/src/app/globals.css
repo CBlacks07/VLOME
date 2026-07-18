@@ -19,3 +19,39 @@ a:hover { color: #7C82FF; }
 ::-webkit-scrollbar-thumb { background: #282838; border-radius: 8px; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+
+/* ---- Animations d'apparition (sections en cascade) ----
+   Pilotées par --rise-anim sur la racine : jouées uniquement au changement
+   de page (sinon le re-rendu innerHTML rejouerait tout à chaque clic). */
+.rise { animation: var(--rise-anim, .5s ease both fadeUp); }
+.d1 { animation-delay: .05s; } .d2 { animation-delay: .12s; } .d3 { animation-delay: .19s; }
+.d4 { animation-delay: .26s; } .d5 { animation-delay: .33s; } .d6 { animation-delay: .4s; }
+.slidein { animation: slideIn .35s ease both; }
+
+/* ---- Cartes interactives (tournois, produits, actus) ---- */
+.hcard {
+  transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  will-change: transform;
+}
+.hcard:hover {
+  transform: translateY(-5px);
+  border-color: #3a3a52 !important;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .5), 0 0 24px rgba(34, 211, 238, .07);
+}
+.hcard .zoom { transition: transform .45s ease; }
+.hcard:hover .zoom { transform: scale(1.06); }
+
+/* ---- Boutons & puces ---- */
+button { transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease, background .2s ease, border-color .2s ease, color .2s ease; }
+button:active { transform: scale(.97); }
+.chip:hover { border-color: #3a3a52 !important; color: #F4F5FB !important; }
+.hbtn:hover span { color: #F4F5FB !important; }
+
+/* ---- Lignes de tableaux / listes ---- */
+tr { transition: background .2s ease; }
+tr:hover td { background: rgba(255, 255, 255, .015); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .slidein, .hcard, button { animation: none !important; transition: none !important; }
+}

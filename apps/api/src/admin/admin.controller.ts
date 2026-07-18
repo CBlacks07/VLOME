@@ -72,6 +72,18 @@ export class AdminController {
     return this.admin.deleteProduct(id);
   }
 
+  /* ---------- Réglages du site ---------- */
+
+  @Get('settings')
+  settings() {
+    return this.admin.getSettings();
+  }
+
+  @Patch('settings/:key')
+  setSetting(@Param('key') key: string, @Body() body: { value: unknown }) {
+    return this.admin.setSetting(key, body?.value);
+  }
+
   /* ---------- Commandes ---------- */
 
   @Get('orders')

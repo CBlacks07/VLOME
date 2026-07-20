@@ -27,4 +27,14 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['PLAYER', 'ORGANIZER'])
   role?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  favoriteGame?: string;
 }

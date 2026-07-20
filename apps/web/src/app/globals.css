@@ -52,6 +52,11 @@ button:active { transform: scale(.97); }
 tr { transition: background .2s ease; }
 tr:hover td { background: rgba(255, 255, 255, .015); }
 
+/* ---- Grilles deux colonnes : une seule colonne sur petit écran ---- */
+@media (max-width: 920px) {
+  .grid2, .grid2b, .grid2c { grid-template-columns: 1fr !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise, .slidein, .hcard, button { animation: none !important; transition: none !important; }
 }

@@ -16,7 +16,7 @@ type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean;
   cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string; img?: string | null }[] | null;
-  user: AuthUser | null; authOpen: boolean; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
+  user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[] } | null;
@@ -732,24 +732,74 @@ function pTournoi(S: State) {
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}${finalsHtml || poolsHtml + finalsBtn}</main>`;
 }
 
-function authModal(S: State) {
-  if (!S.authOpen) return "";
+/** Page d'authentification dédiée : présentation à gauche, formulaire à droite. */
+function pAuth(S: State) {
   const isLogin = S.authTab === "login";
-  const inputStyle = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:12px 13px;margin-top:6px";
-  const tab = (k: string, label: string) => `<button data-auth-tab="${k}" style="flex:1;padding:11px;border:0;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;font-size:14px;background:${S.authTab === k ? "#22222F" : "transparent"};color:${S.authTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
-  return `<div data-auth-close="1" style="position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
-    <div data-stop="1" style="width:100%;max-width:420px;background:linear-gradient(180deg,#14141D,#0E0E16);border:1px solid #33334A;border-radius:20px;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.6)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">${isLogin ? "Connexion" : "Inscription"}</span><span data-auth-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
-      <div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:16px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>
-      ${isLogin ? "" : `<label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="a-name" placeholder="Kossi K9" style="${inputStyle}" /></label>
-      <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600;margin-bottom:6px">Je m'inscris en tant que</div><div style="display:flex;gap:8px">
-        ${["PLAYER", "ORGANIZER"].map((r) => { const on = S.authRole === r; const lbl = r === "PLAYER" ? "Joueur" : "Organisateur"; return `<button data-authrole="${r}" style="flex:1;padding:11px;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;font-size:13.5px;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${lbl}</button>`; }).join("")}
-      </div></div>`}
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inputStyle}" /></label>
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:12px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inputStyle}" /></label>
-      ${S.authError ? `<div style="color:#FB7185;font-size:12.5px;margin-top:12px">${S.authError}</div>` : ""}
-      <button data-auth-submit="1" ${S.authBusy ? "disabled" : ""} style="width:100%;margin-top:18px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${S.authBusy ? "default" : "pointer"};opacity:${S.authBusy ? ".6" : "1"}">${S.authBusy ? "…" : isLogin ? "Se connecter" : "Créer mon compte"}</button>
-    </div></div>`;
+  const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:12px 13px;margin-top:6px";
+  const lbl = "font-size:12px;color:#8E8FA6;font-weight:600;display:block";
+
+  // Déjà connecté : pas de formulaire.
+  if (S.user) {
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><div style="max-width:520px;margin:40px auto;border:1px solid #282838;border-radius:20px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:44px 28px;text-align:center">
+      <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);color:#34D399;margin:0 auto 14px">${ic(I.user, 26)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">Tu es déjà connecté</div>
+      <p style="color:#8E8FA6;font-size:14px;margin:0 0 20px">${escHtml(S.user.displayName)} · ${escHtml(S.user.email)}</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button data-go="profil" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 20px;font-weight:750;font-size:14px;cursor:pointer">Mon espace</button>
+        <button data-logout="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer">Déconnexion</button>
+      </div></div></main>`;
+  }
+
+  const tab = (k: string, label: string) => `<button data-auth-tab="${k}" style="flex:1;padding:12px;border:0;border-radius:10px;cursor:pointer;font-family:inherit;font-weight:700;font-size:14px;background:${S.authTab === k ? "#22222F" : "transparent"};color:${S.authTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+  const roleBtns = ["PLAYER", "ORGANIZER"].map((r) => {
+    const on = S.authRole === r;
+    const t2 = r === "PLAYER" ? ["Joueur", "Je participe aux tournois"] : ["Organisateur", "Je crée et pilote des tournois"];
+    return `<button data-authrole="${r}" style="flex:1;padding:12px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:left;background:${on ? "rgba(34,211,238,.08)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"}">
+      <div style="font-weight:750;font-size:13.5px;color:${on ? "#22D3EE" : "#F4F5FB"}">${t2[0]}</div>
+      <div style="font-size:11.5px;color:#8E8FA6;margin-top:2px">${t2[1]}</div></button>`;
+  }).join("");
+
+  const loginForm = `
+    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inp}" /></label>
+    <label style="${lbl};margin-top:14px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>`;
+
+  const registerForm = `
+    <label style="${lbl};margin-top:14px">Nom affiché (pseudo)<input id="a-name" placeholder="Kossi K9" style="${inp}" /></label>
+    <div style="margin-top:14px"><div style="${lbl};margin-bottom:6px">Je m'inscris en tant que</div><div style="display:flex;gap:10px">${roleBtns}</div></div>
+    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inp}" /></label>
+    <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <label style="${lbl}">Mot de passe (6 caractères min.)<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>
+      <label style="${lbl}">Confirme le mot de passe<input id="a-pass2" type="password" placeholder="••••••" style="${inp}" /></label>
+    </div>
+    <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <label style="${lbl}">Ville <span style="color:#5D5E72">(optionnel)</span><input id="a-city" placeholder="Lomé" style="${inp}" /></label>
+      <label style="${lbl}">Jeu favori <span style="color:#5D5E72">(optionnel)</span><input id="a-game" placeholder="EA FC 26, Tekken 8…" style="${inp}" /></label>
+    </div>`;
+
+  const perks = [
+    [I.crown, "Inscris-toi aux tournois", "Survival, brackets, Battle Royale — suis tes matchs en direct."],
+    [I.medal, "Classements & progression", "Points, ELO et historique de tes performances."],
+    [I.cart, "Boutique officielle", "Maillots, billets et goodies — paiement mobile money."],
+    [I.tv, "Mode Show", "Suis les matchs en plein écran, comme à la télé."],
+  ].map(([icn, t2, s2]) => `<div style="display:flex;gap:14px;align-items:flex-start"><span style="display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.25);color:#22D3EE;flex:none">${ic(icn, 19)}</span><div><div style="font-weight:700;font-size:14.5px">${t2}</div><div style="color:#8E8FA6;font-size:13px;line-height:1.5;margin-top:3px">${s2}</div></div></div>`).join("");
+
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">
+    <div class="grid2" style="display:grid;grid-template-columns:1fr 1.1fr;gap:28px;max-width:1180px;margin:0 auto;align-items:center;min-height:70vh">
+      <div class="rise d1" style="padding:10px 6px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">${brandLogo(S, 44, 24)}<span style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1.6px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
+        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,3.6vw,50px);letter-spacing:1.2px;line-height:.95;margin:0 0 12px">Rejoins la communauté<br>esport du Togo</h1>
+        <p style="color:#8E8FA6;font-size:14.5px;line-height:1.6;max-width:460px;margin:0 0 26px">Un seul compte pour t'inscrire aux tournois, suivre tes résultats, commander à la boutique et vibrer avec la scène.</p>
+        <div style="display:flex;flex-direction:column;gap:18px">${perks}</div>
+      </div>
+      <div class="rise d2" style="border:1px solid #33334A;border-radius:22px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:26px 26px 28px;box-shadow:0 24px 70px rgba(0,0,0,.45)">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin-bottom:14px">${isLogin ? "Connexion" : "Créer mon compte"}</div>
+        <div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:4px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>
+        ${isLogin ? loginForm : registerForm}
+        ${S.authError ? `<div style="display:flex;align-items:center;gap:8px;color:#FB7185;font-size:12.5px;margin-top:14px;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:10px 12px">${ic(I.warn, 15)}${escHtml(S.authError)}</div>` : ""}
+        <button data-auth-submit="1" ${S.authBusy ? "disabled" : ""} style="width:100%;margin-top:18px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px;font-weight:750;font-size:15px;cursor:${S.authBusy ? "default" : "pointer"};opacity:${S.authBusy ? ".6" : "1"};box-shadow:0 0 30px rgba(34,211,238,.2)">${S.authBusy ? "…" : isLogin ? "Se connecter" : "Créer mon compte"}</button>
+        <p style="color:#5D5E72;font-size:12px;text-align:center;margin:14px 0 0">${isLogin ? `Pas encore de compte ? <button data-auth-tab="register" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Inscris-toi</button>` : `Déjà membre ? <button data-auth-tab="login" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Connecte-toi</button>`}</p>
+      </div>
+    </div></main>`;
 }
 
 /** Modale de confirmation (suppression, déconnexion…). */
@@ -818,10 +868,10 @@ function pShow(S: State) {
 
 function renderPage(S: State) {
   if (S.page === "show") return pShow(S);
-  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi };
+  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi, auth: pAuth };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
-  return header(S) + body + footer + authModal(S) + cartDrawer(S) + confirmModal(S);
+  return header(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }
 
 /* ================= Composant ================= */
@@ -830,7 +880,7 @@ export default function Page() {
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous",
     tourns: null, creating: false, busy: false,
     cartItems: [], cartOpen: false, products: null,
-    user: null, authOpen: false, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
+    user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
     adminTab: "apercu", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
@@ -856,18 +906,18 @@ export default function Page() {
     } catch { /* API hors ligne */ }
   }
   async function act(url: string, body?: unknown, method = "POST") {
-    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, detailBusy: true }));
     try {
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
-      if (r.status === 401) { setS((s) => ({ ...s, detailBusy: false, authOpen: true, user: null })); return; }
+      if (r.status === 401) { setS((s) => ({ ...s, detailBusy: false, page: "auth", user: null })); return; }
       if (r.status === 403) { setS((s) => ({ ...s, detailBusy: false })); alert("Action réservée à l'organisateur du tournoi."); return; }
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d, detailBusy: false })); loadTournaments(); }
       else setS((s) => ({ ...s, detailBusy: false }));
     } catch { setS((s) => ({ ...s, detailBusy: false })); }
   }
   async function editSave(id: string, body: Record<string, string>) {
-    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try { const img = await uploadFile("e-img"); if (img) body.imageUrl = img; } catch { return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
@@ -876,7 +926,7 @@ export default function Page() {
     } catch { /* ignore */ }
   }
   async function deleteT(id: string) {
-    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "DELETE", headers: authHeaders() });
       if (r.status === 403) { alert("Seul l'organisateur peut supprimer ce tournoi."); return; }
@@ -889,17 +939,25 @@ export default function Page() {
     const email = val("a-email").trim(), password = val("a-pass"), displayName = val("a-name").trim();
     const isLogin = S.authTab === "login";
     if (!email || !password) { setS((s) => ({ ...s, authError: "Email et mot de passe requis." })); return; }
+    if (!isLogin) {
+      if (!displayName) { setS((s) => ({ ...s, authError: "Choisis un nom affiché (pseudo)." })); return; }
+      if (password.length < 6) { setS((s) => ({ ...s, authError: "Mot de passe : au moins 6 caractères." })); return; }
+      if (password !== val("a-pass2")) { setS((s) => ({ ...s, authError: "Les deux mots de passe ne correspondent pas." })); return; }
+    }
     setS((s) => ({ ...s, authBusy: true, authError: "" }));
     try {
       const r = await fetch(`${API}/api/auth/${isLogin ? "login" : "register"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isLogin ? { email, password } : { email, password, displayName, role: S.authRole }),
+        body: JSON.stringify(isLogin
+          ? { email, password }
+          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim() }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
       localStorage.setItem("vlome_token", data.token);
       localStorage.setItem("vlome_user", JSON.stringify(data.user));
-      setS((s) => ({ ...s, authBusy: false, authOpen: false, user: data.user, me: null, myRegs: null, myOrders: null, myTourns: null, admin: null }));
+      setS((s) => ({ ...s, authBusy: false, user: data.user, page: "profil", me: null, myRegs: null, myOrders: null, myTourns: null, admin: null }));
+      window.scrollTo({ top: 0 });
       loadRegIds();
     } catch {
       setS((s) => ({ ...s, authBusy: false, authError: "API injoignable — démarre pnpm dev:api." }));
@@ -947,10 +1005,10 @@ export default function Page() {
   }
   async function checkout() {
     if (!S.cartItems.length) return;
-    if (!token()) { setS((s) => ({ ...s, cartOpen: false, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, cartOpen: false, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try {
       const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: "Flooz" }) });
-      if (r.status === 401) { setS((s) => ({ ...s, authOpen: true, user: null })); return; }
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       if (r.ok) { const o = await r.json(); alert("Commande " + o.reference + " enregistrée · " + o.totalXof + " F · paiement " + o.paymentMethod + " (agrégateur à venir)."); setS((s) => ({ ...s, cartItems: [], cartOpen: false, me: null, myOrders: null })); }
     } catch { /* ignore */ }
   }
@@ -1105,10 +1163,10 @@ export default function Page() {
     } catch { setS((s) => ({ ...s, passMsg: "API injoignable." })); }
   }
   async function toggleReg(id: string, register: boolean) {
-    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/register`, { method: register ? "POST" : "DELETE", headers: authHeaders() });
-      if (r.status === 401) { setS((s) => ({ ...s, authOpen: true, user: null })); return; }
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       const data = await r.json();
       if (!r.ok) { alert(data.message || "Action impossible."); return; }
       await loadRegIds();
@@ -1180,7 +1238,8 @@ export default function Page() {
     else if (h === "#tournois") setS((s) => ({ ...s, page: "tournois" }));
     else if (h === "#boutique") setS((s) => ({ ...s, page: "boutique" }));
     else if (h === "#classements") setS((s) => ({ ...s, page: "classements" }));
-    else if (h === "#connexion") setS((s) => ({ ...s, authOpen: true }));
+    else if (h === "#connexion") setS((s) => ({ ...s, page: "auth", authTab: "login" }));
+    else if (h === "#inscription") setS((s) => ({ ...s, page: "auth", authTab: "register" }));
     else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
   }, []);
 
@@ -1193,7 +1252,7 @@ export default function Page() {
       name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
       date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
     };
-    if (!token()) { setS((s) => ({ ...s, authOpen: true })); return; }
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
     // Affiche du tournoi (optionnelle)
     try { const img = await uploadFile("c-img"); if (img) body.imageUrl = img; }
@@ -1202,7 +1261,7 @@ export default function Page() {
       const r = await fetch(`${API}/api/tournaments`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
       });
-      if (r.status === 401) { setS((s) => ({ ...s, busy: false, authOpen: true, user: null })); return; }
+      if (r.status === 401) { setS((s) => ({ ...s, busy: false, page: "auth", user: null })); return; }
       if (!r.ok) throw new Error();
       await loadTournaments();
       setS((s) => ({ ...s, busy: false, creating: false, fmt: "Tous" }));
@@ -1219,7 +1278,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-close],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1258,8 +1317,7 @@ export default function Page() {
     else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
     else if (d.cartClear !== undefined) setS((s) => ({ ...s, cartItems: [] }));
     else if (d.checkout !== undefined) { checkout(); }
-    else if (d.authOpen !== undefined) setS((s) => ({ ...s, authOpen: true, authError: "" }));
-    else if (d.authClose !== undefined) setS((s) => ({ ...s, authOpen: false }));
+    else if (d.authOpen !== undefined) { setS((s) => ({ ...s, page: "auth", authError: "" })); window.scrollTo({ top: 0 }); }
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();

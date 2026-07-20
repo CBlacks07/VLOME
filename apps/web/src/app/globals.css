@@ -52,11 +52,32 @@ button:active { transform: scale(.97); }
 tr { transition: background .2s ease; }
 tr:hover td { background: rgba(255, 255, 255, .015); }
 
+/* ---- Mouvement d'ambiance (héro, carrousel, bandeau live) ---- */
+@keyframes kenburns { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.14) translate(-1.5%, 1.5%); } }
+.kb { animation: kenburns 16s ease-in-out infinite alternate; will-change: transform; }
+
+.heromedia { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .4; pointer-events: none; }
+
+.blob { position: absolute; border-radius: 50%; filter: blur(70px); pointer-events: none; }
+.b1 { width: 360px; height: 360px; background: rgba(34, 211, 238, .22); top: -90px; right: -70px; animation: drift1 15s ease-in-out infinite alternate; }
+.b2 { width: 320px; height: 320px; background: rgba(244, 63, 126, .16); bottom: -100px; left: -50px; animation: drift2 19s ease-in-out infinite alternate; }
+.b3 { width: 240px; height: 240px; background: rgba(124, 130, 255, .18); top: 30%; left: 34%; animation: drift1 23s ease-in-out infinite alternate-reverse; }
+@keyframes drift1 { to { transform: translate(-70px, 50px) scale(1.18); } }
+@keyframes drift2 { to { transform: translate(80px, -55px) scale(1.12); } }
+
+.marquee { overflow: hidden; position: relative; }
+.marquee-track { display: inline-flex; align-items: center; white-space: nowrap; animation: marquee 26s linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
+@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 26px rgba(34, 211, 238, .22); } 50% { box-shadow: 0 0 44px rgba(34, 211, 238, .45); } }
+.glow { animation: pulseGlow 3.2s ease-in-out infinite; }
+
 /* ---- Grilles deux colonnes : une seule colonne sur petit écran ---- */
 @media (max-width: 920px) {
   .grid2, .grid2b, .grid2c { grid-template-columns: 1fr !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise, .slidein, .hcard, button { animation: none !important; transition: none !important; }
+  .rise, .slidein, .hcard, button, .kb, .blob, .marquee-track, .glow { animation: none !important; transition: none !important; }
 }

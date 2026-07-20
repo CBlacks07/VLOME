@@ -185,9 +185,9 @@ function tournCard(t: TournCard, big: boolean) {
         <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}${t.cagnotte} pts</span></div></div></div>`;
 }
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
-function filePicker(id: string, label = "Choisir une image") {
+function filePicker(id: string, label = "Choisir une image", accept = "image/*") {
   return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0">
-    <input id="${id}" type="file" accept="image/*" style="display:none" />
+    <input id="${id}" type="file" accept="${accept}" style="display:none" />
     <button data-filepick="${id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;flex:none">${ic(I.image, 16)}${label}</button>
     <span id="${id}-name" style="font-size:12.5px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Aucun fichier</span>
   </div>`;
@@ -211,25 +211,47 @@ function pAccueil(S: State) {
   const heroStats: { v: string; k: string }[] = hero0?.stats?.length ? hero0.stats : [{ v: "2 400+", k: "Joueurs" }, { v: "18", k: "Tournois / an" }, { v: "24", k: "Clubs" }];
   const tourns = S.tourns ?? TOURN;
   const dots = slides.map((_, i) => { const on = i === S.slide; return `<span data-slide="${i}" style="width:${on ? 26 : 10}px;height:6px;border-radius:99px;background:${on ? "#22D3EE" : "#33334A"};cursor:pointer"></span>`; }).join("");
-  const hero = `<section class="grid2 rise" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:stretch;margin-bottom:34px">
+  // Fond du héro : vidéo ou image (réglages admin), sinon halos lumineux animés.
+  const heroBg = hero0?.bgUrl as string | undefined;
+  const heroIsVideo = !!heroBg && /\.(mp4|webm)$/i.test(heroBg);
+  const heroMedia = heroBg
+    ? (heroIsVideo
+      ? `<video class="heromedia" src="${API}${heroBg}" autoplay muted loop playsinline></video>`
+      : `<div class="heromedia kb" style="background-image:url('${API}${heroBg}');background-size:cover;background-position:center"></div>`)
+      + `<div style="position:absolute;inset:0;background:linear-gradient(105deg,rgba(11,11,17,.92) 25%,rgba(11,11,17,.55) 60%,rgba(11,11,17,.3));pointer-events:none"></div>`
+    : `<span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>`;
+  const hero = `<section class="grid2 rise" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:stretch;margin-bottom:20px">
     <div style="display:flex;flex-direction:column;justify-content:center;padding:34px 32px;border-radius:20px;border:1px solid #282838;background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(124,130,255,.06) 55%,#0E0E16);position:relative;overflow:hidden">
+      ${heroMedia}
+      <div style="position:relative;z-index:1">
       <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#22D3EE;font-weight:800">${heroKicker}</span>
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,72px);letter-spacing:1.5px;line-height:.92;margin:12px 0 0">${heroTitle}</h1>
       <p style="color:#8E8FA6;font-size:15px;line-height:1.6;max-width:560px;margin:16px 0 24px">${heroSub}</p>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <button data-go="tournois" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">Voir les tournois ${ic(I.arrow)}</button>
+        <button data-go="tournois" class="glow" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:pointer">Voir les tournois ${ic(I.arrow)}</button>
         ${S.user ? `<button data-go="profil" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Mon espace</button>` : `<button data-auth-open="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Rejoindre la communauté</button>`}</div>
       <div style="display:flex;gap:30px;margin-top:30px;flex-wrap:wrap">
-        ${heroStats.map((st, i) => `<div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;${i === 0 ? "color:#22D3EE" : ""}">${escHtml(st.v)}</div><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(st.k)}</div></div>`).join("")}</div></div>
+        ${heroStats.map((st, i) => `<div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;${i === 0 ? "color:#22D3EE" : ""}">${escHtml(st.v)}</div><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(st.k)}</div></div>`).join("")}</div>
+      </div></div>
     <div style="border-radius:20px;border:1px solid #282838;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;display:flex;flex-direction:column;position:relative;overflow:hidden">
-      <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(34,211,238,.14),transparent 55%);pointer-events:none"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;position:relative"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:#5D5E72;font-weight:600">Slider</span></div>
-      <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 4px;position:relative;min-height:240px">
+      ${s.imageUrl
+        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${API}${s.imageUrl}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.5),rgba(11,11,17,.86) 78%);pointer-events:none"></div>`
+        : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(34,211,238,.14),transparent 55%);pointer-events:none"></div>`}
+      <div style="display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:#5D5E72;font-weight:600">${S.slide + 1} / ${slides.length}</span></div>
+      <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 4px;position:relative;z-index:1;min-height:240px">
         <span style="align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:5px 11px">${escHtml(s.tag)}</span>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4vw,46px);letter-spacing:1px;line-height:.95;margin:14px 0 8px">${escHtml(s.title)}</h2>
         <p style="color:#8E8FA6;font-size:14px;line-height:1.55;margin:0">${escHtml(s.sub)}</p>
         <button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button></div>
-      <div style="display:flex;gap:8px;position:relative">${dots}</div></div></section>`;
+      <div style="display:flex;gap:8px;position:relative;z-index:1">${dots}</div></div></section>`;
+
+  // Bandeau défilant : tournois en direct (ou à venir en repli).
+  const liveT = tourns.filter((t) => t.live);
+  const tickerItems = (liveT.length ? liveT : tourns.slice(0, 4)).map((t) =>
+    `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 26px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${t.live ? "#04222a" : "#8E8FA6"};background:${t.live ? "#22D3EE" : "#22222F"};border-radius:99px;padding:3px 9px">${t.live ? '<span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct' : "À venir"}</span><span style="font-weight:700;font-size:13px;color:#F4F5FB">${t.name}</span><span style="font-size:12px;color:#5D5E72">${t.game}${t.place ? " · " + t.place : ""}</span></span>`
+  ).join(`<span style="color:#33334A">·</span>`);
+  const ticker = `<div class="marquee rise d1" style="border:1px solid #282838;border-radius:14px;background:linear-gradient(90deg,#14141D,#0E0E16);margin-bottom:30px;padding:11px 0">
+    <div class="marquee-track">${tickerItems}${tickerItems}</div></div>`;
 
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
   const tournGrid = `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
@@ -248,7 +270,7 @@ function pAccueil(S: State) {
   const partnerList: string[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${escHtml(p)}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}</main>`;
 }
 
 function pTournois(S: State) {
@@ -494,6 +516,11 @@ function adminSite(S: State) {
     <label style="${lbl};display:block;margin-top:12px">Texte de présentation<textarea id="h-sub" rows="3" style="${adminInp};resize:vertical">${escHtml(hz.subtitle)}</textarea></label>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:12px">
       ${[0, 1, 2].map((i) => `<div style="border:1px solid #22222F;border-radius:12px;padding:12px"><div style="${lbl};margin-bottom:4px">Statistique ${i + 1}</div><input id="h-s${i}v" value="${escAttr(stats[i]?.v)}" placeholder="2 400+" style="${adminInp}" /><input id="h-s${i}k" value="${escAttr(stats[i]?.k)}" placeholder="Joueurs" style="${adminInp}" /></div>`).join("")}
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
+      ${hz.bgUrl ? (/\.(mp4|webm)$/i.test(hz.bgUrl) ? `<span style="display:inline-flex;align-items:center;gap:7px;color:#22D3EE;font-size:12.5px;font-weight:700;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.3);border-radius:10px;padding:9px 13px">${ic(I.tv, 15)}Vidéo en place</span>` : `<img src="${API}${hz.bgUrl}" alt="" style="width:80px;height:48px;object-fit:cover;border-radius:10px;border:1px solid #282838" />`) : ""}
+      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, 20 Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm")}</div>
+      ${hz.bgUrl ? `<button data-herobgclear="1" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:transparent;border:1px solid #33334A;color:#8E8FA6">Retirer le fond</button>` : ""}
     </div>`);
 
   const slidesSec = sec("Accueil · « À la une » (slider, 3 diapos)", [0, 1, 2].map((i) => `
@@ -506,6 +533,10 @@ function adminSite(S: State) {
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:10px" class="grid2b">
         <label style="${lbl}">Texte<input id="sl${i}-sub" value="${escAttr(slides[i]?.sub)}" placeholder="Description courte…" style="${adminInp}" /></label>
         <label style="${lbl}">Bouton<input id="sl${i}-cta" value="${escAttr(slides[i]?.cta)}" placeholder="S'inscrire" style="${adminInp}" /></label>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">
+        ${slides[i]?.imageUrl ? `<img src="${API}${slides[i].imageUrl}" alt="" style="width:80px;height:48px;object-fit:cover;border-radius:10px;border:1px solid #282838" />` : ""}
+        <div style="flex:1;min-width:220px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl${i}-img`)}</div>
       </div>
     </div>`).join(""));
 
@@ -1046,14 +1077,21 @@ export default function Page() {
   async function saveSite() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
     let logoUrl = S.site?.brand?.logoUrl ?? null;
-    try { const up = await uploadFile("b-logo"); if (up) logoUrl = up; } catch { return; }
+    let heroBg = S.site?.hero?.bgUrl ?? null;
+    const slideImgs: (string | null)[] = [0, 1, 2].map((i) => S.site?.slides?.[i]?.imageUrl ?? null);
+    try {
+      const up = await uploadFile("b-logo"); if (up) logoUrl = up;
+      const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
+      for (const i of [0, 1, 2]) { const im = await uploadFile(`sl${i}-img`); if (im) slideImgs[i] = im; }
+    } catch { return; }
     const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
     const hero = {
       kicker: val("h-kicker").trim(), title: val("h-title"), subtitle: val("h-sub").trim(),
+      bgUrl: heroBg,
       stats: [0, 1, 2].map((i) => ({ v: val(`h-s${i}v`).trim(), k: val(`h-s${i}k`).trim() })).filter((st) => st.v || st.k),
     };
     const slides = [0, 1, 2]
-      .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim() }))
+      .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim(), imageUrl: slideImgs[i] }))
       .filter((sl) => sl.title);
     const partners = val("pt-list").split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
     try {
@@ -1064,6 +1102,17 @@ export default function Page() {
       if (rs.every((r) => r.ok)) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0 })); }
       else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
+  }
+
+  /** Retire le fond (image/vidéo) du héro : retour aux halos animés. */
+  async function clearHeroBg() {
+    const hero = { ...(S.site?.hero || {}), bgUrl: null };
+    try {
+      const r = await fetch(`${API}/api/admin/settings/hero`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value: hero }),
+      });
+      if (r.ok) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Fond du héro retiré." })); }
+    } catch { /* ignore */ }
   }
 
   /** Enregistre un article (avec envoi de l'image si un fichier est choisi). */
@@ -1186,6 +1235,15 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
 
+  // Carrousel « À la une » : défilement automatique sur l'accueil.
+  useEffect(() => {
+    if (S.page !== "accueil") return;
+    const n = S.site?.slides?.length || SLIDES.length;
+    if (n < 2) return;
+    const id = setInterval(() => setS((s) => ({ ...s, slide: (s.slide + 1) % n })), 6000);
+    return () => clearInterval(id);
+  }, [S.page, S.site]);
+
   // Mode Show : rafraîchit l'état en direct.
   useEffect(() => {
     if (S.page !== "show" || !S.openId) return;
@@ -1278,7 +1336,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1324,6 +1382,7 @@ export default function Page() {
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
     else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "" }));
     else if (d.sitesave !== undefined) saveSite();
+    else if (d.herobgclear !== undefined) clearHeroBg();
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
     else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }
     else if (d.newscancel !== undefined) setS((s) => ({ ...s, newsEdit: null }));

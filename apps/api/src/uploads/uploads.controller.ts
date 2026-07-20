@@ -12,8 +12,8 @@ import { Roles } from '../common/roles.decorator';
 // À remplacer par Cloudflare R2 en production.
 export const UPLOADS_DIR = join(process.cwd(), 'uploads');
 
-const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-const MAX_SIZE = 3 * 1024 * 1024; // 3 Mo
+const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm'];
+const MAX_SIZE = 20 * 1024 * 1024; // 20 Mo (vidéos de fond incluses)
 
 @Controller('uploads')
 export class UploadsController {
@@ -35,7 +35,7 @@ export class UploadsController {
       limits: { fileSize: MAX_SIZE },
       fileFilter: (_req, file, cb) => {
         const ext = extname(file.originalname).toLowerCase();
-        if (!ALLOWED.includes(ext)) return cb(new BadRequestException('Format d\'image non supporté (jpg, png, webp, gif).'), false);
+        if (!ALLOWED.includes(ext)) return cb(new BadRequestException('Format non supporté (jpg, png, webp, gif, mp4, webm).'), false);
         cb(null, true);
       },
     }),

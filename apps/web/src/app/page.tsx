@@ -28,6 +28,9 @@ type State = {
   regIds: { id: string; status: string; amountXof: number }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
   payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
   gallery: Detail[] | null; galleryEdit: Detail | null; galleryFilter: string; galleryOpen: string | null;
+  partnersEdit: { key: string; name: string; logoUrl: string | null }[] | null;
+  adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
+  adSlide: number;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
 };
 
@@ -37,6 +40,8 @@ const FORMAT_OPTIONS: [string, string][] = [
 ];
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
+// Pages simples (sans paramètre) dont le hash d'URL correspond directement à la clé de page.
+const SIMPLE_PAGES = ["accueil", "tournois", "classements", "galerie", "boutique", "profil"];
 
 const SLIDES = [
   { tag: "Grand tournoi", title: "SURVIVAL CUP LOMÉ 2026", sub: "32 joueurs, mode Survival — le vainqueur reste sur le terrain. Cagnotte 160 points.", cta: "S'inscrire" },
@@ -282,7 +287,7 @@ function pAccueil(S: State) {
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${adBanner(S, 0)}${newsGrid}${shopSec}${partners}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${adCarousel(S, "accueil")}${newsGrid}${shopSec}${partners}</main>`;
 }
 
 function pTournois(S: State) {
@@ -327,7 +332,7 @@ function pTournois(S: State) {
   const grid = list.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">${list.map((t) => tournCard(t, true)).join("")}</div>`
     : empty;
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${adBanner(S, 1)}${form}${filt}${qPill}${grid}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${adCarousel(S, "tournois")}${form}${filt}${qPill}${grid}</main>`;
 }
 
 function pClassements(S: State) {
@@ -621,8 +626,8 @@ function adminSite(S: State) {
   const hz = site.hero || {};
   const stats: Detail[] = hz.stats?.length ? hz.stats : [{ v: "", k: "" }, { v: "", k: "" }, { v: "", k: "" }];
   const slides: Detail[] = site.slides?.length ? site.slides : [{}, {}, {}];
-  // Compat : d'anciens réglages stockaient les partenaires en simples chaînes.
-  const partners: Detail[] = (site.partners || []).map((p: Detail) => (typeof p === "string" ? { name: p, logoUrl: null } : p));
+  const partners = S.partnersEdit ?? [];
+  const ads = S.adsEdit ?? [];
   const lbl = "font-size:12px;color:#8E8FA6;font-weight:600";
   const sec = (title: string, inner: string) => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">${secTitle(title)}${inner}</div>`;
 
@@ -659,22 +664,32 @@ function adminSite(S: State) {
       <div style="margin-top:10px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl${i}-img`, "Choisir une image", "image/*", slides[i]?.imageUrl)}</div>
     </div>`).join(""));
 
-  const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages, logo optionnel</span>", [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `
+  const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages, logo optionnel</span>", `
+    ${partners.map((p) => `
     <div style="border:1px solid #22222F;border-radius:12px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <label style="${lbl};flex:1;min-width:180px">Nom du partenaire ${i + 1}<input id="pt${i}-name" value="${escAttr(partners[i]?.name)}" placeholder="—" style="${adminInp}" /></label>
-      <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (optionnel)</div>${filePicker(`pt${i}-logo`, "Choisir le logo", "image/*", partners[i]?.logoUrl)}</div>
-    </div>`).join(""));
+      <label style="${lbl};flex:1;min-width:180px">Nom du partenaire<input id="pt-${p.key}-name" value="${escAttr(p.name)}" placeholder="Nom du sponsor" style="${adminInp}" /></label>
+      <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (optionnel)</div>${filePicker(`pt-${p.key}-logo`, "Choisir le logo", "image/*", p.logoUrl)}</div>
+      <button data-ptdel="${p.key}" style="align-self:flex-end;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;cursor:pointer;flex:none">${ic(I.trash, 15)}</button>
+    </div>`).join("")}
+    ${partners.length ? "" : `<div style="color:#5D5E72;font-size:13px;padding:8px 0 14px">Aucun partenaire pour l'instant.</div>`}
+    <button data-ptadd="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 15)}Ajouter un partenaire</button>`);
 
-  const ads: Detail[] = site.ads?.length ? site.ads : [];
-  const adsSec = sec("Emplacements publicitaires <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— accueil et page Tournois</span>", [0, 1].map((i) => `
-    <div style="border:1px solid #22222F;border-radius:12px;padding:14px;margin-bottom:${i === 0 ? "12px" : "0"}">
-      <div style="${lbl};margin-bottom:8px;color:#7C82FF">Emplacement ${i + 1} · ${i === 0 ? "Accueil" : "Page Tournois"}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="grid2b">
-        <label style="${lbl}">Libellé (optionnel)<input id="ad${i}-label" value="${escAttr(ads[i]?.label)}" placeholder="Nom de l'annonceur" style="${adminInp}" /></label>
-        <label style="${lbl}">Lien au clic (optionnel)<input id="ad${i}-link" value="${escAttr(ads[i]?.linkUrl)}" placeholder="https://…" style="${adminInp}" /></label>
+  const AD_PAGES: [string, string][] = [["accueil", "Accueil"], ["tournois", "Page Tournois"], ["toutes", "Toutes les pages"]];
+  const adsSec = sec("Emplacements publicitaires <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— plusieurs annonces sur une même page tournent en carrousel</span>", `
+    ${ads.map((ad) => `
+    <div style="border:1px solid #22222F;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:12px" class="grid2b">
+        <label style="${lbl}">Libellé (optionnel)<input id="ad-${ad.key}-label" value="${escAttr(ad.label)}" placeholder="Nom de l'annonceur" style="${adminInp}" /></label>
+        <label style="${lbl}">Lien au clic (optionnel)<input id="ad-${ad.key}-link" value="${escAttr(ad.linkUrl)}" placeholder="https://…" style="${adminInp}" /></label>
+        <label style="${lbl}">Page<select id="ad-${ad.key}-page" style="${adminInp}">${AD_PAGES.map(([v, l]) => `<option value="${v}" ${ad.page === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       </div>
-      <div style="margin-top:10px"><div style="${lbl}">Image de la bannière</div>${filePicker(`ad${i}-img`, "Choisir une image", "image/*", ads[i]?.imageUrl)}</div>
-    </div>`).join(""));
+      <div style="display:flex;align-items:flex-end;gap:12px;margin-top:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px"><div style="${lbl}">Image de la bannière</div>${filePicker(`ad-${ad.key}-img`, "Choisir une image", "image/*", ad.imageUrl)}</div>
+        <button data-addel="${ad.key}" style="display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;cursor:pointer;flex:none">${ic(I.trash, 15)}</button>
+      </div>
+    </div>`).join("")}
+    ${ads.length ? "" : `<div style="color:#5D5E72;font-size:13px;padding:8px 0 14px">Aucune publicité pour l'instant.</div>`}
+    <button data-adnew="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px dashed #33334A;color:#7C82FF;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 15)}Ajouter une publicité</button>`);
 
   const ok = S.siteMsg === "Réglages enregistrés.";
   const saveBar = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -1101,24 +1116,31 @@ function pShow(S: State) {
   return `<div style="min-height:100vh;padding:4vh 3vw;position:relative">${close}${brand}${title}${grid}</div>`;
 }
 
-/** Emplacement publicitaire éditable depuis l'admin (settings.ads[index]) — rien si vide. */
 /**
- * Emplacement publicitaire : l'image est affichée en entier (object-fit:contain)
- * quel que soit son format — pas de recadrage moche façon "cover" sur les
- * bannières fournies par les annonceurs.
+ * Emplacement publicitaire : carrousel compact et animé (pas une bannière étirée
+ * sur toute la largeur). Affiche les pubs ciblant cette page (ou « toutes les
+ * pages ») ; s'il y en a plusieurs, elles tournent automatiquement avec des
+ * puces de navigation. L'image reste toujours visible en entier (object-fit:contain).
  */
-function adBanner(S: State, index: number) {
-  const ad: Detail = S.site?.ads?.[index];
-  if (!ad?.imageUrl) return "";
-  const inner = `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16);margin-bottom:30px">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0">
+function adCarousel(S: State, pageKey: string) {
+  const all: Detail[] = S.site?.ads ?? [];
+  const items = all.filter((a) => a.imageUrl && (a.page === pageKey || a.page === "toutes"));
+  if (!items.length) return "";
+  const idx = items.length > 1 ? ((S.adSlide % items.length) + items.length) % items.length : 0;
+  const ad = items[idx];
+  const card = `<div class="hcard slidein" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 15px 0">
       <span style="font-size:9.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72">Publicité</span>
-      ${ad.label ? `<span style="font-size:12px;font-weight:700;color:#8E8FA6">${escHtml(ad.label)}</span>` : ""}
+      ${ad.label ? `<span style="font-size:11.5px;font-weight:700;color:#8E8FA6">${escHtml(ad.label)}</span>` : ""}
     </div>
-    <div style="height:150px;display:flex;align-items:center;justify-content:center;padding:14px 24px">
+    <div style="height:130px;display:flex;align-items:center;justify-content:center;padding:12px 22px">
       <img src="${API}${ad.imageUrl}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
     </div></div>`;
-  return ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block">${inner}</a>` : inner;
+  const clickable = ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block">${card}</a>` : card;
+  const dots = items.length > 1
+    ? `<div style="display:flex;gap:6px;justify-content:center;margin-top:10px">${items.map((_, i) => `<span data-adslide="${i}" style="display:inline-block;width:${i === idx ? 18 : 7}px;height:6px;border-radius:99px;background:${i === idx ? "#7C82FF" : "#33334A"};cursor:pointer;transition:width .2s"></span>`).join("")}</div>`
+    : "";
+  return `<div style="max-width:520px;margin:0 auto 30px">${clickable}${dots}</div>`;
 }
 
 /** Bandeau permanent des partenaires — présent sur toutes les pages, sous l'en-tête. */
@@ -1151,6 +1173,7 @@ export default function Page() {
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, regsPanel: null,
+    partnersEdit: null, adsEdit: null, adSlide: 0,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -1339,22 +1362,33 @@ export default function Page() {
   }
 
   /** Enregistre les réglages du site (identité, héro, slider, partenaires). */
+  /** Relit les champs texte des lignes partenaires/pubs depuis le DOM, sans perdre les logos déjà choisis. */
+  function syncPartnersFromDom(list: NonNullable<State["partnersEdit"]>) {
+    return list.map((p) => ({ ...p, name: (document.getElementById(`pt-${p.key}-name`) as HTMLInputElement | null)?.value ?? p.name }));
+  }
+  function syncAdsFromDom(list: NonNullable<State["adsEdit"]>) {
+    return list.map((a) => ({
+      ...a,
+      label: (document.getElementById(`ad-${a.key}-label`) as HTMLInputElement | null)?.value ?? a.label,
+      linkUrl: (document.getElementById(`ad-${a.key}-link`) as HTMLInputElement | null)?.value ?? a.linkUrl,
+      page: (document.getElementById(`ad-${a.key}-page`) as HTMLSelectElement | null)?.value ?? a.page,
+    }));
+  }
+  const newKey = () => Math.random().toString(36).slice(2, 9);
+
   async function saveSite() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
     let logoUrl = S.site?.brand?.logoUrl ?? null;
     let heroBg = S.site?.hero?.bgUrl ?? null;
     const slideImgs: (string | null)[] = [0, 1, 2].map((i) => S.site?.slides?.[i]?.imageUrl ?? null);
-    const adImgs: (string | null)[] = [0, 1].map((i) => S.site?.ads?.[i]?.imageUrl ?? null);
-    const partnerLogos: (string | null)[] = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
-      const p = S.site?.partners?.[i];
-      return (p && typeof p === "object" ? p.logoUrl : null) ?? null;
-    });
+    const partnerRows = syncPartnersFromDom(S.partnersEdit ?? []);
+    const adRows = syncAdsFromDom(S.adsEdit ?? []);
     try {
       const up = await uploadFile("b-logo"); if (up) logoUrl = up;
       const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
       for (const i of [0, 1, 2]) { const im = await uploadFile(`sl${i}-img`); if (im) slideImgs[i] = im; }
-      for (const i of [0, 1]) { const im = await uploadFile(`ad${i}-img`); if (im) adImgs[i] = im; }
-      for (const i of [0, 1, 2, 3, 4, 5, 6, 7]) { const im = await uploadFile(`pt${i}-logo`); if (im) partnerLogos[i] = im; }
+      for (const p of partnerRows) { const im = await uploadFile(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
+      for (const a of adRows) { const im = await uploadFile(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
     } catch { return; }
     const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
     const hero = {
@@ -1365,18 +1399,17 @@ export default function Page() {
     const slides = [0, 1, 2]
       .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim(), imageUrl: slideImgs[i] }))
       .filter((sl) => sl.title);
-    const partners = [0, 1, 2, 3, 4, 5, 6, 7]
-      .map((i) => ({ name: val(`pt${i}-name`).trim(), logoUrl: partnerLogos[i] }))
-      .filter((p) => p.name);
-    // Les 2 emplacements gardent leur position (index 0 = accueil, 1 = page Tournois) même vides.
-    const ads = [0, 1].map((i) => ({ label: val(`ad${i}-label`).trim(), linkUrl: val(`ad${i}-link`).trim(), imageUrl: adImgs[i] }));
+    const partners = partnerRows.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), logoUrl: p.logoUrl }));
+    const ads = adRows.filter((a) => a.imageUrl).map((a) => ({ label: a.label.trim(), linkUrl: a.linkUrl.trim(), imageUrl: a.imageUrl, page: a.page || "accueil" }));
     try {
       const save = (key: string, value: unknown) => fetch(`${API}/api/admin/settings/${key}`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
       });
       const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads)]);
-      if (rs.every((r) => r.ok)) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0 })); }
-      else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
+      if (rs.every((r) => r.ok)) {
+        await loadSettings();
+        setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0, partnersEdit: null, adsEdit: null }));
+      } else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
 
@@ -1540,12 +1573,33 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
 
+  // Onglet Site : prépare les listes modifiables (partenaires, pubs) depuis les réglages chargés.
+  useEffect(() => {
+    if (S.adminTab !== "site" || !S.site) return;
+    setS((s) => ({
+      ...s,
+      partnersEdit: s.partnersEdit ?? normPartners(s).map((p) => ({ key: newKey(), name: p.name, logoUrl: p.logoUrl })),
+      adsEdit: s.adsEdit ?? (s.site?.ads ?? []).map((a: Detail) => ({ key: newKey(), label: a.label || "", linkUrl: a.linkUrl || "", imageUrl: a.imageUrl ?? null, page: a.page || "accueil" })),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.adminTab, S.site]);
+
   // Carrousel « À la une » : défilement automatique sur l'accueil.
   useEffect(() => {
     if (S.page !== "accueil") return;
     const n = S.site?.slides?.length || SLIDES.length;
     if (n < 2) return;
     const id = setInterval(() => setS((s) => ({ ...s, slide: (s.slide + 1) % n })), 6000);
+    return () => clearInterval(id);
+  }, [S.page, S.site]);
+
+  // Carrousel des pubs : ne tourne que s'il y a plusieurs annonces pour la page affichée.
+  useEffect(() => {
+    const pageKey = S.page === "accueil" ? "accueil" : S.page === "tournois" ? "tournois" : null;
+    if (!pageKey) return;
+    const n = (S.site?.ads ?? []).filter((a: Detail) => a.imageUrl && (a.page === pageKey || a.page === "toutes")).length;
+    if (n < 2) return;
+    const id = setInterval(() => setS((s) => ({ ...s, adSlide: s.adSlide + 1 })), 6000);
     return () => clearInterval(id);
   }, [S.page, S.site]);
 
@@ -1596,17 +1650,44 @@ export default function Page() {
         } catch { /* ignore */ }
       })();
     }
-    if (h.startsWith("#show=")) openDetail(h.slice(6), "show");
-    else if (h.startsWith("#t=")) openDetail(h.slice(3));
-    else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
-    else if (h === "#tournois") setS((s) => ({ ...s, page: "tournois" }));
-    else if (h === "#galerie") setS((s) => ({ ...s, page: "galerie" }));
-    else if (h === "#boutique") setS((s) => ({ ...s, page: "boutique" }));
-    else if (h === "#classements") setS((s) => ({ ...s, page: "classements" }));
-    else if (h === "#connexion") setS((s) => ({ ...s, page: "auth", authTab: "login" }));
-    else if (h === "#inscription") setS((s) => ({ ...s, page: "auth", authTab: "register" }));
-    else if (h === "#panier") setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] }));
+    applyHash(h);
   }, []);
+
+  // Le bouton précédent/suivant du navigateur (ou l'édition manuelle du hash) rouvre la bonne page.
+  useEffect(() => {
+    const onHashChange = () => applyHash(window.location.hash);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // Garde l'URL synchronisée avec la page affichée (quelle que soit l'action qui l'a changée :
+  // clic, redirection après connexion, retour au cockpit…) — un rafraîchissement rouvre donc
+  // toujours la bonne section au lieu de retomber sur l'accueil. Le tout premier rendu est ignoré :
+  // le hash vient déjà de l'URL chargée, pas besoin de le réécrire.
+  const hashSynced = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hashSynced.current) { hashSynced.current = true; return; }
+    let hash = "";
+    if (S.page === "tournoi" && S.openId) hash = "#t=" + S.openId;
+    else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
+    else if (S.page === "auth") hash = "#connexion";
+    else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
+    else return;
+    if (window.location.hash !== hash) history.replaceState(null, "", hash);
+  }, [S.page, S.openId]);
+
+  /** Simples pages sans paramètre : le hash correspond directement à la clé de page. */
+  function applyHash(h: string) {
+    if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
+    if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
+    if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
+    if (h === "#connexion") { setS((s) => ({ ...s, page: "auth", authTab: "login" })); return; }
+    if (h === "#inscription") { setS((s) => ({ ...s, page: "auth", authTab: "register" })); return; }
+    if (h === "#panier") { setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] })); return; }
+    const key = h.replace(/^#/, "");
+    if (SIMPLE_PAGES.includes(key)) setS((s) => ({ ...s, page: key }));
+  }
 
   async function submitCreate() {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
@@ -1644,7 +1725,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1673,6 +1754,7 @@ export default function Page() {
     }
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
+    else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
     else if (d.fmt) setS((s) => ({ ...s, fmt: d.fmt! }));
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
@@ -1692,6 +1774,10 @@ export default function Page() {
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.herobgclear !== undefined) clearHeroBg();
+    else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null }] }));
+    else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []).filter((p) => p.key !== d.ptdel) }));
+    else if (d.adnew !== undefined) setS((s) => ({ ...s, adsEdit: [...syncAdsFromDom(s.adsEdit ?? []), { key: newKey(), label: "", linkUrl: "", imageUrl: null, page: "accueil" }] }));
+    else if (d.addel) setS((s) => ({ ...s, adsEdit: syncAdsFromDom(s.adsEdit ?? []).filter((a) => a.key !== d.addel) }));
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
     else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }
     else if (d.newscancel !== undefined) setS((s) => ({ ...s, newsEdit: null }));

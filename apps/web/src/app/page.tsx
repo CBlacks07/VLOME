@@ -19,13 +19,16 @@ type State = {
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[] } | null;
   adminTab: string; newsEdit: Detail | null; prodEdit: Detail | null;
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
   site: Detail | null; siteMsg: string;
   news: Detail[] | null;
-  me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null;
-  regIds: string[]; profileMsg: string; passMsg: string; profileEdit: boolean;
+  me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null; myResults: Detail[] | null;
+  regIds: { id: string; status: string; amountXof: number }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
+  payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
+  gallery: Detail[] | null; galleryEdit: Detail | null;
+  regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
 };
 
 const FORMAT_OPTIONS: [string, string][] = [
@@ -33,7 +36,7 @@ const FORMAT_OPTIONS: [string, string][] = [
   ["SWISS", "Swiss"], ["ROUND_ROBIN", "Round Robin"], ["POOLS", "Poules"], ["BATTLE_ROYALE", "Battle Royale"],
 ];
 
-const NAV = ["Accueil", "Tournois", "Classements", "Boutique", "Profil"];
+const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
 
 const SLIDES = [
   { tag: "Grand tournoi", title: "SURVIVAL CUP LOMÉ 2026", sub: "32 joueurs, mode Survival — le vainqueur reste sur le terrain. Cagnotte 160 points.", cta: "S'inscrire" },
@@ -270,7 +273,7 @@ function pAccueil(S: State) {
   const partnerList: string[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${escHtml(p)}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${adBanner(S, 0)}${newsGrid}${shopSec}${partners}</main>`;
 }
 
 function pTournois(S: State) {
@@ -300,6 +303,7 @@ function pTournois(S: State) {
       ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
       ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
       ${field("Points / joueur", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
+      ${field("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="c-fee" type="number" min="0" step="100" value="0" style="${inputStyle}" />`)}
       ${field("Affiche du tournoi (image, 3 Mo max)", filePicker("c-img", "Choisir l'affiche"))}
     </div>
     ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
@@ -314,7 +318,7 @@ function pTournois(S: State) {
   const grid = list.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">${list.map((t) => tournCard(t, true)).join("")}</div>`
     : empty;
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${form}${filt}${qPill}${grid}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${adBanner(S, 1)}${form}${filt}${qPill}${grid}</main>`;
 }
 
 function pClassements(S: State) {
@@ -326,6 +330,28 @@ function pClassements(S: State) {
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
   const rows = RANK.map((r, i) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:#5D5E72">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0)}</span><div><div style="font-weight:650">${r.name}</div><div style="font-size:11px;color:#5D5E72">${r.club}</div></div></div></td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${r.game}</td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${r.city}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wl}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.wr}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums;color:#7C82FF;font-weight:700">${r.elo}</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.pts}</td></tr>`).join("");
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Par jeu, ville, club, région — Togo, Afrique de l'Ouest &amp; international</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chips(SCOPES, S.scope, "scope", "#7C82FF")}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${chips(GAMES, S.game, "game")}</div><div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:8px 0 30px;flex-wrap:wrap">${podium}</div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px"><tr>${th("#")}${th("Joueur")}${th("Jeu")}${th("Ville")}${th("V / D", true)}${th("Winrate", true)}${th("ELO", true)}${th("Points", true)}</tr>${rows}</table></div></main>`;
+}
+
+function pGalerie(S: State) {
+  const items: Detail[] = S.gallery ?? [];
+  const head = `<div style="margin-bottom:24px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Photos et vidéos des tournois, LAN et remises de prix VLOME</p></div>`;
+  if (!items.length) {
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}
+      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center;color:#8E8FA6">
+        <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#7C82FF;margin:0 auto 14px">${ic(I.image, 26)}</div>
+        Aucun media pour l'instant. Reviens après le prochain événement !</div></main>`;
+  }
+  const card = (it: Detail) => {
+    const media = it.mediaType === "video"
+      ? `<video class="zoom" src="${API}${it.mediaUrl}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()" style="width:100%;height:100%;object-fit:cover"></video>`
+      : `<div class="zoom" style="width:100%;height:100%;background-image:url('${API}${it.mediaUrl}');background-size:cover;background-position:center"></div>`;
+    return `<a href="${API}${it.mediaUrl}" target="_blank" rel="noopener" class="hcard" style="display:block;border:1px solid #282838;border-radius:16px;overflow:hidden;background:#14141D;position:relative">
+      <div style="height:220px;overflow:hidden">${media}</div>
+      ${it.mediaType === "video" ? `<span style="position:absolute;top:10px;right:10px;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(11,11,17,.7);color:#fff">${ic(I.tv, 13)}</span>` : ""}
+      <div style="padding:11px 13px"><div style="font-weight:650;font-size:13.5px">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#5D5E72;margin-top:2px">${escHtml(it.tournament.name)}</div>` : ""}</div></a>`;
+  };
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">${items.map(card).join("")}</div></main>`;
 }
 
 function pBoutique(S: State) {
@@ -374,8 +400,8 @@ function pDashboard(S: State) {
   const editor = S.profileEdit ? profileEditor(S) : "";
   let body: string;
   if (u.role === "ADMIN") body = adminPanel(S) + grid2(profileSecurity(S), ordersCard(S));
-  else if (u.role === "ORGANIZER") body = myTournsCard(S) + grid2(regsCard(S), ordersCard(S)) + profileSecurity(S);
-  else body = grid2(regsCard(S), ordersCard(S)) + profileSecurity(S);
+  else if (u.role === "ORGANIZER") body = myTournsCard(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
+  else body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
   return wrap(header + editor + statTiles + body);
 }
 
@@ -389,11 +415,26 @@ function memberStats(S: State) {
   const stat = (v: string | number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
   const tiles = [
     stat(me.stats?.registrations ?? 0, "Inscriptions", "#22D3EE"),
-    stat(me.stats?.orders ?? 0, "Commandes", "#7C82FF"),
+    stat(me.stats?.totalPoints ?? 0, "Points cumulés", "#7C82FF"),
+    stat(me.stats?.totalWins ?? 0, "Victoires", "#34D399"),
+    stat(me.stats?.championships ?? 0, "Titres remportés", "#FBBF24"),
     ...(me.role !== "PLAYER" ? [stat(me.stats?.tournaments ?? 0, "Tournois créés", "#FBBF24")] : []),
+    stat(me.stats?.orders ?? 0, "Commandes"),
     stat(since, "Membre depuis"),
   ];
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:16px">${tiles.join("")}</div>`;
+}
+
+/** Historique des résultats réels (points/victoires/titre) calculés depuis les tournois joués. */
+function resultsCard(S: State) {
+  const results = S.myResults ?? [];
+  const rows = results.length
+    ? results.map((r: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F">
+        <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:${r.champion ? "#FBBF24" : "#7C82FF"};flex:none">${ic(r.champion ? I.crown : I.medal, 15)}</span>
+        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(r.tournamentName)}</div><div style="font-size:12px;color:#5D5E72">${r.wins} victoire${r.wins > 1 ? "s" : ""}${r.champion ? " · Champion" : ""} · ${escHtml(r.status)}</div></div>
+        <span style="font-weight:800;color:#22D3EE;font-size:14px">${r.points} pts</span></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Pas encore de résultats. Participe à un tournoi pour voir tes stats ici !</div>`;
+  return card(secTitle(`Mes résultats (${results.length})`) + rows);
 }
 
 function profileEditor(S: State) {
@@ -438,6 +479,26 @@ function ordersCard(S: State) {
   return card(secTitle(`Mes commandes (${orders.length})`) + rows);
 }
 
+/** Panneau organisateur/admin : inscriptions du tournoi (payées + en attente de confirmation). */
+function paymentsPanel(S: State, tournamentId: string) {
+  const regs = S.regsPanel;
+  if (regs === null) return "";
+  const pending = regs.filter((r: Detail) => r.paymentStatus === "pending");
+  const paid = regs.filter((r: Detail) => r.paymentStatus === "paid" && r.amountXof > 0);
+  if (!pending.length && !paid.length) return "";
+  const row = (r: Detail, isPending: boolean) => `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+    <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:13.5px">${escHtml(r.playerName)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(r.userDisplayName)} · ${escHtml(r.userEmail)}</div></div>
+    <span style="font-weight:700;color:#F4F5FB;font-size:13px">${money(r.amountXof)}</span>
+    <span style="font-size:11px;color:#8E8FA6">${escHtml(r.paymentMethod || "")}</span>
+    ${isPending
+      ? `<button data-confirmpay="${tournamentId}|${r.id}" style="font-size:12px;font-weight:750;border-radius:9px;padding:7px 13px;cursor:pointer;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399">Confirmer</button>`
+      : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#34D399;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:4px 10px">Payé</span>`}
+    </div>`;
+  return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px;text-align:left">
+    <h3 style="margin:0 0 6px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Paiements des inscriptions${pending.length ? ` · ${pending.length} en attente` : ""}</h3>
+    ${pending.map((r: Detail) => row(r, true)).join("")}${paid.map((r: Detail) => row(r, false)).join("")}</div>`;
+}
+
 function myTournsCard(S: State) {
   const ts = S.myTourns ?? [];
   const rows = ts.length
@@ -465,7 +526,7 @@ function profileSecurity(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["news", "Actualités"], ["produits", "Produits"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -484,7 +545,9 @@ function adminPanel(S: State) {
     S.adminTab === "site" ? adminSite(S) :
     S.adminTab === "users" ? adminUsers(a) :
     S.adminTab === "news" ? adminNews(S) :
+    S.adminTab === "galerie" ? adminGallery(S) :
     S.adminTab === "produits" ? adminProducts(S) :
+    S.adminTab === "paiements" ? adminPayments(a) :
     S.adminTab === "commandes" ? adminOrders(a) :
     adminOverview(a);
   return tabs + body;
@@ -540,8 +603,22 @@ function adminSite(S: State) {
       </div>
     </div>`).join(""));
 
-  const partnersSec = sec("Partenaires & sponsors", `
+  const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages</span>", `
     <label style="${lbl};display:block">Un partenaire par ligne<textarea id="pt-list" rows="5" style="${adminInp};resize:vertical">${escHtml(partners.join("\n"))}</textarea></label>`);
+
+  const ads: Detail[] = site.ads?.length ? site.ads : [];
+  const adsSec = sec("Emplacements publicitaires <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— accueil et page Tournois</span>", [0, 1].map((i) => `
+    <div style="border:1px solid #22222F;border-radius:12px;padding:14px;margin-bottom:${i === 0 ? "12px" : "0"}">
+      <div style="${lbl};margin-bottom:8px;color:#7C82FF">Emplacement ${i + 1} · ${i === 0 ? "Accueil" : "Page Tournois"}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" class="grid2b">
+        <label style="${lbl}">Libellé (optionnel)<input id="ad${i}-label" value="${escAttr(ads[i]?.label)}" placeholder="Nom de l'annonceur" style="${adminInp}" /></label>
+        <label style="${lbl}">Lien au clic (optionnel)<input id="ad${i}-link" value="${escAttr(ads[i]?.linkUrl)}" placeholder="https://…" style="${adminInp}" /></label>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">
+        ${ads[i]?.imageUrl ? `<img src="${API}${ads[i].imageUrl}" alt="" style="width:80px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838" />` : ""}
+        <div style="flex:1;min-width:220px"><div style="${lbl}">Image de la bannière</div>${filePicker(`ad${i}-img`)}</div>
+      </div>
+    </div>`).join(""));
 
   const ok = S.siteMsg === "Réglages enregistrés.";
   const saveBar = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -549,14 +626,14 @@ function adminSite(S: State) {
     ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
   </div>`;
 
-  return identite + heroSec + slidesSec + partnersSec + saveBar;
+  return identite + heroSec + slidesSec + partnersSec + adsSec + saveBar;
 }
 
 function adminOverview(a: NonNullable<State["admin"]>) {
   const ov = a.overview;
   const stat = (v: number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:#14141D;padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-bottom:20px">
-    ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.news ?? 0, "Articles", "#34D399")}${stat(ov.products, "Produits")}${stat(ov.orders, "Commandes")}</div>`;
+    ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.news ?? 0, "Articles", "#34D399")}${stat(ov.gallery ?? 0, "Photos/vidéos", "#7C82FF")}${stat(ov.products, "Produits")}${stat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "#F4F5FB")}${stat(ov.orders, "Commandes")}</div>`;
 }
 
 function adminUsers(a: NonNullable<State["admin"]>) {
@@ -594,6 +671,28 @@ function adminNews(S: State) {
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${rows}</div>`;
 }
 
+function adminGallery(S: State) {
+  const items = S.gallery ?? [];
+  const tourns = S.tourns ?? [];
+  const editing = S.galleryEdit;
+  const editor = editing ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Ajouter à la galerie</div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px" class="grid2b">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre<input id="ga-title" placeholder="Finale Survival Cup — remise des prix" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Tournoi lié (optionnel)<select id="ga-tourn" style="${adminInp}"><option value="">—</option>${tourns.map((t) => `<option value="${t.id}">${escAttr(t.name)}</option>`).join("")}</select></label>
+    </div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — 20 Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-gallerysave="1" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Ajouter</button><button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const grid = items.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">${items.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden;background:#0E0E16;position:relative">
+      <div style="height:100px;background:${it.mediaType === "video" ? "#14141D" : `url('${API}${it.mediaUrl}')`};background-size:cover;background-position:center;display:${it.mediaType === "video" ? "grid" : "block"};place-items:center;color:#7C82FF">${it.mediaType === "video" ? ic(I.tv, 22) : ""}</div>
+      <div style="padding:8px 9px"><div style="font-size:11.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.title)}</div></div>
+      <button data-gallerydel="${it.id}" style="position:absolute;top:6px;right:6px;display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 12)}</button>
+    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Galerie vide.</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Galerie (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un media</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${grid}</div>`;
+}
+
 function adminProducts(S: State) {
   const a = S.admin!;
   const e = S.prodEdit;
@@ -619,6 +718,21 @@ function adminProducts(S: State) {
     : `<tr><td style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun produit.</td></tr>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tbody>${rows}</tbody></table></div></div>`;
+}
+
+function adminPayments(a: NonNullable<State["admin"]>) {
+  const rows = a.payments.length ? a.payments.map((r: Detail) => {
+    const isPending = r.paymentStatus === "pending";
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(r.playerName)} <span style="color:#5D5E72;font-weight:400;font-size:12px">· ${escHtml(r.tournament?.name)}</span></div><div style="font-size:12px;color:#5D5E72">${escHtml(r.user?.displayName)} · ${escHtml(r.user?.email)} · ${escHtml(r.paymentMethod)}</div></div>
+      <span style="font-weight:800;color:#22D3EE;white-space:nowrap">${money(r.amountXof)}</span>
+      ${isPending
+        ? `<button data-confirmpay="${r.tournament?.id}|${r.id}" style="font-size:12px;font-weight:750;border-radius:9px;padding:8px 14px;cursor:pointer;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399">Confirmer</button>`
+        : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#34D399;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:4px 10px">Payé</span>`}
+      </div>`;
+  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun paiement d'inscription pour l'instant.</div>`;
+  const pendingCount = a.payments.filter((r: Detail) => r.paymentStatus === "pending").length;
+  return card(secTitle(`Paiements des inscriptions (${a.payments.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`) + rows);
 }
 
 const ORDER_STATUS: Record<string, [string, string]> = {
@@ -669,6 +783,7 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu<input id="e-game" value="${(t.game || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Frais d'inscription (FCFA)<input id="e-fee" type="number" min="0" step="100" value="${t.entryFeeXof || 0}" style="${inpE}" /></label>
       <div><div style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche")}</div>
     </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
@@ -676,32 +791,47 @@ function pTournoi(S: State) {
 
   // À lancer : inscriptions ouvertes
   if (t.status === "setup") {
-    const isReg = S.openId ? S.regIds.includes(S.openId) : false;
+    const myReg = S.openId ? S.regIds.find((r) => r.id === S.openId) : undefined;
+    const isReg = !!myReg;
+    const isPending = myReg?.status === "pending";
+    const fee: number = t.entryFeeXof || 0;
     let action: string;
     if (manage) {
       action = `<button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : "Lancer le tournoi"}</button>`;
     } else if (!S.user) {
       action = `<button data-auth-open="1" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.user, 18)}Se connecter pour s'inscrire</button>`;
+    } else if (isPending) {
+      action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#FBBF24;font-weight:750;font-size:15px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:12px;padding:12px 22px">${ic(I.warn, 17)}Paiement en attente de confirmation (${money(myReg!.amountXof)})</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Annuler l'inscription</button></div>`;
     } else if (isReg) {
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button></div>`;
+    } else if (fee > 0) {
+      const chips = PAYMENTS.map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.payPick === m ? "#22D3EE" : "#282838"};color:${S.payPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
+      action = `<div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+        <div><div style="color:#8E8FA6;font-size:12.5px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${chips}</div></div>
+        <button data-reg="${t.id}" ${S.payPick ? "" : "disabled"} style="display:inline-flex;align-items:center;gap:8px;background:${S.payPick ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${S.payPick ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.payPick ? "pointer" : "default"};box-shadow:${S.payPick ? "0 0 34px rgba(34,211,238,.24)" : "none"}">${ic(I.plus, 18)}S'inscrire · ${money(fee)}</button>
+      </div>`;
     } else {
       action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
     }
     const sub = manage
       ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
+      : fee > 0 ? "Inscription payante : choisis un moyen de paiement, l'organisateur confirmera à réception."
       : "Les inscriptions sont ouvertes jusqu'au lancement par l'organisateur.";
+    const feeBadge = fee > 0 ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px">${ic(I.cart, 14)}Frais d'inscription : ${money(fee)}</div>` : "";
     const names: string[] = Array.isArray(t.players) ? t.players : [];
     const participants = names.length
       ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
           <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${names.length})</h3>
           <div style="display:flex;gap:8px;flex-wrap:wrap">${names.map((n) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 13px"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${n.charAt(0).toUpperCase()}</span>${n}</span>`).join("")}</div></div>`
       : "";
+    const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
     return `<main style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center">
         <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1px;margin-bottom:6px">${manage ? "Prêt à démarrer" : "Inscriptions ouvertes"}</div>
+        ${feeBadge}
         <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">${sub}</p>
         ${action}
-      </div>${participants}</main>`;
+      </div>${pendingPanel}${participants}</main>`;
   }
 
   // Poule (match courant cliquable + classement)
@@ -897,12 +1027,31 @@ function pShow(S: State) {
   return `<div style="min-height:100vh;padding:4vh 3vw;position:relative">${close}${brand}${title}${grid}</div>`;
 }
 
+/** Emplacement publicitaire éditable depuis l'admin (settings.ads[index]) — rien si vide. */
+function adBanner(S: State, index: number) {
+  const ad: Detail = S.site?.ads?.[index];
+  if (!ad?.imageUrl) return "";
+  const img = `<div class="zoom" style="width:100%;height:100%;background-image:url('${API}${ad.imageUrl}');background-size:cover;background-position:center"></div>`;
+  const inner = `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;position:relative;height:120px;margin-bottom:30px">${img}
+    <span style="position:absolute;top:9px;left:11px;font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;background:rgba(11,11,17,.65);border-radius:99px;padding:3px 9px">Publicité</span>
+    ${ad.label ? `<span style="position:absolute;bottom:11px;left:14px;font-weight:750;font-size:15px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7)">${escHtml(ad.label)}</span>` : ""}</div>`;
+  return ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block">${inner}</a>` : inner;
+}
+
+/** Bandeau permanent des partenaires — présent sur toutes les pages, sous l'en-tête. */
+function partnersMarquee(S: State) {
+  const partners: string[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
+  if (!partners.length) return "";
+  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${ic(I.crown, 12)}${escHtml(p)}</span>`).join("");
+  return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:7px 0"><div class="marquee-track">${items}${items}</div></div>`;
+}
+
 function renderPage(S: State) {
   if (S.page === "show") return pShow(S);
-  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi, auth: pAuth };
+  const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi, auth: pAuth };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
-  return header(S) + body + footer + cartDrawer(S) + confirmModal(S);
+  return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }
 
 /* ================= Composant ================= */
@@ -916,8 +1065,9 @@ export default function Page() {
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
     adminTab: "apercu", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
     site: null, siteMsg: "",
-    me: null, myRegs: null, myOrders: null, myTourns: null,
+    me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
+    payPick: "", gallery: null, galleryEdit: null, regsPanel: null,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -929,12 +1079,13 @@ export default function Page() {
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "" }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); }
     } catch { /* API hors ligne */ }
+    if (token() && (S.user?.role === "ORGANIZER" || S.user?.role === "ADMIN")) loadRegsPanel(id);
   }
   async function act(url: string, body?: unknown, method = "POST") {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -947,7 +1098,7 @@ export default function Page() {
       else setS((s) => ({ ...s, detailBusy: false }));
     } catch { setS((s) => ({ ...s, detailBusy: false })); }
   }
-  async function editSave(id: string, body: Record<string, string>) {
+  async function editSave(id: string, body: Record<string, string | number>) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try { const img = await uploadFile("e-img"); if (img) body.imageUrl = img; } catch { return; }
     try {
@@ -987,7 +1138,7 @@ export default function Page() {
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
       localStorage.setItem("vlome_token", data.token);
       localStorage.setItem("vlome_user", JSON.stringify(data.user));
-      setS((s) => ({ ...s, authBusy: false, user: data.user, page: "profil", me: null, myRegs: null, myOrders: null, myTourns: null, admin: null }));
+      setS((s) => ({ ...s, authBusy: false, user: data.user, page: "profil", me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null, admin: null }));
       window.scrollTo({ top: 0 });
       loadRegIds();
     } catch {
@@ -996,7 +1147,7 @@ export default function Page() {
   }
   function logout() {
     localStorage.removeItem("vlome_token"); localStorage.removeItem("vlome_user");
-    setS((s) => ({ ...s, user: null, me: null, myRegs: null, myOrders: null, myTourns: null, admin: null, regIds: [], page: s.page === "profil" ? "accueil" : s.page }));
+    setS((s) => ({ ...s, user: null, me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null, admin: null, regIds: [], page: s.page === "profil" ? "accueil" : s.page }));
   }
 
   async function loadTournaments() {
@@ -1024,6 +1175,37 @@ export default function Page() {
     } catch { /* repli statique */ }
   }
 
+  async function loadGallery() {
+    try {
+      const r = await fetch(`${API}/api/gallery`);
+      if (r.ok) { const rows = await r.json(); setS((s) => ({ ...s, gallery: rows })); }
+    } catch { /* ignore */ }
+  }
+  async function saveGalleryItem() {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
+    const title = val("ga-title").trim();
+    if (!title) { alert("Le titre est requis."); return; }
+    let mediaUrl: string | null = null;
+    try { mediaUrl = await uploadFile("ga-file"); } catch { return; }
+    if (!mediaUrl) { alert("Choisis une photo ou une vidéo."); return; }
+    try {
+      const r = await fetch(`${API}/api/gallery`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ title, mediaUrl, tournamentId: val("ga-tourn") || undefined }),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Ajout impossible."); return; }
+      setS((s) => ({ ...s, galleryEdit: null }));
+      await loadGallery();
+      if (S.admin) loadAdmin();
+    } catch { /* ignore */ }
+  }
+  async function deleteGalleryItem(id: string) {
+    try {
+      const r = await fetch(`${API}/api/gallery/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (r.ok) { await loadGallery(); if (S.admin) loadAdmin(); }
+    } catch { /* ignore */ }
+  }
+
   async function loadProducts() {
     try {
       const r = await fetch(`${API}/api/products`);
@@ -1047,13 +1229,13 @@ export default function Page() {
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
-      const [ovR, usR, nwR, prR, orR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders")]);
+      const [ovR, usR, nwR, prR, orR, payR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments")]);
       if (ovR.ok && usR.ok) {
-        const [overview, users, news, products, orders] = await Promise.all([
+        const [overview, users, news, products, orders, payments] = await Promise.all([
           ovR.json(), usR.json(),
-          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [],
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [],
         ]);
-        setS((s) => ({ ...s, admin: { overview, users, news, products, orders } }));
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments } }));
       }
     } catch { /* ignore */ }
   }
@@ -1079,10 +1261,12 @@ export default function Page() {
     let logoUrl = S.site?.brand?.logoUrl ?? null;
     let heroBg = S.site?.hero?.bgUrl ?? null;
     const slideImgs: (string | null)[] = [0, 1, 2].map((i) => S.site?.slides?.[i]?.imageUrl ?? null);
+    const adImgs: (string | null)[] = [0, 1].map((i) => S.site?.ads?.[i]?.imageUrl ?? null);
     try {
       const up = await uploadFile("b-logo"); if (up) logoUrl = up;
       const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
       for (const i of [0, 1, 2]) { const im = await uploadFile(`sl${i}-img`); if (im) slideImgs[i] = im; }
+      for (const i of [0, 1]) { const im = await uploadFile(`ad${i}-img`); if (im) adImgs[i] = im; }
     } catch { return; }
     const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
     const hero = {
@@ -1094,11 +1278,13 @@ export default function Page() {
       .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim(), imageUrl: slideImgs[i] }))
       .filter((sl) => sl.title);
     const partners = val("pt-list").split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+    // Les 2 emplacements gardent leur position (index 0 = accueil, 1 = page Tournois) même vides.
+    const ads = [0, 1].map((i) => ({ label: val(`ad${i}-label`).trim(), linkUrl: val(`ad${i}-link`).trim(), imageUrl: adImgs[i] }));
     try {
       const save = (key: string, value: unknown) => fetch(`${API}/api/admin/settings/${key}`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
       });
-      const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners)]);
+      const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads)]);
       if (rs.every((r) => r.ok)) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0 })); }
       else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
@@ -1159,21 +1345,23 @@ export default function Page() {
   /* ---------- Espace membre : profil, inscriptions, commandes ---------- */
   async function loadMe() {
     try {
-      const [meR, regR, ordR] = await Promise.all([
+      const [meR, regR, ordR, resR] = await Promise.all([
         fetch(`${API}/api/users/me`, { headers: authHeaders() }),
         fetch(`${API}/api/users/me/registrations`, { headers: authHeaders() }),
         fetch(`${API}/api/users/me/orders`, { headers: authHeaders() }),
+        fetch(`${API}/api/users/me/results`, { headers: authHeaders() }),
       ]);
       if (!meR.ok) return;
       const me = await meR.json();
       const myRegs = regR.ok ? await regR.json() : [];
       const myOrders = ordR.ok ? await ordR.json() : [];
+      const myResults = resR.ok ? await resR.json() : [];
       let myTourns: Detail[] | null = null;
       if (me.role === "ORGANIZER" || me.role === "ADMIN") {
         const tR = await fetch(`${API}/api/tournaments/mine`, { headers: authHeaders() });
         if (tR.ok) myTourns = await tR.json();
       }
-      setS((s) => ({ ...s, me, myRegs, myOrders, myTourns }));
+      setS((s) => ({ ...s, me, myRegs, myOrders, myTourns, myResults }));
     } catch { /* ignore */ }
   }
   async function loadRegIds() {
@@ -1213,18 +1401,45 @@ export default function Page() {
   }
   async function toggleReg(id: string, register: boolean) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    const fee = S.detail?.entryFeeXof || 0;
+    if (register && fee > 0 && !S.payPick) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
     try {
-      const r = await fetch(`${API}/api/tournaments/${id}/register`, { method: register ? "POST" : "DELETE", headers: authHeaders() });
+      const r = await fetch(`${API}/api/tournaments/${id}/register`, {
+        method: register ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: register && fee > 0 ? JSON.stringify({ paymentMethod: S.payPick }) : undefined,
+      });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       const data = await r.json();
       if (!r.ok) { alert(data.message || "Action impossible."); return; }
       await loadRegIds();
       await loadTournaments();
-      setS((s) => ({ ...s, me: null, myRegs: null })); // le profil se rechargera
+      setS((s) => ({ ...s, me: null, myRegs: null, myResults: null, payPick: "" })); // le profil se rechargera
       if (S.openId === id) {
         const st = await fetch(`${API}/api/tournaments/${id}/state`);
         if (st.ok) { const d = await st.json(); setS((s) => ({ ...s, detail: d })); }
       }
+      if (register && data.pending) alert(`Inscription enregistrée · ${money(data.amountXof)} via ${S.payPick}.\nElle sera confirmée par l'organisateur dès réception du paiement.`);
+    } catch { /* ignore */ }
+  }
+
+  /** Inscriptions du tournoi ouvert (cockpit organisateur) — payées et en attente. */
+  async function loadRegsPanel(id: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}/registrations`, { headers: authHeaders() });
+      if (r.ok) { const rows = await r.json(); setS((s) => ({ ...s, regsPanel: rows })); }
+    } catch { /* ignore */ }
+  }
+  async function confirmRegPayment(tid: string, regId: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/registrations/${regId}/confirm`, { method: "POST", headers: authHeaders() });
+      const data = await r.json();
+      if (!r.ok) { alert(data.message || "Confirmation impossible."); return; }
+      await loadRegsPanel(tid);
+      await loadTournaments();
+      if (S.admin) loadAdmin();
+      const st = await fetch(`${API}/api/tournaments/${tid}/state`);
+      if (st.ok) { const d = await st.json(); setS((s) => ({ ...s, detail: d })); }
     } catch { /* ignore */ }
   }
 
@@ -1258,7 +1473,7 @@ export default function Page() {
     // Chargement initial groupé : une seule mise à jour d'état (pas de rejeu d'animations).
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
-      const [tourns, products, news, site] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings")]);
+      const [tourns, products, news, site, gallery] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery")]);
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
@@ -1267,6 +1482,7 @@ export default function Page() {
           : s.products,
         news: Array.isArray(news) && news.length ? news : s.news,
         site: site || s.site,
+        gallery: Array.isArray(gallery) ? gallery : s.gallery,
       }));
     })();
     try {
@@ -1294,6 +1510,7 @@ export default function Page() {
     else if (h.startsWith("#t=")) openDetail(h.slice(3));
     else if (h === "#creer") setS((s) => ({ ...s, page: "tournois", creating: true }));
     else if (h === "#tournois") setS((s) => ({ ...s, page: "tournois" }));
+    else if (h === "#galerie") setS((s) => ({ ...s, page: "galerie" }));
     else if (h === "#boutique") setS((s) => ({ ...s, page: "boutique" }));
     else if (h === "#classements") setS((s) => ({ ...s, page: "classements" }));
     else if (h === "#connexion") setS((s) => ({ ...s, page: "auth", authTab: "login" }));
@@ -1309,6 +1526,7 @@ export default function Page() {
     const body: Detail = {
       name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
       date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
+      entryFeeXof: parseInt(val("c-fee")) || 0,
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
@@ -1336,7 +1554,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1361,7 +1579,7 @@ export default function Page() {
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
       const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
-      editSave(d.editsave, { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date") });
+      editSave(d.editsave, { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0 });
     }
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
@@ -1392,6 +1610,13 @@ export default function Page() {
       const n = S.admin?.news.find((x: Detail) => x.id === d.newsdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer l'article", message: `« ${n?.title || "Cet article"} » sera définitivement supprimé du site.`, okLabel: "Supprimer", action: `newsdel|${d.newsdel}` } }));
     }
+    else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "" } }));
+    else if (d.gallerycancel !== undefined) setS((s) => ({ ...s, galleryEdit: null }));
+    else if (d.gallerysave !== undefined) saveGalleryItem();
+    else if (d.gallerydel) {
+      const it = S.gallery?.find((x: Detail) => x.id === d.gallerydel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer ce média", message: `« ${it?.title || "Ce média"} » sera définitivement supprimé de la galerie.`, okLabel: "Supprimer", action: `gallerydel|${d.gallerydel}` } }));
+    }
     else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
     else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
@@ -1412,6 +1637,7 @@ export default function Page() {
         else if (act === "delT") deleteT(arg);
         else if (act === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (act === "proddel") adminAct(`products/${arg}`, "DELETE");
+        else if (act === "gallerydel") deleteGalleryItem(arg);
       }
     }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
@@ -1421,6 +1647,8 @@ export default function Page() {
     else if (d.passsave !== undefined) savePassword();
     else if (d.reg) toggleReg(d.reg, true);
     else if (d.unreg) toggleReg(d.unreg, false);
+    else if (d.paypick) setS((s) => ({ ...s, payPick: d.paypick! }));
+    else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));

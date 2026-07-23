@@ -47,13 +47,16 @@ model User {
 
 // Inscription d'un utilisateur à un tournoi (avant lancement)
 model Registration {
-  id           String     @id @default(cuid())
-  userId       String
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tournamentId String
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  playerName   String
-  createdAt    DateTime   @default(now())
+  id            String     @id @default(cuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournamentId  String
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  playerName    String
+  amountXof     Int        @default(0)
+  paymentMethod String? // Flooz, Mixx by Yas, Visa... (null si gratuit)
+  paymentStatus String     @default("paid") // 'paid' (gratuit ou confirmé) | 'pending' (paiement à confirmer)
+  createdAt     DateTime   @default(now())
 
   @@unique([userId, tournamentId])
 }
@@ -89,6 +92,7 @@ model Tournament {
   place           String?
   pointsPerPlayer Int              @default(5)
   nbPools         Int              @default(2)
+  entryFeeXof     Int              @default(0) // frais d'inscription en FCFA (0 = gratuit)
   imageUrl        String?
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState     Json?
@@ -96,6 +100,7 @@ model Tournament {
   createdAt       DateTime         @default(now())
   matches         Match[]
   registrations   Registration[]
+  galleryItems    GalleryItem[]
 }
 
 model Match {
@@ -115,6 +120,17 @@ model Match {
 model Setting {
   key   String @id
   value Json
+}
+
+// Galerie : photos/vidéos des événements (LAN, finales, remises de prix…)
+model GalleryItem {
+  id           String     @id @default(cuid())
+  title        String
+  mediaUrl     String // image ou vidéo (/uploads/...)
+  mediaType    String     @default("image") // 'image' | 'video'
+  tournamentId String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
 }
 
 model NewsPost {

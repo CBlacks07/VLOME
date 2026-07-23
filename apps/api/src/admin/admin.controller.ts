@@ -84,6 +84,13 @@ export class AdminController {
     return this.admin.setSetting(key, body?.value);
   }
 
+  /* ---------- Paiements d'inscription ---------- */
+
+  @Get('payments')
+  payments() {
+    return this.admin.listPayments();
+  }
+
   /* ---------- Commandes ---------- */
 
   @Get('orders')

@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
-export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners'] as const;
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads'] as const;
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'VLOME', name2: 'ESPORT', logoUrl: null },
   hero: {
@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     { tag: 'Communauté', title: 'GAMING ARENA LOMÉ', sub: 'LAN mensuelle : viens jouer, streamer et rencontrer la communauté esport togolaise.', cta: 'Découvrir' },
   ],
   partners: ['Gaming Arena Lomé', 'Yas Togo', 'Moov Africa', 'Université de Lomé', 'CIC Lomé', 'Togocom'],
+  ads: [] as { imageUrl: string; linkUrl: string; label: string }[],
 };
 
 @Injectable()
@@ -46,7 +47,7 @@ export class AdminService {
   }
 
   async overview() {
-    const [users, tournaments, orders, products, admins, organizers, news] = await Promise.all([
+    const [users, tournaments, orders, products, admins, organizers, news, pendingPayments, gallery] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.tournament.count(),
       this.prisma.order.count(),
@@ -54,8 +55,24 @@ export class AdminService {
       this.prisma.user.count({ where: { role: 'ADMIN' } }),
       this.prisma.user.count({ where: { role: 'ORGANIZER' } }),
       this.prisma.newsPost.count(),
+      this.prisma.registration.count({ where: { paymentStatus: 'pending' } }),
+      this.prisma.galleryItem.count(),
     ]);
-    return { users, admins, organizers, tournaments, orders, products, news };
+    return { users, admins, organizers, tournaments, orders, products, news, pendingPayments, gallery };
+  }
+
+  /* ---------- Paiements d'inscription (vue d'ensemble) ---------- */
+
+  listPayments() {
+    return this.prisma.registration.findMany({
+      where: { amountXof: { gt: 0 } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { email: true, displayName: true } },
+        tournament: { select: { id: true, name: true } },
+      },
+    });
   }
 
   /* ---------- Actualités ---------- */

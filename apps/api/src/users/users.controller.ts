@@ -34,4 +34,9 @@ export class UsersController {
   myOrders(@CurrentUser() user: JwtUser) {
     return this.users.myOrders(user.sub);
   }
+
+  @Get('me/results')
+  myResults(@CurrentUser() user: JwtUser) {
+    return this.users.myResults(user.sub);
+  }
 }

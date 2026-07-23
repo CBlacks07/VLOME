@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
-import { CreateTournamentDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -79,14 +79,30 @@ export class TournamentsController {
 
   @Post(':id/register')
   @UseGuards(JwtAuthGuard)
-  register(@Param('id') id: string, @CurrentUser() user: JwtUser) {
-    return this.service.register(id, user);
+  register(@Param('id') id: string, @Body() dto: RegisterDto, @CurrentUser() user: JwtUser) {
+    return this.service.register(id, user, dto);
   }
 
   @Delete(':id/register')
   @UseGuards(JwtAuthGuard)
   unregister(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.unregister(id, user);
+  }
+
+  /* Paiement des inscriptions payantes : organisateur/admin uniquement. */
+
+  @Get(':id/registrations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  listRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.listRegistrations(id, user);
+  }
+
+  @Post(':id/registrations/:regId/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  confirmPayment(@Param('id') id: string, @Param('regId') regId: string, @CurrentUser() user: JwtUser) {
+    return this.service.confirmPayment(id, regId, user);
   }
 
   @Post(':id/launch')

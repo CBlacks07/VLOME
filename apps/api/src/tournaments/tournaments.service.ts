@@ -1,7 +1,7 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
-import { CreateTournamentDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtUser } from '../common/jwt-auth.guard';
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -25,7 +25,7 @@ export class TournamentsService {
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
-    imageUrl?: string | null;
+    imageUrl?: string | null; entryFeeXof?: number;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -41,6 +41,7 @@ export class TournamentsService {
       players,
       cagnotte: players * r.pointsPerPlayer,
       imageUrl: r.imageUrl || null,
+      entryFeeXof: r.entryFeeXof ?? 0,
     };
   }
 
@@ -68,7 +69,7 @@ export class TournamentsService {
         name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
-        imageUrl: dto.imageUrl || null,
+        imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
@@ -85,6 +86,7 @@ export class TournamentsService {
     if (dto.place !== undefined) data.place = dto.place.trim() || null;
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
+    if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
     const upd = await this.prisma.tournament.update({ where: { id }, data });
     return this.toCard(upd);
   }
@@ -98,8 +100,13 @@ export class TournamentsService {
     return rows.map((r) => this.toCard(r));
   }
 
-  /** Inscription d'un joueur connecté à un tournoi non lancé. */
-  async register(id: string, user: JwtUser) {
+  /**
+   * Inscription d'un joueur connecté à un tournoi non lancé.
+   * Gratuit (entryFeeXof = 0) : ajouté immédiatement au moteur.
+   * Payant : inscription en attente de paiement (playerName réservé, pas encore dans le moteur)
+   * — un organisateur/admin confirme ensuite via confirmPayment().
+   */
+  async register(id: string, user: JwtUser, dto: RegisterDto) {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('Tournoi introuvable');
     if (r.status !== 'DRAFT') throw new ConflictException('Les inscriptions sont closes : le tournoi a démarré.');
@@ -111,22 +118,75 @@ export class TournamentsService {
     const u = await this.prisma.user.findUnique({ where: { id: user.sub } });
     if (!u) throw new NotFoundException('Utilisateur introuvable');
 
-    // Ajoute le joueur à l'état moteur (suffixe si un homonyme existe déjà).
+    const fee = r.entryFeeXof || 0;
+    if (fee > 0 && !dto.paymentMethod) {
+      throw new BadRequestException('Choisis un moyen de paiement pour finaliser ton inscription.');
+    }
+
     const t = (r.engineState ?? Engine.newTournament({ name: r.name })) as Engine.Tournament;
-    const taken = new Set(t.players.map((p) => p.name.toLowerCase()));
+    // Nom réservé : distinct des joueurs déjà dans le moteur ET des autres inscriptions (payées ou en attente).
+    const allRegs = await this.prisma.registration.findMany({ where: { tournamentId: id }, select: { playerName: true } });
+    const taken = new Set([...t.players.map((p) => p.name.toLowerCase()), ...allRegs.map((x) => x.playerName.toLowerCase())]);
     let playerName = u.displayName.trim() || u.email.split('@')[0];
     if (taken.has(playerName.toLowerCase())) {
       let n = 2;
       while (taken.has(`${playerName} (${n})`.toLowerCase())) n++;
       playerName = `${playerName} (${n})`;
     }
-    t.players.push({ id: Engine.uid(), name: playerName, club: u.city || '' });
+
+    if (fee === 0) {
+      // Gratuit : ajouté tout de suite.
+      t.players.push({ id: Engine.uid(), name: playerName, club: u.city || '' });
+      await this.prisma.$transaction([
+        this.prisma.registration.create({ data: { userId: user.sub, tournamentId: id, playerName, amountXof: 0, paymentStatus: 'paid' } }),
+        this.prisma.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
+      ]);
+      return { registered: true, pending: false, playerName, amountXof: 0, players: t.players.length };
+    }
+
+    // Payant : réservé, en attente de confirmation (voir confirmPayment).
+    await this.prisma.registration.create({
+      data: { userId: user.sub, tournamentId: id, playerName, amountXof: fee, paymentMethod: dto.paymentMethod, paymentStatus: 'pending' },
+    });
+    return { registered: true, pending: true, playerName, amountXof: fee };
+  }
+
+  /** Confirme le paiement d'une inscription en attente (organisateur/admin) et ajoute le joueur au moteur. */
+  async confirmPayment(tournamentId: string, registrationId: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const reg = await this.prisma.registration.findUnique({ where: { id: registrationId } });
+    if (!reg || reg.tournamentId !== tournamentId) throw new NotFoundException('Inscription introuvable');
+    if (reg.paymentStatus === 'paid') throw new ConflictException('Ce paiement est déjà confirmé.');
+    if (r.status !== 'DRAFT') throw new ConflictException('Le tournoi a déjà démarré.');
+
+    const t = (r.engineState ?? Engine.newTournament({ name: r.name })) as Engine.Tournament;
+    t.players.push({ id: Engine.uid(), name: reg.playerName, club: '' });
 
     await this.prisma.$transaction([
-      this.prisma.registration.create({ data: { userId: user.sub, tournamentId: id, playerName } }),
-      this.prisma.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
+      this.prisma.registration.update({ where: { id: registrationId }, data: { paymentStatus: 'paid' } }),
+      this.prisma.tournament.update({ where: { id: tournamentId }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
     ]);
-    return { registered: true, playerName, players: t.players.length };
+    return { confirmed: true, playerName: reg.playerName, players: t.players.length };
+  }
+
+  /** Liste des inscriptions (payées + en attente) — organisateur/admin, pour le cockpit. */
+  async listRegistrations(tournamentId: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const regs = await this.prisma.registration.findMany({
+      where: { tournamentId },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { email: true, displayName: true } } },
+    });
+    return regs.map((x) => ({
+      id: x.id, playerName: x.playerName, amountXof: x.amountXof,
+      paymentMethod: x.paymentMethod, paymentStatus: x.paymentStatus,
+      userEmail: x.user.email, userDisplayName: x.user.displayName,
+      createdAt: x.createdAt,
+    }));
   }
 
   /** Désinscription (tant que le tournoi n'a pas démarré). */
@@ -152,10 +212,13 @@ export class TournamentsService {
     return { registered: false, players: t ? t.players.length : 0 };
   }
 
-  /** Ids des tournois où l'utilisateur est inscrit (pour l'affichage). */
+  /** Tournois où l'utilisateur est inscrit, avec le statut de paiement (pour l'affichage). */
   async registrationIds(user: JwtUser) {
-    const regs = await this.prisma.registration.findMany({ where: { userId: user.sub }, select: { tournamentId: true } });
-    return regs.map((x) => x.tournamentId);
+    const regs = await this.prisma.registration.findMany({
+      where: { userId: user.sub },
+      select: { tournamentId: true, paymentStatus: true, amountXof: true },
+    });
+    return regs.map((x) => ({ id: x.tournamentId, status: x.paymentStatus, amountXof: x.amountXof }));
   }
 
   async remove(id: string, user: JwtUser) {
@@ -222,7 +285,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: r.engineState as unknown as Engine.Tournament };
@@ -248,7 +311,7 @@ export class TournamentsService {
   }
 
   /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
-  private toState(id: string, t: Engine.Tournament) {
+  private toState(id: string, t: Engine.Tournament, entryFeeXof = 0) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
       return {
@@ -283,6 +346,7 @@ export class TournamentsService {
       cagnotte: Engine.cagnotte(t), distributed: Engine.distributed(t),
       allPoolsDone: Engine.allPoolsDone(t),
       players: t.players.map((p) => p.name),
+      entryFeeXof,
       pools, finals,
     };
   }
@@ -294,7 +358,7 @@ export class TournamentsService {
 
   async getState(id: string) {
     const l = await this.loadEngine(id);
-    return l ? this.toState(id, l.t) : null;
+    return l ? this.toState(id, l.t, l.record.entryFeeXof) : null;
   }
 
   async launch(id: string, user: JwtUser) {
@@ -305,7 +369,7 @@ export class TournamentsService {
     if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
     Engine.launch(t);
     await this.persist(id, t);
-    return this.toState(id, t);
+    return this.toState(id, t, l.record.entryFeeXof);
   }
 
   async startFinals(id: string, user: JwtUser) {
@@ -314,7 +378,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     Engine.startFinals(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof);
   }
 
   async report(id: string, dto: ReportDto, user: JwtUser) {
@@ -326,7 +390,7 @@ export class TournamentsService {
     if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
-    return this.toState(id, t);
+    return this.toState(id, t, l.record.entryFeeXof);
   }
 }
 

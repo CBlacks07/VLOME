@@ -10,6 +10,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
 }
 
 export class UpdateTournamentDto {
@@ -18,6 +19,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() place?: string;
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
 }
 
 export class ReportDto {
@@ -26,4 +28,8 @@ export class ReportDto {
   @IsOptional() @IsString() winnerId?: string;
   @IsOptional() @IsInt() @Min(0) scoreA?: number;
   @IsOptional() @IsInt() @Min(0) scoreB?: number;
+}
+
+export class RegisterDto {
+  @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
 }

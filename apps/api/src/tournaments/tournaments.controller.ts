@@ -38,6 +38,11 @@ export class TournamentsController {
     return this.service.registrationIds(user);
   }
 
+  @Get('leaderboard')
+  leaderboard() {
+    return this.service.leaderboard();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const t = await this.service.findOne(id);

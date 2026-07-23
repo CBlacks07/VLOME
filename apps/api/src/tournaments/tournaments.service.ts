@@ -101,6 +101,56 @@ export class TournamentsService {
   }
 
   /**
+   * Classement global : agrège les résultats réels (points, victoires, titres) de
+   * tous les tournois, poule par poule, joueur par joueur — aucune donnée inventée
+   * (pas d'ELO ni de winrate fictifs, tout vient de l'état du moteur).
+   */
+  async leaderboard() {
+    const tournaments = await this.prisma.tournament.findMany({
+      select: { id: true, game: true, engineState: true },
+    });
+    type Agg = { name: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string>; games: Set<string> };
+    const agg = new Map<string, Agg>();
+    for (const t of tournaments) {
+      const st = t.engineState as unknown as Engine.Tournament | null;
+      if (!st || !st.players?.length) continue;
+      for (const p of st.players) {
+        const entry = agg.get(p.name) ?? { name: p.name, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set(), games: new Set() };
+        const points = st.points?.[p.id] || 0;
+        const matches = st.log.filter((l) => l.a === p.id || l.b === p.id).length;
+        const wins = st.log.filter((l) => l.winner === p.id).length;
+        entry.points += points; entry.wins += wins; entry.matches += matches;
+        if (st.champion === p.id) entry.championships++;
+        if (matches > 0) entry.tournaments.add(t.id);
+        if (t.game) entry.games.add(t.game);
+        agg.set(p.name, entry);
+      }
+    }
+
+    // Ville/club best-effort : depuis le profil de l'utilisateur inscrit sous ce nom (si connu).
+    const regs = await this.prisma.registration.findMany({ include: { user: { select: { city: true } } } });
+    const cityByName = new Map<string, string>();
+    for (const r of regs) if (r.user.city && !cityByName.has(r.playerName)) cityByName.set(r.playerName, r.user.city);
+
+    return Array.from(agg.values())
+      .filter((e) => e.matches > 0)
+      .map((e) => ({
+        name: e.name,
+        points: Math.round(e.points * 10) / 10,
+        wins: e.wins,
+        losses: e.matches - e.wins,
+        matches: e.matches,
+        winrate: e.matches ? Math.round((e.wins / e.matches) * 100) : 0,
+        championships: e.championships,
+        tournamentsPlayed: e.tournaments.size,
+        games: Array.from(e.games),
+        city: cityByName.get(e.name) || null,
+      }))
+      .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
+      .slice(0, 100);
+  }
+
+  /**
    * Inscription d'un joueur connecté à un tournoi non lancé.
    * Gratuit (entryFeeXof = 0) : ajouté immédiatement au moteur.
    * Payant : inscription en attente de paiement (playerName réservé, pas encore dans le moteur)

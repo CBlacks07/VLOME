@@ -14,13 +14,14 @@ type CartItem = { name: string; price: number };
 type AuthUser = { displayName: string; role: string; email: string };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string;
-  tourns: TournCard[] | null; creating: boolean; busy: boolean;
+  tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string; img?: string | null }[] | null;
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[] } | null;
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
+  prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
   site: Detail | null; siteMsg: string;
   news: Detail[] | null;
@@ -29,6 +30,7 @@ type State = {
   payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
   gallery: Detail[] | null; galleryEdit: Detail | null; galleryFilter: string; galleryOpen: string | null;
   partnersEdit: { key: string; name: string; logoUrl: string | null }[] | null;
+  slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; imageUrl: string | null }[] | null;
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
   adSlide: number;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
@@ -118,7 +120,6 @@ const UPCOMING = [
 ];
 
 const FORMATS = ["Tous", "Survival", "Bracket simple", "Double élim", "Swiss", "Round Robin", "Poules", "Battle Royale"];
-const SCOPES = ["Togo", "Afrique de l'Ouest", "International"];
 const GAMES = ["Tous", "EA FC 26", "Tekken 8", "Free Fire", "Valorant"];
 const CATS = ["Tous", "Vêtements", "Goodies", "Billets", "Cartes cadeaux"];
 
@@ -273,7 +274,8 @@ function pAccueil(S: State) {
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
   const tournGrid = `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
 
-  const rankRows = RANK.slice(0, 5).map((r, i) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0)}</span><div><div style="font-weight:650">${r.name}</div><div style="font-size:11px;color:#5D5E72">${r.club}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${r.game}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.pts}</td></tr>`).join("");
+  const rankSource: Detail[] = S.leaderboard?.length ? S.leaderboard : RANK.map((r) => ({ name: r.name, city: r.club, games: [r.game], points: r.pts }));
+  const rankRows = rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || (r.games || [])[0] || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml((r.games || [])[0])}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
@@ -336,14 +338,30 @@ function pTournois(S: State) {
 }
 
 function pClassements(S: State) {
-  const podium = [
-    { ini: "P", name: "Prince Kodjo", pts: 298, place: "2", h: "72px", avBg: "linear-gradient(135deg,#cbd5e1,#94a3b8)", plColor: "#cbd5e1" },
-    { ini: "K", name: "Kossi « K9 »", pts: 342, place: "1", h: "96px", avBg: "linear-gradient(135deg,#FBBF24,#f59e0b)", plColor: "#FBBF24" },
-    { ini: "A", name: "Aminata Sow", pts: 271, place: "3", h: "56px", avBg: "linear-gradient(135deg,#d6a37a,#b4784f)", plColor: "#d6a37a" },
-  ].map((p) => `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:${p.avBg}">${p.ini}</div><div style="text-align:center"><div style="font-weight:700;font-size:13.5px">${p.name}</div><div style="font-size:11px;color:#8E8FA6">${p.pts} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${p.h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${p.plColor}">${p.place}</span></div></div>`).join("");
+  const all: Detail[] = S.leaderboard ?? [];
+  const list = S.game === "Tous" ? all : all.filter((r: Detail) => (r.games || []).includes(S.game));
+  const head = `<h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Points, victoires et titres calculés depuis les résultats réels des tournois</p>`;
+  const filt = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${chips(GAMES, S.game, "game")}</div>`;
+  if (S.leaderboard === null) {
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}<div style="color:#5D5E72;text-align:center;padding:40px 0">Chargement…</div></main>`;
+  }
+  if (!list.length) {
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}
+      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center;color:#8E8FA6">
+        <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#FBBF24;margin:0 auto 14px">${ic(I.medal, 26)}</div>
+        Aucun résultat pour l'instant. Le classement se remplit au fil des matchs joués !</div></main>`;
+  }
+  const podiumColors = [["#FBBF24", "#f59e0b", "96px", "1"], ["#cbd5e1", "#94a3b8", "72px", "2"], ["#d6a37a", "#b4784f", "56px", "3"]];
+  const top3 = list.slice(0, 3);
+  const order = top3.length > 1 ? [top3[1], top3[0], top3[2]].filter(Boolean) : top3;
+  const podium = order.map((r: Detail) => {
+    const rank = list.indexOf(r);
+    const [plColor, avA, h] = podiumColors[rank];
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:#8E8FA6">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+  }).join("");
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const rows = RANK.map((r, i) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:#5D5E72">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0)}</span><div><div style="font-weight:650">${r.name}</div><div style="font-size:11px;color:#5D5E72">${r.club}</div></div></div></td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${r.game}</td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${r.city}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wl}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.wr}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums;color:#7C82FF;font-weight:700">${r.elo}</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.pts}</td></tr>`).join("");
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Par jeu, ville, club, région — Togo, Afrique de l'Ouest &amp; international</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${chips(SCOPES, S.scope, "scope", "#7C82FF")}</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${chips(GAMES, S.game, "game")}</div><div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:8px 0 30px;flex-wrap:wrap">${podium}</div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px"><tr>${th("#")}${th("Joueur")}${th("Jeu")}${th("Ville")}${th("V / D", true)}${th("Winrate", true)}${th("ELO", true)}${th("Points", true)}</tr>${rows}</table></div></main>`;
+  const rows = list.map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "#5D5E72"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${escHtml((r.games || []).join(", "))}</td><td style="padding:11px 8px;text-align:right;color:#8E8FA6;font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}<div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:8px 0 30px;flex-wrap:wrap">${podium}</div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px"><tr>${th("#")}${th("Joueur")}${th("Jeux")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${rows}</table></div></main>`;
 }
 
 function pGalerie(S: State) {
@@ -625,7 +643,7 @@ function adminSite(S: State) {
   const b = site.brand || {};
   const hz = site.hero || {};
   const stats: Detail[] = hz.stats?.length ? hz.stats : [{ v: "", k: "" }, { v: "", k: "" }, { v: "", k: "" }];
-  const slides: Detail[] = site.slides?.length ? site.slides : [{}, {}, {}];
+  const slides = S.slidesEdit ?? [];
   const partners = S.partnersEdit ?? [];
   const ads = S.adsEdit ?? [];
   const lbl = "font-size:12px;color:#8E8FA6;font-weight:600";
@@ -650,19 +668,25 @@ function adminSite(S: State) {
       ${hz.bgUrl ? `<button data-herobgclear="1" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:transparent;border:1px solid #33334A;color:#8E8FA6">Retirer le fond</button>` : ""}
     </div>`);
 
-  const slidesSec = sec("Accueil · « À la une » (slider, 3 diapos)", [0, 1, 2].map((i) => `
-    <div style="border:1px solid #22222F;border-radius:12px;padding:14px;margin-bottom:${i < 2 ? "12px" : "0"}">
-      <div style="${lbl};margin-bottom:8px;color:#22D3EE">Diapo ${i + 1}</div>
+  const slidesSec = sec("Accueil · « À la une » (slider)", `
+    ${slides.map((sl, i) => `
+    <div style="border:1px solid #22222F;border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="${lbl};color:#22D3EE">Diapo ${i + 1}</div>
+        <button data-sldel="${sl.key}" style="display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;cursor:pointer;flex:none">${ic(I.trash, 14)}</button>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px" class="grid2b">
-        <label style="${lbl}">Badge<input id="sl${i}-tag" value="${escAttr(slides[i]?.tag)}" placeholder="Grand tournoi" style="${adminInp}" /></label>
-        <label style="${lbl}">Titre<input id="sl${i}-title" value="${escAttr(slides[i]?.title)}" placeholder="SURVIVAL CUP LOMÉ 2026" style="${adminInp}" /></label>
+        <label style="${lbl}">Badge<input id="sl-${sl.key}-tag" value="${escAttr(sl.tag)}" placeholder="Grand tournoi" style="${adminInp}" /></label>
+        <label style="${lbl}">Titre<input id="sl-${sl.key}-title" value="${escAttr(sl.title)}" placeholder="SURVIVAL CUP LOMÉ 2026" style="${adminInp}" /></label>
       </div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:10px" class="grid2b">
-        <label style="${lbl}">Texte<input id="sl${i}-sub" value="${escAttr(slides[i]?.sub)}" placeholder="Description courte…" style="${adminInp}" /></label>
-        <label style="${lbl}">Bouton<input id="sl${i}-cta" value="${escAttr(slides[i]?.cta)}" placeholder="S'inscrire" style="${adminInp}" /></label>
+        <label style="${lbl}">Texte<input id="sl-${sl.key}-sub" value="${escAttr(sl.sub)}" placeholder="Description courte…" style="${adminInp}" /></label>
+        <label style="${lbl}">Bouton<input id="sl-${sl.key}-cta" value="${escAttr(sl.cta)}" placeholder="S'inscrire" style="${adminInp}" /></label>
       </div>
-      <div style="margin-top:10px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl${i}-img`, "Choisir une image", "image/*", slides[i]?.imageUrl)}</div>
-    </div>`).join(""));
+      <div style="margin-top:10px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl-${sl.key}-img`, "Choisir une image", "image/*", sl.imageUrl)}</div>
+    </div>`).join("")}
+    ${slides.length ? "" : `<div style="color:#5D5E72;font-size:13px;padding:8px 0 14px">Aucune diapo pour l'instant.</div>`}
+    <button data-sladd="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 15)}Ajouter une diapo</button>`);
 
   const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages, logo optionnel</span>", `
     ${partners.map((p) => `
@@ -786,15 +810,33 @@ function adminProducts(S: State) {
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
-  const products = q ? a.products.filter((p: Detail) => `${p.name} ${p.category}`.toLowerCase().includes(q)) : a.products;
+  let products = q ? a.products.filter((p: Detail) => `${p.name} ${p.category}`.toLowerCase().includes(q)) : a.products.slice();
+  const cats = Array.from(new Set(a.products.map((p: Detail) => p.category).filter(Boolean))) as string[];
+  if (S.prodCat !== "Tous") products = products.filter((p: Detail) => p.category === S.prodCat);
+  if (S.prodSort) {
+    const dir = S.prodSortDir === "asc" ? 1 : -1;
+    products = products.slice().sort((x: Detail, y: Detail) => {
+      if (S.prodSort === "name") return x.name.localeCompare(y.name) * dir;
+      if (S.prodSort === "price") return (x.priceXof - y.priceXof) * dir;
+      if (S.prodSort === "stock") return (x.stock - y.stock) * dir;
+      return 0;
+    });
+  }
+  const catChips = cats.length > 1 ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">${["Tous", ...cats].map((c) => `<button data-prodcat="${escAttr(c)}" style="font-size:12px;font-weight:${S.prodCat === c ? 700 : 600};color:${S.prodCat === c ? "#7C82FF" : "#8E8FA6"};background:${S.prodCat === c ? "rgba(124,130,255,.1)" : "#14141D"};border:1px solid ${S.prodCat === c ? "#7C82FF" : "#282838"};border-radius:999px;padding:6px 13px;cursor:pointer">${escHtml(c)}</button>`).join("")}</div>` : "";
+  const sortTh = (label: string, key: string, right = true) => {
+    const active = S.prodSort === key;
+    const arrow = active ? (S.prodSortDir === "asc" ? " ↑" : " ↓") : "";
+    return `<th data-prodsort="${key}" style="text-align:${right ? "right" : "left"};color:${active ? "#7C82FF" : "#8E8FA6"};font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750;cursor:pointer;user-select:none">${label}${arrow}</th>`;
+  };
+  const thead = `<tr>${sortTh("Produit", "name", false)}${sortTh("Prix", "price")}${sortTh("Stock", "stock")}<th style="text-align:right;color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">Actions</th></tr>`;
   const rows = products.length ? products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
       <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${API}${p.imageUrl}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
       <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
       <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
       <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
-    : `<tr><td style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun produit trouvé." : "Aucun produit."}</td></tr>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
-  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou catégorie…")}${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}</div>`;
+    : `<tr><td colspan="4" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun produit trouvé." : "Aucun produit."}</td></tr>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${products.length}/${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou catégorie…")}${catChips}${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`)}</div>`;
 }
 
 function adminPayments(S: State) {
@@ -1163,17 +1205,18 @@ function renderPage(S: State) {
 export default function Page() {
   const [S, setS] = useState<State>({
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous",
-    tourns: null, creating: false, busy: false,
+    tourns: null, creating: false, busy: false, leaderboard: null,
     cartItems: [], cartOpen: false, products: null,
     user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
     adminTab: "apercu", adminSearch: "", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
+    prodCat: "Tous", prodSort: "", prodSortDir: "asc",
     site: null, siteMsg: "",
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, regsPanel: null,
-    partnersEdit: null, adsEdit: null, adSlide: 0,
+    partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -1374,19 +1417,29 @@ export default function Page() {
       page: (document.getElementById(`ad-${a.key}-page`) as HTMLSelectElement | null)?.value ?? a.page,
     }));
   }
+  function syncSlidesFromDom(list: NonNullable<State["slidesEdit"]>) {
+    const val = (id: string, fallback: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? fallback;
+    return list.map((sl) => ({
+      ...sl,
+      tag: val(`sl-${sl.key}-tag`, sl.tag),
+      title: val(`sl-${sl.key}-title`, sl.title),
+      sub: val(`sl-${sl.key}-sub`, sl.sub),
+      cta: val(`sl-${sl.key}-cta`, sl.cta),
+    }));
+  }
   const newKey = () => Math.random().toString(36).slice(2, 9);
 
   async function saveSite() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
     let logoUrl = S.site?.brand?.logoUrl ?? null;
     let heroBg = S.site?.hero?.bgUrl ?? null;
-    const slideImgs: (string | null)[] = [0, 1, 2].map((i) => S.site?.slides?.[i]?.imageUrl ?? null);
+    const slideRows = syncSlidesFromDom(S.slidesEdit ?? []);
     const partnerRows = syncPartnersFromDom(S.partnersEdit ?? []);
     const adRows = syncAdsFromDom(S.adsEdit ?? []);
     try {
       const up = await uploadFile("b-logo"); if (up) logoUrl = up;
       const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
-      for (const i of [0, 1, 2]) { const im = await uploadFile(`sl${i}-img`); if (im) slideImgs[i] = im; }
+      for (const sl of slideRows) { const im = await uploadFile(`sl-${sl.key}-img`); if (im) sl.imageUrl = im; }
       for (const p of partnerRows) { const im = await uploadFile(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
       for (const a of adRows) { const im = await uploadFile(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
     } catch { return; }
@@ -1396,9 +1449,9 @@ export default function Page() {
       bgUrl: heroBg,
       stats: [0, 1, 2].map((i) => ({ v: val(`h-s${i}v`).trim(), k: val(`h-s${i}k`).trim() })).filter((st) => st.v || st.k),
     };
-    const slides = [0, 1, 2]
-      .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim(), imageUrl: slideImgs[i] }))
-      .filter((sl) => sl.title);
+    const slides = slideRows
+      .filter((sl) => sl.title.trim())
+      .map((sl) => ({ tag: sl.tag.trim(), title: sl.title.trim(), sub: sl.sub.trim(), cta: sl.cta.trim(), imageUrl: sl.imageUrl }));
     const partners = partnerRows.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), logoUrl: p.logoUrl }));
     const ads = adRows.filter((a) => a.imageUrl).map((a) => ({ label: a.label.trim(), linkUrl: a.linkUrl.trim(), imageUrl: a.imageUrl, page: a.page || "accueil" }));
     try {
@@ -1408,7 +1461,7 @@ export default function Page() {
       const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads)]);
       if (rs.every((r) => r.ok)) {
         await loadSettings();
-        setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0, partnersEdit: null, adsEdit: null }));
+        setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0, slidesEdit: null, partnersEdit: null, adsEdit: null }));
       } else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
@@ -1580,6 +1633,7 @@ export default function Page() {
       ...s,
       partnersEdit: s.partnersEdit ?? normPartners(s).map((p) => ({ key: newKey(), name: p.name, logoUrl: p.logoUrl })),
       adsEdit: s.adsEdit ?? (s.site?.ads ?? []).map((a: Detail) => ({ key: newKey(), label: a.label || "", linkUrl: a.linkUrl || "", imageUrl: a.imageUrl ?? null, page: a.page || "accueil" })),
+      slidesEdit: s.slidesEdit ?? (s.site?.slides?.length ? s.site.slides : SLIDES).map((sl: Detail) => ({ key: newKey(), tag: sl.tag || "", title: sl.title || "", sub: sl.sub || "", cta: sl.cta || "", imageUrl: sl.imageUrl ?? null })),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.adminTab, S.site]);
@@ -1617,7 +1671,7 @@ export default function Page() {
     // Chargement initial groupé : une seule mise à jour d'état (pas de rejeu d'animations).
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
-      const [tourns, products, news, site, gallery] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery")]);
+      const [tourns, products, news, site, gallery, leaderboard] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("tournaments/leaderboard")]);
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
@@ -1627,6 +1681,7 @@ export default function Page() {
         news: Array.isArray(news) && news.length ? news : s.news,
         site: site || s.site,
         gallery: Array.isArray(gallery) ? gallery : s.gallery,
+        leaderboard: Array.isArray(leaderboard) ? leaderboard : s.leaderboard,
       }));
     })();
     try {
@@ -1725,7 +1780,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1770,14 +1825,16 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
-    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "" }));
+    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "" }));
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.herobgclear !== undefined) clearHeroBg();
     else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null }] }));
-    else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []).filter((p) => p.key !== d.ptdel) }));
+    else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []), confirmBox: { title: "Supprimer le partenaire", message: "Cette ligne sera retirée du bandeau partenaires.", okLabel: "Supprimer", action: `ptdel|${d.ptdel}` } }));
     else if (d.adnew !== undefined) setS((s) => ({ ...s, adsEdit: [...syncAdsFromDom(s.adsEdit ?? []), { key: newKey(), label: "", linkUrl: "", imageUrl: null, page: "accueil" }] }));
-    else if (d.addel) setS((s) => ({ ...s, adsEdit: syncAdsFromDom(s.adsEdit ?? []).filter((a) => a.key !== d.addel) }));
+    else if (d.addel) setS((s) => ({ ...s, adsEdit: syncAdsFromDom(s.adsEdit ?? []), confirmBox: { title: "Supprimer la publicité", message: "Cette annonce sera retirée de la liste.", okLabel: "Supprimer", action: `addel|${d.addel}` } }));
+    else if (d.sladd !== undefined) setS((s) => ({ ...s, slidesEdit: [...syncSlidesFromDom(s.slidesEdit ?? []), { key: newKey(), tag: "", title: "", sub: "", cta: "", imageUrl: null }] }));
+    else if (d.sldel) setS((s) => ({ ...s, slidesEdit: syncSlidesFromDom(s.slidesEdit ?? []), confirmBox: { title: "Supprimer la diapo", message: "Cette diapo sera retirée du slider « À la une ».", okLabel: "Supprimer", action: `sldel|${d.sldel}` } }));
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
     else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }
     else if (d.newscancel !== undefined) setS((s) => ({ ...s, newsEdit: null }));
@@ -1803,6 +1860,8 @@ export default function Page() {
       const next = d.gprev !== undefined ? idx - 1 : idx + 1;
       if (items[next]) setS((s) => ({ ...s, galleryOpen: items[next].id }));
     }
+    else if (d.prodcat) setS((s) => ({ ...s, prodCat: d.prodcat! }));
+    else if (d.prodsort) setS((s) => ({ ...s, prodSort: d.prodsort!, prodSortDir: s.prodSort === d.prodsort && s.prodSortDir === "asc" ? "desc" : "asc" }));
     else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
     else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
@@ -1824,6 +1883,9 @@ export default function Page() {
         else if (act === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (act === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (act === "gallerydel") deleteGalleryItem(arg);
+        else if (act === "ptdel") setS((s) => ({ ...s, partnersEdit: (s.partnersEdit ?? []).filter((p) => p.key !== arg) }));
+        else if (act === "addel") setS((s) => ({ ...s, adsEdit: (s.adsEdit ?? []).filter((a) => a.key !== arg) }));
+        else if (act === "sldel") setS((s) => ({ ...s, slidesEdit: (s.slidesEdit ?? []).filter((sl) => sl.key !== arg) }));
       }
     }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }

@@ -21,7 +21,8 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
     { tag: 'Nouveau', title: 'FREE FIRE TOGO SERIES', sub: '48 joueurs en Battle Royale sur 3 jours. Qualifications en ligne ouvertes.', cta: 'Voir le tournoi' },
     { tag: 'Communauté', title: 'GAMING ARENA LOMÉ', sub: 'LAN mensuelle : viens jouer, streamer et rencontrer la communauté esport togolaise.', cta: 'Découvrir' },
   ],
-  partners: ['Gaming Arena Lomé', 'Yas Togo', 'Moov Africa', 'Université de Lomé', 'CIC Lomé', 'Togocom'],
+  partners: ['Gaming Arena Lomé', 'Yas Togo', 'Moov Africa', 'Université de Lomé', 'CIC Lomé', 'Togocom']
+    .map((name) => ({ name, logoUrl: null as string | null })),
   ads: [] as { imageUrl: string; linkUrl: string; label: string }[],
 };
 

@@ -20,7 +20,7 @@ type State = {
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[] } | null;
-  adminTab: string; newsEdit: Detail | null; prodEdit: Detail | null;
+  adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
   site: Detail | null; siteMsg: string;
   news: Detail[] | null;
@@ -134,6 +134,12 @@ const I = {
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
+/** Partenaires normalisés (compat : d'anciens réglages stockaient de simples chaînes). */
+function normPartners(S: State): { name: string; logoUrl: string | null }[] {
+  const raw: Detail[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
+  return raw.map((p: Detail) => (typeof p === "string" ? { name: p, logoUrl: null } : { name: p.name, logoUrl: p.logoUrl ?? null }));
+}
+
 /** Logo du site : image envoyée depuis l'admin, sinon l'éclair par défaut. */
 function brandLogo(S: State, size = 34, iconSize = 20) {
   const url = S.site?.brand?.logoUrl;
@@ -188,8 +194,11 @@ function tournCard(t: TournCard, big: boolean) {
         <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}${t.cagnotte} pts</span></div></div></div>`;
 }
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
-function filePicker(id: string, label = "Choisir une image", accept = "image/*") {
-  return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0">
+function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null) {
+  const isVideo = !!existingUrl && /\.(mp4|webm)$/i.test(existingUrl);
+  const preview = `<div id="pv-${id}" style="width:50px;height:50px;border-radius:11px;border:1px solid #282838;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;color:#5D5E72;background:${existingUrl && !isVideo ? `url('${API}${existingUrl}') center/cover` : "#1B1B27"}">${isVideo ? ic(I.tv, 18) : !existingUrl ? ic(I.image, 18) : ""}</div>`;
+  return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0;flex-wrap:wrap">
+    ${preview}
     <input id="${id}" type="file" accept="${accept}" style="display:none" />
     <button data-filepick="${id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;flex:none">${ic(I.image, 16)}${label}</button>
     <span id="${id}-name" style="font-size:12.5px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Aucun fichier</span>
@@ -270,8 +279,8 @@ function pAccueil(S: State) {
 
   const shopSec = `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${(S.products ?? SHOP).slice(0, 4).map((p: { name: string; price: number; ph: string; img?: string | null }) => `<div class="hcard" style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
 
-  const partnerList: string[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
-  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${escHtml(p)}</span>`).join("")}</div></div>`;
+  const partnerList = normPartners(S);
+  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
 
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${adBanner(S, 0)}${newsGrid}${shopSec}${partners}</main>`;
 }
@@ -570,6 +579,21 @@ const btnSm = (attr: string, label: string, color = "#8E8FA6", border = "#282838
   `<button ${attr} style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;border:1px solid ${border};color:${color}">${label}</button>`;
 const adminInp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
 
+/** Barre de recherche (validation par Entrée) réutilisée dans les listes admin. */
+function adminSearchBar(S: State, placeholder: string) {
+  const q = S.adminSearch;
+  return `<div style="margin-bottom:14px">
+    <div style="position:relative;max-width:340px">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 15)}</span>
+      <input id="adm-search" value="${escAttr(q)}" placeholder="${placeholder}" style="width:100%;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px 9px 34px" />
+    </div>
+    ${q ? `<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#8E8FA6;background:#14141D;border:1px solid #282838;border-radius:999px;padding:6px 11px">Recherche : <b style="color:#F4F5FB">${escHtml(q)}</b><button data-admsearchclear="1" style="display:grid;place-items:center;width:18px;height:18px;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button></span></div>` : ""}
+  </div>`;
+}
+
+/** Enveloppe défilante : évite qu'une longue liste ne pousse toute la page. */
+const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px;overflow-y:auto;padding-right:4px">${inner}</div>`;
+
 function adminPanel(S: State) {
   const a = S.admin;
   if (!a) return card(`<div style="color:#8E8FA6;text-align:center;padding:20px">Chargement du panneau admin…</div>`);
@@ -579,11 +603,11 @@ function adminPanel(S: State) {
   }).join("")}</div>`;
   const body =
     S.adminTab === "site" ? adminSite(S) :
-    S.adminTab === "users" ? adminUsers(a) :
+    S.adminTab === "users" ? adminUsers(S) :
     S.adminTab === "news" ? adminNews(S) :
     S.adminTab === "galerie" ? adminGallery(S) :
     S.adminTab === "produits" ? adminProducts(S) :
-    S.adminTab === "paiements" ? adminPayments(a) :
+    S.adminTab === "paiements" ? adminPayments(S) :
     S.adminTab === "commandes" ? adminOrders(a) :
     adminOverview(a);
   return tabs + body;
@@ -597,14 +621,14 @@ function adminSite(S: State) {
   const hz = site.hero || {};
   const stats: Detail[] = hz.stats?.length ? hz.stats : [{ v: "", k: "" }, { v: "", k: "" }, { v: "", k: "" }];
   const slides: Detail[] = site.slides?.length ? site.slides : [{}, {}, {}];
-  const partners: string[] = site.partners || [];
+  // Compat : d'anciens réglages stockaient les partenaires en simples chaînes.
+  const partners: Detail[] = (site.partners || []).map((p: Detail) => (typeof p === "string" ? { name: p, logoUrl: null } : p));
   const lbl = "font-size:12px;color:#8E8FA6;font-weight:600";
   const sec = (title: string, inner: string) => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">${secTitle(title)}${inner}</div>`;
 
   const identite = sec("Identité · logo & nom du site", `
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-      ${b.logoUrl ? `<img src="${API}${b.logoUrl}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:16px;border:1px solid #282838" />` : `<span style="display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:linear-gradient(140deg,#22D3EE,#7C82FF);color:#04222a">${ic(I.bolt, 26)}</span>`}
-      <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (image carrée conseillée)</div>${filePicker("b-logo", "Choisir le logo")}</div>
+      <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (image carrée conseillée)</div>${filePicker("b-logo", "Choisir le logo", "image/*", b.logoUrl)}</div>
       <label style="${lbl}">Nom (partie 1)<input id="b-name1" value="${escAttr(b.name1 ?? "VLOME")}" style="${adminInp}" /></label>
       <label style="${lbl}">Nom (partie 2, en couleur)<input id="b-name2" value="${escAttr(b.name2 ?? "ESPORT")}" style="${adminInp}" /></label>
     </div>`);
@@ -617,8 +641,7 @@ function adminSite(S: State) {
       ${[0, 1, 2].map((i) => `<div style="border:1px solid #22222F;border-radius:12px;padding:12px"><div style="${lbl};margin-bottom:4px">Statistique ${i + 1}</div><input id="h-s${i}v" value="${escAttr(stats[i]?.v)}" placeholder="2 400+" style="${adminInp}" /><input id="h-s${i}k" value="${escAttr(stats[i]?.k)}" placeholder="Joueurs" style="${adminInp}" /></div>`).join("")}
     </div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
-      ${hz.bgUrl ? (/\.(mp4|webm)$/i.test(hz.bgUrl) ? `<span style="display:inline-flex;align-items:center;gap:7px;color:#22D3EE;font-size:12.5px;font-weight:700;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.3);border-radius:10px;padding:9px 13px">${ic(I.tv, 15)}Vidéo en place</span>` : `<img src="${API}${hz.bgUrl}" alt="" style="width:80px;height:48px;object-fit:cover;border-radius:10px;border:1px solid #282838" />`) : ""}
-      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, 20 Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm")}</div>
+      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, 20 Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm", hz.bgUrl)}</div>
       ${hz.bgUrl ? `<button data-herobgclear="1" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:transparent;border:1px solid #33334A;color:#8E8FA6">Retirer le fond</button>` : ""}
     </div>`);
 
@@ -633,14 +656,14 @@ function adminSite(S: State) {
         <label style="${lbl}">Texte<input id="sl${i}-sub" value="${escAttr(slides[i]?.sub)}" placeholder="Description courte…" style="${adminInp}" /></label>
         <label style="${lbl}">Bouton<input id="sl${i}-cta" value="${escAttr(slides[i]?.cta)}" placeholder="S'inscrire" style="${adminInp}" /></label>
       </div>
-      <div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">
-        ${slides[i]?.imageUrl ? `<img src="${API}${slides[i].imageUrl}" alt="" style="width:80px;height:48px;object-fit:cover;border-radius:10px;border:1px solid #282838" />` : ""}
-        <div style="flex:1;min-width:220px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl${i}-img`)}</div>
-      </div>
+      <div style="margin-top:10px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl${i}-img`, "Choisir une image", "image/*", slides[i]?.imageUrl)}</div>
     </div>`).join(""));
 
-  const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages</span>", `
-    <label style="${lbl};display:block">Un partenaire par ligne<textarea id="pt-list" rows="5" style="${adminInp};resize:vertical">${escHtml(partners.join("\n"))}</textarea></label>`);
+  const partnersSec = sec("Partenaires & sponsors <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— bandeau permanent affiché sur toutes les pages, logo optionnel</span>", [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `
+    <div style="border:1px solid #22222F;border-radius:12px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <label style="${lbl};flex:1;min-width:180px">Nom du partenaire ${i + 1}<input id="pt${i}-name" value="${escAttr(partners[i]?.name)}" placeholder="—" style="${adminInp}" /></label>
+      <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (optionnel)</div>${filePicker(`pt${i}-logo`, "Choisir le logo", "image/*", partners[i]?.logoUrl)}</div>
+    </div>`).join(""));
 
   const ads: Detail[] = site.ads?.length ? site.ads : [];
   const adsSec = sec("Emplacements publicitaires <span style=\"color:#5D5E72;text-transform:none;letter-spacing:0;font-weight:500\">— accueil et page Tournois</span>", [0, 1].map((i) => `
@@ -650,10 +673,7 @@ function adminSite(S: State) {
         <label style="${lbl}">Libellé (optionnel)<input id="ad${i}-label" value="${escAttr(ads[i]?.label)}" placeholder="Nom de l'annonceur" style="${adminInp}" /></label>
         <label style="${lbl}">Lien au clic (optionnel)<input id="ad${i}-link" value="${escAttr(ads[i]?.linkUrl)}" placeholder="https://…" style="${adminInp}" /></label>
       </div>
-      <div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">
-        ${ads[i]?.imageUrl ? `<img src="${API}${ads[i].imageUrl}" alt="" style="width:80px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838" />` : ""}
-        <div style="flex:1;min-width:220px"><div style="${lbl}">Image de la bannière</div>${filePicker(`ad${i}-img`)}</div>
-      </div>
+      <div style="margin-top:10px"><div style="${lbl}">Image de la bannière</div>${filePicker(`ad${i}-img`, "Choisir une image", "image/*", ads[i]?.imageUrl)}</div>
     </div>`).join(""));
 
   const ok = S.siteMsg === "Réglages enregistrés.";
@@ -672,13 +692,17 @@ function adminOverview(a: NonNullable<State["admin"]>) {
     ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.news ?? 0, "Articles", "#34D399")}${stat(ov.gallery ?? 0, "Photos/vidéos", "#7C82FF")}${stat(ov.products, "Produits")}${stat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "#F4F5FB")}${stat(ov.orders, "Commandes")}</div>`;
 }
 
-function adminUsers(a: NonNullable<State["admin"]>) {
+function adminUsers(S: State) {
+  const a = S.admin!;
+  const q = S.adminSearch.trim().toLowerCase();
+  const users = q ? a.users.filter((u: Detail) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : a.users;
   const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "#282838"};color:${on ? ROLE_COLOR[role] : "#8E8FA6"}">${ROLE_LABEL[role]}</button>`; };
-  const rows = a.users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
-    <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${usr.displayName}</div><div style="font-size:11.5px;color:#5D5E72">${usr.email}</div></div></div></td>
-    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div></td></tr>`).join("");
-  return card(`${secTitle("Utilisateurs · rôles")}
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:520px"><tbody>${rows}</tbody></table></div>`);
+  const rows = users.length ? users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
+    <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(usr.displayName)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(usr.email)}</div></div></div></td>
+    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div></td></tr>`).join("")
+    : `<tr><td colspan="2" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun utilisateur trouvé.</td></tr>`;
+  return card(`${secTitle(`Utilisateurs · rôles (${a.users.length})`)}${adminSearchBar(S, "Nom ou email…")}
+    ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}`);
 }
 
 function adminNews(S: State) {
@@ -691,20 +715,19 @@ function adminNews(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="n-cat" value="${escAttr(e.category)}" placeholder="Esport Togo, EA FC…" style="${adminInp}" /></label>
     </div>
     <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="n-body" rows="4" placeholder="Texte de l'article…" style="${adminInp};resize:vertical">${escHtml(e.body)}</textarea></label>
-    <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
-      ${e.imageUrl ? `<img src="${API}${e.imageUrl}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #282838" />` : ""}
-      <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — 3 Mo max)</div>${filePicker("n-img")}</div>
-    </div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — 3 Mo max)</div>${filePicker("n-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-newssave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Publier l'article"}</button><button data-newscancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
-  const rows = a.news.length ? a.news.map((n: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+  const q = S.adminSearch.trim().toLowerCase();
+  const news = q ? a.news.filter((n: Detail) => `${n.title} ${n.category}`.toLowerCase().includes(q)) : a.news;
+  const rows = news.length ? news.map((n: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
       ${n.imageUrl ? `<img src="${API}${n.imageUrl}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.image, 17)}</span>`}
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(n.title)}</div><div style="font-size:12px;color:#5D5E72">${escHtml(n.category)} · ${new Date(n.createdAt).toLocaleDateString("fr-FR")}</div></div>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${n.published ? "#34D399" : "#8E8FA6"};background:${n.published ? "rgba(52,211,153,.08)" : "#14141D"};border:1px solid ${n.published ? "rgba(52,211,153,.4)" : "#282838"};border-radius:99px;padding:4px 10px">${n.published ? "Publié" : "Brouillon"}</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-newspub="${n.id}|${n.published ? 0 : 1}"`, n.published ? "Masquer" : "Publier", n.published ? "#8E8FA6" : "#34D399", n.published ? "#282838" : "rgba(52,211,153,.4)")}${btnSm(`data-newsedit="${n.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-newsdel="${n.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
-    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun article. Crée le premier !</div>`;
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun article trouvé." : "Aucun article. Crée le premier !"}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Actualités (${a.news.length})`)}<button data-newsnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouvel article</button></div>`;
-  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${rows}</div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Titre ou catégorie…")}${scrollBox(rows)}</div>`;
 }
 
 function adminGallery(S: State) {
@@ -720,15 +743,17 @@ function adminGallery(S: State) {
     <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — 20 Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-gallerysave="1" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Ajouter</button><button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
-  const grid = items.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${items.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E0E16;position:relative">
+  const q = S.adminSearch.trim().toLowerCase();
+  const filtered = q ? items.filter((it: Detail) => `${it.title} ${it.tournament?.name ?? ""}`.toLowerCase().includes(q)) : items;
+  const grid = filtered.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${filtered.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E0E16;position:relative">
       <div style="height:150px;position:relative;background:${it.mediaType === "video" ? "#14141D" : `url('${API}${it.mediaUrl}')`};background-size:cover;background-position:center">
         ${it.mediaType === "video" ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#7C82FF">${ic(I.tv, 30)}</span>` : ""}
         <button data-gallerydel="${it.id}" style="position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 13)}</button>
       </div>
       <div style="padding:11px 12px"><div style="font-size:13px;font-weight:650;line-height:1.35">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11px;color:#7C82FF;font-weight:700;margin-top:4px">${escHtml(it.tournament.name)}</div>` : ""}</div>
-    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:24px 0;text-align:center">Galerie vide. Ajoute la première photo ou vidéo !</div>`;
+    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:24px 0;text-align:center">${q ? "Aucun média trouvé." : "Galerie vide. Ajoute la première photo ou vidéo !"}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">${secTitle(`Galerie (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un media</button></div>`;
-  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${grid}</div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Titre ou tournoi…")}${scrollBox(grid)}</div>`;
 }
 
 function adminProducts(S: State) {
@@ -742,24 +767,28 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Prix (FCFA)<input id="pr-price" type="number" min="0" value="${e.priceXof ?? 0}" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
-      ${e.imageUrl ? `<img src="${API}${e.imageUrl}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid #282838" />` : ""}
-      <div style="flex:1;min-width:240px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — 3 Mo max)</div>${filePicker("pr-img")}</div>
-    </div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — 3 Mo max)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
-  const rows = a.products.length ? a.products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
+  const q = S.adminSearch.trim().toLowerCase();
+  const products = q ? a.products.filter((p: Detail) => `${p.name} ${p.category}`.toLowerCase().includes(q)) : a.products;
+  const rows = products.length ? products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
       <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${API}${p.imageUrl}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
       <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
       <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
       <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
-    : `<tr><td style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun produit.</td></tr>`;
+    : `<tr><td style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun produit trouvé." : "Aucun produit."}</td></tr>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
-  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tbody>${rows}</tbody></table></div></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou catégorie…")}${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}</div>`;
 }
 
-function adminPayments(a: NonNullable<State["admin"]>) {
-  const rows = a.payments.length ? a.payments.map((r: Detail) => {
+function adminPayments(S: State) {
+  const a = S.admin!;
+  const q = S.adminSearch.trim().toLowerCase();
+  const payments = q
+    ? a.payments.filter((r: Detail) => `${r.playerName} ${r.tournament?.name ?? ""} ${r.user?.displayName ?? ""} ${r.user?.email ?? ""}`.toLowerCase().includes(q))
+    : a.payments;
+  const rows = payments.length ? payments.map((r: Detail) => {
     const isPending = r.paymentStatus === "pending";
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(r.playerName)} <span style="color:#5D5E72;font-weight:400;font-size:12px">· ${escHtml(r.tournament?.name)}</span></div><div style="font-size:12px;color:#5D5E72">${escHtml(r.user?.displayName)} · ${escHtml(r.user?.email)} · ${escHtml(r.paymentMethod)}</div></div>
@@ -768,9 +797,9 @@ function adminPayments(a: NonNullable<State["admin"]>) {
         ? `<button data-confirmpay="${r.tournament?.id}|${r.id}" style="font-size:12px;font-weight:750;border-radius:9px;padding:8px 14px;cursor:pointer;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399">Confirmer</button>`
         : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#34D399;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:4px 10px">Payé</span>`}
       </div>`;
-  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun paiement d'inscription pour l'instant.</div>`;
+  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun paiement trouvé." : "Aucun paiement d'inscription pour l'instant."}</div>`;
   const pendingCount = a.payments.filter((r: Detail) => r.paymentStatus === "pending").length;
-  return card(secTitle(`Paiements des inscriptions (${a.payments.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`) + rows);
+  return card(`${secTitle(`Paiements des inscriptions (${a.payments.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`)}${adminSearchBar(S, "Joueur, tournoi ou email…")}${scrollBox(rows)}`);
 }
 
 const ORDER_STATUS: Record<string, [string, string]> = {
@@ -797,7 +826,7 @@ function adminOrders(a: NonNullable<State["admin"]>) {
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${sc};background:${sc}14;border:1px solid ${sc}55;border-radius:99px;padding:4px 10px">${sl}</span>
       <div style="display:inline-flex;gap:6px">${stBtns}</div></div>`;
   }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune commande.</div>`;
-  return summary + card(secTitle(`Commandes (${orders.length})`) + rows);
+  return summary + card(secTitle(`Commandes (${orders.length})`) + scrollBox(rows));
 }
 
 function pTournoi(S: State) {
@@ -829,7 +858,7 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Frais d'inscription (FCFA)<input id="e-fee" type="number" min="0" step="100" value="${t.entryFeeXof || 0}" style="${inpE}" /></label>
-      <div><div style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche")}</div>
+      <div><div style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche", "image/*", t.imageUrl)}</div>
     </div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
@@ -1073,21 +1102,30 @@ function pShow(S: State) {
 }
 
 /** Emplacement publicitaire éditable depuis l'admin (settings.ads[index]) — rien si vide. */
+/**
+ * Emplacement publicitaire : l'image est affichée en entier (object-fit:contain)
+ * quel que soit son format — pas de recadrage moche façon "cover" sur les
+ * bannières fournies par les annonceurs.
+ */
 function adBanner(S: State, index: number) {
   const ad: Detail = S.site?.ads?.[index];
   if (!ad?.imageUrl) return "";
-  const img = `<div class="zoom" style="width:100%;height:100%;background-image:url('${API}${ad.imageUrl}');background-size:cover;background-position:center"></div>`;
-  const inner = `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;position:relative;height:120px;margin-bottom:30px">${img}
-    <span style="position:absolute;top:9px;left:11px;font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;background:rgba(11,11,17,.65);border-radius:99px;padding:3px 9px">Publicité</span>
-    ${ad.label ? `<span style="position:absolute;bottom:11px;left:14px;font-weight:750;font-size:15px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7)">${escHtml(ad.label)}</span>` : ""}</div>`;
+  const inner = `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16);margin-bottom:30px">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 0">
+      <span style="font-size:9.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72">Publicité</span>
+      ${ad.label ? `<span style="font-size:12px;font-weight:700;color:#8E8FA6">${escHtml(ad.label)}</span>` : ""}
+    </div>
+    <div style="height:150px;display:flex;align-items:center;justify-content:center;padding:14px 24px">
+      <img src="${API}${ad.imageUrl}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
+    </div></div>`;
   return ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block">${inner}</a>` : inner;
 }
 
 /** Bandeau permanent des partenaires — présent sur toutes les pages, sous l'en-tête. */
 function partnersMarquee(S: State) {
-  const partners: string[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
+  const partners = normPartners(S);
   if (!partners.length) return "";
-  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${ic(I.crown, 12)}${escHtml(p)}</span>`).join("");
+  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : ic(I.crown, 12)}${escHtml(p.name)}</span>`).join("");
   return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:7px 0"><div class="marquee-track">${items}${items}</div></div>`;
 }
 
@@ -1108,7 +1146,7 @@ export default function Page() {
     user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
-    adminTab: "apercu", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
+    adminTab: "apercu", adminSearch: "", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
     site: null, siteMsg: "",
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
@@ -1307,11 +1345,16 @@ export default function Page() {
     let heroBg = S.site?.hero?.bgUrl ?? null;
     const slideImgs: (string | null)[] = [0, 1, 2].map((i) => S.site?.slides?.[i]?.imageUrl ?? null);
     const adImgs: (string | null)[] = [0, 1].map((i) => S.site?.ads?.[i]?.imageUrl ?? null);
+    const partnerLogos: (string | null)[] = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+      const p = S.site?.partners?.[i];
+      return (p && typeof p === "object" ? p.logoUrl : null) ?? null;
+    });
     try {
       const up = await uploadFile("b-logo"); if (up) logoUrl = up;
       const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
       for (const i of [0, 1, 2]) { const im = await uploadFile(`sl${i}-img`); if (im) slideImgs[i] = im; }
       for (const i of [0, 1]) { const im = await uploadFile(`ad${i}-img`); if (im) adImgs[i] = im; }
+      for (const i of [0, 1, 2, 3, 4, 5, 6, 7]) { const im = await uploadFile(`pt${i}-logo`); if (im) partnerLogos[i] = im; }
     } catch { return; }
     const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
     const hero = {
@@ -1322,7 +1365,9 @@ export default function Page() {
     const slides = [0, 1, 2]
       .map((i) => ({ tag: val(`sl${i}-tag`).trim(), title: val(`sl${i}-title`).trim(), sub: val(`sl${i}-sub`).trim(), cta: val(`sl${i}-cta`).trim(), imageUrl: slideImgs[i] }))
       .filter((sl) => sl.title);
-    const partners = val("pt-list").split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+    const partners = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map((i) => ({ name: val(`pt${i}-name`).trim(), logoUrl: partnerLogos[i] }))
+      .filter((p) => p.name);
     // Les 2 emplacements gardent leur position (index 0 = accueil, 1 = page Tournois) même vides.
     const ads = [0, 1].map((i) => ({ label: val(`ad${i}-label`).trim(), linkUrl: val(`ad${i}-link`).trim(), imageUrl: adImgs[i] }));
     try {
@@ -1599,7 +1644,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1643,7 +1688,8 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
-    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "" }));
+    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "" }));
+    else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.herobgclear !== undefined) clearHeroBg();
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
@@ -1716,8 +1762,21 @@ export default function Page() {
   function onChange(e: React.ChangeEvent<HTMLDivElement>) {
     const t = e.target as HTMLInputElement;
     if (t.type === "file" && t.id) {
+      const file = t.files?.[0];
       const span = document.getElementById(t.id + "-name");
-      if (span) span.textContent = t.files?.[0]?.name || "Aucun fichier";
+      if (span) span.textContent = file?.name || "Aucun fichier";
+      // Aperçu instantané (avant tout envoi/enregistrement) depuis le fichier local choisi.
+      const pv = document.getElementById("pv-" + t.id);
+      if (pv && file) {
+        const url = URL.createObjectURL(file);
+        if (file.type.startsWith("video/")) {
+          pv.style.background = "#1B1B27";
+          pv.innerHTML = `<video src="${url}" muted autoplay loop playsinline style="width:100%;height:100%;object-fit:cover"></video>`;
+        } else {
+          pv.style.background = `url('${url}') center/cover`;
+          pv.innerHTML = "";
+        }
+      }
     }
   }
 
@@ -1727,6 +1786,9 @@ export default function Page() {
       const q = (t as HTMLInputElement).value.trim();
       setS((s) => ({ ...s, q, page: "tournois", creating: false }));
       window.scrollTo({ top: 0 });
+    }
+    if (e.key === "Enter" && t.id === "adm-search") {
+      setS((s) => ({ ...s, adminSearch: (t as HTMLInputElement).value.trim() }));
     }
   }
 

@@ -274,8 +274,16 @@ function pAccueil(S: State) {
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
   const tournGrid = `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
 
-  const rankSource: Detail[] = S.leaderboard?.length ? S.leaderboard : RANK.map((r) => ({ name: r.name, city: r.club, games: [r.game], points: r.pts }));
-  const rankRows = rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || (r.games || [])[0] || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml((r.games || [])[0])}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  // Teaser d'accueil : la meilleure performance de chaque joueur (un seul jeu à la fois, jamais de points additionnés entre jeux).
+  let rankSource: Detail[];
+  if (S.leaderboard?.length) {
+    const bestByPlayer = new Map<string, Detail>();
+    for (const r of S.leaderboard) { if (!bestByPlayer.has(r.name) || r.points > bestByPlayer.get(r.name)!.points) bestByPlayer.set(r.name, r); }
+    rankSource = Array.from(bestByPlayer.values()).sort((a, b) => b.points - a.points);
+  } else {
+    rankSource = RANK.map((r) => ({ name: r.name, city: r.club, game: r.game, points: r.pts }));
+  }
+  const rankRows = rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
@@ -289,7 +297,7 @@ function pAccueil(S: State) {
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${adCarousel(S, "accueil")}${newsGrid}${shopSec}${partners}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
 
 function pTournois(S: State) {
@@ -334,34 +342,61 @@ function pTournois(S: State) {
   const grid = list.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">${list.map((t) => tournCard(t, true)).join("")}</div>`
     : empty;
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${adCarousel(S, "tournois")}${form}${filt}${qPill}${grid}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${form}${filt}${qPill}${grid}${adCarousel(S, "tournois")}</main>`;
+}
+
+/** Rend le podium + tableau d'UN classement (déjà trié par points desc) pour un jeu donné. Jamais de stats mélangées entre jeux. */
+function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: number }) {
+  const list = opts.limit ? rows.slice(0, opts.limit) : rows;
+  const podiumColors = [["#FBBF24", "#f59e0b", "96px", "1"], ["#cbd5e1", "#94a3b8", "72px", "2"], ["#d6a37a", "#b4784f", "56px", "3"]];
+  let podiumHtml = "";
+  if (opts.podium && list.length) {
+    const top3 = list.slice(0, 3);
+    const order = top3.length > 1 ? [top3[1], top3[0], top3[2]].filter(Boolean) : top3;
+    podiumHtml = `<div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
+      const rank = list.indexOf(r);
+      const [plColor, avA, h] = podiumColors[rank];
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:#8E8FA6">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+    }).join("")}</div>`;
+  }
+  const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
+  const trs = list.map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "#5D5E72"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:#8E8FA6;font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const table = `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
+  return podiumHtml + table;
 }
 
 function pClassements(S: State) {
   const all: Detail[] = S.leaderboard ?? [];
-  const list = S.game === "Tous" ? all : all.filter((r: Detail) => (r.games || []).includes(S.game));
-  const head = `<h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Points, victoires et titres calculés depuis les résultats réels des tournois</p>`;
+  const head = `<h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Points, victoires et titres calculés depuis les résultats réels des tournois — un classement distinct par jeu, jamais mélangés</p>`;
   const filt = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${chips(GAMES, S.game, "game")}</div>`;
   if (S.leaderboard === null) {
     return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}<div style="color:#5D5E72;text-align:center;padding:40px 0">Chargement…</div></main>`;
   }
-  if (!list.length) {
+  if (!all.length) {
     return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center;color:#8E8FA6">
         <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#FBBF24;margin:0 auto 14px">${ic(I.medal, 26)}</div>
         Aucun résultat pour l'instant. Le classement se remplit au fil des matchs joués !</div></main>`;
   }
-  const podiumColors = [["#FBBF24", "#f59e0b", "96px", "1"], ["#cbd5e1", "#94a3b8", "72px", "2"], ["#d6a37a", "#b4784f", "56px", "3"]];
-  const top3 = list.slice(0, 3);
-  const order = top3.length > 1 ? [top3[1], top3[0], top3[2]].filter(Boolean) : top3;
-  const podium = order.map((r: Detail) => {
-    const rank = list.indexOf(r);
-    const [plColor, avA, h] = podiumColors[rank];
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:#8E8FA6">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+  // Chaque jeu garde son propre classement (points/winrate/tournois) — jamais additionné avec un autre jeu.
+  const byGame = new Map<string, Detail[]>();
+  for (const r of all) { const g = r.game || "Autre"; if (!byGame.has(g)) byGame.set(g, []); byGame.get(g)!.push(r); }
+  const gamesPresent = GAMES.filter((g) => g !== "Tous" && byGame.has(g)).concat(Array.from(byGame.keys()).filter((g) => !GAMES.includes(g)));
+
+  if (S.game !== "Tous") {
+    const rows = byGame.get(S.game) ?? [];
+    const body = rows.length
+      ? gameLeaderboardBlock(rows, { podium: true })
+      : `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">Aucun résultat pour « ${S.game} » pour l'instant.</div>`;
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${body}</main>`;
+  }
+
+  const sections = gamesPresent.map((g) => {
+    const rows = byGame.get(g) ?? [];
+    const gameHead = `<div style="display:flex;align-items:center;gap:10px;margin:0 0 14px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span><h3 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0">${escHtml(g)}</h3><span style="font-size:12px;color:#5D5E72;font-weight:600">${rows.length} joueur${rows.length > 1 ? "s" : ""} classé${rows.length > 1 ? "s" : ""}</span></div>`;
+    return `<section style="margin-bottom:36px">${gameHead}${gameLeaderboardBlock(rows, { podium: rows.length >= 3, limit: 10 })}</section>`;
   }).join("");
-  const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const rows = list.map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "#5D5E72"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;color:#8E8FA6;font-size:12.5px">${escHtml((r.games || []).join(", "))}</td><td style="padding:11px 8px;text-align:right;color:#8E8FA6;font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}<div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:8px 0 30px;flex-wrap:wrap">${podium}</div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px"><tr>${th("#")}${th("Joueur")}${th("Jeux")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${rows}</table></div></main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${sections}</main>`;
 }
 
 function pGalerie(S: State) {
@@ -1164,25 +1199,30 @@ function pShow(S: State) {
  * pages ») ; s'il y en a plusieurs, elles tournent automatiquement avec des
  * puces de navigation. L'image reste toujours visible en entier (object-fit:contain).
  */
+/** Bannière sponsorisée : section pleine largeur au style cohérent avec le reste du site, placée en fin de page (jamais coincée entre deux blocs de contenu). */
 function adCarousel(S: State, pageKey: string) {
   const all: Detail[] = S.site?.ads ?? [];
   const items = all.filter((a) => a.imageUrl && (a.page === pageKey || a.page === "toutes"));
   if (!items.length) return "";
   const idx = items.length > 1 ? ((S.adSlide % items.length) + items.length) % items.length : 0;
   const ad = items[idx];
-  const card = `<div class="hcard slidein" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 15px 0">
-      <span style="font-size:9.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72">Publicité</span>
-      ${ad.label ? `<span style="font-size:11.5px;font-weight:700;color:#8E8FA6">${escHtml(ad.label)}</span>` : ""}
-    </div>
-    <div style="height:130px;display:flex;align-items:center;justify-content:center;padding:12px 22px">
+  const label = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:5px;height:22px;border-radius:3px;background:#5D5E72;display:inline-block"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Contenu sponsorisé</h3></div>`;
+  const inner = `<div class="slidein" style="display:flex;align-items:center;gap:26px;padding:20px 24px;flex-wrap:wrap">
+    <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:#0B0B11;display:flex;align-items:center;justify-content:center">
       <img src="${API}${ad.imageUrl}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
-    </div></div>`;
-  const clickable = ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block">${card}</a>` : card;
+    </div>
+    <div style="flex:1;min-width:200px">
+      <div style="font-weight:750;font-size:16px">${ad.label ? escHtml(ad.label) : "Un partenaire VLOME Esport"}</div>
+      <div style="font-size:12.5px;color:#5D5E72;margin-top:4px">Cet emplacement soutient l'organisation des tournois VLOME.</div>
+    </div>
+    ${ad.linkUrl ? `<span style="flex:none;display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px">Découvrir ${ic(I.arrow, 15)}</span>` : ""}
+  </div>`;
+  const card = `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(90deg,#14141D,#0E0E16)">${inner}</div>`;
+  const clickable = ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block;text-decoration:none;color:inherit">${card}</a>` : card;
   const dots = items.length > 1
-    ? `<div style="display:flex;gap:6px;justify-content:center;margin-top:10px">${items.map((_, i) => `<span data-adslide="${i}" style="display:inline-block;width:${i === idx ? 18 : 7}px;height:6px;border-radius:99px;background:${i === idx ? "#7C82FF" : "#33334A"};cursor:pointer;transition:width .2s"></span>`).join("")}</div>`
+    ? `<div style="display:flex;gap:6px;justify-content:center;margin-top:12px">${items.map((_, i) => `<span data-adslide="${i}" style="display:inline-block;width:${i === idx ? 18 : 7}px;height:6px;border-radius:99px;background:${i === idx ? "#7C82FF" : "#33334A"};cursor:pointer;transition:width .2s"></span>`).join("")}</div>`
     : "";
-  return `<div style="max-width:520px;margin:0 auto 30px">${clickable}${dots}</div>`;
+  return `<section style="margin:0 0 44px">${label}${clickable}${dots}</section>`;
 }
 
 /** Bandeau permanent des partenaires — présent sur toutes les pages, sous l'en-tête. */

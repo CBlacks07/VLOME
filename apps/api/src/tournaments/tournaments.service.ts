@@ -101,29 +101,33 @@ export class TournamentsService {
   }
 
   /**
-   * Classement global : agrège les résultats réels (points, victoires, titres) de
+   * Classement par jeu : agrège les résultats réels (points, victoires, titres) de
    * tous les tournois, poule par poule, joueur par joueur — aucune donnée inventée
    * (pas d'ELO ni de winrate fictifs, tout vient de l'état du moteur).
+   * Un même joueur peut apparaître une fois par jeu : les stats ne sont jamais
+   * mélangées entre jeux différents (un point en Free Fire n'a rien à voir avec
+   * un point en Tekken 8).
    */
   async leaderboard() {
     const tournaments = await this.prisma.tournament.findMany({
       select: { id: true, game: true, engineState: true },
     });
-    type Agg = { name: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string>; games: Set<string> };
+    type Agg = { name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
     const agg = new Map<string, Agg>();
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st || !st.players?.length) continue;
+      const game = t.game || 'Autre';
       for (const p of st.players) {
-        const entry = agg.get(p.name) ?? { name: p.name, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set(), games: new Set() };
+        const key = `${p.name}||${game}`;
+        const entry = agg.get(key) ?? { name: p.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
         const points = st.points?.[p.id] || 0;
         const matches = st.log.filter((l) => l.a === p.id || l.b === p.id).length;
         const wins = st.log.filter((l) => l.winner === p.id).length;
         entry.points += points; entry.wins += wins; entry.matches += matches;
         if (st.champion === p.id) entry.championships++;
         if (matches > 0) entry.tournaments.add(t.id);
-        if (t.game) entry.games.add(t.game);
-        agg.set(p.name, entry);
+        agg.set(key, entry);
       }
     }
 
@@ -136,6 +140,7 @@ export class TournamentsService {
       .filter((e) => e.matches > 0)
       .map((e) => ({
         name: e.name,
+        game: e.game,
         points: Math.round(e.points * 10) / 10,
         wins: e.wins,
         losses: e.matches - e.wins,
@@ -143,11 +148,10 @@ export class TournamentsService {
         winrate: e.matches ? Math.round((e.wins / e.matches) * 100) : 0,
         championships: e.championships,
         tournamentsPlayed: e.tournaments.size,
-        games: Array.from(e.games),
         city: cityByName.get(e.name) || null,
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
-      .slice(0, 100);
+      .slice(0, 300);
   }
 
   /**

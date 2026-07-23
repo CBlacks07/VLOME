@@ -27,7 +27,7 @@ type State = {
   me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null; myResults: Detail[] | null;
   regIds: { id: string; status: string; amountXof: number }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
   payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
-  gallery: Detail[] | null; galleryEdit: Detail | null;
+  gallery: Detail[] | null; galleryEdit: Detail | null; galleryFilter: string; galleryOpen: string | null;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
 };
 
@@ -333,25 +333,61 @@ function pClassements(S: State) {
 }
 
 function pGalerie(S: State) {
-  const items: Detail[] = S.gallery ?? [];
-  const head = `<div style="margin-bottom:24px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Photos et vidéos des tournois, LAN et remises de prix VLOME</p></div>`;
-  if (!items.length) {
+  const all: Detail[] = S.gallery ?? [];
+  const tournFilters = Array.from(
+    new Map(all.filter((it) => it.tournament).map((it: Detail) => [it.tournament.id, it.tournament.name])).entries()
+  );
+  const items = S.galleryFilter ? all.filter((it) => it.tournament?.id === S.galleryFilter) : all;
+  const count = all.length;
+  const head = `<div style="margin-bottom:6px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">${count ? `${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix VLOME` : "Photos et vidéos des tournois, LAN et remises de prix VLOME"}</p></div>`;
+  if (!count) {
     return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}
-      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center;color:#8E8FA6">
-        <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#7C82FF;margin:0 auto 14px">${ic(I.image, 26)}</div>
-        Aucun media pour l'instant. Reviens après le prochain événement !</div></main>`;
+      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:64px 24px;text-align:center;color:#8E8FA6;margin-top:20px">
+        <div style="display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#7C82FF;margin:0 auto 16px">${ic(I.image, 28)}</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:#F4F5FB;margin-bottom:6px">Galerie vide pour l'instant</div>
+        Reviens après le prochain événement pour revivre les meilleurs moments !</div></main>`;
   }
-  const card = (it: Detail) => {
+  const filterChips = tournFilters.length
+    ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 22px">
+        <button data-gfilter="" style="font-family:inherit;font-size:12.5px;font-weight:${!S.galleryFilter ? 700 : 600};color:${!S.galleryFilter ? "#22D3EE" : "#8E8FA6"};background:${!S.galleryFilter ? "rgba(34,211,238,.08)" : "#14141D"};border:1px solid ${!S.galleryFilter ? "#22D3EE" : "#282838"};border-radius:999px;padding:8px 15px;cursor:pointer">Tous</button>
+        ${tournFilters.map(([id, name]) => `<button data-gfilter="${id}" style="font-family:inherit;font-size:12.5px;font-weight:${S.galleryFilter === id ? 700 : 600};color:${S.galleryFilter === id ? "#22D3EE" : "#8E8FA6"};background:${S.galleryFilter === id ? "rgba(34,211,238,.08)" : "#14141D"};border:1px solid ${S.galleryFilter === id ? "#22D3EE" : "#282838"};border-radius:999px;padding:8px 15px;cursor:pointer">${escHtml(name as string)}</button>`).join("")}
+      </div>`
+    : `<div style="margin-top:20px"></div>`;
+  const card = (it: Detail, i: number) => {
     const media = it.mediaType === "video"
       ? `<video class="zoom" src="${API}${it.mediaUrl}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()" style="width:100%;height:100%;object-fit:cover"></video>`
       : `<div class="zoom" style="width:100%;height:100%;background-image:url('${API}${it.mediaUrl}');background-size:cover;background-position:center"></div>`;
-    return `<a href="${API}${it.mediaUrl}" target="_blank" rel="noopener" class="hcard" style="display:block;border:1px solid #282838;border-radius:16px;overflow:hidden;background:#14141D;position:relative">
-      <div style="height:220px;overflow:hidden">${media}</div>
-      ${it.mediaType === "video" ? `<span style="position:absolute;top:10px;right:10px;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(11,11,17,.7);color:#fff">${ic(I.tv, 13)}</span>` : ""}
-      <div style="padding:11px 13px"><div style="font-weight:650;font-size:13.5px">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#5D5E72;margin-top:2px">${escHtml(it.tournament.name)}</div>` : ""}</div></a>`;
+    return `<div data-gopen="${it.id}" class="hcard rise d${Math.min(i % 5 + 1, 5)}" style="cursor:pointer;border:1px solid #282838;border-radius:16px;overflow:hidden;background:#14141D;position:relative">
+      <div style="height:250px;overflow:hidden">${media}</div>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(11,11,17,.92));pointer-events:none"></div>
+      ${it.mediaType === "video" ? `<span style="position:absolute;top:11px;right:11px;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:rgba(11,11,17,.7);border:1px solid rgba(255,255,255,.2);color:#fff">${ic(I.tv, 14)}</span>` : ""}
+      <div style="position:absolute;left:14px;right:14px;bottom:13px"><div style="font-weight:700;font-size:14.5px;color:#fff;line-height:1.3">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#22D3EE;font-weight:700;margin-top:3px">${escHtml(it.tournament.name)}</div>` : ""}</div></div>`;
   };
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">${items.map(card).join("")}</div></main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filterChips}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px">${items.map(card).join("")}</div>${galleryLightbox(S, items)}</main>`;
+}
+
+/** Visionneuse plein écran (photo/vidéo, navigation précédent/suivant). */
+function galleryLightbox(S: State, items: Detail[]) {
+  if (!S.galleryOpen) return "";
+  const idx = items.findIndex((it) => it.id === S.galleryOpen);
+  const it = items[idx];
+  if (!it) return "";
+  const media = it.mediaType === "video"
+    ? `<video src="${API}${it.mediaUrl}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:12px"></video>`
+    : `<img src="${API}${it.mediaUrl}" alt="${escAttr(it.title)}" style="max-width:100%;max-height:78vh;border-radius:12px;object-fit:contain" />`;
+  const nav = (dir: "prev" | "next", disabled: boolean) => `<button data-g${dir}="1" ${disabled ? "disabled" : ""} style="display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:${disabled ? "#33334A" : "#F4F5FB"};cursor:${disabled ? "default" : "pointer"};flex:none;transform:${dir === "prev" ? "scaleX(-1)" : "none"}">${ic(I.arrow, 18)}</button>`;
+  return `<div data-gclose="1" style="position:fixed;inset:0;z-index:250;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;background:rgba(6,6,10,.92);backdrop-filter:blur(8px)">
+    <div data-stop="1" style="display:flex;align-items:center;gap:16px;max-width:1100px;width:100%">
+      ${nav("prev", idx <= 0)}
+      <div style="flex:1;min-width:0;text-align:center">
+        ${media}
+        <div style="margin-top:14px"><div style="font-weight:700;font-size:16px;color:#fff">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:12.5px;color:#22D3EE;font-weight:700;margin-top:4px">${escHtml(it.tournament.name)}</div>` : ""}<div style="font-size:11.5px;color:#5D5E72;margin-top:6px">${idx + 1} / ${items.length}</div></div>
+      </div>
+      ${nav("next", idx >= items.length - 1)}
+    </div>
+    <button data-gclose="1" style="position:absolute;top:20px;right:24px;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#F4F5FB;cursor:pointer">${ic(I.x, 18)}</button>
+  </div>`;
 }
 
 function pBoutique(S: State) {
@@ -684,12 +720,14 @@ function adminGallery(S: State) {
     <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — 20 Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-gallerysave="1" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Ajouter</button><button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
-  const grid = items.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">${items.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden;background:#0E0E16;position:relative">
-      <div style="height:100px;background:${it.mediaType === "video" ? "#14141D" : `url('${API}${it.mediaUrl}')`};background-size:cover;background-position:center;display:${it.mediaType === "video" ? "grid" : "block"};place-items:center;color:#7C82FF">${it.mediaType === "video" ? ic(I.tv, 22) : ""}</div>
-      <div style="padding:8px 9px"><div style="font-size:11.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.title)}</div></div>
-      <button data-gallerydel="${it.id}" style="position:absolute;top:6px;right:6px;display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 12)}</button>
-    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Galerie vide.</div>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Galerie (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un media</button></div>`;
+  const grid = items.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${items.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E0E16;position:relative">
+      <div style="height:150px;position:relative;background:${it.mediaType === "video" ? "#14141D" : `url('${API}${it.mediaUrl}')`};background-size:cover;background-position:center">
+        ${it.mediaType === "video" ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#7C82FF">${ic(I.tv, 30)}</span>` : ""}
+        <button data-gallerydel="${it.id}" style="position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 13)}</button>
+      </div>
+      <div style="padding:11px 12px"><div style="font-size:13px;font-weight:650;line-height:1.35">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11px;color:#7C82FF;font-weight:700;margin-top:4px">${escHtml(it.tournament.name)}</div>` : ""}</div>
+    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:24px 0;text-align:center">Galerie vide. Ajoute la première photo ou vidéo !</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">${secTitle(`Galerie (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un media</button></div>`;
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${grid}</div>`;
 }
 
@@ -740,19 +778,26 @@ const ORDER_STATUS: Record<string, [string, string]> = {
 };
 
 function adminOrders(a: NonNullable<State["admin"]>) {
-  const rows = a.orders.length ? a.orders.map((o: Detail) => {
+  const orders = a.orders as Detail[];
+  const confirmed = orders.filter((o) => o.status === "paid" || o.status === "delivered");
+  const revenue = confirmed.reduce((sum, o) => sum + o.totalXof, 0);
+  const pending = orders.filter((o) => o.status === "pending").length;
+  const stat = (v: string | number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:#14141D;padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:28px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
+  const summary = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:18px">
+    ${stat(orders.length, "Commandes")}${stat(money(revenue), "Revenu confirmé", "#34D399")}${stat(pending, "En attente", pending > 0 ? "#FBBF24" : "#F4F5FB")}</div>`;
+  const rows = orders.length ? orders.map((o: Detail) => {
     const [sl, sc] = ORDER_STATUS[o.status] || [o.status, "#8E8FA6"];
     const items = Array.isArray(o.items) ? o.items.map((i: Detail) => i.name).join(", ") : "";
     const stBtns = ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
       .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference} <span style="color:#5D5E72;font-weight:400;font-size:12px">· ${o.user ? escHtml(o.user.displayName) + " (" + escHtml(o.user.email) + ")" : "invité"}</span></div>
-      <div style="font-size:12px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items) || o.paymentMethod} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>
+      <div style="font-size:12px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items || o.paymentMethod || "Aucun article")} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>
       <span style="font-weight:800;color:#22D3EE;white-space:nowrap">${money(o.totalXof)}</span>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${sc};background:${sc}14;border:1px solid ${sc}55;border-radius:99px;padding:4px 10px">${sl}</span>
       <div style="display:inline-flex;gap:6px">${stBtns}</div></div>`;
   }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune commande.</div>`;
-  return card(secTitle(`Commandes (${a.orders.length})`) + rows);
+  return summary + card(secTitle(`Commandes (${orders.length})`) + rows);
 }
 
 function pTournoi(S: State) {
@@ -1067,7 +1112,7 @@ export default function Page() {
     site: null, siteMsg: "",
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
-    payPick: "", gallery: null, galleryEdit: null, regsPanel: null,
+    payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, regsPanel: null,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -1554,7 +1599,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1616,6 +1661,15 @@ export default function Page() {
     else if (d.gallerydel) {
       const it = S.gallery?.find((x: Detail) => x.id === d.gallerydel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer ce média", message: `« ${it?.title || "Ce média"} » sera définitivement supprimé de la galerie.`, okLabel: "Supprimer", action: `gallerydel|${d.gallerydel}` } }));
+    }
+    else if (d.gfilter !== undefined) setS((s) => ({ ...s, galleryFilter: d.gfilter! }));
+    else if (d.gopen) setS((s) => ({ ...s, galleryOpen: d.gopen! }));
+    else if (d.gclose !== undefined) setS((s) => ({ ...s, galleryOpen: null }));
+    else if (d.gprev !== undefined || d.gnext !== undefined) {
+      const items = S.galleryFilter ? (S.gallery ?? []).filter((it: Detail) => it.tournament?.id === S.galleryFilter) : (S.gallery ?? []);
+      const idx = items.findIndex((it: Detail) => it.id === S.galleryOpen);
+      const next = d.gprev !== undefined ? idx - 1 : idx + 1;
+      if (items[next]) setS((s) => ({ ...s, galleryOpen: items[next].id }));
     }
     else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }

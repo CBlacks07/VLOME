@@ -6,8 +6,12 @@
 // et en prod (node dist/main.js, depuis dist/), les deux arborescences ayant
 // la même profondeur sous generated/.
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  // "native" = binaire local (Windows en dev) ; les autres = runtime Vercel
+  // (Amazon Linux 2023 / anciennes images) — sans ça le moteur de requête
+  // généré peut ne pas correspondre à l'environnement d'exécution réel.
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "rhel-openssl-1.0.x"]
 }
 
 datasource db {

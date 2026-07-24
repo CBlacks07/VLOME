@@ -1,6 +1,11 @@
 node_modules/
 .pnpm-store/
 dist/
+# Exception : @vlome/engine est committé compilé — sa présence garantit que
+# la fonction serverless Vercel le trouve, sans dépendre d'une étape de
+# build supplémentaire (postinstall) qui s'est avérée peu fiable en prod.
+!packages/engine/dist/
+!packages/engine/dist/**
 .next/
 out/
 build/

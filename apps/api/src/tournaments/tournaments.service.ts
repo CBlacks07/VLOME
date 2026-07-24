@@ -59,9 +59,16 @@ export class TournamentsService {
   }
 
   async create(dto: CreateTournamentDto, userId?: string) {
+    const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus].some((v) => v !== undefined);
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
       nbPools: dto.nbPools ?? 2, pointsPerPlayer: dto.pointsPerPlayer ?? 5,
+      ...(hasScoring ? {
+        scoring: {
+          survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
+          finalsWin: dto.finalsWin ?? 2, championBonus: dto.championBonus ?? 3,
+        },
+      } : {}),
     });
     Engine.setPlayers(t, dto.players ?? []);
     const r = await this.prisma.tournament.create({
@@ -87,6 +94,20 @@ export class TournamentsService {
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
+
+    // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
+    // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
+    // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined) {
+      if (r.status !== 'DRAFT') throw new ConflictException('Les poules et les points par joueur ne sont modifiables qu\'avant le lancement du tournoi.');
+      if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
+      if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
+      const t = r.engineState as unknown as Engine.Tournament;
+      if (dto.nbPools !== undefined) t.nbPools = dto.nbPools;
+      if (dto.pointsPerPlayer !== undefined) t.pointsPerPlayer = dto.pointsPerPlayer;
+      data.engineState = JSON.parse(JSON.stringify(t));
+    }
+
     const upd = await this.prisma.tournament.update({ where: { id }, data });
     return this.toCard(upd);
   }
@@ -342,7 +363,10 @@ export class TournamentsService {
   private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
-    return { record: r, t: r.engineState as unknown as Engine.Tournament };
+    const t = r.engineState as unknown as Engine.Tournament;
+    // Compat : tournois créés avant l'ajout de la disqualification (champ absent en base).
+    if (!t.disqualified) t.disqualified = [];
+    return { record: r, t };
   }
 
   private dbStatus(t: Engine.Tournament): 'DRAFT' | 'LIVE' | 'FINISHED' {
@@ -402,7 +426,9 @@ export class TournamentsService {
       champion: t.champion ? Engine.playerName(t, t.champion) : null,
       cagnotte: Engine.cagnotte(t), distributed: Engine.distributed(t),
       allPoolsDone: Engine.allPoolsDone(t),
-      players: t.players.map((p) => p.name),
+      players: t.players.map((p) => ({ id: p.id, name: p.name, club: p.club, disqualified: t.disqualified.includes(p.id) })),
+      nbPools: t.nbPools,
+      pointsPerPlayer: t.pointsPerPlayer,
       entryFeeXof,
       imageUrl,
       format: format ? (FORMAT_LABEL[format] || format) : null,
@@ -452,6 +478,44 @@ export class TournamentsService {
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Ajout manuel d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
+  async addPlayer(id: string, name: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible d\'ajouter un joueur.');
+    const p = Engine.addPlayer(l.t, name);
+    if (!p) throw new BadRequestException('Nom invalide ou déjà utilisé dans ce tournoi.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Retrait d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
+  async removePlayer(id: string, playerId: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible de retirer un joueur.');
+    if (!Engine.removePlayer(l.t, playerId)) throw new NotFoundException('Joueur introuvable.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Disqualification en direct — forfait immédiat, l'adversaire est déclaré vainqueur. */
+  async disqualifyPlayer(id: string, playerId: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    const res = Engine.disqualifyPlayer(l.t, playerId);
+    if (!res.ok) {
+      if (res.reason === 'not-live') throw new ConflictException('La disqualification n\'est possible que pendant un tournoi en direct.');
+      if (res.reason === 'already-disqualified') throw new ConflictException('Ce joueur est déjà disqualifié.');
+      throw new NotFoundException('Joueur introuvable.');
+    }
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
 }
 

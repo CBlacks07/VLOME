@@ -36,11 +36,6 @@ type State = {
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
 };
 
-const FORMAT_OPTIONS: [string, string][] = [
-  ["SURVIVAL", "Survival"], ["SINGLE_ELIM", "Bracket simple"], ["DOUBLE_ELIM", "Double élim"],
-  ["SWISS", "Swiss"], ["ROUND_ROBIN", "Round Robin"], ["POOLS", "Poules"], ["BATTLE_ROYALE", "Battle Royale"],
-];
-
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
 // Pages simples (sans paramètre) dont le hash d'URL correspond directement à la clé de page.
 const SIMPLE_PAGES = ["accueil", "tournois", "classements", "galerie", "boutique", "profil"];
@@ -272,19 +267,31 @@ function pTournois(S: State) {
   const inputStyle = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px";
   const labelStyle = "font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-bottom:6px";
   const field = (label: string, inner: string) => `<div><label style="${labelStyle}">${label}</label>${inner}</div>`;
+  const scoreField = (id: string, label: string, def: number) => `<div><label style="${labelStyle}">${label}</label><input id="${id}" type="number" min="0" step="0.25" value="${def}" style="${inputStyle}" /></div>`;
   const form = S.creating && manage ? `<section style="border:1px solid rgba(34,211,238,.3);border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;margin-bottom:24px">
     <h3 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0 0 16px">Nouveau tournoi</h3>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12.5px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:9px 13px">${ic(I.warn, 14)}Format : <b style="color:#F4F5FB">Survival</b> (poules + repêchage) — le seul format que le moteur sait piloter pour l'instant.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:14px">
       ${field("Nom du tournoi", `<input id="c-name" placeholder="Survival Cup Lomé" style="${inputStyle}" />`)}
       ${field("Jeu", `<input id="c-game" placeholder="EA FC 26, Tekken 8…" style="${inputStyle}" />`)}
-      ${field("Format", `<select id="c-format" style="${inputStyle}">${FORMAT_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>`)}
       ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
       ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
-      ${field("Points / joueur", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
+      ${field("Nombre de poules", `<input id="c-pools" type="number" min="1" value="2" style="${inputStyle}" />`)}
+      ${field("Points / joueur (cagnotte)", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
       ${field("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="c-fee" type="number" min="0" step="100" value="0" style="${inputStyle}" />`)}
       ${field("Affiche du tournoi (image, 3 Mo max)", filePicker("c-img", "Choisir l'affiche"))}
     </div>
     ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
+    <details style="margin-top:16px">
+      <summary style="cursor:pointer;font-size:12.5px;color:#8E8FA6;font-weight:700">Barème de points (optionnel — valeurs par défaut sinon)</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:12px">
+        ${scoreField("c-sc-surv", "Victoire en poule", 1)}
+        ${scoreField("c-sc-loser", "Victoire en repêchage", 0.5)}
+        ${scoreField("c-sc-poolfinal", "Finale de poule", 1.5)}
+        ${scoreField("c-sc-finals", "Phase finale", 2)}
+        ${scoreField("c-sc-champion", "Bonus champion", 3)}
+      </div>
+    </details>
     <div style="display:flex;gap:10px;margin-top:16px">
       <button data-act="create-submit" ${S.busy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 20px;font-weight:750;font-size:14px;cursor:${S.busy ? "default" : "pointer"};opacity:${S.busy ? ".6" : "1"}">${ic(I.plus)}${S.busy ? "Création…" : "Créer le tournoi"}</button>
       <button data-act="create-cancel" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
@@ -921,8 +928,11 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Frais d'inscription (FCFA)<input id="e-fee" type="number" min="0" step="100" value="${t.entryFeeXof || 0}" style="${inpE}" /></label>
+      ${t.status === "setup" ? `<label style="font-size:12px;color:#8E8FA6;font-weight:600">Nombre de poules<input id="e-pools" type="number" min="1" value="${t.nbPools || 2}" style="${inpE}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Points / joueur (cagnotte)<input id="e-pts" type="number" min="1" value="${t.pointsPerPlayer || 5}" style="${inpE}" /></label>` : ""}
       <div><div style="font-size:12px;color:#8E8FA6;font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche", "image/*", t.imageUrl)}</div>
     </div>
+    ${t.status !== "setup" ? `<div style="font-size:12px;color:#5D5E72;margin-top:10px">Poules et points par joueur ne sont modifiables qu'avant le lancement.</div>` : ""}
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
 
@@ -955,11 +965,14 @@ function pTournoi(S: State) {
       : fee > 0 ? "Inscription payante : choisis un moyen de paiement, l'organisateur confirmera à réception."
       : "Les inscriptions sont ouvertes jusqu'au lancement par l'organisateur.";
     const feeBadge = fee > 0 ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px">${ic(I.cart, 14)}Frais d'inscription : ${money(fee)}</div>` : "";
-    const names: string[] = Array.isArray(t.players) ? t.players : [];
-    const participants = names.length
+    const roster: { id: string; name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
+    const participants = roster.length || manage
       ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
-          <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${names.length})</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${names.map((n) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 13px"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${n.charAt(0).toUpperCase()}</span>${n}</span>`).join("")}</div></div>`
+          <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${roster.length})</h3>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${roster.map((p) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
+          ${roster.length ? "" : `<div style="color:#5D5E72;font-size:13px;margin-bottom:${manage ? "12px" : "0"}">Aucun participant pour l'instant.</div>`}
+          ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
+        </div>`
       : "";
     const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
     return `<main style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}
@@ -1027,7 +1040,16 @@ function pTournoi(S: State) {
     finalsHtml = `<div style="margin-top:26px">${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds}</div></div>`;
   }
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}${finalsHtml || poolsHtml + finalsBtn}</main>`;
+  // Joueurs (organisateur/admin) : visible pendant/après le direct, avec disqualification en direct.
+  const roster2: { id: string; name: string; disqualified?: boolean }[] = Array.isArray(t.players) ? t.players : [];
+  const rosterPanel = manage && roster2.length
+    ? `<details style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px 20px;margin-bottom:20px">
+        <summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Joueurs (${roster2.length})</summary>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${roster2.map((p) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:${p.disqualified ? "#5D5E72" : "#F4F5FB"};background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px${p.disqualified ? ";text-decoration:line-through" : ""}"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.disqualified ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#FB7185">DQ</span>` : t.status === "live" ? `<button data-pldq="${t.id}|${p.id}" title="Disqualifier" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#FB7185;cursor:pointer">${ic(I.warn, 12)}</button>` : ""}</span>`).join("")}</div>
+      </details>`
+    : "";
+
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}${rosterPanel}${finalsHtml || poolsHtml + finalsBtn}</main>`;
 }
 
 /** Page d'authentification dédiée : présentation à gauche, formulaire à droite. */
@@ -1255,7 +1277,7 @@ export default function Page() {
       if (r.status === 401) { setS((s) => ({ ...s, detailBusy: false, page: "auth", user: null })); return; }
       if (r.status === 403) { setS((s) => ({ ...s, detailBusy: false })); alert("Action réservée à l'organisateur du tournoi."); return; }
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d, detailBusy: false })); loadTournaments(); }
-      else setS((s) => ({ ...s, detailBusy: false }));
+      else { const d = await r.json().catch(() => null); setS((s) => ({ ...s, detailBusy: false })); if (d?.message) alert(d.message); }
     } catch { setS((s) => ({ ...s, detailBusy: false })); }
   }
   async function editSave(id: string, body: Record<string, string | number>) {
@@ -1760,10 +1782,14 @@ export default function Page() {
     const name = val("c-name").trim();
     if (!name) { (document.getElementById("c-name") as HTMLInputElement)?.focus(); return; }
     const players = val("c-players").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
     const body: Detail = {
-      name, game: val("c-game").trim(), format: val("c-format"), place: val("c-place").trim(),
+      name, game: val("c-game").trim(), format: "SURVIVAL", place: val("c-place").trim(),
       date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
+      nbPools: parseInt(val("c-pools")) || 2,
       entryFeeXof: parseInt(val("c-fee")) || 0,
+      survWin: num("c-sc-surv", 1), loserWin: num("c-sc-loser", 0.5), poolFinalWin: num("c-sc-poolfinal", 1.5),
+      finalsWin: num("c-sc-finals", 2), championBonus: num("c-sc-champion", 3),
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
@@ -1791,7 +1817,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1816,7 +1842,24 @@ export default function Page() {
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
       const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
-      editSave(d.editsave, { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0 });
+      const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0 };
+      if (S.detail?.status === "setup") { body.nbPools = parseInt(val("e-pools")) || 1; body.pointsPerPlayer = parseInt(val("e-pts")) || 1; }
+      editSave(d.editsave, body);
+    }
+    else if (d.pladd) {
+      const nameEl = document.getElementById("pl-add-name") as HTMLInputElement | null;
+      const name = (nameEl?.value || "").trim();
+      if (name) { act(`${API}/api/tournaments/${d.pladd}/players`, { name }); if (nameEl) nameEl.value = ""; }
+    }
+    else if (d.plrem) {
+      const [tid, pid] = d.plrem.split("|");
+      const pname = S.detail?.players?.find((p: Detail) => p.id === pid)?.name;
+      setS((s) => ({ ...s, confirmBox: { title: "Retirer le joueur", message: `« ${pname || "Ce joueur"} » sera retiré de la liste des participants.`, okLabel: "Retirer", action: `plrem|${tid}|${pid}` } }));
+    }
+    else if (d.pldq) {
+      const [tid, pid] = d.pldq.split("|");
+      const pname = S.detail?.players?.find((p: Detail) => p.id === pid)?.name;
+      setS((s) => ({ ...s, confirmBox: { title: "Disqualifier le joueur", message: `« ${pname || "Ce joueur"} » perdra par forfait son match en cours (et tous ses matchs restants) — irréversible.`, okLabel: "Disqualifier", action: `pldq|${tid}|${pid}` } }));
     }
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
@@ -1888,15 +1931,18 @@ export default function Page() {
       const c = S.confirmBox;
       setS((s) => ({ ...s, confirmBox: null }));
       if (c) {
-        const [act, arg] = c.action.split("|");
-        if (act === "logout") logout();
-        else if (act === "delT") deleteT(arg);
-        else if (act === "newsdel") adminAct(`news/${arg}`, "DELETE");
-        else if (act === "proddel") adminAct(`products/${arg}`, "DELETE");
-        else if (act === "gallerydel") deleteGalleryItem(arg);
-        else if (act === "ptdel") setS((s) => ({ ...s, partnersEdit: (s.partnersEdit ?? []).filter((p) => p.key !== arg) }));
-        else if (act === "addel") setS((s) => ({ ...s, adsEdit: (s.adsEdit ?? []).filter((a) => a.key !== arg) }));
-        else if (act === "sldel") setS((s) => ({ ...s, slidesEdit: (s.slidesEdit ?? []).filter((sl) => sl.key !== arg) }));
+        const [kind, ...rest] = c.action.split("|");
+        const arg = rest.join("|");
+        if (kind === "logout") logout();
+        else if (kind === "delT") deleteT(arg);
+        else if (kind === "newsdel") adminAct(`news/${arg}`, "DELETE");
+        else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
+        else if (kind === "gallerydel") deleteGalleryItem(arg);
+        else if (kind === "ptdel") setS((s) => ({ ...s, partnersEdit: (s.partnersEdit ?? []).filter((p) => p.key !== arg) }));
+        else if (kind === "addel") setS((s) => ({ ...s, adsEdit: (s.adsEdit ?? []).filter((a) => a.key !== arg) }));
+        else if (kind === "sldel") setS((s) => ({ ...s, slidesEdit: (s.slidesEdit ?? []).filter((sl) => sl.key !== arg) }));
+        else if (kind === "plrem") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}`, undefined, "DELETE"); }
+        else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
       }
     }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }

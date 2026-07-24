@@ -64,6 +64,7 @@ export interface Tournament {
     pointsPerPlayer: number;
     nbPools: number;
     players: Player[];
+    disqualified: string[];
     scoring: Scoring;
     pools: Pool[];
     status: Status;
@@ -79,6 +80,10 @@ export declare function parseEntry(raw: string): {
     club: string;
 };
 export declare function setPlayers(t: Tournament, names: string[]): void;
+/** Ajoute un joueur — uniquement avant le lancement (les poules ne sont pas encore figées). */
+export declare function addPlayer(t: Tournament, raw: string): Player | null;
+/** Retire un joueur — uniquement avant le lancement. */
+export declare function removePlayer(t: Tournament, playerId: string): boolean;
 export declare function playerName(t: Tournament, id: string | null): string;
 export declare function scoringBounds(key: keyof Scoring): {
     min: number;
@@ -101,7 +106,7 @@ export interface CurrentMatch {
     matchId?: string;
 }
 export declare function currentMatch(pool: Pool): CurrentMatch | null;
-export declare function reportResult(t: Tournament, poolId: string, winnerId: string, sa?: number, sb?: number): {
+export declare function reportResult(t: Tournament, poolId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
     winnerId: string;
     loserId: string;
     pts: number;
@@ -110,10 +115,21 @@ export declare function reportResult(t: Tournament, poolId: string, winnerId: st
 export declare function allPoolsDone(t: Tournament): boolean;
 export declare function qualifiers(t: Tournament): string[];
 export declare function startFinals(t: Tournament): void;
-export declare function reportFinals(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number): {
+export declare function reportFinals(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
     winnerId: string;
     pts: number;
 } | null;
+/**
+ * Disqualifie un joueur en cours de tournoi : forfait immédiat sur son match en
+ * cours (s'il y en a un, poule ou finale — l'adversaire est déclaré vainqueur via
+ * la machine à états existante, ce qui fait avancer poule/bracket normalement) et
+ * retrait des files d'attente pas encore atteintes (poule Survival, perdants pas
+ * encore engagés dans le bracket de repêchage).
+ */
+export declare function disqualifyPlayer(t: Tournament, playerId: string): {
+    ok: boolean;
+    reason?: string;
+};
 export declare function cagnotte(t: Tournament): {
     total: number;
     programmed: number;

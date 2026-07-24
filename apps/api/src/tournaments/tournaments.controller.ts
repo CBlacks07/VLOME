@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
-import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import { AddPlayerDto, CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -133,6 +133,35 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async report(@Param('id') id: string, @Body() dto: ReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.report(id, dto, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  /* Gestion des joueurs : organisateur/admin uniquement. */
+
+  @Post(':id/players')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async addPlayer(@Param('id') id: string, @Body() dto: AddPlayerDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.addPlayer(id, dto.name, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Delete(':id/players/:playerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async removePlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.removePlayer(id, playerId, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/players/:playerId/disqualify')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async disqualifyPlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.disqualifyPlayer(id, playerId, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

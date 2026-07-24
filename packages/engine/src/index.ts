@@ -45,6 +45,7 @@ export interface Tournament {
   name: string; game: string; date: string; place: string;
   pointsPerPlayer: number; nbPools: number;
   players: Player[];
+  disqualified: string[];
   scoring: Scoring;
   pools: Pool[];
   status: Status;
@@ -79,6 +80,7 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     pointsPerPlayer: cfg.pointsPerPlayer || 5,
     nbPools: cfg.nbPools || 2,
     players: [],
+    disqualified: [],
     scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3 },
     pools: [], status: 'setup', log: [], points: {}, finals: null, champion: null,
   };
@@ -102,6 +104,25 @@ export function setPlayers(t: Tournament, names: string[]): void {
     seen[k] = true;
     t.players.push({ id: uid(), name, club });
   });
+}
+
+/** Ajoute un joueur — uniquement avant le lancement (les poules ne sont pas encore figées). */
+export function addPlayer(t: Tournament, raw: string): Player | null {
+  if (t.status !== 'setup') return null;
+  const { name, club } = parseEntry(raw);
+  if (!name) return null;
+  if (t.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return null;
+  const p: Player = { id: uid(), name, club };
+  t.players.push(p);
+  return p;
+}
+
+/** Retire un joueur — uniquement avant le lancement. */
+export function removePlayer(t: Tournament, playerId: string): boolean {
+  if (t.status !== 'setup') return false;
+  const before = t.players.length;
+  t.players = t.players.filter(p => p.id !== playerId);
+  return t.players.length < before;
 }
 
 export function playerName(t: Tournament, id: string | null): string {
@@ -232,7 +253,7 @@ function award(t: Tournament, playerId: string, pts: number): void {
 
 /* ---------- Résultat (poules) ---------- */
 
-export function reportResult(t: Tournament, poolId: string, winnerId: string, sa = 0, sb = 0): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
+export function reportResult(t: Tournament, poolId: string, winnerId: string, sa = 0, sb = 0, reason?: string): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
   const pool = t.pools.find(p => p.id === poolId);
   if (!pool) return null;
   const m = currentMatch(pool);
@@ -244,7 +265,7 @@ export function reportResult(t: Tournament, poolId: string, winnerId: string, sa
   const loserId = winnerId === m.a ? m.b : m.a;
   const pts = stagePoints(t, m.stage);
   award(t, winnerId, pts);
-  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb });
+  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
 
   if (m.stage === 'survival') {
     pool.wLosers.push(loserId);
@@ -285,14 +306,16 @@ export function allPoolsDone(t: Tournament): boolean {
 export function qualifiers(t: Tournament): string[] {
   const top1s = t.pools.map(p => p.top1).filter(Boolean) as string[];
   const top2s = (t.pools.map(p => p.top2).filter(Boolean) as string[]).reverse();
-  return top1s.concat(top2s);
+  // Un joueur disqualifié ne doit jamais accéder à la phase finale, même s'il a
+  // terminé top1/top2 de sa poule via un forfait adverse antérieur.
+  return top1s.concat(top2s).filter(id => !t.disqualified.includes(id));
 }
 
 export function startFinals(t: Tournament): void {
   t.finals = buildBracket(qualifiers(t));
 }
 
-export function reportFinals(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0): { winnerId: string; pts: number } | null {
+export function reportFinals(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0, reason?: string): { winnerId: string; pts: number } | null {
   if (!t.finals) return null;
   for (const round of t.finals.rounds) {
     const m = round.find(x => x.id === matchId);
@@ -303,7 +326,7 @@ export function reportFinals(t: Tournament, matchId: string, winnerId: string, s
     m.winner = winnerId;
     const pts = t.scoring.finalsWin;
     award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb });
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
     propagateBracket(t.finals);
     const champ = bracketChampion(t.finals);
     if (champ) {
@@ -316,6 +339,56 @@ export function reportFinals(t: Tournament, matchId: string, winnerId: string, s
     return { winnerId, pts };
   }
   return null;
+}
+
+/* ---------- Disqualification (en direct) ---------- */
+
+/**
+ * Disqualifie un joueur en cours de tournoi : forfait immédiat sur son match en
+ * cours (s'il y en a un, poule ou finale — l'adversaire est déclaré vainqueur via
+ * la machine à états existante, ce qui fait avancer poule/bracket normalement) et
+ * retrait des files d'attente pas encore atteintes (poule Survival, perdants pas
+ * encore engagés dans le bracket de repêchage).
+ */
+export function disqualifyPlayer(t: Tournament, playerId: string): { ok: boolean; reason?: string } {
+  if (t.status !== 'live') return { ok: false, reason: 'not-live' };
+  if (!t.players.some(p => p.id === playerId)) return { ok: false, reason: 'not-found' };
+  if (t.disqualified.includes(playerId)) return { ok: false, reason: 'already-disqualified' };
+
+  for (const pool of t.pools) {
+    if (pool.phase === 'survival') {
+      const idx = pool.order.indexOf(playerId);
+      if (idx > pool.wIndex) pool.order.splice(idx, 1);
+    }
+    pool.wLosers = pool.wLosers.filter(id => id !== playerId);
+  }
+
+  // Force la défaite tant que le joueur est partie prenante d'un match courant
+  // (poule ou finale) — reportResult/reportFinals gèrent toutes les transitions.
+  let guard = 0;
+  while (guard++ < 200) {
+    let acted = false;
+    for (const pool of t.pools) {
+      const cur = currentMatch(pool);
+      if (cur && (cur.a === playerId || cur.b === playerId)) {
+        const winner = cur.a === playerId ? cur.b : cur.a;
+        reportResult(t, pool.id, winner, 0, 0, 'forfeit');
+        acted = true;
+      }
+    }
+    if (t.finals) {
+      const nm = nextBracketMatch(t.finals);
+      if (nm && (nm.match.a === playerId || nm.match.b === playerId)) {
+        const winner = (nm.match.a === playerId ? nm.match.b : nm.match.a)!;
+        reportFinals(t, nm.match.id, winner, 0, 0, 'forfeit');
+        acted = true;
+      }
+    }
+    if (!acted) break;
+  }
+
+  t.disqualified.push(playerId);
+  return { ok: true };
 }
 
 /* ---------- Cagnotte ---------- */

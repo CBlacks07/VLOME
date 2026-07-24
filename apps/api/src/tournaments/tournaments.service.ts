@@ -339,7 +339,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: r.engineState as unknown as Engine.Tournament };
@@ -365,7 +365,10 @@ export class TournamentsService {
   }
 
   /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
-  private toState(id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null) {
+  private toState(
+    id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
+    format: string | null = null, place: string | null = null, date: Date | null = null,
+  ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
       return {
@@ -402,6 +405,9 @@ export class TournamentsService {
       players: t.players.map((p) => p.name),
       entryFeeXof,
       imageUrl,
+      format: format ? (FORMAT_LABEL[format] || format) : null,
+      place,
+      date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
       pools, finals,
     };
   }
@@ -413,7 +419,7 @@ export class TournamentsService {
 
   async getState(id: string) {
     const l = await this.loadEngine(id);
-    return l ? this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl) : null;
+    return l ? this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date) : null;
   }
 
   async launch(id: string, user: JwtUser) {
@@ -424,7 +430,7 @@ export class TournamentsService {
     if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
     Engine.launch(t);
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
 
   async startFinals(id: string, user: JwtUser) {
@@ -433,7 +439,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     Engine.startFinals(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
 
   async report(id: string, dto: ReportDto, user: JwtUser) {
@@ -445,7 +451,7 @@ export class TournamentsService {
     if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
 }
 

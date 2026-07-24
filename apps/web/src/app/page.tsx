@@ -941,7 +941,10 @@ function pTournoi(S: State) {
     </div>
     <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
-      <div style="color:${t.imageUrl ? "#D5D6E3" : "#8E8FA6"};font-size:13px;margin-top:6px">${t.game || ""}</div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;color:${t.imageUrl ? "#D5D6E3" : "#8E8FA6"};font-size:13px;font-weight:600">
+        <span>${[t.game, t.format, t.place, t.date].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</span>
+        ${t.entryFeeXof ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#FBBF24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;padding:3px 10px;font-size:12px">${ic(I.cart, 12)}${money(t.entryFeeXof)}</span>` : ""}
+      </div>
     </div>
   </div>`;
   const head = `${cover}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
@@ -1248,7 +1251,7 @@ function renderPage(S: State) {
   if (S.page === "show") return pShow(S);
   const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi, auth: pAuth };
   const body = (pages[S.page] || pAccueil)(S);
-  const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">VLOME Esport Platform · Le hub de l'esport togolais &amp; ouest-africain · Module Tournois propulsé par Survival Challonge</footer>`;
+  const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain</footer>`;
   return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }
 

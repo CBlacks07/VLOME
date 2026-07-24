@@ -51,26 +51,6 @@ const SLIDES = [
   { tag: "Communauté", title: "GAMING ARENA LOMÉ", sub: "LAN mensuelle : viens jouer, streamer et rencontrer la communauté esport togolaise.", cta: "Découvrir" },
 ];
 
-const TOURN = [
-  { name: "Survival Cup · Lomé", format: "Survival", game: "EA FC 26", players: 32, date: "12 juil.", place: "Lomé", live: true, cagnotte: 160, status: "" },
-  { name: "Tekken Kings Cup", format: "Double élim", game: "Tekken 8", players: 24, date: "19 juil.", place: "Lomé", live: false, cagnotte: 120, status: "À venir" },
-  { name: "Free Fire Togo Series", format: "Battle Royale", game: "Free Fire", players: 48, date: "26 juil.", place: "Kara", live: true, cagnotte: 240, status: "" },
-  { name: "Valorant Lomé Open", format: "Round Robin", game: "Valorant", players: 16, date: "02 août", place: "Lomé", live: false, cagnotte: 80, status: "Inscriptions" },
-  { name: "eFootball Coupe Kara", format: "Poules", game: "eFootball", players: 24, date: "28 juin", place: "Kara", live: false, cagnotte: 120, status: "Terminé" },
-  { name: "Mortal Kombat Bash", format: "Bracket simple", game: "MK1", players: 12, date: "09 août", place: "Sokodé", live: false, cagnotte: 60, status: "À venir" },
-];
-
-const RANK = [
-  { name: "Kossi « K9 » Adjeoda", club: "Team Mawu", game: "EA FC 26", city: "Lomé", wl: "128-37", wr: "78%", elo: 2145, pts: 342 },
-  { name: "Prince Kodjo", club: "Lomé Kings", game: "Tekken 8", city: "Lomé", wl: "96-41", wr: "70%", elo: 2010, pts: 298 },
-  { name: "Aminata Sow", club: "Kara eSports", game: "Free Fire", city: "Kara", wl: "88-30", wr: "75%", elo: 1980, pts: 271 },
-  { name: "David Agbeko", club: "Sokodé Warriors", game: "Valorant", city: "Sokodé", wl: "75-44", wr: "63%", elo: 1875, pts: 240 },
-  { name: "Fatou Mensah", club: "Team Mawu", game: "EA FC 26", city: "Lomé", wl: "70-38", wr: "65%", elo: 1840, pts: 224 },
-  { name: "Yao Dossou", club: "Atakpamé GG", game: "Tekken 8", city: "Atakpamé", wl: "64-40", wr: "62%", elo: 1790, pts: 205 },
-  { name: "Rachel Amevor", club: "Lomé Kings", game: "Free Fire", city: "Lomé", wl: "58-35", wr: "62%", elo: 1760, pts: 190 },
-  { name: "Komla Tetteh", club: "Kara eSports", game: "Valorant", city: "Kara", wl: "52-39", wr: "57%", elo: 1710, pts: 172 },
-];
-
 const EVENTS = [
   { d: "12", mo: "JUL", t: "Survival Cup Lomé", type: "Tournoi LAN", place: "Palais des Congrès" },
   { d: "19", mo: "JUL", t: "Tekken Kings Cup", type: "Tournoi", place: "Gaming Arena Lomé" },
@@ -86,38 +66,7 @@ const NEWS = [
 
 const PARTNERS = ["Gaming Arena Lomé", "Yas Togo", "Moov Africa", "Université de Lomé", "CIC Lomé", "Togocom"];
 
-const SHOP = [
-  { cat: "Vêtements", name: "Maillot officiel VLOME", price: 15000, ph: "maillot-vlome" },
-  { cat: "Vêtements", name: "Hoodie Team Mawu", price: 25000, ph: "hoodie-mawu" },
-  { cat: "Goodies", name: "Casquette VLOME", price: 8000, ph: "casquette" },
-  { cat: "Goodies", name: "Mug gamer édition Lomé", price: 5000, ph: "mug" },
-  { cat: "Goodies", name: "Tapis de souris XL", price: 12000, ph: "tapis-souris" },
-  { cat: "Billets", name: "Billet Survival Cup", price: 3000, ph: "billet-survival" },
-  { cat: "Billets", name: "Pass LAN Gaming Arena", price: 6000, ph: "pass-lan" },
-  { cat: "Cartes cadeaux", name: "Carte cadeau 10 000 F", price: 10000, ph: "carte-cadeau" },
-];
-
 const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espèces"];
-
-const STATS = [
-  { v: "165", k: "Matchs", color: "#F4F5FB" }, { v: "128", k: "Victoires", color: "#22D3EE" },
-  { v: "37", k: "Défaites", color: "#F4F5FB" }, { v: "78%", k: "Taux de victoire", color: "#22D3EE" },
-  { v: "9", k: "Meilleure série", color: "#22D3EE" }, { v: "4", k: "Titres", color: "#F4F5FB" },
-  { v: "11", k: "Podiums", color: "#F4F5FB" }, { v: "342", k: "Points", color: "#FBBF24" },
-];
-
-const HISTORY = [
-  { t: "Survival Cup Lomé", r: "Champion", d: "Juin 2026", p: "+40" },
-  { t: "Tekken Kings Cup", r: "Finaliste", d: "Mai 2026", p: "+22" },
-  { t: "eFootball Coupe Kara", r: "Top 4", d: "Avr. 2026", p: "+12" },
-  { t: "Valorant Lomé Open", r: "3e place", d: "Mars 2026", p: "+15" },
-];
-
-const BADGES = ["Champion Survival 2026", "Série de 9 victoires", "Top 1 EA FC Togo", "Membre fondateur Team Mawu", "100 matchs joués"];
-const UPCOMING = [
-  { t: "Tekken Kings Cup", d: "19 juil. · Gaming Arena Lomé", ok: true, s: "Inscrit" },
-  { t: "Free Fire Togo Series", d: "26 juil. · Kara", ok: false, s: "Paiement en attente" },
-];
 
 const FORMATS = ["Tous", "Survival", "Bracket simple", "Double élim", "Swiss", "Round Robin", "Poules", "Battle Royale"];
 const GAMES = ["Tous", "EA FC 26", "Tekken 8", "Free Fire", "Valorant"];
@@ -227,7 +176,7 @@ function pAccueil(S: State) {
   const heroKicker = escHtml(hero0?.kicker ?? "VLOME Esport · Togo");
   const heroSub = escHtml(hero0?.subtitle ?? "Compétitions, classements, communauté et boutique — une seule plateforme pour fédérer les gamers du Togo et professionnaliser l'esport de la région.");
   const heroStats: { v: string; k: string }[] = hero0?.stats?.length ? hero0.stats : [{ v: "2 400+", k: "Joueurs" }, { v: "18", k: "Tournois / an" }, { v: "24", k: "Clubs" }];
-  const tourns = S.tourns ?? TOURN;
+  const tourns = S.tourns ?? [];
   const dots = slides.map((_, i) => { const on = i === S.slide; return `<span data-slide="${i}" style="width:${on ? 26 : 10}px;height:6px;border-radius:99px;background:${on ? "#22D3EE" : "#33334A"};cursor:pointer"></span>`; }).join("");
   // Fond du héro : vidéo ou image (réglages admin), sinon halos lumineux animés.
   const heroBg = hero0?.bgUrl as string | undefined;
@@ -263,27 +212,29 @@ function pAccueil(S: State) {
         <button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button></div>
       <div style="display:flex;gap:8px;position:relative;z-index:1">${dots}</div></div></section>`;
 
-  // Bandeau défilant : tournois en direct (ou à venir en repli).
+  // Bandeau défilant : tournois en direct (ou à venir en repli). Rien à afficher tant qu'aucun tournoi n'existe.
   const liveT = tourns.filter((t) => t.live);
   const tickerItems = (liveT.length ? liveT : tourns.slice(0, 4)).map((t) =>
     `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 26px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${t.live ? "#04222a" : "#8E8FA6"};background:${t.live ? "#22D3EE" : "#22222F"};border-radius:99px;padding:3px 9px">${t.live ? '<span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct' : "À venir"}</span><span style="font-weight:700;font-size:13px;color:#F4F5FB">${t.name}</span><span style="font-size:12px;color:#5D5E72">${t.game}${t.place ? " · " + t.place : ""}</span></span>`
   ).join(`<span style="color:#33334A">·</span>`);
-  const ticker = `<div class="marquee rise d1" style="border:1px solid #282838;border-radius:14px;background:linear-gradient(90deg,#14141D,#0E0E16);margin-bottom:30px;padding:11px 0">
-    <div class="marquee-track">${tickerItems}${tickerItems}</div></div>`;
+  const ticker = tourns.length ? `<div class="marquee rise d1" style="border:1px solid #282838;border-radius:14px;background:linear-gradient(90deg,#14141D,#0E0E16);margin-bottom:30px;padding:11px 0">
+    <div class="marquee-track">${tickerItems}${tickerItems}</div></div>` : "";
 
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
-  const tournGrid = `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`;
+  const tournGrid = tourns.length
+    ? `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`
+    : `<div class="rise d2" style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:36px 24px;text-align:center;color:#8E8FA6;margin-bottom:40px">Aucun tournoi pour l'instant — reviens bientôt !</div>`;
 
   // Teaser d'accueil : la meilleure performance de chaque joueur (un seul jeu à la fois, jamais de points additionnés entre jeux).
-  let rankSource: Detail[];
+  let rankSource: Detail[] = [];
   if (S.leaderboard?.length) {
     const bestByPlayer = new Map<string, Detail>();
     for (const r of S.leaderboard) { if (!bestByPlayer.has(r.name) || r.points > bestByPlayer.get(r.name)!.points) bestByPlayer.set(r.name, r); }
     rankSource = Array.from(bestByPlayer.values()).sort((a, b) => b.points - a.points);
-  } else {
-    rankSource = RANK.map((r) => ({ name: r.name, city: r.club, game: r.game, points: r.pts }));
   }
-  const rankRows = rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const rankRows = rankSource.length
+    ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("")
+    : `<tr><td style="padding:16px 6px;color:#5D5E72;font-size:13px" colspan="4">Aucun résultat pour l'instant.</td></tr>`;
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
@@ -292,7 +243,10 @@ function pAccueil(S: State) {
     : NEWS;
   const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${API}${a.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
 
-  const shopSec = `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${(S.products ?? SHOP).slice(0, 4).map((p: { name: string; price: number; ph: string; img?: string | null }) => `<div class="hcard" style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`;
+  const shopProducts: { name: string; price: number; ph: string; img?: string | null }[] = S.products ?? [];
+  const shopSec = shopProducts.length
+    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${shopProducts.slice(0, 4).map((p) => `<div class="hcard" style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`
+    : "";
 
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
@@ -301,7 +255,7 @@ function pAccueil(S: State) {
 }
 
 function pTournois(S: State) {
-  const source = S.tourns ?? TOURN;
+  const source = S.tourns ?? [];
   const manage = canManage(S);
   const q = S.q.trim().toLowerCase();
   let list = S.fmt === "Tous" ? source : source.filter((t) => t.format === S.fmt);
@@ -338,7 +292,8 @@ function pTournois(S: State) {
   </section>` : "";
 
   const filt = `<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
-  const empty = `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.</div>`;
+  const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
+  const empty = `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">${emptyMsg}</div>`;
   const grid = list.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">${list.map((t) => tournCard(t, true)).join("")}</div>`
     : empty;
@@ -458,12 +413,14 @@ function galleryLightbox(S: State, items: Detail[]) {
 }
 
 function pBoutique(S: State) {
-  const source = S.products ?? SHOP;
+  const source = S.products ?? [];
   const list = S.cat === "Tous" ? source : source.filter((p) => p.cat === S.cat);
   const pImg = (p: { ph: string; img?: string | null }, h: number) => p.img
     ? `<div class="zoom" style="height:${h}px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>`
     : `<div class="zoom" style="height:${h}px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
-  const grid = list.map((p, i) => `<div class="hcard rise d${Math.min(i % 5 + 1, 5)}" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${pImg(p, 170)}<div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("");
+  const grid = list.length
+    ? list.map((p, i) => `<div class="hcard rise d${Math.min(i % 5 + 1, 5)}" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${pImg(p, 170)}<div style="padding:14px 15px 16px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${p.cat}</span><div style="font-weight:650;font-size:15px;margin:5px 0 10px">${p.name}</div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-weight:800;color:#22D3EE;font-size:15px">${money(p.price)}</span><button data-add-name="${p.name}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter</button></div></div></div>`).join("")
+    : `<div style="grid-column:1/-1;border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">${source.length === 0 ? "Aucun produit pour l'instant." : "Aucun produit dans cette catégorie."}</div>`;
   const pay = PAYMENTS.map((m) => `<span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#F4F5FB;font-weight:700;font-size:13px">${m}</span>`).join("");
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Boutique</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Maillots, goodies, billets &amp; cartes cadeaux — paiement mobile money &amp; carte</p></div><button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#1B1B27;border:1px solid #33334A;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;color:#F4F5FB;cursor:pointer"><span style="color:#22D3EE">${ic(I.cart, 18)}</span>${S.cartItems.length} article(s)</button></div><div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:24px">${chips(CATS, S.cat, "cat")}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;margin-bottom:34px">${grid}</div><div style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Moyens de paiement</div><div style="display:flex;gap:12px;flex-wrap:wrap">${pay}</div><p style="color:#5D5E72;font-size:12px;margin:14px 0 0">Mobile money togolais (Flooz, Mixx by Yas) &amp; cartes via agrégateur — paiement manuel possible sur place.</p></div></main>`;
 }

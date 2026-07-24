@@ -6,10 +6,11 @@ import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import type { Express, Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
 
-let cachedHandler: Express;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let cachedHandler: any;
 
 async function getHandler() {
   if (!cachedHandler) {

@@ -1,6 +1,13 @@
 // VLOME Esport — schéma PostgreSQL
+// Sortie locale (pas dans node_modules) : évite les soucis de résolution du
+// paquet @prisma/client hors monorepo pnpm hoisté (ex. build Vercel). Générée
+// à la racine du package (pas sous src/) pour que le chemin relatif depuis
+// prisma.service.ts reste valide identiquement en dev (ts-node, depuis src/)
+// et en prod (node dist/main.js, depuis dist/), les deux arborescences ayant
+// la même profondeur sous generated/.
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/prisma"
 }
 
 datasource db {

@@ -6,10 +6,10 @@ import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import type { Request, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
 
-let cachedHandler: (req: Request, res: Response) => void;
+let cachedHandler: Express;
 
 async function getHandler() {
   if (!cachedHandler) {

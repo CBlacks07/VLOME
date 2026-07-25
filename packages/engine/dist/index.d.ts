@@ -10,12 +10,15 @@ export interface Scoring {
     finalsWin: number;
     championBonus: number;
 }
+export declare const BYE = "__bye__";
 export interface BracketMatch {
     id: string;
     a: string | null;
     b: string | null;
     winner: string | null;
     bye: boolean;
+    sa?: number;
+    sb?: number;
 }
 export interface Bracket {
     rounds: BracketMatch[][];
@@ -53,6 +56,26 @@ export interface LogEntry {
     sb?: number;
 }
 export type Status = 'setup' | 'live' | 'finished';
+export type FinalsFormat = 'single' | 'double' | 'roundrobin';
+export interface SingleFinals {
+    format: 'single';
+    bracket: Bracket;
+}
+export interface RoundRobinFinals {
+    format: 'roundrobin';
+    players: string[];
+    matches: BracketMatch[];
+}
+export interface DoubleFinals {
+    format: 'double';
+    wb: BracketMatch[][];
+    lb: BracketMatch[][];
+    gf: BracketMatch;
+    gf2: BracketMatch | null;
+    wbChampion: string | null;
+    lbChampion: string | null;
+}
+export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals;
 export interface Tournament {
     id: string;
     createdAt: number;
@@ -70,8 +93,11 @@ export interface Tournament {
     status: Status;
     log: LogEntry[];
     points: Record<string, number>;
-    finals: Bracket | null;
+    finals: Finals | null;
+    finalsFormat: FinalsFormat;
     champion: string | null;
+    /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
+    _undo?: string[];
 }
 export declare function uid(): string;
 export declare function newTournament(cfg?: Partial<Tournament>): Tournament;
@@ -84,13 +110,31 @@ export declare function setPlayers(t: Tournament, names: string[]): void;
 export declare function addPlayer(t: Tournament, raw: string): Player | null;
 /** Retire un joueur — uniquement avant le lancement. */
 export declare function removePlayer(t: Tournament, playerId: string): boolean;
+/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi). */
+export declare function renamePlayer(t: Tournament, id: string, newName: string): boolean;
+/** Modifie le club affiché d'un joueur — à tout moment. */
+export declare function setPlayerClub(t: Tournament, id: string, club: string): boolean;
 export declare function playerName(t: Tournament, id: string | null): string;
+/** Restaure l'état précédent (dernier résultat, ajustement, changement de barème…) — l'appelant doit remplacer sa référence par la valeur retournée. */
+export declare function undo(t: Tournament): Tournament | null;
+/** Remet le tournoi à l'état "à lancer" (garde joueurs, config des poules et barème). */
+export declare function resetTournament(t: Tournament): void;
 export declare function scoringBounds(key: keyof Scoring): {
     min: number;
     max: number;
 };
+/** Resynchronise tous les points déjà attribués avec le barème courant (après setScoring, ou pour rattraper une correction). */
+export declare function recomputePoints(t: Tournament): void;
+/** Modifie une valeur du barème (à tout moment) puis resynchronise les points déjà distribués. */
+export declare function setScoring(t: Tournament, key: keyof Scoring, value: number): boolean;
+/** Bonus/pénalité manuel (peut être négatif), tracé dans le journal avec un motif. */
+export declare function manualAdjust(t: Tournament, playerId: string, delta: number, reason?: string): boolean;
 export declare function balancedSizes(nPlayers: number, nbPools: number): number[];
 export declare function distributePools(t: Tournament): void;
+/** Rebrasse l'ordre de passage d'une poule (avant lancement). */
+export declare function shuffleOrder(pool: Pool): void;
+/** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement) : dir = -1 (monte) ou +1 (descend). */
+export declare function moveInOrder(pool: Pool, index: number, dir: number): boolean;
 export declare function launch(t: Tournament): void;
 export declare function buildBracket(ids: string[]): Bracket;
 export declare function propagateBracket(bracket: Bracket): void;
@@ -114,7 +158,16 @@ export declare function reportResult(t: Tournament, poolId: string, winnerId: st
 } | null;
 export declare function allPoolsDone(t: Tournament): boolean;
 export declare function qualifiers(t: Tournament): string[];
-export declare function startFinals(t: Tournament): void;
+/** Classement round robin : victoires puis différence de manches puis points. */
+export declare function rrRanking(t: Tournament): {
+    id: string;
+    wins: number;
+    gd: number;
+}[];
+export declare function startFinals(t: Tournament, format?: FinalsFormat): void;
+/** Toutes les rencontres de la phase finale, quel que soit le format — pour recherche/affichage générique. */
+export declare function allFinalsMatches(t: Tournament): BracketMatch[];
+export declare function findFinalsMatch(t: Tournament, matchId: string): BracketMatch | null;
 export declare function reportFinals(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
     winnerId: string;
     pts: number;
@@ -136,6 +189,8 @@ export declare function cagnotte(t: Tournament): {
     gap: number;
     valid: boolean;
 };
+/** Ajuste proportionnellement le barème pour tenir dans la cagnotte (pas de 0.25). */
+export declare function autoFitScoring(t: Tournament): void;
 export declare function distributed(t: Tournament): number;
 export interface RankRow {
     id: string;

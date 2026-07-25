@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -33,6 +33,29 @@ export class UpdateTournamentDto {
 
 export class AddPlayerDto {
   @IsString() @MaxLength(80) name!: string;
+}
+
+export class ClubDto {
+  @IsString() @MaxLength(80) club!: string;
+}
+
+export class AdjustDto {
+  @IsNumber() delta!: number;
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+}
+
+export class ScoringDto {
+  @IsIn(['survWin', 'loserWin', 'poolFinalWin', 'finalsWin', 'championBonus']) key!: string;
+  @IsNumber() value!: number;
+}
+
+export class MoveOrderDto {
+  @IsInt() @Min(0) index!: number;
+  @IsIn([-1, 1]) dir!: number;
+}
+
+export class StartFinalsDto {
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) format?: 'single' | 'double' | 'roundrobin';
 }
 
 export class ReportDto {

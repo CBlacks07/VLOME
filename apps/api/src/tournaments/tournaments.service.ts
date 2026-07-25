@@ -341,7 +341,9 @@ export class TournamentsService {
           guard = 0;
           while (t.status !== 'finished' && guard++ < 80) {
             let acted = false;
-            for (const r of t.finals!.rounds) for (const m of r) if (m.a && m.b && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; }
+            for (const m of Engine.allFinalsMatches(t)) {
+              if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; }
+            }
             if (!acted) break;
           }
         }
@@ -364,8 +366,10 @@ export class TournamentsService {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = r.engineState as unknown as Engine.Tournament;
-    // Compat : tournois créés avant l'ajout de la disqualification (champ absent en base).
+    // Compat : tournois créés avant l'ajout de la disqualification / des formats de finale.
     if (!t.disqualified) t.disqualified = [];
+    if (!t.finalsFormat) t.finalsFormat = 'single';
+    if (t.finals && !(t.finals as { format?: string }).format) (t.finals as unknown as { format: string }).format = 'single';
     return { record: r, t };
   }
 
@@ -388,6 +392,41 @@ export class TournamentsService {
       .map((pid) => ({ id: pid, name: Engine.playerName(t, pid), pts: t.points[pid] || 0, wins: wins[pid] || 0 }));
   }
 
+  private serializeMatch(t: Engine.Tournament, mm: Engine.BracketMatch) {
+    const real = (id: string | null) => id && id !== Engine.BYE ? id : null;
+    return {
+      matchId: mm.id, bye: mm.bye,
+      aName: real(mm.a) ? Engine.playerName(t, mm.a) : null, bName: real(mm.b) ? Engine.playerName(t, mm.b) : null,
+      aId: real(mm.a), bId: real(mm.b), winnerId: real(mm.winner),
+      playable: !!(real(mm.a) && real(mm.b) && !mm.winner && !mm.bye),
+    };
+  }
+
+  /** Sérialise la phase finale — forme différente selon single/double/round robin. */
+  private serializeFinals(t: Engine.Tournament) {
+    const f = t.finals;
+    if (!f) return null;
+    const champion = t.champion ? Engine.playerName(t, t.champion) : null;
+    if (f.format === 'roundrobin') {
+      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, gd: r.gd, pts: t.points[r.id] || 0 }));
+      return { format: 'roundrobin' as const, champion, matches: f.matches.map((mm) => this.serializeMatch(t, mm)), standings };
+    }
+    if (f.format === 'double') {
+      return {
+        format: 'double' as const, champion,
+        wb: f.wb.map((round, r) => ({ label: 'Winners · ' + this.roundLabel(r, f.wb.length), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+        lb: f.lb.map((round, r) => ({ label: 'Perdants · Round ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+        gf: this.serializeMatch(t, f.gf),
+        gf2: f.gf2 ? this.serializeMatch(t, f.gf2) : null,
+      };
+    }
+    const total = f.bracket.rounds.length;
+    return {
+      format: 'single' as const, champion,
+      rounds: f.bracket.rounds.map((round, r) => ({ label: this.roundLabel(r, total), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+    };
+  }
+
   /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
   private toState(
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
@@ -402,25 +441,10 @@ export class TournamentsService {
         current: m && m.a && m.b
           ? { poolId: p.id, aId: m.a, bId: m.b, aName: Engine.playerName(t, m.a), bName: Engine.playerName(t, m.b), stage: m.stage, streak: m.streak }
           : null,
+        order: p.order.map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
         ranking: this.poolRanking(t, p),
       };
     });
-    let finals: unknown = null;
-    if (t.finals) {
-      const total = t.finals.rounds.length;
-      finals = {
-        champion: t.champion ? Engine.playerName(t, t.champion) : null,
-        rounds: t.finals.rounds.map((round, r) => ({
-          label: this.roundLabel(r, total),
-          matches: round.map((mm) => ({
-            matchId: mm.id, bye: mm.bye,
-            aName: mm.a ? Engine.playerName(t, mm.a) : null, bName: mm.b ? Engine.playerName(t, mm.b) : null,
-            aId: mm.a, bId: mm.b, winnerId: mm.winner,
-            playable: !!(mm.a && mm.b && !mm.winner && !mm.bye),
-          })),
-        })),
-      };
-    }
     return {
       id, name: t.name, game: t.game || '', status: t.status,
       champion: t.champion ? Engine.playerName(t, t.champion) : null,
@@ -429,12 +453,15 @@ export class TournamentsService {
       players: t.players.map((p) => ({ id: p.id, name: p.name, club: p.club, disqualified: t.disqualified.includes(p.id) })),
       nbPools: t.nbPools,
       pointsPerPlayer: t.pointsPerPlayer,
+      scoring: t.scoring,
+      finalsFormat: t.finalsFormat,
+      canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
       imageUrl,
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
-      pools, finals,
+      pools, finals: this.serializeFinals(t),
     };
   }
 
@@ -459,11 +486,11 @@ export class TournamentsService {
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
 
-  async startFinals(id: string, user: JwtUser) {
+  async startFinals(id: string, user: JwtUser, format?: Engine.FinalsFormat) {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
-    Engine.startFinals(l.t);
+    Engine.startFinals(l.t, format);
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
@@ -514,6 +541,107 @@ export class TournamentsService {
       if (res.reason === 'already-disqualified') throw new ConflictException('Ce joueur est déjà disqualifié.');
       throw new NotFoundException('Joueur introuvable.');
     }
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Annule la dernière action mutante (résultat, ajustement, changement de barème, reset…). */
+  async undo(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    const restored = Engine.undo(l.t);
+    if (!restored) throw new ConflictException('Rien à annuler.');
+    await this.persist(id, restored);
+    return this.toState(id, restored, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Remet un tournoi lancé par erreur à l'état "à lancer" (garde joueurs, poules-config, barème). */
+  async reset(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status === 'setup') throw new ConflictException('Ce tournoi n\'a pas encore été lancé.');
+    Engine.resetTournament(l.t);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Renomme un joueur (coquille repérée après coup) — à tout moment. */
+  async renamePlayer(id: string, playerId: string, name: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (!Engine.renamePlayer(l.t, playerId, name)) throw new BadRequestException('Nom invalide ou joueur introuvable.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Modifie le club affiché d'un joueur — à tout moment. */
+  async setPlayerClub(id: string, playerId: string, club: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (!Engine.setPlayerClub(l.t, playerId, club)) throw new NotFoundException('Joueur introuvable.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Bonus/pénalité manuel avec motif, tracé dans le journal. */
+  async manualAdjust(id: string, playerId: string, delta: number, reason: string | undefined, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (!Engine.manualAdjust(l.t, playerId, delta, reason)) throw new BadRequestException('Ajustement invalide (montant nul ou joueur introuvable).');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Modifie une valeur du barème (à tout moment) — resynchronise automatiquement les points déjà distribués. */
+  async setScoring(id: string, key: string, value: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (!Engine.setScoring(l.t, key as keyof Engine.Scoring, value)) throw new BadRequestException('Clé de barème invalide.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Répartit les joueurs en poules avant le lancement, pour prévisualiser/réordonner l'ordre de passage. */
+  async distributePools(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    if (!l.t.players.length) throw new BadRequestException('Ajoute des joueurs avant de répartir les poules.');
+    Engine.distributePools(l.t);
+    l.t.pools.forEach((p) => (p.order = p.playerIds.slice()));
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Rebrasse l'ordre de passage d'une poule (avant lancement). */
+  async shufflePoolOrder(id: string, poolId: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    const pool = l.t.pools.find((p) => p.id === poolId);
+    if (!pool) throw new NotFoundException('Poule introuvable.');
+    Engine.shuffleOrder(pool);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement). */
+  async movePoolOrder(id: string, poolId: string, index: number, dir: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    const pool = l.t.pools.find((p) => p.id === poolId);
+    if (!pool) throw new NotFoundException('Poule introuvable.');
+    Engine.moveInOrder(pool, index, dir);
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }

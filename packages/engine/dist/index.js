@@ -5,16 +5,26 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.BYE = void 0;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.parseEntry = parseEntry;
 exports.setPlayers = setPlayers;
 exports.addPlayer = addPlayer;
 exports.removePlayer = removePlayer;
+exports.renamePlayer = renamePlayer;
+exports.setPlayerClub = setPlayerClub;
 exports.playerName = playerName;
+exports.undo = undo;
+exports.resetTournament = resetTournament;
 exports.scoringBounds = scoringBounds;
+exports.recomputePoints = recomputePoints;
+exports.setScoring = setScoring;
+exports.manualAdjust = manualAdjust;
 exports.balancedSizes = balancedSizes;
 exports.distributePools = distributePools;
+exports.shuffleOrder = shuffleOrder;
+exports.moveInOrder = moveInOrder;
 exports.launch = launch;
 exports.buildBracket = buildBracket;
 exports.propagateBracket = propagateBracket;
@@ -24,14 +34,20 @@ exports.currentMatch = currentMatch;
 exports.reportResult = reportResult;
 exports.allPoolsDone = allPoolsDone;
 exports.qualifiers = qualifiers;
+exports.rrRanking = rrRanking;
 exports.startFinals = startFinals;
+exports.allFinalsMatches = allFinalsMatches;
+exports.findFinalsMatch = findFinalsMatch;
 exports.reportFinals = reportFinals;
 exports.disqualifyPlayer = disqualifyPlayer;
 exports.cagnotte = cagnotte;
+exports.autoFitScoring = autoFitScoring;
 exports.distributed = distributed;
 exports.overallRanking = overallRanking;
 exports.ratings = ratings;
+exports.BYE = '__bye__';
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
+const MAX_UNDO = 25;
 function uid() {
     return 'id' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 }
@@ -54,7 +70,9 @@ function newTournament(cfg = {}) {
         players: [],
         disqualified: [],
         scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3 },
-        pools: [], status: 'setup', log: [], points: {}, finals: null, champion: null,
+        pools: [], status: 'setup', log: [], points: {}, finals: null,
+        finalsFormat: cfg.finalsFormat || 'single',
+        champion: null, _undo: [],
     };
 }
 function parseEntry(raw) {
@@ -101,13 +119,106 @@ function removePlayer(t, playerId) {
     t.players = t.players.filter(p => p.id !== playerId);
     return t.players.length < before;
 }
+/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi). */
+function renamePlayer(t, id, newName) {
+    const p = t.players.find(x => x.id === id);
+    if (!p)
+        return false;
+    const nm = String(newName).trim();
+    if (!nm)
+        return false;
+    p.name = nm;
+    return true;
+}
+/** Modifie le club affiché d'un joueur — à tout moment. */
+function setPlayerClub(t, id, club) {
+    const p = t.players.find(x => x.id === id);
+    if (!p)
+        return false;
+    p.club = String(club).trim();
+    return true;
+}
 function playerName(t, id) {
     const p = t.players.find(x => x.id === id);
     return p ? p.name : '?';
 }
+/* ---------- Historique (annuler) ---------- */
+/** Empile un instantané de l'état courant (hors pile elle-même) avant une action mutante. */
+function snapshot(t) {
+    const stack = t._undo || (t._undo = []);
+    t._undo = [];
+    const snap = JSON.stringify(t);
+    t._undo = stack;
+    t._undo.push(snap);
+    if (t._undo.length > MAX_UNDO)
+        t._undo.shift();
+}
+/** Restaure l'état précédent (dernier résultat, ajustement, changement de barème…) — l'appelant doit remplacer sa référence par la valeur retournée. */
+function undo(t) {
+    if (!t._undo || !t._undo.length)
+        return null;
+    const snap = JSON.parse(t._undo.pop());
+    snap._undo = t._undo;
+    return snap;
+}
+/** Remet le tournoi à l'état "à lancer" (garde joueurs, config des poules et barème). */
+function resetTournament(t) {
+    snapshot(t);
+    t.pools = [];
+    t.finals = null;
+    t.champion = null;
+    t.log = [];
+    t.points = {};
+    t.disqualified = [];
+    t.status = 'setup';
+    delete t.finishedAt;
+}
 /* ---------- Barème (déplafonné) ---------- */
 function scoringBounds(key) {
     return key === 'championBonus' ? { min: 0, max: 999 } : { min: 0.25, max: 999 };
+}
+/** Resynchronise tous les points déjà attribués avec le barème courant (après setScoring, ou pour rattraper une correction). */
+function recomputePoints(t) {
+    const pts = {};
+    t.log.forEach(l => {
+        let p;
+        if (l.stage === 'adjust')
+            p = l.pts;
+        else if (l.stage === 'championBonus') {
+            p = t.scoring.championBonus;
+            l.pts = p;
+        }
+        else {
+            p = stagePoints(t, l.stage);
+            l.pts = p;
+        }
+        pts[l.winner] = Math.round(((pts[l.winner] || 0) + p) * 100) / 100;
+    });
+    t.players.forEach(pl => { if (pts[pl.id] === undefined)
+        pts[pl.id] = 0; });
+    t.points = pts;
+}
+/** Modifie une valeur du barème (à tout moment) puis resynchronise les points déjà distribués. */
+function setScoring(t, key, value) {
+    if (!(key in t.scoring))
+        return false;
+    snapshot(t);
+    const b = scoringBounds(key);
+    t.scoring[key] = Math.min(b.max, Math.max(b.min, Number(value) || b.min));
+    recomputePoints(t);
+    return true;
+}
+/** Bonus/pénalité manuel (peut être négatif), tracé dans le journal avec un motif. */
+function manualAdjust(t, playerId, delta, reason) {
+    if (!t.players.some(p => p.id === playerId))
+        return false;
+    const d = Math.round((Number(delta) || 0) * 100) / 100;
+    if (!d)
+        return false;
+    snapshot(t);
+    t.log.push({ id: uid(), poolId: 'admin', stage: 'adjust', a: playerId, b: null, winner: playerId, pts: d, ts: Date.now(), reason: reason || '' });
+    recomputePoints(t);
+    return true;
 }
 /* ---------- Poules ---------- */
 function balancedSizes(nPlayers, nbPools) {
@@ -128,6 +239,18 @@ function distributePools(t) {
     }
     mixed.forEach((pid, i) => pools[i % nb].playerIds.push(pid));
     t.pools = pools;
+}
+/** Rebrasse l'ordre de passage d'une poule (avant lancement). */
+function shuffleOrder(pool) {
+    pool.order = shuffle(pool.playerIds);
+}
+/** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement) : dir = -1 (monte) ou +1 (descend). */
+function moveInOrder(pool, index, dir) {
+    const j = index + dir;
+    if (index < 0 || index >= pool.order.length || j < 0 || j >= pool.order.length)
+        return false;
+    [pool.order[index], pool.order[j]] = [pool.order[j], pool.order[index]];
+    return true;
 }
 function launch(t) {
     t.pools.forEach(p => {
@@ -234,6 +357,7 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
         winnerId = sa >= sb ? m.a : m.b;
     if (winnerId !== m.a && winnerId !== m.b)
         return null;
+    snapshot(t);
     const loserId = winnerId === m.a ? m.b : m.a;
     const pts = stagePoints(t, m.stage);
     award(t, winnerId, pts);
@@ -292,7 +416,7 @@ function startLosers(pool) {
         }
     }
 }
-/* ---------- Phase finale (élimination directe) ---------- */
+/* ---------- Phase finale (3 formats) ---------- */
 function allPoolsDone(t) {
     return t.pools.length > 0 && t.pools.every(p => p.phase === 'done');
 }
@@ -303,40 +427,271 @@ function qualifiers(t) {
     // terminé top1/top2 de sa poule via un forfait adverse antérieur.
     return top1s.concat(top2s).filter(id => !t.disqualified.includes(id));
 }
-function startFinals(t) {
-    t.finals = buildBracket(qualifiers(t));
+function buildRoundRobin(ids) {
+    const matches = [];
+    for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++)
+            matches.push({ id: uid(), a: ids[i], b: ids[j], winner: null, bye: false });
+    return { players: ids.slice(), matches };
+}
+/** Classement round robin : victoires puis différence de manches puis points. */
+function rrRanking(t) {
+    if (!t.finals || t.finals.format !== 'roundrobin')
+        return [];
+    const rr = t.finals;
+    const wins = {}, gd = {};
+    rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; });
+    rr.matches.forEach(m => {
+        if (!m.winner || !m.a || !m.b)
+            return;
+        wins[m.winner] = (wins[m.winner] || 0) + 1;
+        if (m.sa != null && m.sb != null) {
+            gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
+            gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
+        }
+    });
+    return rr.players.slice()
+        .sort((x, y) => wins[y] - wins[x] || gd[y] - gd[x] || (t.points[y] || 0) - (t.points[x] || 0))
+        .map(id => ({ id, wins: wins[id], gd: gd[id] }));
+}
+function placeSlot(m, slot, val) {
+    const key = slot ? 'b' : 'a';
+    if (m[key] == null && val != null) {
+        m[key] = val;
+        return true;
+    }
+    return false;
+}
+function resolveBye(m) {
+    if (m.winner)
+        return false;
+    const aB = m.a === exports.BYE, bB = m.b === exports.BYE;
+    const aR = !!m.a && !aB, bR = !!m.b && !bB;
+    if (aR && bB) {
+        m.winner = m.a;
+        m.bye = true;
+        return true;
+    }
+    if (bR && aB) {
+        m.winner = m.b;
+        m.bye = true;
+        return true;
+    }
+    if (aB && bB) {
+        m.winner = exports.BYE;
+        m.bye = true;
+        return true;
+    }
+    return false;
+}
+function buildDoubleElim(ids) {
+    const P = Math.max(2, nextPow2(ids.length));
+    const seeds = ids.slice();
+    while (seeds.length < P)
+        seeds.push(exports.BYE);
+    const R = Math.round(Math.log2(P));
+    const mk = () => ({ id: uid(), a: null, b: null, winner: null, bye: false });
+    const wb = [];
+    const r0 = [];
+    for (let i = 0; i < P / 2; i++)
+        r0.push({ id: uid(), a: seeds[i], b: seeds[P - 1 - i], winner: null, bye: false });
+    wb.push(r0);
+    let size = P / 2;
+    for (let r = 1; r < R; r++) {
+        size = size / 2;
+        wb.push(Array.from({ length: size }, mk));
+    }
+    const lb = [];
+    const lbCount = Math.max(0, 2 * R - 2);
+    for (let e = 0; e < lbCount; e++) {
+        const k = Math.floor(e / 2);
+        const s = Math.max(1, P / Math.pow(2, k + 2));
+        lb.push(Array.from({ length: s }, mk));
+    }
+    const fin = { format: 'double', wb, lb, gf: mk(), gf2: null, wbChampion: null, lbChampion: null };
+    propagateDouble(fin);
+    return fin;
+}
+function propagateDouble(fin) {
+    let changed = true, guard = 0;
+    while (changed && guard++ < 1000) {
+        changed = false;
+        for (let r = 0; r < fin.wb.length; r++) {
+            fin.wb[r].forEach((m, i) => {
+                if (resolveBye(m))
+                    changed = true;
+                if (!m.winner)
+                    return;
+                if (r + 1 < fin.wb.length) {
+                    if (placeSlot(fin.wb[r + 1][Math.floor(i / 2)], (i % 2), m.winner))
+                        changed = true;
+                }
+                else if (fin.wbChampion !== m.winner && m.winner !== exports.BYE) {
+                    fin.wbChampion = m.winner;
+                    changed = true;
+                }
+                let drop;
+                if (m.winner === exports.BYE)
+                    drop = exports.BYE;
+                else {
+                    const loser = m.winner === m.a ? m.b : m.a;
+                    drop = loser ?? null;
+                }
+                if (drop != null && fin.lb.length) {
+                    if (r === 0) {
+                        if (placeSlot(fin.lb[0][Math.floor(i / 2)], (i % 2), drop))
+                            changed = true;
+                    }
+                    else if (2 * r - 1 < fin.lb.length) {
+                        if (placeSlot(fin.lb[2 * r - 1][i], 1, drop))
+                            changed = true;
+                    }
+                }
+            });
+        }
+        for (let e = 0; e < fin.lb.length; e++) {
+            fin.lb[e].forEach((m, i) => {
+                if (resolveBye(m))
+                    changed = true;
+                if (!m.winner)
+                    return;
+                if (e + 1 < fin.lb.length) {
+                    if (e % 2 === 0) {
+                        if (placeSlot(fin.lb[e + 1][i], 0, m.winner))
+                            changed = true;
+                    }
+                    else {
+                        if (placeSlot(fin.lb[e + 1][Math.floor(i / 2)], (i % 2), m.winner))
+                            changed = true;
+                    }
+                }
+                else if (fin.lbChampion !== m.winner && m.winner !== exports.BYE) {
+                    fin.lbChampion = m.winner;
+                    changed = true;
+                }
+            });
+        }
+        if (fin.wbChampion && placeSlot(fin.gf, 0, fin.wbChampion))
+            changed = true;
+        if (fin.lbChampion && placeSlot(fin.gf, 1, fin.lbChampion))
+            changed = true;
+        // cas dégénéré : pas de losers bracket (≤2 qualifiés)
+        if (!fin.lb.length && fin.wbChampion && placeSlot(fin.gf, 1, exports.BYE))
+            changed = true;
+    }
+}
+function startFinals(t, format) {
+    snapshot(t);
+    const q = qualifiers(t);
+    const fmt = format || t.finalsFormat || 'single';
+    t.finalsFormat = fmt;
+    if (fmt === 'roundrobin') {
+        const rr = buildRoundRobin(q);
+        t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
+    }
+    else if (fmt === 'double') {
+        t.finals = buildDoubleElim(q);
+    }
+    else {
+        t.finals = { format: 'single', bracket: buildBracket(q) };
+    }
+    checkFinalsChampion(t);
+}
+/** Toutes les rencontres de la phase finale, quel que soit le format — pour recherche/affichage générique. */
+function allFinalsMatches(t) {
+    const f = t.finals;
+    if (!f)
+        return [];
+    if (f.format === 'roundrobin')
+        return f.matches;
+    if (f.format === 'single')
+        return f.bracket.rounds.flat();
+    if (f.format === 'double')
+        return [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
+    return [];
+}
+function findFinalsMatch(t, matchId) {
+    return allFinalsMatches(t).find(m => m.id === matchId) || null;
 }
 function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
-    if (!t.finals)
+    const f = t.finals;
+    if (!f)
         return null;
-    for (const round of t.finals.rounds) {
-        const m = round.find(x => x.id === matchId);
-        if (!m)
-            continue;
-        if (m.bye || m.winner || !m.a || !m.b)
-            return null;
-        if (sa || sb)
-            winnerId = sa >= sb ? m.a : m.b;
-        if (winnerId !== m.a && winnerId !== m.b)
-            return null;
-        m.winner = winnerId;
-        const pts = t.scoring.finalsWin;
-        award(t, winnerId, pts);
-        t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
-        propagateBracket(t.finals);
-        const champ = bracketChampion(t.finals);
-        if (champ) {
-            t.champion = champ;
-            award(t, champ, t.scoring.championBonus);
-            t.log.push({ id: uid(), poolId: 'finals', stage: 'championBonus', a: champ, b: null, winner: champ, pts: t.scoring.championBonus, ts: Date.now() });
-            t.status = 'finished';
-            t.finishedAt = Date.now();
-        }
-        return { winnerId, pts };
+    const match = findFinalsMatch(t, matchId);
+    if (!match)
+        return null;
+    if (match.bye || match.winner || !match.a || !match.b || match.a === exports.BYE || match.b === exports.BYE)
+        return null;
+    if (sa || sb)
+        winnerId = sa >= sb ? match.a : match.b;
+    if (winnerId !== match.a && winnerId !== match.b)
+        return null;
+    snapshot(t);
+    match.winner = winnerId;
+    if (sa || sb) {
+        match.sa = sa;
+        match.sb = sb;
     }
-    return null;
+    const pts = t.scoring.finalsWin;
+    award(t, winnerId, pts);
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    if (f.format === 'single')
+        propagateBracket(f.bracket);
+    else if (f.format === 'double')
+        propagateDouble(f);
+    checkFinalsChampion(t);
+    return { winnerId, pts };
+}
+function finishFinals(t, champId) {
+    if (!champId || t.status === 'finished')
+        return;
+    t.champion = champId;
+    award(t, champId, t.scoring.championBonus);
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'championBonus', a: champId, b: null, winner: champId, pts: t.scoring.championBonus, ts: Date.now() });
+    t.status = 'finished';
+    t.finishedAt = Date.now();
+}
+/** Détecte la fin de la phase finale (tous formats) et couronne le champion. */
+function checkFinalsChampion(t) {
+    const f = t.finals;
+    if (!f || t.status === 'finished')
+        return;
+    if (f.format === 'single') {
+        finishFinals(t, bracketChampion(f.bracket));
+    }
+    else if (f.format === 'double') {
+        if (f.gf.winner) {
+            // Bracket reset : si le finaliste du losers bracket gagne la 1re grande finale,
+            // on rejoue une 2e grande finale (chacun a alors une défaite).
+            if (f.gf.winner === f.gf.a)
+                finishFinals(t, f.gf.a);
+            else if (f.gf2 && f.gf2.winner)
+                finishFinals(t, f.gf2.winner);
+            else if (!f.gf2)
+                f.gf2 = { id: uid(), a: f.gf.a, b: f.gf.b, winner: null, bye: false };
+        }
+    }
+    else if (f.format === 'roundrobin') {
+        if (f.matches.every(m => m.winner)) {
+            const rk = rrRanking(t);
+            if (rk.length)
+                finishFinals(t, rk[0].id);
+        }
+    }
 }
 /* ---------- Disqualification (en direct) ---------- */
+/** Le match en cours (poule ou finale, tous formats) impliquant ce joueur, s'il y en a un. */
+function pendingFinalsMatchFor(t, playerId) {
+    const f = t.finals;
+    if (!f)
+        return null;
+    if (f.format === 'single') {
+        const nm = nextBracketMatch(f.bracket);
+        return nm && (nm.match.a === playerId || nm.match.b === playerId) ? nm.match : null;
+    }
+    // Double élim / round robin : plusieurs matchs peuvent être « prêts » en parallèle.
+    return allFinalsMatches(t).find(m => !m.winner && !m.bye && m.a && m.b && m.a !== exports.BYE && m.b !== exports.BYE && (m.a === playerId || m.b === playerId)) || null;
+}
 /**
  * Disqualifie un joueur en cours de tournoi : forfait immédiat sur son match en
  * cours (s'il y en a un, poule ou finale — l'adversaire est déclaré vainqueur via
@@ -372,13 +727,11 @@ function disqualifyPlayer(t, playerId) {
                 acted = true;
             }
         }
-        if (t.finals) {
-            const nm = nextBracketMatch(t.finals);
-            if (nm && (nm.match.a === playerId || nm.match.b === playerId)) {
-                const winner = (nm.match.a === playerId ? nm.match.b : nm.match.a);
-                reportFinals(t, nm.match.id, winner, 0, 0, 'forfeit');
-                acted = true;
-            }
+        const fm = pendingFinalsMatchFor(t, playerId);
+        if (fm) {
+            const winner = (fm.a === playerId ? fm.b : fm.a);
+            reportFinals(t, fm.id, winner, 0, 0, 'forfeit');
+            acted = true;
         }
         if (!acted)
             break;
@@ -401,6 +754,22 @@ function cagnotte(t) {
     const finalsMatches = Math.max(0, q - 1);
     const programmed = Math.round((surv * s.survWin + los * s.loserWin + pf * s.poolFinalWin + finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
     return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
+}
+/** Ajuste proportionnellement le barème pour tenir dans la cagnotte (pas de 0.25). */
+function autoFitScoring(t) {
+    const c = cagnotte(t);
+    if (c.programmed <= 0)
+        return;
+    snapshot(t);
+    const scale = c.total / c.programmed;
+    const clamp = (v) => Math.min(999, Math.max(0.25, Math.floor(v * scale * 4) / 4));
+    const s = t.scoring;
+    s.survWin = clamp(s.survWin);
+    s.loserWin = clamp(s.loserWin);
+    s.poolFinalWin = clamp(s.poolFinalWin);
+    s.finalsWin = clamp(s.finalsWin);
+    // le bonus champion n'est pas rogné automatiquement (choix de l'organisateur)
+    recomputePoints(t);
 }
 function distributed(t) {
     return Math.round(Object.values(t.points).reduce((a, b) => a + b, 0) * 100) / 100;

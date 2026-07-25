@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
-import { AddPlayerDto, CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import {
+  AddPlayerDto, AdjustDto, ClubDto, CreateTournamentDto, MoveOrderDto, RegisterDto, ReportDto,
+  ScoringDto, StartFinalsDto, UpdateTournamentDto,
+} from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -122,8 +125,8 @@ export class TournamentsController {
   @Post(':id/finals/start')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
-  async startFinals(@Param('id') id: string, @CurrentUser() user: JwtUser) {
-    const s = await this.service.startFinals(id, user);
+  async startFinals(@Param('id') id: string, @Body() dto: StartFinalsDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.startFinals(id, user, dto.format);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }
@@ -162,6 +165,89 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async disqualifyPlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.disqualifyPlayer(id, playerId, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Patch(':id/players/:playerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async renamePlayer(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: AddPlayerDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.renamePlayer(id, playerId, dto.name, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Patch(':id/players/:playerId/club')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async setPlayerClub(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: ClubDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.setPlayerClub(id, playerId, dto.club, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/players/:playerId/adjust')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async manualAdjust(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: AdjustDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.manualAdjust(id, playerId, dto.delta, dto.reason, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  /* Historique, barème, répartition des poules : organisateur/admin uniquement. */
+
+  @Post(':id/undo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async undo(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.undo(id, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/reset')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async reset(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.reset(id, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Patch(':id/scoring')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async setScoring(@Param('id') id: string, @Body() dto: ScoringDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.setScoring(id, dto.key, dto.value, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/pools/distribute')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async distributePools(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.distributePools(id, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/pools/:poolId/shuffle')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async shufflePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.shufflePoolOrder(id, poolId, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/pools/:poolId/move')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async movePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: MoveOrderDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.movePoolOrder(id, poolId, dto.index, dto.dir, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

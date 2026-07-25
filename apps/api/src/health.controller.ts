@@ -31,12 +31,10 @@ export class HealthController {
     guard = 0;
     while (t.status !== 'finished' && guard++ < 60) {
       let acted = false;
-      for (const round of t.finals!.rounds) {
-        for (const m of round) {
-          if (m.a && m.b && !m.winner && !m.bye) {
-            Engine.reportFinals(t, m.id, m.a);
-            acted = true;
-          }
+      for (const m of Engine.allFinalsMatches(t)) {
+        if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) {
+          Engine.reportFinals(t, m.id, m.a);
+          acted = true;
         }
       }
       if (!acted) break;

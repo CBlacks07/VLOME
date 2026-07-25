@@ -34,6 +34,8 @@ type State = {
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
   adSlide: number;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
+  editingPlayerId: string | null; // joueur en cours d'édition (renommer/club/ajustement) dans le panneau Joueurs
+  finalsFormatPick: string; // format de phase finale choisi avant de lancer les finales
 };
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
@@ -595,7 +597,7 @@ function profileSecurity(S: State) {
 const ADMIN_TABS: [string, string][] = [
   ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
-const escAttr = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
+const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
 const btnSm = (attr: string, label: string, color = "#8E8FA6", border = "#282838") =>
   `<button ${attr} style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:transparent;border:1px solid ${border};color:${color}">${label}</button>`;
@@ -914,6 +916,8 @@ function pTournoi(S: State) {
   const head = `${cover}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     ${manage ? `<button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
+    ${t.status !== "setup" ? `${t.canUndo ? `<button data-undo="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.arrow, 15)}Annuler</button>` : ""}
+    <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
     <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>` : ""}
     <div style="flex:1"></div>
     <div style="min-width:200px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
@@ -974,6 +978,23 @@ function pTournoi(S: State) {
           ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
         </div>`
       : "";
+    // Répartition des poules (facultative) : prévisualiser et réordonner l'ordre de
+    // passage avant le lancement — sinon le lancement répartit et tire au sort tout seul.
+    const poolsList: { id: string; name: string; order: { id: string; name: string }[] }[] = Array.isArray(t.pools) ? t.pools : [];
+    const poolsPreview = manage
+      ? poolsList.length
+        ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Répartition des poules</h3><button data-pools-distribute="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Re-répartir au hasard</button></div>
+            <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p) => `<div style="border:1px solid #282838;border-radius:12px;padding:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><b style="font-size:13.5px">${escHtml(p.name)}</b><button data-pool-shuffle="${t.id}|${p.id}" title="Rebrasser" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;display:grid;place-items:center">${ic(I.arrow, 14)}</button></div>
+              <div style="display:flex;flex-direction:column;gap:5px">${p.order.map((pl, i) => `<div style="display:flex;align-items:center;gap:6px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 8px"><span style="color:#5D5E72;width:16px">${i + 1}</span><span style="flex:1">${escHtml(pl.name)}</span><button data-pool-move="${t.id}|${p.id}|${i}|-1" ${i === 0 ? "disabled" : ""} style="background:transparent;border:0;color:${i === 0 ? "#33334A" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};padding:2px">▲</button><button data-pool-move="${t.id}|${p.id}|${i}|1" ${i === p.order.length - 1 ? "disabled" : ""} style="background:transparent;border:0;color:${i === p.order.length - 1 ? "#33334A" : "#8E8FA6"};cursor:${i === p.order.length - 1 ? "default" : "pointer"};padding:2px">▼</button></div>`).join("")}</div>
+            </div>`).join("")}</div>
+          </div>`
+        : roster.length >= 2
+          ? `<div style="text-align:center;margin-top:18px"><button data-pools-distribute="${t.id}" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:10px 18px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Répartir en poules (aperçu avant lancement)</button></div>`
+          : ""
+      : "";
     const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
     return `<main style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center">
@@ -981,7 +1002,7 @@ function pTournoi(S: State) {
         ${feeBadge}
         <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">${sub}</p>
         ${action}
-      </div>${pendingPanel}${participants}</main>`;
+      </div>${pendingPanel}${participants}${poolsPreview}</main>`;
   }
 
   // Poule (match courant cliquable + classement)
@@ -1015,37 +1036,64 @@ function pTournoi(S: State) {
   const poolsHtml = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">${t.pools.map(poolCard).join("")}</div>`;
 
   // Bouton phase finale
+  const FINALS_FORMATS: [string, string][] = [["single", "Élimination simple"], ["double", "Double élimination"], ["roundrobin", "Round Robin"]];
   const finalsBtn = manage && t.allPoolsDone && !t.finals
-    ? `<div style="text-align:center;margin:24px 0"><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale</button></div>`
+    ? `<div style="text-align:center;margin:24px 0">
+        <div style="display:inline-flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;justify-content:center">${FINALS_FORMATS.map(([v, l]) => `<button data-finalsfmt="${v}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${S.finalsFormatPick === v ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.finalsFormatPick === v ? "#22D3EE" : "#282838"};color:${S.finalsFormatPick === v ? "#22D3EE" : "#8E8FA6"}">${l}</button>`).join("")}</div>
+        <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale</button></div>
+      </div>`
     : "";
 
-  // Bracket finale
+  // Bracket(s) de la phase finale — rendu générique réutilisé pour les 3 formats.
+  const matchLine = (name: string | null, id: string | null, win: boolean, playable: boolean, matchId: string) => {
+    if (!name) return `<div style="padding:9px 11px;color:#5D5E72;font-style:italic">à venir</div>`;
+    if (playable && manage) return `<button data-reportf="${matchId}|${id}" style="display:block;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px">${escHtml(name)}</button>`;
+    return `<div style="padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}">${escHtml(name)}${win ? " ✓" : ""}</div>`;
+  };
+  const matchBox = (m: Detail) => {
+    if (m.bye) return `<div style="border:1px solid #282838;border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, true, false, m.matchId)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #22222F">exempt</div></div>`;
+    return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId)}<div style="border-top:1px solid #22222F">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId)}</div></div>`;
+  };
+  const roundCol = (label: string, matches: Detail[]) => `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map(matchBox).join("")}</div>`;
+
   let finalsHtml = "";
   if (t.finals) {
     const champ = t.finals.champion
-      ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${t.finals.champion}</div></div>`
+      ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
       : "";
-    const rounds = t.finals.rounds.map((round: Detail) => {
-      const matches = round.matches.map((m: Detail) => {
-        const line = (name: string | null, id: string | null, win: boolean, playable: boolean) => {
-          if (!name) return `<div style="padding:9px 11px;color:#5D5E72;font-style:italic">à venir</div>`;
-          if (playable && manage) return `<button data-reportf="${m.matchId}|${id}" style="display:block;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px">${name}</button>`;
-          return `<div style="padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}">${name}${win ? " ✓" : ""}</div>`;
-        };
-        if (m.bye) return `<div style="border:1px solid #282838;border-radius:10px;overflow:hidden;background:#14141D">${line(m.aName, m.aId, true, false)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #22222F">exempt</div></div>`;
-        return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${line(m.aName, m.aId, m.winnerId === m.aId, m.playable)}<div style="border-top:1px solid #22222F">${line(m.bName, m.bId, m.winnerId === m.bId, m.playable)}</div></div>`;
-      }).join("");
-      return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${round.label}</div>${matches}</div>`;
-    }).join("");
-    finalsHtml = `<div style="margin-top:26px">${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds}</div></div>`;
+    let body: string;
+    let fmtLabel = "";
+    if (t.finals.format === "roundrobin") {
+      fmtLabel = " · Round Robin";
+      const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">V</td><td style="padding:6px 8px;text-align:right">Diff.</td><td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td><td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
+      body = standings + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.matches.map((m: Detail) => matchBox(m)).join("")}</div>`;
+    } else if (t.finals.format === "double") {
+      fmtLabel = " · Double élimination";
+      const gf = t.finals.gf2 ? [t.finals.gf, t.finals.gf2] : [t.finals.gf];
+      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.wb.map((r: Detail) => roundCol(r.label, r.matches)).join("")}</div>
+        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches)).join("")}</div>
+        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Grande finale${t.finals.gf2 ? " (2e manche — bracket reset)" : ""}</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${roundCol("", gf)}</div>`;
+    } else {
+      body = `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${t.finals.rounds.map((r: Detail) => roundCol(r.label, r.matches)).join("")}</div>`;
+    }
+    finalsHtml = `<div style="margin-top:26px">${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale${fmtLabel}</div>${body}</div>`;
   }
 
-  // Joueurs (organisateur/admin) : visible pendant/après le direct, avec disqualification en direct.
-  const roster2: { id: string; name: string; disqualified?: boolean }[] = Array.isArray(t.players) ? t.players : [];
+  // Joueurs (organisateur/admin) : visible pendant/après le direct — renommer, club, ajustement
+  // manuel de points et disqualification en direct.
+  const roster2: { id: string; name: string; club?: string; disqualified?: boolean }[] = Array.isArray(t.players) ? t.players : [];
+  const editRow = (p: { id: string; name: string; club?: string }) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#14141D;border:1px solid #22D3EE55;border-radius:10px;padding:8px;width:100%">
+    <input id="pl-edit-name" value="${escAttr(p.name)}" placeholder="Nom" style="flex:1;min-width:110px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 9px" />
+    <input id="pl-edit-club" value="${escAttr(p.club || "")}" placeholder="Club" style="flex:1;min-width:90px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 9px" />
+    <input id="pl-edit-delta" type="number" step="0.5" placeholder="+/- pts" style="width:72px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 7px" />
+    <input id="pl-edit-reason" placeholder="Motif (si ajustement)" style="flex:1;min-width:110px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 9px" />
+    <button data-pledit-save="${t.id}|${p.id}" style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;cursor:pointer">OK</button>
+    <button data-pledit-cancel="1" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;font-size:12px">Annuler</button>
+  </div>`;
   const rosterPanel = manage && roster2.length
-    ? `<details style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px 20px;margin-bottom:20px">
+    ? `<details open style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px 20px;margin-bottom:20px">
         <summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Joueurs (${roster2.length})</summary>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${roster2.map((p) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:${p.disqualified ? "#5D5E72" : "#F4F5FB"};background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px${p.disqualified ? ";text-decoration:line-through" : ""}"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.disqualified ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#FB7185">DQ</span>` : t.status === "live" ? `<button data-pldq="${t.id}|${p.id}" title="Disqualifier" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#FB7185;cursor:pointer">${ic(I.warn, 12)}</button>` : ""}</span>`).join("")}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${roster2.map((p) => S.editingPlayerId === p.id ? editRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:${p.disqualified ? "#5D5E72" : "#F4F5FB"};background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px${p.disqualified ? ";text-decoration:line-through" : ""}"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<button data-pledit-open="${p.id}" title="Renommer / club / points" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button>${p.disqualified ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#FB7185">DQ</span>` : t.status === "live" ? `<button data-pldq="${t.id}|${p.id}" title="Disqualifier" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#FB7185;cursor:pointer">${ic(I.warn, 12)}</button>` : ""}</span>`).join("")}</div>
       </details>`
     : "";
 
@@ -1250,6 +1298,7 @@ export default function Page() {
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
+    editingPlayerId: null, finalsFormatPick: "single",
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -1288,6 +1337,36 @@ export default function Page() {
       if (r.status === 403) { alert("Seul l'organisateur peut modifier ce tournoi."); return; }
       if (r.ok) { await loadTournaments(); await openDetail(id); setS((s) => ({ ...s, editing: false })); }
     } catch { /* ignore */ }
+  }
+  /** Enregistre en une fois ce qui a changé dans le panneau d'édition d'un joueur : nom, club, ajustement manuel. */
+  async function savePlayerEdit(tid: string, pid: string) {
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const name = val("pl-edit-name").trim();
+    const club = val("pl-edit-club").trim();
+    const delta = parseFloat(val("pl-edit-delta"));
+    const reason = val("pl-edit-reason").trim();
+    const current = S.detail?.players?.find((p: Detail) => p.id === pid);
+    setS((s) => ({ ...s, detailBusy: true }));
+    try {
+      let lastOk: Detail | null = null;
+      if (name && current && name !== current.name) {
+        const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ name }) });
+        if (r.ok) lastOk = await r.json();
+        else { const d = await r.json().catch(() => null); alert(d?.message || "Renommage impossible."); }
+      }
+      if (current && club !== (current.club || "")) {
+        const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}/club`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ club }) });
+        if (r.ok) lastOk = await r.json();
+      }
+      if (delta) {
+        const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}/adjust`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ delta, reason: reason || undefined }) });
+        if (r.ok) lastOk = await r.json();
+        else { const d = await r.json().catch(() => null); alert(d?.message || "Ajustement impossible."); }
+      }
+      setS((s) => ({ ...s, detail: lastOk || s.detail, detailBusy: false, editingPlayerId: null }));
+      loadTournaments();
+    } catch { setS((s) => ({ ...s, detailBusy: false })); }
   }
   async function deleteT(id: string) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -1817,14 +1896,22 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
     if (d.open) { openDetail(d.open); }
     else if (d.back !== undefined) { setS((s) => ({ ...s, page: "tournois", detail: null, openId: null })); }
     else if (d.launch) { act(`${API}/api/tournaments/${d.launch}/launch`); }
-    else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`); }
+    else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`, { format: S.finalsFormatPick }); }
+    else if (d.finalsfmt) { setS((s) => ({ ...s, finalsFormatPick: d.finalsfmt! })); }
+    else if (d.undo) { act(`${API}/api/tournaments/${d.undo}/undo`); }
+    else if (d.reset) {
+      setS((s) => ({ ...s, confirmBox: { title: "Réinitialiser le tournoi", message: "Tous les résultats, poules et la phase finale seront effacés — les joueurs et le barème sont conservés. Irréversible.", okLabel: "Réinitialiser", action: `treset|${d.reset}` } }));
+    }
+    else if (d.poolsDistribute) { act(`${API}/api/tournaments/${d.poolsDistribute}/pools/distribute`); }
+    else if (d.poolShuffle) { const [tid, poolId] = d.poolShuffle.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/shuffle`); }
+    else if (d.poolMove) { const [tid, poolId, index, dir] = d.poolMove.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/move`, { index: parseInt(index), dir: parseInt(dir) }); }
     else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }
     else if (d.reportf) { const [matchId, winnerId] = d.reportf.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { matchId, winnerId }); }
     else if (d.reportscore) {
@@ -1861,6 +1948,9 @@ export default function Page() {
       const pname = S.detail?.players?.find((p: Detail) => p.id === pid)?.name;
       setS((s) => ({ ...s, confirmBox: { title: "Disqualifier le joueur", message: `« ${pname || "Ce joueur"} » perdra par forfait son match en cours (et tous ses matchs restants) — irréversible.`, okLabel: "Disqualifier", action: `pldq|${tid}|${pid}` } }));
     }
+    else if (d.pleditOpen) { setS((s) => ({ ...s, editingPlayerId: d.pleditOpen! })); }
+    else if (d.pleditCancel !== undefined) { setS((s) => ({ ...s, editingPlayerId: null })); }
+    else if (d.pleditSave) { const [tid, pid] = d.pleditSave.split("|"); savePlayerEdit(tid, pid); }
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
@@ -1943,6 +2033,7 @@ export default function Page() {
         else if (kind === "sldel") setS((s) => ({ ...s, slidesEdit: (s.slidesEdit ?? []).filter((sl) => sl.key !== arg) }));
         else if (kind === "plrem") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}`, undefined, "DELETE"); }
         else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
+        else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); }
       }
     }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }

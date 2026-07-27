@@ -76,6 +76,7 @@ model Club {
   id      String   @id @default(cuid())
   name    String   @unique
   city    String?
+  logoUrl String?
   players Player[]
 }
 

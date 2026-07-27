@@ -9,4 +9,5 @@ export class RosterPlayerDto {
 export class ClubDto {
   @IsString() @MaxLength(80) name!: string;
   @IsOptional() @IsString() @MaxLength(80) city?: string;
+  @IsOptional() @IsString() logoUrl?: string;
 }

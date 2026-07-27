@@ -308,11 +308,11 @@ const wizFoot = (prevLabel: string, prev: number, next: number, nextLabel?: stri
 
 function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean }, title = "Contrôle de la cagnotte") {
   const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
-  return wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px">${title}</h3><span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${c.valid ? "#34D399" : "#FB7185"};background:${c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:99px;padding:4px 10px">${ic(c.valid ? I.plus : I.warn, 12)}${c.valid ? "Valide" : "Dépassement"}</span></div>
+  return wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px">${title}</h3><span id="wiz-gauge-badge" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${c.valid ? "#34D399" : "#FB7185"};background:${c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:99px;padding:4px 10px"><span id="wiz-gauge-badge-icon" style="display:inline-flex">${ic(c.valid ? I.plus : I.warn, 12)}</span><span id="wiz-gauge-badge-txt">${c.valid ? "Valide" : "Dépassement"}</span></span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:5px"><span>Points disponibles</span><b style="color:#F4F5FB">${c.total}</b></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:10px"><span>Points programmés</span><b style="color:#F4F5FB">${c.programmed}</b></div>
-    <div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"}"></span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-top:10px"><span>Écart restant</span><b style="color:${c.valid ? "#34D399" : "#FB7185"}">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:10px"><span>Points programmés</span><b id="wiz-gauge-prog" style="color:#F4F5FB">${c.programmed}</b></div>
+    <div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span id="wiz-gauge-bar" style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"};transition:width .15s ease"></span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-top:10px"><span>Écart restant</span><b id="wiz-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"}">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
     <p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>`);
 }
 
@@ -340,17 +340,35 @@ function wizInfosStep(S: State) {
 function wizParticipantsStep(S: State) {
   const d = S.wizData;
   const names = d.players.join("\n");
-  const roster: Detail[] = S.roster ?? [];
+  const fullRoster: Detail[] = S.roster ?? [];
   const inList = (nm: string) => d.players.some((p) => p.split("@")[0].trim().toLowerCase() === nm.toLowerCase());
-  const selCount = roster.filter((p: Detail) => inList(p.name)).length;
-  const rosterPanel = roster.length ? wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Depuis la base de joueurs</h3><button data-wizaddall="1" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">${ic(I.plus, 13)}Tout sélectionner</button></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;max-height:220px;overflow-y:auto">${roster.map((p: Detail) => {
-        const on = inList(p.name);
-        return `<button data-wiztoggleroster="${escAttr(p.name)}|${escAttr(p.clubName || "")}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 10px 6px 6px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}"><span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22222F;font-size:9px;font-weight:800;color:#8E8FA6">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.clubName ? `<span style="color:#5D5E72">${escHtml(p.clubName)}</span>` : ""}${ic(on ? I.plus : I.plus, 11)}</button>`;
-      }).join("")}</div>
-      <p style="color:#5D5E72;font-size:11.5px;margin:10px 0 0">${selCount} / ${roster.length} sélectionné${selCount > 1 ? "s" : ""}. Clique un joueur pour l'ajouter ou le retirer.</p>`)
+  const selCount = fullRoster.filter((p: Detail) => inList(p.name)).length;
+  const q = S.wizRosterSearch.trim().toLowerCase();
+  const roster = q ? fullRoster.filter((p: Detail) => `${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase().includes(q)) : fullRoster;
+  const chip = (p: Detail) => {
+    const on = inList(p.name);
+    return `<button data-wiztoggleroster="${escAttr(p.name)}|${escAttr(p.clubName || "")}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 10px 6px 6px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}"><span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22222F;font-size:9px;font-weight:800;color:#8E8FA6;overflow:hidden">${p.clubLogoUrl ? `<img src="${API}${p.clubLogoUrl}" style="width:100%;height:100%;object-fit:cover" />` : p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${ic(I.plus, 11)}</button>`;
+  };
+  // Regroupe par club (« Sans club » toujours en dernier) pour repérer vite une équipe entière.
+  const byClub = new Map<string, Detail[]>();
+  for (const p of roster) { const k = p.clubName || "Sans club"; if (!byClub.has(k)) byClub.set(k, []); byClub.get(k)!.push(p); }
+  const clubKeys = Array.from(byClub.keys()).sort((a, b) => a === "Sans club" ? 1 : b === "Sans club" ? -1 : a.localeCompare(b));
+  const groups = clubKeys.map((k) => `<div style="margin-bottom:12px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#5D5E72;margin-bottom:6px">${escHtml(k)} <span style="color:#33334A">· ${byClub.get(k)!.length}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${byClub.get(k)!.map(chip).join("")}</div>
+    </div>`).join("");
+  const rosterPanel = fullRoster.length ? wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Depuis la base de joueurs</h3>
+        <button data-wizaddall="1" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">${ic(I.plus, 13)}Tout sélectionner</button>
+      </div>
+      <div style="position:relative;margin-bottom:12px;max-width:320px">
+        <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 14)}</span>
+        <input id="wiz-roster-search" value="${escAttr(S.wizRosterSearch)}" placeholder="Rechercher un joueur ou un club… (Entrée)" style="${WIZ_INP};padding-left:32px" />
+      </div>
+      <div style="max-height:260px;overflow-y:auto">${groups || `<p style="color:#5D5E72;font-size:12.5px">Aucun joueur trouvé pour « ${escHtml(S.wizRosterSearch)} ».</p>`}</div>
+      <p style="color:#5D5E72;font-size:11.5px;margin:10px 0 0">${selCount} / ${fullRoster.length} sélectionné${selCount > 1 ? "s" : ""}. Clique un joueur pour l'ajouter ou le retirer.</p>`)
     : wizCard(`<h3 style="margin:0 0 8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Base de joueurs</h3><p style="color:#5D5E72;font-size:12.5px">La base est vide pour l'instant. Les participants saisis ici pourront l'alimenter — gère-la depuis Admin → Joueurs.</p>`);
-  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px">
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants</h3>
       ${wizField("Un nom par ligne", `<textarea id="wz-players" rows="8" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${WIZ_INP};resize:vertical">${escHtml(names)}</textarea>`, "Doublons fusionnés. Club optionnel avec la syntaxe « Nom @Club ».")}
       <div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:99px;padding:6px 13px">${ic(I.user, 13)}${d.players.length} participant${d.players.length > 1 ? "s" : ""}</span></div>`)}
@@ -358,8 +376,9 @@ function wizParticipantsStep(S: State) {
       <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:6px"><span>Participants</span><b style="color:#F4F5FB">${d.players.length}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6"><span>Points / participant</span><b style="color:#F4F5FB">${d.pointsPerPlayer}</b></div>
       <hr style="border:0;border-top:1px solid #282838;margin:12px 0" />
-      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`) + rosterPanel}
-  </div>${wizFoot("Retour", 1, 3)}`;
+      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`)}
+  </div>
+  ${rosterPanel}${wizFoot("Retour", 1, 3)}`;
 }
 
 function wizPoolsStep(S: State) {
@@ -416,13 +435,16 @@ function wizValidateStep(S: State) {
   </div>${wizFoot("Retour", 4, 0)}`;
 }
 
+/** Assistant de création : modal plein écran (fond flouté, fermeture au clic hors du panneau). */
 function tournamentWizard(S: State) {
   const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
-  return `<section style="border:1px solid rgba(34,211,238,.25);border-radius:20px;background:#0E0E16;padding:24px;margin-bottom:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Nouveau tournoi</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
-    <div style="display:flex;align-items:center;gap:7px;margin-bottom:18px;font-size:12px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:8px 12px;max-width:fit-content">${ic(I.warn, 13)}Format : <b style="color:#F4F5FB">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
-    ${wizSteps(S)}${body}
-  </section>`;
+  return `<div data-act="create-cancel" style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
+    <div data-stop="1" style="width:100%;max-width:1000px;border:1px solid rgba(34,211,238,.25);border-radius:20px;background:#0E0E16;padding:24px;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Nouveau tournoi</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:18px;font-size:12px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:8px 12px;max-width:fit-content">${ic(I.warn, 13)}Format : <b style="color:#F4F5FB">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
+      ${wizSteps(S)}${body}
+    </div>
+  </div>`;
 }
 
 function pTournois(S: State) {
@@ -433,7 +455,7 @@ function pTournois(S: State) {
   if (q) list = list.filter((t) => `${t.name} ${t.game || ""}`.toLowerCase().includes(q));
   // Le bouton « Créer » n'est proposé qu'aux organisateurs / admins.
   const createBtn = manage
-    ? `<button data-act="${S.creating ? "create-cancel" : "create-open"}" style="display:inline-flex;align-items:center;gap:8px;background:${S.creating ? "#1B1B27" : "linear-gradient(135deg,#22D3EE,#12aec4)"};color:${S.creating ? "#F4F5FB" : "#04222a"};border:${S.creating ? "1px solid #33334A" : "0"};border-radius:12px;padding:13px 20px;font-weight:750;font-size:14px;cursor:pointer;box-shadow:${S.creating ? "none" : "0 0 30px rgba(34,211,238,.22)"}">${S.creating ? ic(I.arrow) + "Fermer" : ic(I.plus) + "Créer un tournoi"}</button>`
+    ? `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 20px;font-weight:750;font-size:14px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.plus)}Créer un tournoi</button>`
     : "";
   const head = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Tournois</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 0">Module Challonge · tous formats · scores &amp; arbitrage en temps réel</p></div>${createBtn}</div>`;
   const qPill = q
@@ -957,12 +979,16 @@ function adminClubsView(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team Mawu" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="cl-city" value="${escAttr(e.city)}" placeholder="Lomé" style="${adminInp}" /></label>
     </div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600;margin-bottom:2px">Logo du club (optionnel)</div>${filePicker("cl-logo", "Choisir le logo", "image/*", e.logoUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-clubsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Créer le club"}</button><button data-clubcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
   const filtered = q ? clubs.filter((c: Detail) => `${c.name} ${c.city || ""}`.toLowerCase().includes(q)) : clubs;
+  const clubAvatar = (c: Detail) => c.logoUrl
+    ? `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;overflow:hidden;flex:none;background:url('${API}${c.logoUrl}') center/cover;border:1px solid #282838"></span>`
+    : `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#22222F;border:1px solid #282838;color:#7C82FF;flex:none">${ic(I.image, 16)}</span>`;
   const rows = filtered.length ? filtered.map((c: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;flex-wrap:wrap">
-      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#22222F;border:1px solid #282838;color:#7C82FF;flex:none">${ic(I.image, 16)}</span>
+      ${clubAvatar(c)}
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(c.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(c.city) || "—"}</div></div>
       <span style="font-size:12px;color:#8E8FA6">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""}</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-clubedit="${c.id}"`, "Modifier", "#7C82FF", "#7C82FF55")}${btnSm(`data-clubdel="${c.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
@@ -1870,11 +1896,12 @@ export default function Page() {
     if (id === "new") rosterAct(`${API}/api/roster`, "POST", body);
     else rosterAct(`${API}/api/roster/${id}`, "PATCH", body);
   }
-  function saveClub(id: string) {
+  async function saveClub(id: string) {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
     const name = val("cl-name").trim();
     if (!name) { alert("Le nom du club est requis."); return; }
-    const body = { name, city: val("cl-city").trim() };
+    const body: Detail = { name, city: val("cl-city").trim() };
+    try { const logo = await uploadFile("cl-logo"); if (logo) body.logoUrl = logo; } catch { return; }
     if (id === "new") rosterAct(`${API}/api/clubs`, "POST", body);
     else rosterAct(`${API}/api/clubs/${id}`, "PATCH", body);
   }
@@ -2146,6 +2173,33 @@ export default function Page() {
     }
     return d;
   }
+  /** Recalcule la jauge de cagnotte en direct depuis les champs du barème (étape 4), sans re-rendu React — évite de perdre le focus/curseur pendant la saisie. */
+  function wizRecalcGauge() {
+    const prog = document.getElementById("wiz-gauge-prog"); const bar = document.getElementById("wiz-gauge-bar");
+    const gap = document.getElementById("wiz-gauge-gap"); const badge = document.getElementById("wiz-gauge-badge");
+    const badgeTxt = document.getElementById("wiz-gauge-badge-txt"); const badgeIcon = document.getElementById("wiz-gauge-badge-icon");
+    if (!prog || !bar || !gap || !badge || !badgeTxt || !badgeIcon) return;
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
+    const scoring = {
+      survWin: num("wz-sc-surv", 0), loserWin: num("wz-sc-loser", 0), poolFinalWin: num("wz-sc-poolfinal", 0),
+      finalsWin: num("wz-sc-finals", 0), championBonus: num("wz-sc-champion", 0),
+    };
+    const d = S.wizData;
+    const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, scoring);
+    const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
+    prog.textContent = String(c.programmed);
+    prog.style.color = "#F4F5FB";
+    bar.style.width = `${pct}%`;
+    bar.style.background = c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)";
+    gap.textContent = `${c.gap >= 0 ? "+" : ""}${c.gap}`;
+    gap.style.color = c.valid ? "#34D399" : "#FB7185";
+    badgeTxt.textContent = c.valid ? "Valide" : "Dépassement";
+    badgeIcon.innerHTML = ic(c.valid ? I.plus : I.warn, 12);
+    badge.style.color = c.valid ? "#34D399" : "#FB7185";
+    badge.style.background = c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)";
+    badge.style.borderColor = c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)";
+  }
   function wizGoto(next: number) {
     if (next === 0) { setS((s) => ({ ...s, creating: false })); return; }
     const d = wizCapture();
@@ -2199,7 +2253,7 @@ export default function Page() {
       const created = await r.json();
       await loadTournaments();
       setS((s) => ({
-        ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1,
+        ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
         wizData: { name: "", game: "", date: "", place: "", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
@@ -2394,7 +2448,7 @@ export default function Page() {
     else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
-    else if (d.act === "create-open") { setS((s) => ({ ...s, creating: true, wizStep: 1 })); loadRoster(); }
+    else if (d.act === "create-open") { setS((s) => ({ ...s, creating: true, wizStep: 1, wizRosterSearch: "" })); loadRoster(); }
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
     else if (d.act === "wiz-submit") submitCreate();
     else if (d.clearq !== undefined) setS((s) => ({ ...s, q: "" }));
@@ -2404,6 +2458,7 @@ export default function Page() {
   // (mise à jour DOM directe : pas de re-rendu, l'input garde son fichier)
   function onChange(e: React.ChangeEvent<HTMLDivElement>) {
     const t = e.target as HTMLInputElement;
+    if (t.id && t.id.startsWith("wz-sc-")) { wizRecalcGauge(); return; }
     if (t.type === "file" && t.id) {
       const file = t.files?.[0];
       const span = document.getElementById(t.id + "-name");
@@ -2432,6 +2487,9 @@ export default function Page() {
     }
     if (e.key === "Enter" && t.id === "adm-search") {
       setS((s) => ({ ...s, adminSearch: (t as HTMLInputElement).value.trim() }));
+    }
+    if (e.key === "Enter" && t.id === "wiz-roster-search") {
+      setS((s) => ({ ...s, wizRosterSearch: (t as HTMLInputElement).value.trim() }));
     }
   }
 

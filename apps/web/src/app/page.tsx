@@ -36,6 +36,19 @@ type State = {
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
   editingPlayerId: string | null; // joueur en cours d'édition (renommer/club/ajustement) dans le panneau Joueurs
   finalsFormatPick: string; // format de phase finale choisi avant de lancer les finales
+  // Assistant de création (5 étapes) — accumule les champs au fil des étapes avant l'envoi final.
+  wizStep: number;
+  wizData: {
+    name: string; game: string; date: string; place: string;
+    pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number;
+    survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number;
+    imageUrl: string | null;
+  };
+  wizRosterSearch: string;
+  // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
+  roster: Detail[] | null; clubs: Detail[] | null;
+  rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs";
+  classementView: "joueurs" | "clubs"; // bascule joueurs / clubs sur la page Classements
 };
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
@@ -85,6 +98,24 @@ const I = {
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
+
+/** Aperçu (pur, non autoritaire) de la répartition en poules — même formule que le moteur. */
+function balancedSizesPreview(nPlayers: number, nbPools: number): number[] {
+  const nb = Math.max(1, Math.min(nbPools, Math.max(nPlayers, 1)));
+  const base = Math.floor(nPlayers / nb), extra = nPlayers % nb;
+  return Array.from({ length: nb }, (_, i) => base + (i < extra ? 1 : 0));
+}
+/** Aperçu (pur, non autoritaire) de la cagnotte programmée — même formule que Engine.cagnotte, pour prévisualiser dans l'assistant avant la création réelle côté serveur. */
+function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number }) {
+  const total = nPlayers * pointsPerPlayer;
+  const sizes = balancedSizesPreview(nPlayers, nbPools);
+  let surv = 0, los = 0, pf = 0;
+  sizes.forEach((n) => { if (n >= 2) { surv += n - 1; los += Math.max(0, n - 2); pf += 1; } });
+  const q = sizes.filter((n) => n >= 2).length * 2 + sizes.filter((n) => n === 1).length;
+  const finalsMatches = Math.max(0, q - 1);
+  const programmed = Math.round((surv * scoring.survWin + los * scoring.loserWin + pf * scoring.poolFinalWin + finalsMatches * scoring.finalsWin + scoring.championBonus) * 100) / 100;
+  return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total, sizes };
+}
 
 /** Partenaires normalisés (compat : d'anciens réglages stockaient de simples chaînes). */
 function normPartners(S: State): { name: string; logoUrl: string | null }[] {
@@ -251,6 +282,149 @@ function pAccueil(S: State) {
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
 
+/* ================= Assistant de création de tournoi (5 étapes) ================= */
+
+const WIZ_INP = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px";
+const WIZ_LBL = "font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-bottom:6px";
+const wizField = (label: string, inner: string, help?: string) => `<div><label style="${WIZ_LBL}">${label}</label>${inner}${help ? `<span style="display:block;font-size:11px;color:#5D5E72;margin-top:5px">${help}</span>` : ""}</div>`;
+const wizCard = (inner: string) => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px">${inner}</div>`;
+
+function wizSteps(S: State) {
+  const defs = [["Infos", I.bolt], ["Participants", I.user], ["Poules", I.tv], ["Barème", I.cart], ["Validation", I.crown]] as [string, string][];
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${defs.map(([label, icon], i) => {
+    const n = i + 1, active = n === S.wizStep, done = n < S.wizStep;
+    const color = active ? "#22D3EE" : done ? "#34D399" : "#5D5E72";
+    return `<button data-wizgoto="${n}" style="display:inline-flex;align-items:center;gap:8px;background:${active ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${active ? "#22D3EE" : "#282838"};border-radius:99px;padding:8px 14px 8px 8px;cursor:pointer">
+      <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:${active ? "#22D3EE" : done ? "rgba(52,211,153,.15)" : "#22222F"};color:${active ? "#04222a" : color};font-weight:800;font-size:12px">${done ? ic(I.plus, 12) : n}</span>
+      <span style="font-weight:700;font-size:13px;color:${active ? "#F4F5FB" : "#8E8FA6"}">${label}</span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+const wizFoot = (prevLabel: string, prev: number, next: number, nextLabel?: string) => `<div style="display:flex;justify-content:space-between;gap:10px;margin-top:20px">
+  <button data-wizgoto="${prev}" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.arrow, 15)}${prevLabel}</button>
+  ${next ? `<button data-wizgoto="${next}" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 20px;font-weight:750;font-size:13.5px;cursor:pointer">${nextLabel || "Continuer"}${ic(I.arrow, 15)}</button>` : ""}
+</div>`;
+
+function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean }, title = "Contrôle de la cagnotte") {
+  const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
+  return wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px">${title}</h3><span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${c.valid ? "#34D399" : "#FB7185"};background:${c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:99px;padding:4px 10px">${ic(c.valid ? I.plus : I.warn, 12)}${c.valid ? "Valide" : "Dépassement"}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:5px"><span>Points disponibles</span><b style="color:#F4F5FB">${c.total}</b></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:10px"><span>Points programmés</span><b style="color:#F4F5FB">${c.programmed}</b></div>
+    <div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"}"></span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-top:10px"><span>Écart restant</span><b style="color:${c.valid ? "#34D399" : "#FB7185"}">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
+    <p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>`);
+}
+
+function wizInfosStep(S: State) {
+  const d = S.wizData;
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}Étape 1 — Informations générales</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+        ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
+        ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />`)}
+        ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
+        ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
+        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" style="${WIZ_INP}" />`, "Détermine la cagnotte totale.")}
+        ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
+      </div>
+      <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>`)}
+    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.warn, 16)}Comment ça marche</h3>
+      <div style="color:#8E8FA6;font-size:13px;line-height:1.9">
+        <b style="color:#F4F5FB">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras.<br><br>
+        <b style="color:#F4F5FB">Format Survival</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.
+      </div>`)}
+  </div>${wizFoot("Annuler", 0, 2)}`;
+}
+
+function wizParticipantsStep(S: State) {
+  const d = S.wizData;
+  const names = d.players.join("\n");
+  const roster: Detail[] = S.roster ?? [];
+  const inList = (nm: string) => d.players.some((p) => p.split("@")[0].trim().toLowerCase() === nm.toLowerCase());
+  const selCount = roster.filter((p: Detail) => inList(p.name)).length;
+  const rosterPanel = roster.length ? wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Depuis la base de joueurs</h3><button data-wizaddall="1" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">${ic(I.plus, 13)}Tout sélectionner</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;max-height:220px;overflow-y:auto">${roster.map((p: Detail) => {
+        const on = inList(p.name);
+        return `<button data-wiztoggleroster="${escAttr(p.name)}|${escAttr(p.clubName || "")}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 10px 6px 6px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}"><span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22222F;font-size:9px;font-weight:800;color:#8E8FA6">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.clubName ? `<span style="color:#5D5E72">${escHtml(p.clubName)}</span>` : ""}${ic(on ? I.plus : I.plus, 11)}</button>`;
+      }).join("")}</div>
+      <p style="color:#5D5E72;font-size:11.5px;margin:10px 0 0">${selCount} / ${roster.length} sélectionné${selCount > 1 ? "s" : ""}. Clique un joueur pour l'ajouter ou le retirer.</p>`)
+    : wizCard(`<h3 style="margin:0 0 8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Base de joueurs</h3><p style="color:#5D5E72;font-size:12.5px">La base est vide pour l'instant. Les participants saisis ici pourront l'alimenter — gère-la depuis Admin → Joueurs.</p>`);
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants</h3>
+      ${wizField("Un nom par ligne", `<textarea id="wz-players" rows="8" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${WIZ_INP};resize:vertical">${escHtml(names)}</textarea>`, "Doublons fusionnés. Club optionnel avec la syntaxe « Nom @Club ».")}
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:99px;padding:6px 13px">${ic(I.user, 13)}${d.players.length} participant${d.players.length > 1 ? "s" : ""}</span></div>`)}
+    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Cagnotte prévisionnelle</h3>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:6px"><span>Participants</span><b style="color:#F4F5FB">${d.players.length}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6"><span>Points / participant</span><b style="color:#F4F5FB">${d.pointsPerPlayer}</b></div>
+      <hr style="border:0;border-top:1px solid #282838;margin:12px 0" />
+      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`) + rosterPanel}
+  </div>${wizFoot("Retour", 1, 3)}`;
+}
+
+function wizPoolsStep(S: State) {
+  const d = S.wizData;
+  const sizes = balancedSizesPreview(d.players.length, d.nbPools);
+  return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+      <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
+      <div style="display:flex;align-items:center;gap:9px"><label style="font-size:12.5px;color:#8E8FA6;font-weight:600">Nombre de poules</label><select id="wz-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option value="${n}" ${n === d.nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+    </div>
+    <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Répartition automatique équilibrée : <b style="color:#F4F5FB">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}. L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${sizes.map((n, i) => `<div style="border:1px solid #282838;border-radius:12px;padding:14px;text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:#22D3EE">${n}</div><div style="font-size:11px;color:#8E8FA6;margin-top:2px">Poule ${String.fromCharCode(65 + i)}</div></div>`).join("")}</div>`)}
+  ${wizFoot("Retour", 2, 4)}`;
+}
+
+const WIZ_SCORING_FIELDS: [string, string, string][] = [
+  ["wz-sc-surv", "Victoire en poule Survival", "survWin"],
+  ["wz-sc-loser", "Victoire en poule des perdants", "loserWin"],
+  ["wz-sc-poolfinal", "Victoire en finale de poule", "poolFinalWin"],
+  ["wz-sc-finals", "Victoire en phase finale", "finalsWin"],
+  ["wz-sc-champion", "Bonus champion du tournoi", "championBonus"],
+];
+
+function wizScoringStep(S: State) {
+  const d = S.wizData;
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
+  const fields = WIZ_SCORING_FIELDS.map(([id, label, key]) => wizField(label, `<input id="${id}" type="number" min="0" step="0.25" value="${(d as unknown as Record<string, number>)[key]}" style="${WIZ_INP}" />`)).join("");
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}Étape 4 — Barème des points</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">${fields}</div>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:14px">Chaque valeur est librement réglable (à partir de 0,25 point). Le total programmé doit tenir dans la cagnotte disponible ci-contre.</p>`)}
+    ${wizGaugeCard(c)}
+  </div>${wizFoot("Retour", 3, 5, "Validation")}`;
+}
+
+function wizValidateStep(S: State) {
+  const d = S.wizData;
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
+  const canCreate = c.valid && d.players.length >= 2 && d.name.trim().length > 0;
+  const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:#8E8FA6;font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
+  const brk = WIZ_SCORING_FIELDS.map(([, label, key]) => row(label, String((d as unknown as Record<string, number>)[key]))).join("");
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.crown, 17)}Étape 5 — Récapitulatif</h3>
+      <table style="width:100%;border-collapse:collapse">
+        ${row("Tournoi", escHtml(d.name) || "—")}${row("Jeu", escHtml(d.game) || "—")}${row("Date / lieu", `${escHtml(d.date) || "—"}${d.place ? " · " + escHtml(d.place) : ""}`)}
+        ${row("Participants", String(d.players.length))}${row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)}
+        ${row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale")}${row("Frais d'inscription", d.entryFeeXof ? money(d.entryFeeXof) : "Gratuit")}
+      </table>
+      <hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
+      <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
+      <table style="width:100%;border-collapse:collapse">${brk}</table>
+      <button data-act="wiz-submit" ${!canCreate || S.busy ? "disabled" : ""} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:20px;background:${canCreate ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canCreate ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:${canCreate && !S.busy ? "pointer" : "default"}">${ic(I.bolt, 17)}${S.busy ? "Création…" : "Créer le tournoi"}</button>
+      ${canCreate ? `<p style="color:#5D5E72;font-size:11.5px;text-align:center;margin-top:9px">Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page.</p>` : `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige le nom, les participants (min. 2) ou le barème (dépassement) avant de créer.</p>`}`)}
+    ${wizGaugeCard(c)}
+  </div>${wizFoot("Retour", 4, 0)}`;
+}
+
+function tournamentWizard(S: State) {
+  const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
+  return `<section style="border:1px solid rgba(34,211,238,.25);border-radius:20px;background:#0E0E16;padding:24px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Nouveau tournoi</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:18px;font-size:12px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:8px 12px;max-width:fit-content">${ic(I.warn, 13)}Format : <b style="color:#F4F5FB">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
+    ${wizSteps(S)}${body}
+  </section>`;
+}
+
 function pTournois(S: State) {
   const source = S.tourns ?? [];
   const manage = canManage(S);
@@ -266,39 +440,7 @@ function pTournois(S: State) {
     ? `<div style="margin-bottom:16px"><span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#8E8FA6;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 12px">Recherche : <b style="color:#F4F5FB">${S.q}</b> · ${list.length} résultat(s)<button data-clearq="1" style="display:grid;place-items:center;width:20px;height:20px;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 14)}</button></span></div>`
     : "";
 
-  const inputStyle = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px";
-  const labelStyle = "font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-bottom:6px";
-  const field = (label: string, inner: string) => `<div><label style="${labelStyle}">${label}</label>${inner}</div>`;
-  const scoreField = (id: string, label: string, def: number) => `<div><label style="${labelStyle}">${label}</label><input id="${id}" type="number" min="0" step="0.25" value="${def}" style="${inputStyle}" /></div>`;
-  const form = S.creating && manage ? `<section style="border:1px solid rgba(34,211,238,.3);border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;margin-bottom:24px">
-    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0 0 16px">Nouveau tournoi</h3>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12.5px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:9px 13px">${ic(I.warn, 14)}Format : <b style="color:#F4F5FB">Survival</b> (poules + repêchage) — le seul format que le moteur sait piloter pour l'instant.</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:14px">
-      ${field("Nom du tournoi", `<input id="c-name" placeholder="Survival Cup Lomé" style="${inputStyle}" />`)}
-      ${field("Jeu", `<input id="c-game" placeholder="EA FC 26, Tekken 8…" style="${inputStyle}" />`)}
-      ${field("Lieu", `<input id="c-place" placeholder="Lomé" style="${inputStyle}" />`)}
-      ${field("Date", `<input id="c-date" type="date" style="${inputStyle}" />`)}
-      ${field("Nombre de poules", `<input id="c-pools" type="number" min="1" value="2" style="${inputStyle}" />`)}
-      ${field("Points / joueur (cagnotte)", `<input id="c-pts" type="number" min="1" value="5" style="${inputStyle}" />`)}
-      ${field("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="c-fee" type="number" min="0" step="100" value="0" style="${inputStyle}" />`)}
-      ${field("Affiche du tournoi (image, 3 Mo max)", filePicker("c-img", "Choisir l'affiche"))}
-    </div>
-    ${field("Participants (un nom par ligne)", `<textarea id="c-players" rows="4" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${inputStyle};resize:vertical"></textarea>`)}
-    <details style="margin-top:16px">
-      <summary style="cursor:pointer;font-size:12.5px;color:#8E8FA6;font-weight:700">Barème de points (optionnel — valeurs par défaut sinon)</summary>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:12px">
-        ${scoreField("c-sc-surv", "Victoire en poule", 1)}
-        ${scoreField("c-sc-loser", "Victoire en repêchage", 0.5)}
-        ${scoreField("c-sc-poolfinal", "Finale de poule", 1.5)}
-        ${scoreField("c-sc-finals", "Phase finale", 2)}
-        ${scoreField("c-sc-champion", "Bonus champion", 3)}
-      </div>
-    </details>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button data-act="create-submit" ${S.busy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 20px;font-weight:750;font-size:14px;cursor:${S.busy ? "default" : "pointer"};opacity:${S.busy ? ".6" : "1"}">${ic(I.plus)}${S.busy ? "Création…" : "Créer le tournoi"}</button>
-      <button data-act="create-cancel" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:12px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
-    </div>
-  </section>` : "";
+  const form = S.creating && manage ? tournamentWizard(S) : "";
 
   const filt = `<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
   const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
@@ -329,15 +471,42 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
   return podiumHtml + table;
 }
 
+/** Classement par clubs : agrège les lignes du classement joueurs par club (rattachement fait côté API via la base de joueurs). */
+function clubLeaderboardBlock(rows: Detail[]) {
+  type CAgg = { name: string; points: number; wins: number; losses: number; matches: number; championships: number; players: Set<string> };
+  const byClub = new Map<string, CAgg>();
+  for (const r of rows) {
+    if (!r.club) continue;
+    const c = byClub.get(r.club) ?? { name: r.club, points: 0, wins: 0, losses: 0, matches: 0, championships: 0, players: new Set<string>() };
+    c.points += r.points; c.wins += r.wins; c.losses += r.losses; c.matches += r.matches; c.championships += r.championships;
+    c.players.add(r.name);
+    byClub.set(r.club, c);
+  }
+  const list = Array.from(byClub.values())
+    .map((c) => ({
+      name: c.name, points: Math.round(c.points * 10) / 10, wins: c.wins, losses: c.losses, matches: c.matches,
+      winrate: c.matches ? Math.round((c.wins / c.matches) * 100) : 0, championships: c.championships, playerCount: c.players.size,
+    }))
+    .sort((a, b) => b.points - a.points || b.winrate - a.winrate);
+  if (!list.length) {
+    return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">Aucun joueur classé n'est encore rattaché à un club (à faire depuis Admin → Joueurs).</div>`;
+  }
+  const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
+  const trs = list.map((c, i) => `<tr style="border-top:1px solid #282838"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "#5D5E72"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${c.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(c.name)}${c.championships > 0 ? ` <span title="Titres remportés par des joueurs du club" style="color:#FBBF24">${ic(I.crown, 12)} ${c.championships}</span>` : ""}</div><div style="font-size:11px;color:#5D5E72">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""} classé${c.playerCount > 1 ? "s" : ""}</div></div></div></td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${c.wins}-${c.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${c.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${c.points}</td></tr>`).join("");
+  return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tr>${th("#")}${th("Club")}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
+}
+
 function pClassements(S: State) {
   const all: Detail[] = S.leaderboard ?? [];
   const head = `<h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5vw,54px);letter-spacing:1.5px;margin:0;line-height:1">Classements</h1><p style="color:#8E8FA6;font-size:14px;margin:6px 0 20px">Points, victoires et titres calculés depuis les résultats réels des tournois — un classement distinct par jeu, jamais mélangés</p>`;
-  const filt = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${chips(GAMES, S.game, "game")}</div>`;
+  const filt = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${chips(GAMES, S.game, "game")}</div>`;
+  const viewToggle = (v: "joueurs" | "clubs", label: string) => `<button data-classview="${v}" style="font-family:inherit;font-size:12.5px;font-weight:${S.classementView === v ? 700 : 600};color:${S.classementView === v ? "#22D3EE" : "#8E8FA6"};background:${S.classementView === v ? "rgba(34,211,238,.08)" : "#14141D"};border:1px solid ${S.classementView === v ? "#22D3EE" : "#282838"};border-radius:999px;padding:8px 15px;cursor:pointer">${label}</button>`;
+  const views = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">${viewToggle("joueurs", "Classement joueurs")}${viewToggle("clubs", "Classement clubs")}</div>`;
   if (S.leaderboard === null) {
-    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}<div style="color:#5D5E72;text-align:center;padding:40px 0">Chargement…</div></main>`;
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${views}<div style="color:#5D5E72;text-align:center;padding:40px 0">Chargement…</div></main>`;
   }
   if (!all.length) {
-    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${views}
       <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:56px 24px;text-align:center;color:#8E8FA6">
         <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#FBBF24;margin:0 auto 14px">${ic(I.medal, 26)}</div>
         Aucun résultat pour l'instant. Le classement se remplit au fil des matchs joués !</div></main>`;
@@ -346,21 +515,22 @@ function pClassements(S: State) {
   const byGame = new Map<string, Detail[]>();
   for (const r of all) { const g = r.game || "Autre"; if (!byGame.has(g)) byGame.set(g, []); byGame.get(g)!.push(r); }
   const gamesPresent = GAMES.filter((g) => g !== "Tous" && byGame.has(g)).concat(Array.from(byGame.keys()).filter((g) => !GAMES.includes(g)));
+  const block = (rows: Detail[], opts: { podium: boolean; limit?: number }) => S.classementView === "clubs" ? clubLeaderboardBlock(rows) : gameLeaderboardBlock(rows, opts);
 
   if (S.game !== "Tous") {
     const rows = byGame.get(S.game) ?? [];
     const body = rows.length
-      ? gameLeaderboardBlock(rows, { podium: true })
+      ? block(rows, { podium: true })
       : `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:48px 24px;text-align:center;color:#8E8FA6">Aucun résultat pour « ${S.game} » pour l'instant.</div>`;
-    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${body}</main>`;
+    return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${views}${body}</main>`;
   }
 
   const sections = gamesPresent.map((g) => {
     const rows = byGame.get(g) ?? [];
     const gameHead = `<div style="display:flex;align-items:center;gap:10px;margin:0 0 14px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span><h3 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0">${escHtml(g)}</h3><span style="font-size:12px;color:#5D5E72;font-weight:600">${rows.length} joueur${rows.length > 1 ? "s" : ""} classé${rows.length > 1 ? "s" : ""}</span></div>`;
-    return `<section style="margin-bottom:36px">${gameHead}${gameLeaderboardBlock(rows, { podium: rows.length >= 3, limit: 10 })}</section>`;
+    return `<section style="margin-bottom:36px">${gameHead}${block(rows, { podium: rows.length >= 3, limit: 10 })}</section>`;
   }).join("");
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${sections}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${filt}${views}${sections}</main>`;
 }
 
 function pGalerie(S: State) {
@@ -595,7 +765,7 @@ function profileSecurity(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -628,6 +798,7 @@ function adminPanel(S: State) {
   const body =
     S.adminTab === "site" ? adminSite(S) :
     S.adminTab === "users" ? adminUsers(S) :
+    S.adminTab === "joueurs" ? adminRoster(S) :
     S.adminTab === "news" ? adminNews(S) :
     S.adminTab === "galerie" ? adminGallery(S) :
     S.adminTab === "produits" ? adminProducts(S) :
@@ -743,6 +914,61 @@ function adminUsers(S: State) {
     : `<tr><td colspan="2" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun utilisateur trouvé.</td></tr>`;
   return card(`${secTitle(`Utilisateurs · rôles (${a.users.length})`)}${adminSearchBar(S, "Nom ou email…")}
     ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}`);
+}
+
+/** Onglet Joueurs : base de joueurs (roster) + clubs, gérée depuis l'admin — sert aussi à pré-remplir les participants à la création d'un tournoi. */
+function adminRoster(S: State) {
+  const tabBtn = (k: "joueurs" | "clubs", label: string) => `<button data-rostertab="${k}" style="font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "#282838"};color:${S.rosterTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px">${tabBtn("joueurs", `${ic(I.user, 14)} Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)} Clubs`)}</div>`;
+  return tabs + (S.rosterTab === "clubs" ? adminClubsView(S) : adminRosterPlayers(S));
+}
+
+function adminRosterPlayers(S: State) {
+  const roster: Detail[] = S.roster ?? [];
+  const clubs: Detail[] = S.clubs ?? [];
+  const e = S.rosterEdit;
+  const editor = e ? `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le joueur" : "Ajouter un joueur"}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="ro-name" value="${escAttr(e.name)}" placeholder="Nom du joueur" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="ro-city" value="${escAttr(e.city)}" placeholder="Lomé, Kara…" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Club<select id="ro-club" style="${adminInp}"><option value="">— Sans club —</option>${clubs.map((c: Detail) => `<option value="${c.id}" ${e.clubId === c.id ? "selected" : ""}>${escAttr(c.name)}</option>`).join("")}</select></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-rostersave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter"}</button><button data-rostercancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const q = S.adminSearch.trim().toLowerCase();
+  const filtered = q ? roster.filter((p: Detail) => `${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase().includes(q)) : roster;
+  const rows = filtered.length ? filtered.map((p: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:13px;font-weight:800;color:#8E8FA6;flex:none">${(p.name || "?").charAt(0).toUpperCase()}</span>
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${[p.city, p.clubName].filter(Boolean).map(escHtml).join(" · ") || "—"}</div></div>
+      <span style="font-size:11px;color:#22D3EE;font-weight:700">${ic(I.bolt, 11)} ${p.elo}</span>
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-rosteredit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-rosterdel="${p.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun joueur trouvé." : "Base vide. Ajoute des joueurs ici, ou crée un tournoi — pense à les y ajouter aussi."}</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Base de joueurs (${roster.length})`)}<button data-rosteredit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un joueur</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom, ville ou club…")}${scrollBox(rows)}<p style="color:#5D5E72;font-size:11.5px;margin-top:12px">Ces joueurs sont proposés à la création d'un tournoi (« Depuis la base de joueurs »).</p></div>`;
+}
+
+function adminClubsView(S: State) {
+  const clubs: Detail[] = S.clubs ?? [];
+  const e = S.clubEdit;
+  const editor = e ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le club" : "Nouveau club"}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team Mawu" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="cl-city" value="${escAttr(e.city)}" placeholder="Lomé" style="${adminInp}" /></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-clubsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Créer le club"}</button><button data-clubcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const q = S.adminSearch.trim().toLowerCase();
+  const filtered = q ? clubs.filter((c: Detail) => `${c.name} ${c.city || ""}`.toLowerCase().includes(q)) : clubs;
+  const rows = filtered.length ? filtered.map((c: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#22222F;border:1px solid #282838;color:#7C82FF;flex:none">${ic(I.image, 16)}</span>
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(c.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(c.city) || "—"}</div></div>
+      <span style="font-size:12px;color:#8E8FA6">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""}</span>
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-clubedit="${c.id}"`, "Modifier", "#7C82FF", "#7C82FF55")}${btnSm(`data-clubdel="${c.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun club trouvé." : "Aucun club. Crée le premier !"}</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Clubs (${clubs.length})`)}<button data-clubedit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau club</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou ville…")}${scrollBox(rows)}</div>`;
 }
 
 function adminNews(S: State) {
@@ -1299,6 +1525,10 @@ export default function Page() {
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, finalsFormatPick: "single",
+    wizStep: 1,
+    wizData: { name: "", game: "", date: "", place: "", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+    wizRosterSearch: "",
+    roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -1467,6 +1697,19 @@ export default function Page() {
     } catch { /* ignore */ }
   }
 
+  /** Base de joueurs + clubs (organisateur/admin) — utilisée par l'admin et par l'assistant de création. */
+  async function loadRoster() {
+    if (!token()) return;
+    try {
+      const [rR, cR] = await Promise.all([
+        fetch(`${API}/api/roster`, { headers: authHeaders() }),
+        fetch(`${API}/api/clubs`, { headers: authHeaders() }),
+      ]);
+      const roster = rR.ok ? await rR.json() : [];
+      const clubs = cR.ok ? await cR.json() : [];
+      setS((s) => ({ ...s, roster, clubs }));
+    } catch { /* ignore */ }
+  }
   async function loadProducts() {
     try {
       const r = await fetch(`${API}/api/products`);
@@ -1610,6 +1853,31 @@ export default function Page() {
   }
 
   /** Écriture admin générique puis rafraîchissement (panneau + site public). */
+  /** Écriture roster/clubs (hors /api/admin) puis rafraîchissement de la base. */
+  async function rosterAct(url: string, method: string, body?: unknown) {
+    try {
+      const r = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
+      setS((s) => ({ ...s, rosterEdit: null, clubEdit: null }));
+      await loadRoster();
+    } catch { /* ignore */ }
+  }
+  function saveRosterPlayer(id: string) {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
+    const name = val("ro-name").trim();
+    if (!name) { alert("Le nom est requis."); return; }
+    const body = { name, city: val("ro-city").trim(), clubId: val("ro-club") || undefined };
+    if (id === "new") rosterAct(`${API}/api/roster`, "POST", body);
+    else rosterAct(`${API}/api/roster/${id}`, "PATCH", body);
+  }
+  function saveClub(id: string) {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const name = val("cl-name").trim();
+    if (!name) { alert("Le nom du club est requis."); return; }
+    const body = { name, city: val("cl-city").trim() };
+    if (id === "new") rosterAct(`${API}/api/clubs`, "POST", body);
+    else rosterAct(`${API}/api/clubs/${id}`, "PATCH", body);
+  }
   async function adminAct(path: string, method: string, body?: unknown) {
     try {
       const r = await fetch(`${API}/api/admin/${path}`, {
@@ -1856,24 +2124,71 @@ export default function Page() {
     if (SIMPLE_PAGES.includes(key)) setS((s) => ({ ...s, page: key }));
   }
 
-  async function submitCreate() {
+  /** Lit les champs de l'étape actuellement affichée de l'assistant et les fusionne dans wizData. */
+  function wizCapture(): typeof S.wizData {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
-    const name = val("c-name").trim();
-    if (!name) { (document.getElementById("c-name") as HTMLInputElement)?.focus(); return; }
-    const players = val("c-players").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
+    const d = { ...S.wizData };
+    if (S.wizStep === 1) {
+      d.name = val("wz-name").trim() || d.name;
+      d.game = val("wz-game").trim();
+      d.date = val("wz-date");
+      d.place = val("wz-place").trim();
+      d.pointsPerPlayer = Math.max(1, parseInt(val("wz-pts")) || 5);
+      d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
+    } else if (S.wizStep === 2) {
+      d.players = val("wz-players").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    } else if (S.wizStep === 3) {
+      d.nbPools = Math.max(1, parseInt(val("wz-pools")) || 2);
+    } else if (S.wizStep === 4) {
+      const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
+      d.survWin = num("wz-sc-surv", 1); d.loserWin = num("wz-sc-loser", 0.5); d.poolFinalWin = num("wz-sc-poolfinal", 1.5);
+      d.finalsWin = num("wz-sc-finals", 2); d.championBonus = num("wz-sc-champion", 3);
+    }
+    return d;
+  }
+  function wizGoto(next: number) {
+    if (next === 0) { setS((s) => ({ ...s, creating: false })); return; }
+    const d = wizCapture();
+    if (next >= 3 && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
+    setS((s) => ({ ...s, wizData: d, wizStep: next }));
+    window.scrollTo({ top: 0 });
+  }
+  function wizToggleRoster(name: string, club: string) {
+    const el = document.getElementById("wz-players") as HTMLTextAreaElement | null;
+    if (!el) return;
+    const lines = el.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const key = name.toLowerCase();
+    const idx = lines.findIndex((l) => l.split("@")[0].trim().toLowerCase() === key);
+    if (idx >= 0) lines.splice(idx, 1);
+    else lines.push(club ? `${name} @${club}` : name);
+    el.value = lines.join("\n");
+    setS((s) => ({ ...s, wizData: { ...s.wizData, players: lines } }));
+  }
+  function wizAddAllRoster() {
+    const el = document.getElementById("wz-players") as HTMLTextAreaElement | null;
+    if (!el || !S.roster) return;
+    const lines = el.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const existing = new Set(lines.map((l) => l.split("@")[0].trim().toLowerCase()));
+    S.roster.forEach((p: Detail) => {
+      if (!existing.has(p.name.toLowerCase())) { lines.push(p.clubName ? `${p.name} @${p.clubName}` : p.name); existing.add(p.name.toLowerCase()); }
+    });
+    el.value = lines.join("\n");
+    setS((s) => ({ ...s, wizData: { ...s.wizData, players: lines } }));
+  }
+  async function submitCreate() {
+    const d = S.wizData;
+    if (!d.name.trim() || d.players.length < 2) return;
     const body: Detail = {
-      name, game: val("c-game").trim(), format: "SURVIVAL", place: val("c-place").trim(),
-      date: val("c-date") || undefined, pointsPerPlayer: parseInt(val("c-pts")) || 5, players,
-      nbPools: parseInt(val("c-pools")) || 2,
-      entryFeeXof: parseInt(val("c-fee")) || 0,
-      survWin: num("c-sc-surv", 1), loserWin: num("c-sc-loser", 0.5), poolFinalWin: num("c-sc-poolfinal", 1.5),
-      finalsWin: num("c-sc-finals", 2), championBonus: num("c-sc-champion", 3),
+      name: d.name, game: d.game, format: "SURVIVAL", place: d.place,
+      date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.players,
+      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof,
+      survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
+      finalsWin: d.finalsWin, championBonus: d.championBonus,
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
     // Affiche du tournoi (optionnelle)
-    try { const img = await uploadFile("c-img"); if (img) body.imageUrl = img; }
+    try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
     catch { setS((s) => ({ ...s, busy: false })); return; }
     try {
       const r = await fetch(`${API}/api/tournaments`, {
@@ -1881,8 +2196,13 @@ export default function Page() {
       });
       if (r.status === 401) { setS((s) => ({ ...s, busy: false, page: "auth", user: null })); return; }
       if (!r.ok) throw new Error();
+      const created = await r.json();
       await loadTournaments();
-      setS((s) => ({ ...s, busy: false, creating: false, fmt: "Tous" }));
+      setS((s) => ({
+        ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1,
+        wizData: { name: "", game: "", date: "", place: "", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+      }));
+      if (created?.id) openDetail(created.id);
     } catch {
       setS((s) => ({ ...s, busy: false }));
       alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");
@@ -1896,7 +2216,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -1951,6 +2271,9 @@ export default function Page() {
     else if (d.pleditOpen) { setS((s) => ({ ...s, editingPlayerId: d.pleditOpen! })); }
     else if (d.pleditCancel !== undefined) { setS((s) => ({ ...s, editingPlayerId: null })); }
     else if (d.pleditSave) { const [tid, pid] = d.pleditSave.split("|"); savePlayerEdit(tid, pid); }
+    else if (d.wizgoto) wizGoto(parseInt(d.wizgoto));
+    else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
+    else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
@@ -1969,7 +2292,7 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
-    else if (d.admintab) setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "" }));
+    else if (d.admintab) { setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "" })); if (d.admintab === "joueurs" && !S.roster) loadRoster(); }
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.herobgclear !== undefined) clearHeroBg();
@@ -1988,6 +2311,27 @@ export default function Page() {
       const n = S.admin?.news.find((x: Detail) => x.id === d.newsdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer l'article", message: `« ${n?.title || "Cet article"} » sera définitivement supprimé du site.`, okLabel: "Supprimer", action: `newsdel|${d.newsdel}` } }));
     }
+    else if (d.rostertab) setS((s) => ({ ...s, rosterTab: d.rostertab as "joueurs" | "clubs", adminSearch: "" }));
+    else if (d.rosteredit) {
+      if (d.rosteredit === "new") setS((s) => ({ ...s, rosterEdit: { name: "", city: "", clubId: "" } }));
+      else { const p = S.roster?.find((x: Detail) => x.id === d.rosteredit); if (p) setS((s) => ({ ...s, rosterEdit: p })); }
+    }
+    else if (d.rostercancel !== undefined) setS((s) => ({ ...s, rosterEdit: null }));
+    else if (d.rostersave) saveRosterPlayer(d.rostersave);
+    else if (d.rosterdel) {
+      const p = S.roster?.find((x: Detail) => x.id === d.rosterdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Retirer le joueur", message: `« ${p?.name || "Ce joueur"} » sera retiré de la base de joueurs (les tournois passés ne sont pas affectés).`, okLabel: "Retirer", action: `rosterdel|${d.rosterdel}` } }));
+    }
+    else if (d.clubedit) {
+      if (d.clubedit === "new") setS((s) => ({ ...s, clubEdit: { name: "", city: "" } }));
+      else { const c = S.clubs?.find((x: Detail) => x.id === d.clubedit); if (c) setS((s) => ({ ...s, clubEdit: c })); }
+    }
+    else if (d.clubcancel !== undefined) setS((s) => ({ ...s, clubEdit: null }));
+    else if (d.clubsave) saveClub(d.clubsave);
+    else if (d.clubdel) {
+      const c = S.clubs?.find((x: Detail) => x.id === d.clubdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le club", message: `« ${c?.name || "Ce club"} » sera supprimé — ses joueurs resteront dans la base, simplement sans club.`, okLabel: "Supprimer", action: `clubdel|${d.clubdel}` } }));
+    }
     else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "" } }));
     else if (d.gallerycancel !== undefined) setS((s) => ({ ...s, galleryEdit: null }));
     else if (d.gallerysave !== undefined) saveGalleryItem();
@@ -1996,6 +2340,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer ce média", message: `« ${it?.title || "Ce média"} » sera définitivement supprimé de la galerie.`, okLabel: "Supprimer", action: `gallerydel|${d.gallerydel}` } }));
     }
     else if (d.gfilter !== undefined) setS((s) => ({ ...s, galleryFilter: d.gfilter! }));
+    else if (d.classview) setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" }));
     else if (d.gopen) setS((s) => ({ ...s, galleryOpen: d.gopen! }));
     else if (d.gclose !== undefined) setS((s) => ({ ...s, galleryOpen: null }));
     else if (d.gprev !== undefined || d.gnext !== undefined) {
@@ -2034,6 +2379,8 @@ export default function Page() {
         else if (kind === "plrem") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}`, undefined, "DELETE"); }
         else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
         else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); }
+        else if (kind === "rosterdel") rosterAct(`${API}/api/roster/${arg}`, "DELETE");
+        else if (kind === "clubdel") rosterAct(`${API}/api/clubs/${arg}`, "DELETE");
       }
     }
     else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
@@ -2047,9 +2394,9 @@ export default function Page() {
     else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
-    else if (d.act === "create-open") setS((s) => ({ ...s, creating: true }));
+    else if (d.act === "create-open") { setS((s) => ({ ...s, creating: true, wizStep: 1 })); loadRoster(); }
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
-    else if (d.act === "create-submit") submitCreate();
+    else if (d.act === "wiz-submit") submitCreate();
     else if (d.clearq !== undefined) setS((s) => ({ ...s, q: "" }));
   }
 

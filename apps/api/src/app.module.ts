@@ -11,9 +11,10 @@ import { UsersModule } from './users/users.module';
 import { NewsModule } from './news/news.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { GalleryModule } from './gallery/gallery.module';
+import { RosterModule } from './roster/roster.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule],
+  imports: [PrismaModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule, RosterModule],
   controllers: [AppController, HealthController],
   providers: [AppService],
 })

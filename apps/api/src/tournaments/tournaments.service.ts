@@ -152,10 +152,15 @@ export class TournamentsService {
       }
     }
 
-    // Ville/club best-effort : depuis le profil de l'utilisateur inscrit sous ce nom (si connu).
+    // Ville/club best-effort : depuis le profil de l'utilisateur inscrit sous ce nom (si connu),
+    // et depuis la base de joueurs (roster) pour le club — rapprochement par nom, insensible à la casse.
     const regs = await this.prisma.registration.findMany({ include: { user: { select: { city: true } } } });
     const cityByName = new Map<string, string>();
     for (const r of regs) if (r.user.city && !cityByName.has(r.playerName)) cityByName.set(r.playerName, r.user.city);
+
+    const rosterPlayers = await this.prisma.player.findMany({ include: { club: { select: { name: true } } } });
+    const clubByName = new Map<string, string>();
+    for (const p of rosterPlayers) if (p.club && !clubByName.has(p.name.toLowerCase())) clubByName.set(p.name.toLowerCase(), p.club.name);
 
     return Array.from(agg.values())
       .filter((e) => e.matches > 0)
@@ -170,6 +175,7 @@ export class TournamentsService {
         championships: e.championships,
         tournamentsPlayed: e.tournaments.size,
         city: cityByName.get(e.name) || null,
+        club: clubByName.get(e.name.toLowerCase()) || null,
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
       .slice(0, 300);

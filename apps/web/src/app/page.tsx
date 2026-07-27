@@ -106,7 +106,8 @@ function balancedSizesPreview(nPlayers: number, nbPools: number): number[] {
   const base = Math.floor(nPlayers / nb), extra = nPlayers % nb;
   return Array.from({ length: nb }, (_, i) => base + (i < extra ? 1 : 0));
 }
-/** Aperçu (pur, non autoritaire) de la cagnotte programmée — même formule que Engine.cagnotte, pour prévisualiser dans l'assistant avant la création réelle côté serveur. */
+/** Aperçu (pur, non autoritaire) de la cagnotte programmée — même formule que Engine.cagnotte, pour prévisualiser dans l'assistant avant la création réelle côté serveur.
+ * Expose aussi le détail par catégorie (nb de matchs prévus + points qu'elle programme) pour l'affichage du barème et la barre de répartition de la jauge. */
 function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number }) {
   const total = nPlayers * pointsPerPlayer;
   const sizes = balancedSizesPreview(nPlayers, nbPools);
@@ -114,8 +115,15 @@ function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: num
   sizes.forEach((n) => { if (n >= 2) { surv += n - 1; los += Math.max(0, n - 2); pf += 1; } });
   const q = sizes.filter((n) => n >= 2).length * 2 + sizes.filter((n) => n === 1).length;
   const finalsMatches = Math.max(0, q - 1);
+  const breakdown = {
+    survWin: { matches: surv, pts: Math.round(surv * scoring.survWin * 100) / 100 },
+    loserWin: { matches: los, pts: Math.round(los * scoring.loserWin * 100) / 100 },
+    poolFinalWin: { matches: pf, pts: Math.round(pf * scoring.poolFinalWin * 100) / 100 },
+    finalsWin: { matches: finalsMatches, pts: Math.round(finalsMatches * scoring.finalsWin * 100) / 100 },
+    championBonus: { matches: 1, pts: Math.round(scoring.championBonus * 100) / 100 },
+  };
   const programmed = Math.round((surv * scoring.survWin + los * scoring.loserWin + pf * scoring.poolFinalWin + finalsMatches * scoring.finalsWin + scoring.championBonus) * 100) / 100;
-  return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total, sizes };
+  return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total, sizes, breakdown };
 }
 
 /** Partenaires normalisés (compat : d'anciens réglages stockaient de simples chaînes). */
@@ -175,7 +183,7 @@ function tournCard(t: TournCard, big: boolean) {
       <h4 style="margin:0 0 6px;font-size:${big ? 18 : 17}px">${t.name}</h4>
       <div style="color:#8E8FA6;font-size:12.5px;line-height:1.7">${t.game} · ${t.players} joueurs<br>${t.date} · ${t.place}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:13px;border-top:1px solid #282838">${foot}
-        <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}${t.cagnotte} pts</span></div></div></div>`;
+        <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}<span style="font-family:'JetBrains Mono',monospace">${t.cagnotte}</span> pts</span></div></div></div>`;
 }
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
 function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null) {
@@ -241,12 +249,19 @@ function pAccueil(S: State) {
         <button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button></div>
       <div style="display:flex;gap:8px;position:relative;z-index:1">${dots}</div></div></section>`;
 
-  // Bandeau défilant : tournois en direct (ou à venir en repli). Rien à afficher tant qu'aucun tournoi n'existe.
+  // Tournoi en direct : barre fixe bien visible (au lieu du bandeau défilant) — sinon repli sur le bandeau des tournois à venir.
   const liveT = tourns.filter((t) => t.live);
-  const tickerItems = (liveT.length ? liveT : tourns.slice(0, 4)).map((t) =>
-    `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 26px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${t.live ? "#04222a" : "#8E8FA6"};background:${t.live ? "#22D3EE" : "#22222F"};border-radius:99px;padding:3px 9px">${t.live ? '<span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct' : "À venir"}</span><span style="font-weight:700;font-size:13px;color:#F4F5FB">${t.name}</span><span style="font-size:12px;color:#5D5E72">${t.game}${t.place ? " · " + t.place : ""}</span></span>`
+  const liveBar = liveT.length ? `<div data-open="${liveT[0].id}" class="rise d1" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:1px solid rgba(34,211,238,.4);border-radius:14px;background:rgba(34,211,238,.08);margin-bottom:30px;padding:13px 18px;cursor:pointer">
+    <span style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:5px 11px;flex:none"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span>
+    <b style="font-size:14.5px">${escHtml(liveT[0].name)}</b>
+    <span style="color:#8E8FA6;font-size:13px">${escHtml(liveT[0].game)}${liveT[0].place ? " · " + escHtml(liveT[0].place) : ""}</span>
+    <span style="flex:1"></span>
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#22D3EE;flex:none">Suivre en direct ${ic(I.arrow, 14)}</span>
+  </div>` : "";
+  const tickerItems = tourns.slice(0, 4).map((t) =>
+    `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 26px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;background:#22222F;border-radius:99px;padding:3px 9px">À venir</span><span style="font-weight:700;font-size:13px;color:#F4F5FB">${t.name}</span><span style="font-size:12px;color:#5D5E72">${t.game}${t.place ? " · " + t.place : ""}</span></span>`
   ).join(`<span style="color:#33334A">·</span>`);
-  const ticker = tourns.length ? `<div class="marquee rise d1" style="border:1px solid #282838;border-radius:14px;background:linear-gradient(90deg,#14141D,#0E0E16);margin-bottom:30px;padding:11px 0">
+  const ticker = !liveT.length && tourns.length ? `<div class="marquee rise d1" style="border:1px solid #282838;border-radius:14px;background:linear-gradient(90deg,#14141D,#0E0E16);margin-bottom:30px;padding:11px 0">
     <div class="marquee-track">${tickerItems}${tickerItems}</div></div>` : "";
 
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
@@ -262,7 +277,7 @@ function pAccueil(S: State) {
     rankSource = Array.from(bestByPlayer.values()).sort((a, b) => b.points - a.points);
   }
   const rankRows = rankSource.length
-    ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("")
+    ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-family:'JetBrains Mono',monospace">${r.points}</td></tr>`).join("")
     : `<tr><td style="padding:16px 6px;color:#5D5E72;font-size:13px" colspan="4">Aucun résultat pour l'instant.</td></tr>`;
   const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
   const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
@@ -280,7 +295,7 @@ function pAccueil(S: State) {
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
 
 /* ================= Assistant de création de tournoi (5 étapes) ================= */
@@ -290,16 +305,25 @@ const WIZ_LBL = "font-size:12px;color:#8E8FA6;font-weight:600;display:block;marg
 const wizField = (label: string, inner: string, help?: string) => `<div><label style="${WIZ_LBL}">${label}</label>${inner}${help ? `<span style="display:block;font-size:11px;color:#5D5E72;margin-top:5px">${help}</span>` : ""}</div>`;
 const wizCard = (inner: string) => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px">${inner}</div>`;
 
+/** Liste verticale des étapes (barre latérale de l'assistant) — coche + sous-titre contextuel pour les étapes déjà validées. */
 function wizSteps(S: State) {
-  const full = [["Infos", I.bolt, 1], ["Participants", I.user, 2], ["Poules", I.tv, 3], ["Barème", I.cart, 4], ["Validation", I.crown, 5]] as [string, string, number][];
+  const d = S.wizData;
+  const subtitle = (n: number): string => {
+    if (n === 1) return d.name || "—";
+    if (n === 2) return `${d.players.length} joueur${d.players.length > 1 ? "s" : ""}`;
+    if (n === 3) return `${d.nbPools} poule${d.nbPools > 1 ? "s" : ""} · ${balancedSizesPreview(d.players.length, d.nbPools).join("/")}`;
+    if (n === 4) return "Barème réglé";
+    return "";
+  };
+  const full = [["Infos générales", 1], ["Participants", 2], ["Poules", 3], ["Barème des points", 4], ["Validation", 5]] as [string, number][];
   // En modification, Participants/Poules sont gérés depuis la page du tournoi (pas via l'assistant) : on saute directement à Barème.
   const defs = S.wizEditId ? [full[0], full[3], full[4]] : full;
-  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${defs.map(([label, icon, n]) => {
+  return `<div style="padding:14px 0">${defs.map(([label, n]) => {
     const active = n === S.wizStep, done = n < S.wizStep;
-    const color = active ? "#22D3EE" : done ? "#34D399" : "#5D5E72";
-    return `<button data-wizgoto="${n}" style="display:inline-flex;align-items:center;gap:8px;background:${active ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${active ? "#22D3EE" : "#282838"};border-radius:99px;padding:8px 14px 8px 8px;cursor:pointer">
-      <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:${active ? "#22D3EE" : done ? "rgba(52,211,153,.15)" : "#22222F"};color:${active ? "#04222a" : color};font-weight:800;font-size:12px">${done ? ic(I.plus, 12) : n}</span>
-      <span style="font-weight:700;font-size:13px;color:${active ? "#F4F5FB" : "#8E8FA6"}">${label}</span>
+    const sub = done ? subtitle(n) : active ? "En cours" : "";
+    return `<button data-wizgoto="${n}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:${active ? "rgba(34,211,238,.08)" : "transparent"};border:0;border-left:2px solid ${active ? "#22D3EE" : "transparent"};padding:11px 18px;cursor:pointer">
+      <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:${active ? "#22D3EE" : done ? "rgba(52,211,153,.14)" : "#22222F"};color:${active ? "#04222a" : done ? "#34D399" : "#5D5E72"};font-size:12px;font-weight:800;flex:none">${done ? "✓" : n}</span>
+      <span style="min-width:0"><div style="font-size:13.5px;font-weight:${active ? 700 : 600};color:${active ? "#F4F5FB" : done ? "#F4F5FB" : "#5D5E72"};line-height:1.3">${label}</div>${sub ? `<div style="font-size:11px;color:${active ? "#22D3EE" : "#5D5E72"};margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sub)}</div>` : ""}</span>
     </button>`;
   }).join("")}</div>`;
 }
@@ -309,14 +333,35 @@ const wizFoot = (prevLabel: string, prev: number, next: number, nextLabel?: stri
   ${next ? `<button data-wizgoto="${next}" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 20px;font-weight:750;font-size:13.5px;cursor:pointer">${nextLabel || "Continuer"}${ic(I.arrow, 15)}</button>` : ""}
 </div>`;
 
-function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean }, title = "Contrôle de la cagnotte") {
+const WIZ_BREAKDOWN_SEGMENTS: [string, string, string][] = [
+  ["survWin", "Survival", "#22D3EE"],
+  ["loserWin", "Repêchage", "#7C82FF"],
+  ["poolFinalWin", "Finales de poule", "#34D399"],
+  ["finalsWin", "Phase finale", "#FBBF24"],
+  ["championBonus", "Bonus", "#F43F7E"],
+];
+
+/** Barre de répartition en pourcentage de la cagnotte programmée par catégorie de match — recalculée en direct par wizRecalcGauge. */
+function wizBreakdownBar(breakdown: Record<string, { matches: number; pts: number }>, programmed: number) {
+  const pct = (key: string) => programmed > 0 ? Math.round(((breakdown[key]?.pts ?? 0) / programmed) * 1000) / 10 : 0;
+  const segs = WIZ_BREAKDOWN_SEGMENTS.map(([key, , color]) => `<span id="wiz-gauge-seg-${key}" style="width:${pct(key)}%;background:${color};display:flex;align-items:center;justify-content:center;overflow:hidden;transition:width .15s ease">${pct(key) >= 8 ? `<span id="wiz-gauge-seg-${key}-txt">${pct(key)}%</span>` : ""}</span>`).join("");
+  const legend = WIZ_BREAKDOWN_SEGMENTS.map(([, label, color]) => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:${color}"></span>${label}</span>`).join("");
+  return `<div style="margin-top:16px;padding-top:14px;border-top:1px solid #1B1B27">
+    <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:10px">Répartition prévue</div>
+    <div id="wiz-gauge-breakdown" style="display:flex;height:26px;border-radius:7px;overflow:hidden;font-size:10px;font-weight:800;color:#04222a">${segs}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11px;color:#8E8FA6">${legend}</div>
+  </div>`;
+}
+
+function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean; breakdown?: Record<string, { matches: number; pts: number }> }, title = "Contrôle de la cagnotte") {
   const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
   return wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px">${title}</h3><span id="wiz-gauge-badge" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${c.valid ? "#34D399" : "#FB7185"};background:${c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:99px;padding:4px 10px"><span id="wiz-gauge-badge-icon" style="display:inline-flex">${ic(c.valid ? I.plus : I.warn, 12)}</span><span id="wiz-gauge-badge-txt">${c.valid ? "Valide" : "Dépassement"}</span></span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:5px"><span>Points disponibles</span><b style="color:#F4F5FB">${c.total}</b></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:10px"><span>Points programmés</span><b id="wiz-gauge-prog" style="color:#F4F5FB">${c.programmed}</b></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:5px"><span>Points disponibles</span><b style="color:#F4F5FB;font-family:'JetBrains Mono',monospace">${c.total}</b></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:10px"><span>Points programmés</span><b id="wiz-gauge-prog" style="color:#F4F5FB;font-family:'JetBrains Mono',monospace">${c.programmed}</b></div>
     <div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span id="wiz-gauge-bar" style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"};transition:width .15s ease"></span></div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-top:10px"><span>Écart restant</span><b id="wiz-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"}">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
-    <p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>`);
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-top:10px"><span>Écart restant</span><b id="wiz-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"};font-family:'JetBrains Mono',monospace">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
+    <p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>
+    ${c.breakdown ? wizBreakdownBar(c.breakdown, c.programmed) : ""}`);
 }
 
 function wizInfosStep(S: State) {
@@ -407,11 +452,22 @@ const WIZ_SCORING_FIELDS: [string, string, string][] = [
 function wizScoringStep(S: State) {
   const d = S.wizData;
   const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
-  const fields = WIZ_SCORING_FIELDS.map(([id, label, key]) => wizField(label, `<input id="${id}" type="number" min="0" step="0.25" value="${(d as unknown as Record<string, number>)[key]}" style="${WIZ_INP}" />`)).join("");
+  const rows = WIZ_SCORING_FIELDS.map(([id, label, key], i) => {
+    const b = c.breakdown[key as keyof typeof c.breakdown];
+    const sub = key === "championBonus" ? "une seule fois" : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
+    const last = i === WIZ_SCORING_FIELDS.length - 1;
+    return `<div style="display:flex;align-items:center;gap:16px;padding:14px 18px;${last ? "" : "border-bottom:1px solid #1B1B27;"}">
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:650">${label}</div><div id="wiz-sc-sub-${key}" style="font-size:11.5px;color:#5D5E72;margin-top:2px">${sub}</div></div>
+      <input id="${id}" type="number" min="0" step="0.25" value="${(d as unknown as Record<string, number>)[key]}" style="width:88px;text-align:center;border:1px solid #33334A;border-radius:9px;background:#1B1B27;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:14px;padding:9px" />
+      <span id="wiz-sc-pts-${key}" style="width:70px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6;flex:none">${b.pts} pts</span>
+    </div>`;
+  }).join("");
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
-    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${S.wizEditId ? "Barème des points" : "Étape 4 — Barème des points"}</h3>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">${fields}</div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:14px">Chaque valeur est librement réglable (à partir de 0,25 point). Le total programmé doit tenir dans la cagnotte disponible ci-contre.</p>`)}
+    <div>
+      <h3 style="margin:0 0 6px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${S.wizEditId ? "Barème des points" : "Étape 4 — Barème des points"}</h3>
+      <p style="color:#8E8FA6;font-size:13.5px;margin:6px 0 16px;max-width:520px">Chaque valeur est librement réglable à partir de 0,25 point. Le total programmé doit tenir dans la cagnotte disponible.</p>
+      <div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden">${rows}</div>
+    </div>
     ${wizGaugeCard(c)}
   </div>${wizFoot("Retour", S.wizEditId ? 1 : 3, 5, "Validation")}`;
 }
@@ -439,18 +495,24 @@ function wizValidateStep(S: State) {
   </div>${wizFoot("Retour", 4, 0)}`;
 }
 
-/** Assistant de création : modal plein écran (fond flouté, fermeture au clic hors du panneau). */
-/** Assistant de création/modification : modal plein écran (fond flouté). Ne se ferme jamais au clic
- * extérieur — un formulaire à 5 étapes est trop long à ressaisir pour un clic accidentel ; seule la
- * croix ou « Annuler » ferment explicitement. */
+/** Assistant de création/modification : modal plein écran (fond flouté), sidebar d'étapes + contenu.
+ * Ne se ferme jamais au clic extérieur — un formulaire à 5 étapes est trop long à ressaisir pour un
+ * clic accidentel ; seule la croix ferme explicitement. */
 function tournamentWizard(S: State) {
   const editing = !!S.wizEditId;
   const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
   return `<div style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
-    <div data-stop="1" style="width:100%;max-width:1000px;border:1px solid rgba(34,211,238,.25);border-radius:20px;background:#0E0E16;padding:24px;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">${editing ? "Modifier le tournoi" : "Nouveau tournoi"}</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:18px;font-size:12px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:8px 12px;max-width:fit-content">${ic(I.warn, 13)}Format : <b style="color:#F4F5FB">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
-      ${wizSteps(S)}${body}
+    <div data-stop="1" style="width:100%;max-width:1160px;border:1px solid #282838;border-radius:20px;background:#0B0B11;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px;display:flex;overflow:hidden;min-height:600px">
+      <div style="width:230px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 16px 16px 18px;border-bottom:1px solid #1B1B27">
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px">${editing ? "Modifier" : "Nouveau tournoi"}</span>
+          <button data-act="create-cancel" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.x, 13)}</button>
+        </div>
+        ${wizSteps(S)}
+        <div style="flex:1"></div>
+        <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">Format : <b style="color:#8E8FA6">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
+      </div>
+      <div style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
     </div>
   </div>`;
 }
@@ -667,10 +729,8 @@ function pDashboard(S: State) {
   if (!me) return wrap(header + card(`<div style="color:#8E8FA6;text-align:center;padding:22px">Chargement du profil…</div>`));
   const statTiles = memberStats(S);
   const editor = S.profileEdit ? profileEditor(S) : "";
-  let body: string;
-  if (u.role === "ADMIN") body = adminPanel(S) + grid2(profileSecurity(S), ordersCard(S));
-  else if (u.role === "ORGANIZER") body = myTournsCard(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
-  else body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
+  // ADMIN/ORGANIZER passent par la console (sidebar) — voir renderPage(). Cette page ne sert plus qu'aux PLAYER.
+  const body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
   return wrap(header + editor + statTiles + body);
 }
 
@@ -768,20 +828,6 @@ function paymentsPanel(S: State, tournamentId: string) {
     ${pending.map((r: Detail) => row(r, true)).join("")}${paid.map((r: Detail) => row(r, false)).join("")}</div>`;
 }
 
-function myTournsCard(S: State) {
-  const ts = S.myTourns ?? [];
-  const rows = ts.length
-    ? ts.map((t: Detail) => `<div data-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;cursor:pointer">
-        <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#FBBF24;flex:none">${ic(I.bolt, 15)}</span>
-        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${t.name}</div><div style="font-size:12px;color:#5D5E72">${t.game}${t.players ? " · " + t.players + " joueurs" : ""}${t.place ? " · " + t.place : ""}</div></div>
-        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${t.live ? "#22D3EE" : t.status === "Terminé" ? "#FBBF24" : "#8E8FA6"}">${t.live ? "En direct" : t.status}</span>
-        <span style="color:#5D5E72">${ic(I.arrow, 15)}</span></div>`).join("")
-    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Tu n'as pas encore créé de tournoi.</div>`;
-  const createBtn = `<button data-createnav="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi</button>`;
-  return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Mes tournois (${ts.length})`)}${createBtn}</div>${rows}</div>`;
-}
-
 function profileSecurity(S: State) {
   const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
   const ok = S.passMsg === "Mot de passe modifié.";
@@ -818,24 +864,132 @@ function adminSearchBar(S: State, placeholder: string) {
 /** Enveloppe défilante : évite qu'une longue liste ne pousse toute la page. */
 const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px;overflow-y:auto;padding-right:4px">${inner}</div>`;
 
-function adminPanel(S: State) {
-  const a = S.admin;
-  if (!a) return card(`<div style="color:#8E8FA6;text-align:center;padding:20px">Chargement du panneau admin…</div>`);
-  const tabs = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${ADMIN_TABS.map(([k, l]) => {
+/** Jeu d'onglets réduit pour ORGANIZER (pas d'accès aux réglages site/utilisateurs/joueurs/actus/galerie/produits — réservés à ADMIN). */
+const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["compte", "Mon compte"]];
+/** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
+const CONSOLE_TAB_ICON: Record<string, string> = {
+  apercu: I.bolt, site: I.edit, users: I.user, joueurs: I.crown, news: I.flame, galerie: I.image,
+  produits: I.cart, paiements: I.warn, commandes: I.cart, compte: I.user,
+};
+
+/** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
+ * Pas de métrique inventée : uniquement ce que S.admin.overview / S.tourns / S.myTourns fournissent réellement. */
+function consoleOverview(S: State) {
+  const isAdmin = S.user?.role === "ADMIN";
+  const tourns: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
+  const kpiStat = (v: number | string, k: string, color = "#F4F5FB") => `<div style="background:#14141D;padding:16px 18px"><div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-top:6px">${k}</div></div>`;
+  const ov = S.admin?.overview;
+  const kpis = isAdmin
+    ? (ov ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:#1B1B27;border:1px solid #1B1B27;border-radius:12px;overflow:hidden;margin-bottom:20px">${kpiStat(ov.tournaments, "Tournois", "#22D3EE")}${kpiStat(ov.users, "Utilisateurs", "#7C82FF")}${kpiStat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "#F4F5FB")}${kpiStat(ov.orders, "Commandes")}${kpiStat(ov.products, "Produits")}</div>` : "")
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:#1B1B27;border:1px solid #1B1B27;border-radius:12px;overflow:hidden;margin-bottom:20px">${kpiStat(tourns.length, "Mes tournois", "#22D3EE")}${kpiStat((S.myRegs ?? []).length, "Mes inscriptions", "#7C82FF")}${kpiStat((S.myOrders ?? []).length, "Commandes")}${kpiStat(tourns.filter((t) => t.live).length, "En direct", "#FBBF24")}</div>`;
+
+  const tableRows = tourns.length ? tourns.map((t) => `
+    <tr data-open="${t.id}" style="border-top:1px solid #1B1B27;cursor:pointer">
+      <td style="padding:12px 18px"><div style="font-weight:650">${escHtml(t.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(t.date)}${t.place ? " · " + escHtml(t.place) : ""}</div></td>
+      <td style="padding:12px;color:#8E8FA6">${escHtml(t.game)} · ${escHtml(t.format)}</td>
+      <td style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace">${t.players}</td>
+      <td style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace;color:#FBBF24">${t.cagnotte}</td>
+      <td style="padding:12px 18px;text-align:right">${t.live
+        ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
+        : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;border:1px solid #33334A;border-radius:99px;padding:4px 10px">${escHtml(t.status)}</span>`}</td>
+    </tr>`).join("") : `<tr><td colspan="5" style="padding:26px;text-align:center;color:#5D5E72">${isAdmin ? "Aucun tournoi pour l'instant." : "Tu n'as pas encore créé de tournoi."}</td></tr>`;
+  const table = `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden;margin-bottom:20px">
+    <div style="padding:13px 18px;border-bottom:1px solid #1B1B27;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${isAdmin ? "Tournois" : "Mes tournois"} (${tourns.length})</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px"><thead><tr style="color:#5D5E72;font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
+      <th style="text-align:left;padding:10px 18px;font-weight:750">Tournoi</th><th style="text-align:left;padding:10px 12px;font-weight:750">Jeu / Format</th><th style="text-align:right;padding:10px 12px;font-weight:750">Joueurs</th><th style="text-align:right;padding:10px 12px;font-weight:750">Cagnotte</th><th style="text-align:right;padding:10px 18px;font-weight:750">Statut</th>
+    </tr></thead><tbody>${tableRows}</tbody></table></div></div>`;
+
+  const pending = ov?.pendingPayments ?? 0;
+  const todo = isAdmin && pending > 0 ? `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden">
+    <div style="padding:13px 18px;border-bottom:1px solid #1B1B27;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">À traiter</div>
+    <div data-admintab="paiements" style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
+      <span style="display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);color:#FBBF24;flex:none">${ic(I.warn, 15)}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:650">${pending} paiement${pending > 1 ? "s" : ""} à confirmer</div></div>
+      <span style="border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:6px 11px;font-size:11.5px;font-weight:700;color:#FBBF24">Voir</span>
+    </div></div>` : "";
+
+  return kpis + table + todo;
+}
+
+/** Tournoi en direct épinglé en haut de la sidebar (organisateur : ses tournois seulement ; admin : tous). */
+function consolePinnedLive(S: State): string {
+  const isAdmin = S.user?.role === "ADMIN";
+  const source: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
+  const live = source.find((t) => t.live);
+  if (!live) return "";
+  return `<div data-open="${live.id}" style="margin:14px 12px;border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.06);padding:13px;cursor:pointer">
+    <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span><span style="font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE">En direct</span></div>
+    <div style="font-weight:700;font-size:13.5px;line-height:1.3">${escHtml(live.name)}</div>
+    <div style="font-size:11.5px;color:#8E8FA6;margin-top:5px">${escHtml(live.game)}${live.place ? " · " + escHtml(live.place) : ""}</div>
+    <div style="margin-top:11px;border-radius:9px;background:#22D3EE;color:#04222a;padding:9px;text-align:center;font-size:12.5px;font-weight:750">Ouvrir la régie</div>
+  </div>`;
+}
+
+/** Shell console (sidebar + zone de contenu) pour ADMIN/ORGANIZER sur « Mon espace » — remplace le header/nav public sur cette page. */
+function consoleShell(S: State, tabs: [string, string][], title: string, body: string) {
+  const u = S.user!;
+  const rc = ROLE_COLOR[u.role] || "#22D3EE";
+  const nav = tabs.map(([k, label]) => {
     const on = S.adminTab === k;
-    return `<button data-admintab="${k}" style="font-size:13px;font-weight:700;border-radius:999px;padding:9px 16px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${l}</button>`;
-  }).join("")}</div>`;
-  const body =
-    S.adminTab === "site" ? adminSite(S) :
-    S.adminTab === "users" ? adminUsers(S) :
-    S.adminTab === "joueurs" ? adminRoster(S) :
-    S.adminTab === "news" ? adminNews(S) :
-    S.adminTab === "galerie" ? adminGallery(S) :
-    S.adminTab === "produits" ? adminProducts(S) :
-    S.adminTab === "paiements" ? adminPayments(S) :
-    S.adminTab === "commandes" ? adminOrders(a) :
-    adminOverview(a);
-  return tabs + body;
+    return `<button data-admintab="${k}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 16px;margin:0 8px;border-radius:9px;border:0;background:${on ? "rgba(34,211,238,.1)" : "transparent"};color:${on ? "#F4F5FB" : "#8E8FA6"};font-weight:${on ? 700 : 600};font-size:13.5px;cursor:pointer">${ic(CONSOLE_TAB_ICON[k] || I.bolt, 17)}${label}</button>`;
+  }).join("");
+  return `<div style="min-height:100vh;display:flex" class="console-shell">
+    <div class="console-sidebar" style="width:250px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column;padding:16px 0">
+      <div data-go="accueil" style="display:flex;align-items:center;gap:10px;padding:0 16px 18px;border-bottom:1px solid #1B1B27;cursor:pointer">
+        ${brandLogo(S, 34, 19)}
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1.4px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span>
+      </div>
+      ${consolePinnedLive(S)}
+      <div style="padding:8px 12px 6px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#3d3d55;font-weight:800">Console</div>
+      ${nav}
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid #1B1B27;margin-top:12px">
+        <span style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</span>
+        <div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.displayName)}</div><div style="font-size:10.5px;color:${rc};font-weight:700;letter-spacing:.4px;text-transform:uppercase">${ROLE_LABEL[u.role] || u.role}</div></div>
+        <button data-logout="1" title="Déconnexion" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:transparent;border:0;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.logout, 15)}</button>
+      </div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:16px;padding:16px 28px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">
+        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;margin:0;line-height:1">${title}</h1>
+        <span style="flex:1"></span>
+        <div style="position:relative;min-width:220px">
+          <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 15)}</span>
+          <input id="hsearch" value="${escAttr(S.q)}" placeholder="Tournoi, jeu… (Entrée)" style="width:100%;background:#14141D;border:1px solid #282838;border-radius:9px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px 9px 34px" />
+        </div>
+        <button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 16)}Nouveau tournoi</button>
+      </div>
+      <div style="padding:22px 28px;flex:1">${body}</div>
+    </div>
+  </div>`;
+}
+
+/** Page « Mon espace » pour ADMIN/ORGANIZER : shell sidebar + contenu de l'onglet actif, assistant en overlay si ouvert. */
+function consolePage(S: State): string {
+  const isAdmin = S.user?.role === "ADMIN";
+  const tabs = isAdmin ? ADMIN_TABS : ORG_TABS;
+  const activeLabel = tabs.find(([k]) => k === S.adminTab)?.[1] || tabs[0][1];
+  let body: string;
+  if (isAdmin) {
+    const a = S.admin;
+    body = !a ? `<div style="color:#8E8FA6;text-align:center;padding:40px 0">Chargement…</div>` :
+      S.adminTab === "site" ? adminSite(S) :
+      S.adminTab === "users" ? adminUsers(S) :
+      S.adminTab === "joueurs" ? adminRoster(S) :
+      S.adminTab === "news" ? adminNews(S) :
+      S.adminTab === "galerie" ? adminGallery(S) :
+      S.adminTab === "produits" ? adminProducts(S) :
+      S.adminTab === "paiements" ? adminPayments(S) :
+      S.adminTab === "commandes" ? adminOrders(a) :
+      consoleOverview(S);
+  } else {
+    body = S.adminTab === "compte"
+      ? grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S))
+      : consoleOverview(S);
+  }
+  const editor = S.profileEdit ? profileEditor(S) : "";
+  const shell = consoleShell(S, tabs, activeLabel, editor + body);
+  return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S);
 }
 
 /** Onglet Site : identité (logo/nom), héro, slider « À la une », partenaires. */
@@ -1538,6 +1692,8 @@ function partnersMarquee(S: State) {
 
 function renderPage(S: State) {
   if (S.page === "show") return pShow(S);
+  // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le header/nav public.
+  if (S.page === "profil" && canManage(S)) return consolePage(S);
   const pages: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, tournoi: pTournoi, auth: pAuth };
   const body = (pages[S.page] || pAccueil)(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain</footer>`;
@@ -2222,6 +2378,17 @@ export default function Page() {
     badge.style.color = c.valid ? "#34D399" : "#FB7185";
     badge.style.background = c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)";
     badge.style.borderColor = c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)";
+    // Points calculés par ligne du barème, et barre de répartition par catégorie (si présentes sur l'étape actuelle).
+    for (const key of Object.keys(c.breakdown) as (keyof typeof c.breakdown)[]) {
+      const ptsEl = document.getElementById(`wiz-sc-pts-${key}`);
+      if (ptsEl) ptsEl.textContent = `${c.breakdown[key].pts} pts`;
+      const segEl = document.getElementById(`wiz-gauge-seg-${key}`);
+      if (segEl) {
+        const pct2 = c.programmed > 0 ? Math.round((c.breakdown[key].pts / c.programmed) * 1000) / 10 : 0;
+        segEl.style.width = `${pct2}%`;
+        segEl.innerHTML = pct2 >= 8 ? `<span id="wiz-gauge-seg-${key}-txt">${pct2}%</span>` : "";
+      }
+    }
   }
   function wizGoto(next: number) {
     if (next === 0) { setS((s) => ({ ...s, creating: false, wizEditId: null })); return; }
@@ -2332,7 +2499,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-createnav],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -2521,7 +2688,6 @@ export default function Page() {
         else if (kind === "clubdel") rosterAct(`${API}/api/clubs/${arg}`, "DELETE");
       }
     }
-    else if (d.createnav !== undefined) { setS((s) => ({ ...s, page: "tournois", creating: true })); window.scrollTo({ top: 0 }); }
     else if (d.profileedit !== undefined) setS((s) => ({ ...s, profileEdit: true, profileMsg: "", page: "profil" }));
     else if (d.profilecancel !== undefined) setS((s) => ({ ...s, profileEdit: false, profileMsg: "" }));
     else if (d.profilesave !== undefined) saveProfile();

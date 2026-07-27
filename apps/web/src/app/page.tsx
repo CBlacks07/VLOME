@@ -45,6 +45,7 @@ type State = {
     imageUrl: string | null;
   };
   wizRosterSearch: string;
+  wizEditId: string | null; // id du tournoi en cours de modification via l'assistant (null = création)
   // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
   roster: Detail[] | null; clubs: Detail[] | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs";
@@ -290,9 +291,11 @@ const wizField = (label: string, inner: string, help?: string) => `<div><label s
 const wizCard = (inner: string) => `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px">${inner}</div>`;
 
 function wizSteps(S: State) {
-  const defs = [["Infos", I.bolt], ["Participants", I.user], ["Poules", I.tv], ["Barème", I.cart], ["Validation", I.crown]] as [string, string][];
-  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${defs.map(([label, icon], i) => {
-    const n = i + 1, active = n === S.wizStep, done = n < S.wizStep;
+  const full = [["Infos", I.bolt, 1], ["Participants", I.user, 2], ["Poules", I.tv, 3], ["Barème", I.cart, 4], ["Validation", I.crown, 5]] as [string, string, number][];
+  // En modification, Participants/Poules sont gérés depuis la page du tournoi (pas via l'assistant) : on saute directement à Barème.
+  const defs = S.wizEditId ? [full[0], full[3], full[4]] : full;
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">${defs.map(([label, icon, n]) => {
+    const active = n === S.wizStep, done = n < S.wizStep;
     const color = active ? "#22D3EE" : done ? "#34D399" : "#5D5E72";
     return `<button data-wizgoto="${n}" style="display:inline-flex;align-items:center;gap:8px;background:${active ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${active ? "#22D3EE" : "#282838"};border-radius:99px;padding:8px 14px 8px 8px;cursor:pointer">
       <span style="display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:${active ? "#22D3EE" : done ? "rgba(52,211,153,.15)" : "#22222F"};color:${active ? "#04222a" : color};font-weight:800;font-size:12px">${done ? ic(I.plus, 12) : n}</span>
@@ -319,7 +322,7 @@ function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid
 function wizInfosStep(S: State) {
   const d = S.wizData;
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
-    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}Étape 1 — Informations générales</h3>
+    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${S.wizEditId ? "Informations générales" : "Étape 1 — Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
         ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
         ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />`)}
@@ -334,7 +337,7 @@ function wizInfosStep(S: State) {
         <b style="color:#F4F5FB">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras.<br><br>
         <b style="color:#F4F5FB">Format Survival</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.
       </div>`)}
-  </div>${wizFoot("Annuler", 0, 2)}`;
+  </div>${wizFoot("Annuler", 0, S.wizEditId ? 4 : 2)}`;
 }
 
 function wizParticipantsStep(S: State) {
@@ -406,41 +409,46 @@ function wizScoringStep(S: State) {
   const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
   const fields = WIZ_SCORING_FIELDS.map(([id, label, key]) => wizField(label, `<input id="${id}" type="number" min="0" step="0.25" value="${(d as unknown as Record<string, number>)[key]}" style="${WIZ_INP}" />`)).join("");
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
-    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}Étape 4 — Barème des points</h3>
+    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${S.wizEditId ? "Barème des points" : "Étape 4 — Barème des points"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">${fields}</div>
       <p style="color:#5D5E72;font-size:11.5px;margin-top:14px">Chaque valeur est librement réglable (à partir de 0,25 point). Le total programmé doit tenir dans la cagnotte disponible ci-contre.</p>`)}
     ${wizGaugeCard(c)}
-  </div>${wizFoot("Retour", 3, 5, "Validation")}`;
+  </div>${wizFoot("Retour", S.wizEditId ? 1 : 3, 5, "Validation")}`;
 }
 
 function wizValidateStep(S: State) {
   const d = S.wizData;
+  const editing = !!S.wizEditId;
   const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
-  const canCreate = c.valid && d.players.length >= 2 && d.name.trim().length > 0;
+  const canSubmit = c.valid && d.name.trim().length > 0 && (editing || d.players.length >= 2);
   const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:#8E8FA6;font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
   const brk = WIZ_SCORING_FIELDS.map(([, label, key]) => row(label, String((d as unknown as Record<string, number>)[key]))).join("");
+  const participantsRows = editing ? "" : `${row("Participants", String(d.players.length))}${row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)}${row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale")}`;
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
-    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.crown, 17)}Étape 5 — Récapitulatif</h3>
+    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.crown, 17)}${editing ? "Récapitulatif" : "Étape 5 — Récapitulatif"}</h3>
       <table style="width:100%;border-collapse:collapse">
         ${row("Tournoi", escHtml(d.name) || "—")}${row("Jeu", escHtml(d.game) || "—")}${row("Date / lieu", `${escHtml(d.date) || "—"}${d.place ? " · " + escHtml(d.place) : ""}`)}
-        ${row("Participants", String(d.players.length))}${row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)}
-        ${row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale")}${row("Frais d'inscription", d.entryFeeXof ? money(d.entryFeeXof) : "Gratuit")}
+        ${participantsRows}${row("Frais d'inscription", d.entryFeeXof ? money(d.entryFeeXof) : "Gratuit")}
       </table>
       <hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>
-      <button data-act="wiz-submit" ${!canCreate || S.busy ? "disabled" : ""} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:20px;background:${canCreate ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canCreate ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:${canCreate && !S.busy ? "pointer" : "default"}">${ic(I.bolt, 17)}${S.busy ? "Création…" : "Créer le tournoi"}</button>
-      ${canCreate ? `<p style="color:#5D5E72;font-size:11.5px;text-align:center;margin-top:9px">Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page.</p>` : `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige le nom, les participants (min. 2) ou le barème (dépassement) avant de créer.</p>`}`)}
+      <button data-act="${editing ? "wiz-update" : "wiz-submit"}" ${!canSubmit || S.busy ? "disabled" : ""} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:20px;background:${canSubmit ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canSubmit ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:${canSubmit && !S.busy ? "pointer" : "default"}">${ic(I.bolt, 17)}${S.busy ? (editing ? "Enregistrement…" : "Création…") : (editing ? "Enregistrer les modifications" : "Créer le tournoi")}</button>
+      ${canSubmit ? (editing ? "" : `<p style="color:#5D5E72;font-size:11.5px;text-align:center;margin-top:9px">Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page.</p>`) : `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige le nom${editing ? "" : ", les participants (min. 2)"} ou le barème (dépassement) avant de ${editing ? "enregistrer" : "créer"}.</p>`}`)}
     ${wizGaugeCard(c)}
   </div>${wizFoot("Retour", 4, 0)}`;
 }
 
 /** Assistant de création : modal plein écran (fond flouté, fermeture au clic hors du panneau). */
+/** Assistant de création/modification : modal plein écran (fond flouté). Ne se ferme jamais au clic
+ * extérieur — un formulaire à 5 étapes est trop long à ressaisir pour un clic accidentel ; seule la
+ * croix ou « Annuler » ferment explicitement. */
 function tournamentWizard(S: State) {
+  const editing = !!S.wizEditId;
   const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
-  return `<div data-act="create-cancel" style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
+  return `<div style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
     <div data-stop="1" style="width:100%;max-width:1000px;border:1px solid rgba(34,211,238,.25);border-radius:20px;background:#0E0E16;padding:24px;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Nouveau tournoi</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><h2 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">${editing ? "Modifier le tournoi" : "Nouveau tournoi"}</h2><button data-act="create-cancel" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer">${ic(I.x, 15)}</button></div>
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:18px;font-size:12px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:10px;padding:8px 12px;max-width:fit-content">${ic(I.warn, 13)}Format : <b style="color:#F4F5FB">Survival</b> — le seul que le moteur sait piloter pour l'instant.</div>
       ${wizSteps(S)}${body}
     </div>
@@ -1191,6 +1199,8 @@ function pTournoi(S: State) {
     ${t.status !== "setup" ? `<div style="font-size:12px;color:#5D5E72;margin-top:10px">Poules et points par joueur ne sont modifiables qu'avant le lancement.</div>` : ""}
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
+  // Tournoi Survival non lancé : « Modifier » ouvre l'assistant de création (pré-rempli) plutôt que ce petit formulaire.
+  const wizModal = S.creating && S.wizEditId === t.id && manage ? tournamentWizard(S) : "";
 
   // À lancer : inscriptions ouvertes
   if (t.status === "setup") {
@@ -1254,7 +1264,7 @@ function pTournoi(S: State) {
         ${feeBadge}
         <p style="color:#8E8FA6;font-size:14px;max-width:460px;margin:0 auto 22px">${sub}</p>
         ${action}
-      </div>${pendingPanel}${participants}${poolsPreview}</main>`;
+      </div>${pendingPanel}${participants}${poolsPreview}</main>${wizModal}`;
   }
 
   // Poule (match courant cliquable + classement)
@@ -1349,7 +1359,7 @@ function pTournoi(S: State) {
       </details>`
     : "";
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}${rosterPanel}${finalsHtml || poolsHtml + finalsBtn}</main>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${head}${editCard}${rosterPanel}${finalsHtml || poolsHtml + finalsBtn}</main>${wizModal}`;
 }
 
 /** Page d'authentification dédiée : présentation à gauche, formulaire à droite. */
@@ -1553,7 +1563,7 @@ export default function Page() {
     editingPlayerId: null, finalsFormatPick: "single",
     wizStep: 1,
     wizData: { name: "", game: "", date: "", place: "", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
-    wizRosterSearch: "",
+    wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -2139,6 +2149,19 @@ export default function Page() {
     if (window.location.hash !== hash) history.replaceState(null, "", hash);
   }, [S.page, S.openId]);
 
+  // Jauge de cagnotte en direct (étape Barème) : écouteurs natifs posés directement sur les champs,
+  // plutôt que de compter sur la délégation d'événements React — le contenu de l'assistant est injecté
+  // via dangerouslySetInnerHTML (jamais géré par la réconciliation React), et le onChange délégué s'est
+  // montré peu fiable dessus (perdait des frappes). Un addEventListener natif, lui, ne rate jamais.
+  useEffect(() => {
+    if (!(S.creating && S.wizStep === 4)) return;
+    const ids = WIZ_SCORING_FIELDS.map(([id]) => id);
+    const els = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLInputElement => !!el);
+    els.forEach((el) => el.addEventListener("input", wizRecalcGauge));
+    wizRecalcGauge();
+    return () => els.forEach((el) => el.removeEventListener("input", wizRecalcGauge));
+  }, [S.creating, S.wizStep]);
+
   /** Simples pages sans paramètre : le hash correspond directement à la clé de page. */
   function applyHash(h: string) {
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
@@ -2201,9 +2224,9 @@ export default function Page() {
     badge.style.borderColor = c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)";
   }
   function wizGoto(next: number) {
-    if (next === 0) { setS((s) => ({ ...s, creating: false })); return; }
+    if (next === 0) { setS((s) => ({ ...s, creating: false, wizEditId: null })); return; }
     const d = wizCapture();
-    if (next >= 3 && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
+    if (!S.wizEditId && next >= 3 && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
     setS((s) => ({ ...s, wizData: d, wizStep: next }));
     window.scrollTo({ top: 0 });
   }
@@ -2263,6 +2286,45 @@ export default function Page() {
     }
   }
 
+  /** Enregistre les modifications d'un tournoi existant (assistant en mode édition) : infos générales
+   * puis barème (un appel par valeur changée, l'endpoint /scoring accepte les changements à tout moment). */
+  async function submitUpdate() {
+    const id = S.wizEditId;
+    if (!id) return;
+    const d = S.wizData;
+    if (!d.name.trim()) return;
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    setS((s) => ({ ...s, busy: true }));
+    const body: Detail = {
+      name: d.name, game: d.game, place: d.place, date: d.date || undefined,
+      entryFeeXof: d.entryFeeXof, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
+    };
+    try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
+    catch { setS((s) => ({ ...s, busy: false })); return; }
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
+      });
+      if (r.status === 401) { setS((s) => ({ ...s, busy: false, page: "auth", user: null })); return; }
+      if (!r.ok) throw new Error();
+      const scoring: [string, number][] = [
+        ["survWin", d.survWin], ["loserWin", d.loserWin], ["poolFinalWin", d.poolFinalWin],
+        ["finalsWin", d.finalsWin], ["championBonus", d.championBonus],
+      ];
+      for (const [key, value] of scoring) {
+        await fetch(`${API}/api/tournaments/${id}/scoring`, {
+          method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ key, value }),
+        });
+      }
+      await loadTournaments();
+      setS((s) => ({ ...s, busy: false, creating: false, wizEditId: null, wizStep: 1 }));
+      await openDetail(id);
+    } catch {
+      setS((s) => ({ ...s, busy: false }));
+      alert("Enregistrement impossible — l'API est-elle démarrée ? (pnpm dev:api)");
+    }
+  }
+
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
@@ -2299,7 +2361,29 @@ export default function Page() {
       const name = S.detail?.name ? ` « ${S.detail.name} »` : "";
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le tournoi", message: `Le tournoi${name} et tous ses résultats seront définitivement supprimés.`, okLabel: "Supprimer", action: `delT|${d.del}` } }));
     }
-    else if (d.edit !== undefined) { setS((s) => ({ ...s, editing: true })); }
+    else if (d.edit !== undefined) {
+      // Tournoi Survival pas encore lancé : on réutilise l'assistant de création, pré-rempli, pour une expérience cohérente.
+      // Sinon (formats de démo hérités, ou tournoi déjà démarré) : le petit formulaire inline reste plus adapté.
+      const t = S.detail;
+      if (t && t.format === "Survival" && t.status === "setup") {
+        const roster: { name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
+        setS((s) => ({
+          ...s, creating: true, wizEditId: t.id, wizStep: 1, wizRosterSearch: "",
+          wizData: {
+            name: t.name || "", game: t.game || "", date: "", place: t.place || "",
+            pointsPerPlayer: t.pointsPerPlayer || 5, nbPools: t.nbPools || 2,
+            players: roster.map((p) => (p.club ? `${p.name} @${p.club}` : p.name)),
+            entryFeeXof: t.entryFeeXof || 0,
+            survWin: t.scoring?.survWin ?? 1, loserWin: t.scoring?.loserWin ?? 0.5, poolFinalWin: t.scoring?.poolFinalWin ?? 1.5,
+            finalsWin: t.scoring?.finalsWin ?? 2, championBonus: t.scoring?.championBonus ?? 3,
+            imageUrl: t.imageUrl || null,
+          },
+        }));
+        loadRoster();
+      } else {
+        setS((s) => ({ ...s, editing: true }));
+      }
+    }
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
       const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
@@ -2449,8 +2533,9 @@ export default function Page() {
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") { setS((s) => ({ ...s, creating: true, wizStep: 1, wizRosterSearch: "" })); loadRoster(); }
-    else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false }));
+    else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false, wizEditId: null }));
     else if (d.act === "wiz-submit") submitCreate();
+    else if (d.act === "wiz-update") submitUpdate();
     else if (d.clearq !== undefined) setS((s) => ({ ...s, q: "" }));
   }
 
@@ -2458,7 +2543,6 @@ export default function Page() {
   // (mise à jour DOM directe : pas de re-rendu, l'input garde son fichier)
   function onChange(e: React.ChangeEvent<HTMLDivElement>) {
     const t = e.target as HTMLInputElement;
-    if (t.id && t.id.startsWith("wz-sc-")) { wizRecalcGauge(); return; }
     if (t.type === "file" && t.id) {
       const file = t.files?.[0];
       const span = document.getElementById(t.id + "-name");

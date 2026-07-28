@@ -16,6 +16,7 @@ type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number }[] | null; boutiqueInStock: boolean;
+  cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -1505,6 +1506,19 @@ function adminOrders(a: NonNullable<State["admin"]>) {
   return summary + card(secTitle(`Commandes (${orders.length})`) + scrollBox(rows));
 }
 
+/** Premier match jouable de la phase finale (tous formats confondus) — utilisé par le panneau d'arbitrage et le Mode Show. */
+function findPlayableFinalsMatch(finals: Detail): Detail | null {
+  const pools: Detail[][] = [];
+  if (finals.format === "roundrobin") pools.push(finals.matches);
+  else if (finals.format === "double") {
+    finals.wb.forEach((r: Detail) => pools.push(r.matches));
+    finals.lb.forEach((r: Detail) => pools.push(r.matches));
+    pools.push(finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
+  } else finals.rounds.forEach((r: Detail) => pools.push(r.matches));
+  for (const arr of pools) for (const m of arr) if (m && m.playable) return m;
+  return null;
+}
+
 function pTournoi(S: State) {
   const t = S.detail;
   if (!t) return `<main style="max-width:1220px;margin:0 auto;padding:40px 22px;text-align:center;color:#8E8FA6">Chargement du tournoi…</main>`;
@@ -1689,18 +1703,6 @@ function pTournoi(S: State) {
     return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId)}<div style="border-top:1px solid #22222F">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId)}</div></div>`;
   };
   const roundCol = (label: string, matches: Detail[]) => `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map(matchBox).join("")}</div>`;
-  // Premier match jouable du bracket (tous formats confondus) — mis en avant dans le panneau « Match à arbitrer ».
-  const findPlayableFinalsMatch = (finals: Detail): Detail | null => {
-    const pools: Detail[][] = [];
-    if (finals.format === "roundrobin") pools.push(finals.matches);
-    else if (finals.format === "double") {
-      finals.wb.forEach((r: Detail) => pools.push(r.matches));
-      finals.lb.forEach((r: Detail) => pools.push(r.matches));
-      pools.push(finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
-    } else finals.rounds.forEach((r: Detail) => pools.push(r.matches));
-    for (const arr of pools) for (const m of arr) if (m && m.playable) return m;
-    return null;
-  };
 
   let finalsHtml = "";
   if (t.finals) {
@@ -1856,17 +1858,39 @@ function confirmModal(S: State) {
 
 function cartDrawer(S: State) {
   if (!S.cartOpen) return "";
+  if (S.lastOrder) {
+    const o = S.lastOrder;
+    return `<div data-cart-close="1" style="position:fixed;inset:0;z-index:200;background:rgba(6,6,10,.6);backdrop-filter:blur(4px)">
+      <div data-stop="1" style="position:absolute;top:0;right:0;height:100%;width:min(420px,92vw);background:#0E0E16;border-left:1px solid #282838;padding:22px;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px"><span data-cart-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
+        <div class="rise" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px">
+          <div style="display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);color:#34D399;margin-bottom:10px">${ic(I.crown, 26)}</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Commande enregistrée</div>
+          <div style="color:#8E8FA6;font-size:13.5px;max-width:280px;margin-top:4px">Réf. <b style="color:#F4F5FB">${escHtml(o.reference)}</b> · ${money(o.totalXof)} · paiement ${escHtml(o.paymentMethod)}. Elle sera confirmée par l'équipe VLOME à réception du paiement.</div>
+        </div>
+        <div style="border-top:1px solid #282838;padding-top:16px;margin-top:8px;display:flex;flex-direction:column;gap:8px">
+          <button data-cart-vieworders="1" style="width:100%;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:pointer">Voir mes commandes</button>
+          <button data-cart-close="1" style="width:100%;background:transparent;border:1px solid #282838;color:#8E8FA6;border-radius:12px;padding:11px;font-weight:600;font-size:13px;cursor:pointer">Continuer mes achats</button>
+        </div>
+      </div></div>`;
+  }
   const total = S.cartItems.reduce((a, i) => a + i.price, 0);
   const rows = S.cartItems.length
     ? S.cartItems.map((i, idx) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #22222F"><div><div style="font-weight:600;font-size:14px">${escHtml(i.name)}</div><div style="font-size:12.5px;color:#22D3EE;font-weight:700;font-family:'JetBrains Mono',monospace">${money(i.price)}</div></div><button data-cart-remove="${idx}" style="display:grid;place-items:center;width:32px;height:32px;background:transparent;border:1px solid #282838;border-radius:9px;color:#8E8FA6;cursor:pointer">${ic(I.trash, 15)}</button></div>`).join("")
     : `<div style="color:#5D5E72;font-size:14px;text-align:center;padding:40px 0">Ton panier est vide.<br>Ajoute des articles depuis la boutique.</div>`;
+  const payChips = S.cartItems.length ? `<div style="margin-bottom:14px">
+    <div style="color:#8E8FA6;font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${PAYMENTS.map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "#282838"};color:${S.cartPayPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("")}</div>
+  </div>` : "";
+  const canOrder = S.cartItems.length > 0 && !!S.cartPayPick && !S.cartBusy;
   return `<div data-cart-close="1" style="position:fixed;inset:0;z-index:200;background:rgba(6,6,10,.6);backdrop-filter:blur(4px)">
     <div data-stop="1" style="position:absolute;top:0;right:0;height:100%;width:min(420px,92vw);background:#0E0E16;border-left:1px solid #282838;padding:22px;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">Panier</span><span data-cart-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
       <div style="flex:1;overflow-y:auto">${rows}</div>
       <div style="border-top:1px solid #282838;padding-top:16px;margin-top:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:#8E8FA6;font-size:14px">Total</span><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:#22D3EE">${money(total)}</span></div>
-        <button ${S.cartItems.length ? "" : "disabled"} data-checkout="1" style="width:100%;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${S.cartItems.length ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">Commander</button>
+        ${payChips}
+        <button ${canOrder ? "" : "disabled"} data-checkout="1" style="width:100%;background:${canOrder ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canOrder ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${canOrder ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">${S.cartBusy ? "Envoi…" : "Commander"}</button>
         ${S.cartItems.length ? `<button data-cart-clear="1" style="width:100%;margin-top:8px;background:transparent;border:1px solid #282838;color:#8E8FA6;border-radius:12px;padding:11px;font-weight:600;font-size:13px;cursor:pointer">Vider le panier</button>` : ""}
       </div>
     </div></div>`;
@@ -1882,6 +1906,22 @@ function pShow(S: State) {
       <div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:1vh;color:#FBBF24;font-size:2vh;letter-spacing:2px;text-transform:uppercase;font-weight:800">${ic(I.crown, 22)} Champion du tournoi</div>
       <div style="font-family:'Bebas Neue',sans-serif;font-size:14vh;line-height:.9;color:#22D3EE;letter-spacing:1px;margin-top:1vh">${t.champion}</div>
       <div style="color:#8E8FA6;font-size:2.4vh;margin-top:1vh">${t.name}</div></div></div>`;
+  }
+  // Phase finale en cours (bracket lancé, champion pas encore couronné) : plein écran sur le match en cours plutôt que les poules (déjà terminées à ce stade).
+  if (t.finals) {
+    const fmtLabel = t.finals.format === "roundrobin" ? "Round Robin" : t.finals.format === "double" ? "Double élimination" : "Élimination simple";
+    const nextMatch = findPlayableFinalsMatch(t.finals);
+    const matchBlock = nextMatch
+      ? `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap;margin-top:3vh">
+          <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:8vh;color:#22D3EE;line-height:1">${escHtml(nextMatch.aName)}</div></div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div>
+          <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:8vh;color:#F43F7E;line-height:1">${escHtml(nextMatch.bName)}</div></div>
+        </div>`
+      : `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
+    return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
+      <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${escHtml(t.name)}</div>
+      <div style="display:inline-flex;align-items:center;gap:.8vh;color:#FBBF24;font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh"><span style="width:1vh;height:1vh;border-radius:50%;background:#FBBF24;animation:blink 1.2s infinite"></span>Phase finale · ${fmtLabel}</div></div>
+      ${matchBlock}</div>`;
   }
   const title = `<div style="text-align:center;margin-bottom:1vh"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${t.name}</div><div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "#8E8FA6"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct` : t.status === "setup" ? "À lancer" : ""}</div></div>`;
   const poolCard = (p: Detail) => {
@@ -1960,7 +2000,7 @@ export default function Page() {
   const [S, setS] = useState<State>({
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    cartItems: [], cartOpen: false, products: null,
+    cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -2168,13 +2208,17 @@ export default function Page() {
     } catch { /* repli statique */ }
   }
   async function checkout() {
-    if (!S.cartItems.length) return;
+    if (!S.cartItems.length || !S.cartPayPick) return;
     if (!token()) { setS((s) => ({ ...s, cartOpen: false, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    setS((s) => ({ ...s, cartBusy: true }));
     try {
-      const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: "Flooz" }) });
-      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
-      if (r.ok) { const o = await r.json(); alert("Commande " + o.reference + " enregistrée · " + o.totalXof + " F · paiement " + o.paymentMethod + " (agrégateur à venir)."); setS((s) => ({ ...s, cartItems: [], cartOpen: false, me: null, myOrders: null })); }
-    } catch { /* ignore */ }
+      const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: S.cartPayPick }) });
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null, cartBusy: false })); return; }
+      if (r.ok) {
+        const o = await r.json();
+        setS((s) => ({ ...s, cartItems: [], cartPayPick: "", cartBusy: false, me: null, myOrders: null, lastOrder: { reference: o.reference, totalXof: o.totalXof, paymentMethod: o.paymentMethod } }));
+      } else setS((s) => ({ ...s, cartBusy: false }));
+    } catch { setS((s) => ({ ...s, cartBusy: false })); }
   }
 
   async function loadAdmin() {
@@ -2754,7 +2798,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-remove],[data-cart-clear],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -2784,10 +2828,10 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le tournoi", message: `Le tournoi${name} et tous ses résultats seront définitivement supprimés.`, okLabel: "Supprimer", action: `delT|${d.del}` } }));
     }
     else if (d.edit !== undefined) {
-      // Tournoi Survival pas encore lancé : on réutilise l'assistant de création, pré-rempli, pour une expérience cohérente.
-      // Sinon (formats de démo hérités, ou tournoi déjà démarré) : le petit formulaire inline reste plus adapté.
+      // Tournoi pas encore lancé : on réutilise l'assistant de création, pré-rempli (poules/points/participants modifiables).
+      // Une fois lancé : le petit formulaire inline reste plus adapté (poules/points verrouillés par le moteur).
       const t = S.detail;
-      if (t && t.format === "Survival" && t.status === "setup") {
+      if (t && t.status === "setup") {
         const roster: { name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
         setS((s) => ({
           ...s, creating: true, wizEditId: t.id, wizStep: 1, wizRosterSearch: "",
@@ -2844,9 +2888,11 @@ export default function Page() {
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));
     else if (d.addName) setS((s) => ({ ...s, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0") }] }));
     else if (d.cartOpen !== undefined) setS((s) => ({ ...s, cartOpen: true }));
-    else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false }));
+    else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "" }));
+    else if (d.cartVieworders !== undefined) { setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "", page: "profil" })); window.scrollTo({ top: 0 }); }
     else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
     else if (d.cartClear !== undefined) setS((s) => ({ ...s, cartItems: [] }));
+    else if (d.cartpaypick) setS((s) => ({ ...s, cartPayPick: d.cartpaypick! }));
     else if (d.checkout !== undefined) { checkout(); }
     else if (d.authOpen !== undefined) { setS((s) => ({ ...s, page: "auth", authError: "" })); window.scrollTo({ top: 0 }); }
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));

@@ -1774,6 +1774,12 @@ function matchQueuePanel(t: Detail, active: ActiveMatch): string {
   </div>`;
 }
 
+/** Annuler le dernier résultat — indépendant du match actif : reste disponible même quand aucun match n'est jouable (poule/tournoi tout juste terminé), sinon impossible à annuler depuis la régie. */
+function regieUndoBlock(t: Detail): string {
+  if (!t.canUndo) return "";
+  return `<button data-undo="${t.id}" style="width:100%;text-align:center;border:1px solid #33334A;color:#F4F5FB;background:#14141D;border-radius:10px;padding:11px;font-size:12.5px;font-weight:700;cursor:pointer">Annuler le dernier résultat</button>`;
+}
+
 /** Panneau de contrôle du match actif : stepper de score, valider/annuler/forfait — remplace la saisie par input number. */
 function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   const sa = S.matchScoreA, sb = S.matchScoreB;
@@ -1795,7 +1801,6 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       ${side(active.aName, sa, "a")}
       ${side(active.bName, sb, "b")}
       <button data-matchvalidate="1" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px;font-weight:800;font-size:13px;margin-top:12px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button>
-      <button data-undo="${t.id}" ${t.canUndo ? "" : "disabled"} style="width:100%;text-align:center;border:1px solid #33334A;color:#F4F5FB;background:transparent;border-radius:8px;padding:8px;font-size:11.5px;font-weight:700;cursor:${t.canUndo ? "pointer" : "default"};opacity:${t.canUndo ? 1 : .4};margin-top:8px">Annuler le dernier résultat</button>
       <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:750;margin-top:12px">Déclarer forfait</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button data-matchforfeit="a" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.aName)}</button>
@@ -2110,7 +2115,7 @@ function regiePage(S: State): string {
     <div style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, active)}
       <div style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, active)}</div>
-      <div style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${searchMini}</div>
+      <div style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${searchMini}</div>
     </div>
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${cartDrawer(S)}`;
 }

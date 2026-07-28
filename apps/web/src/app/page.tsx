@@ -106,6 +106,8 @@ const CATS = ["Tous", "Vêtements", "Goodies", "Billets", "Cartes cadeaux"];
 
 /* ================= Icônes SVG (aucun emoji) ================= */
 function ic(p: string, s = 18) { return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`; }
+/** I.arrow pointe à droite (utilisé partout pour "suivant/continuer") — retourné horizontalement pour les actions "retour/précédent/annuler". */
+function icBack(s = 18) { return `<span style="display:inline-flex;transform:scaleX(-1)">${ic(I.arrow, s)}</span>`; }
 const I = {
   bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   cart: '<path d="M4 5h2l1.6 10h9L18 8H7"/><circle cx="9" cy="20" r="1.4"/><circle cx="16" cy="20" r="1.4"/>',
@@ -417,7 +419,7 @@ function wizSteps(S: State) {
 }
 
 const wizFoot = (prevLabel: string, prev: number, next: number, nextLabel?: string) => `<div style="display:flex;justify-content:space-between;gap:10px;margin-top:20px">
-  <button data-wizgoto="${prev}" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.arrow, 15)}${prevLabel}</button>
+  <button data-wizgoto="${prev}" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">${icBack(15)}${prevLabel}</button>
   ${next ? `<button data-wizgoto="${next}" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 20px;font-weight:750;font-size:13.5px;cursor:pointer">${nextLabel || "Continuer"}${ic(I.arrow, 15)}</button>` : ""}
 </div>`;
 
@@ -1704,10 +1706,10 @@ function poolCard(S: State, p: Detail, manage: boolean): string {
     const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : "Challenger";
     if (manage) {
       const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
-      const inp = "width:56px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:9px;color:#F4F5FB;padding:8px;font-family:inherit;font-size:15px";
+      const inp = "width:52px;height:44px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;line-height:44px;padding:0";
       body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageTitle} — saisis le score (FT) ou touche un vainqueur</div>
         <div style="display:flex;align-items:stretch;gap:12px"><div style="flex:1">${side(p.current.aId, p.current.aName, "surv", subA)}</div><div style="display:flex;align-items:center;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div><div style="flex:1">${side(p.current.bId, p.current.bName, "chal", subB)}</div></div>
-        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px"><input id="sc-a-${p.current.poolId}" type="number" min="0" value="0" style="${inp}" /><span style="color:#5D5E72;font-weight:700">–</span><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" style="${inp}" /><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:9px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">Valider le score</button></div>`;
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px"><input id="sc-a-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /><span style="color:#5D5E72;font-weight:800;font-size:16px;flex:none">–</span><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="height:44px;background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:10px;padding:0 16px;font-weight:750;font-size:13px;cursor:pointer;margin-left:4px">Valider le score</button></div>`;
     } else {
       const sideRO = (name: string, cls: string, sub: string) => `<div style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></div>`;
       body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageTitle} — en direct</div>
@@ -2018,7 +2020,7 @@ function regieTopBanner(S: State, t: Detail): string {
     </div>
     <span style="width:1px;height:32px;background:#22222F"></span>` : "";
   return `<div style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid #1B1B27;background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
-    <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid #282838;background:#14141D;color:#8E8FA6;flex:none;cursor:pointer">${ic(I.arrow, 14)}</button>
+    <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid #282838;background:#14141D;color:#8E8FA6;flex:none;cursor:pointer">${icBack(14)}</button>
     <div style="min-width:0">
       <div style="display:flex;align-items:center;gap:10px">
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px">${escHtml(t.name)}</h1>
@@ -2210,7 +2212,7 @@ function pTournoi(S: State) {
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
     ${manage ? `<button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
-    ${t.status !== "setup" ? `${t.canUndo ? `<button data-undo="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.arrow, 15)}Annuler</button>` : ""}
+    ${t.status !== "setup" ? `${t.canUndo ? `<button data-undo="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${icBack(15)}Annuler</button>` : ""}
     <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
     <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>` : ""}
     <div style="flex:1"></div>

@@ -48,6 +48,10 @@ a:hover { color: #7C82FF; }
 .fcell .zoom { transition: transform .45s ease; }
 .fcell:hover .zoom { transform: scale(1.05); }
 
+/* ---- Saisie de score (chiffre seul, pas de compteur natif encombrant) ---- */
+.scorenum::-webkit-inner-spin-button, .scorenum::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.scorenum { -moz-appearance: textfield; }
+
 /* ---- Boutons & puces ---- */
 button { transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease, background .2s ease, border-color .2s ease, color .2s ease; }
 button:active { transform: scale(.97); }

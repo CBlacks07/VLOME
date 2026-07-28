@@ -3046,8 +3046,16 @@ export default function Page() {
       if (!area) { area = document.createElement("div"); area.id = "print-area"; document.body.appendChild(area); }
       area.innerHTML = buildPoster(S.detail);
       document.body.classList.add("printing");
-      const cleanup = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", cleanup); };
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        document.body.classList.remove("printing");
+        if (area) area.innerHTML = "";
+        window.removeEventListener("afterprint", cleanup);
+      };
       window.addEventListener("afterprint", cleanup);
+      setTimeout(cleanup, 15000); // filet de sécurité si le dialogue d'impression ne s'ouvre pas (afterprint ne se déclenche jamais)
       setTimeout(() => window.print(), 60);
     }
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }

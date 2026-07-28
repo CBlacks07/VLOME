@@ -203,10 +203,10 @@ function railNav(S: State, activeKey: string): string {
   const userBtn = S.user
     ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
     : `<button data-auth-open="1" title="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer">${ic(I.user, 18)}</button>`;
-  return `<div style="width:88px;flex:none;border-right:1px solid #1B1B27;display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:#0B0B11">
-    <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:linear-gradient(140deg,#22D3EE,#7C82FF);color:#04222a;margin-bottom:16px;cursor:pointer">${ic(I.bolt, 22)}</div>
+  return `<div style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;overflow-y:auto;border-right:1px solid #1B1B27;display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:#0B0B11">
+    <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;margin-bottom:16px;cursor:pointer">${brandLogo(S, 40, 22)}</div>
     ${items}
-    <div style="flex:1"></div>
+    <div style="width:32px;height:1px;background:#1B1B27;margin:10px 0"></div>
     ${cartBtn}
     ${userBtn}
   </div>`;
@@ -214,12 +214,10 @@ function railNav(S: State, activeKey: string): string {
 
 /** Shell rail complet : barre live + rail d'icônes + contenu de la page. Utilisé par Tournois/Classements/Galerie/Boutique. */
 function railShell(S: State, activeKey: string, body: string): string {
-  return `<div style="min-height:100vh;display:flex;flex-direction:column">
+  return `${railNav(S, activeKey)}
+  <div style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
     ${railLiveBar(S)}
-    <div style="flex:1;display:flex;align-items:stretch;min-height:0">
-      ${railNav(S, activeKey)}
-      <div style="flex:1;min-width:0">${body}</div>
-    </div>
+    <div style="flex:1;min-width:0">${body}</div>
   </div>`;
 }
 
@@ -3002,7 +3000,13 @@ export default function Page() {
     else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
-    else if (d.act === "create-open") { setS((s) => ({ ...s, creating: true, wizStep: 1, wizRosterSearch: "" })); loadRoster(); }
+    else if (d.act === "create-open") {
+      setS((s) => ({
+        ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null,
+        wizData: { name: "", game: "", date: "", place: "", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+      }));
+      loadRoster();
+    }
     else if (d.act === "create-cancel") setS((s) => ({ ...s, creating: false, wizEditId: null }));
     else if (d.act === "wiz-submit") submitCreate();
     else if (d.act === "wiz-update") submitUpdate();

@@ -98,6 +98,8 @@ const I = {
   edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>',
+  printer: '<path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/>',
+  share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -1517,6 +1519,45 @@ function findPlayableFinalsMatch(finals: Detail): Detail | null {
   return null;
 }
 
+/** Affiche imprimable (résultats) : classement général, qualifiés par poule, phase finale. Données réelles uniquement (mêmes champs que le cockpit). */
+function buildPoster(t: Detail): string {
+  const meta = [t.game, t.date, t.place].filter(Boolean).map((v: string) => escHtml(v)).join("  ·  ");
+  // Classement général = concaténation des classements de chaque poule (chaque joueur n'apparaît que dans la sienne, pts déjà cumulés sur tout le tournoi par le moteur).
+  const overall: Detail[] = ([] as Detail[]).concat(...(t.pools || []).map((p: Detail) => p.ranking || [])).sort((a: Detail, b: Detail) => b.pts - a.pts || b.wins - a.wins);
+  let champHtml = "";
+  if (t.status === "finished" && t.champion) {
+    const top3 = overall.slice(0, 3);
+    champHtml = `<div class="pa-champ"><div class="pa-clabel">Champion du tournoi</div><div class="pa-cname">${escHtml(t.champion)}</div></div>
+      <div class="pa-podium">${top3.map((r: Detail, i: number) => `<div class="pa-pod"><span class="pa-rk">${i + 1}</span> ${escHtml(r.name)} <span class="pa-pp">${r.pts} pts</span></div>`).join("")}</div>`;
+  }
+  const standings = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>Points</th></tr></thead>
+    <tbody>${overall.slice(0, 16).map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td><b>${r.pts}</b></td></tr>`).join("")}</tbody></table>`;
+  const pools = (t.pools || []).filter((p: Detail) => p.top1).map((p: Detail) => `<div class="pa-pool"><b>${escHtml(p.name)}</b> — ${escHtml(p.top1)}${p.top2 ? ", " + escHtml(p.top2) : ""}</div>`).join("");
+  let bracket = "";
+  if (t.finals) {
+    const line = (name: string | null, win: boolean) => `<div class="${win ? "w" : ""}">${name ? escHtml(name) : "—"}</div>`;
+    const rounds = (arr: Detail[][]) => `<div class="pa-bracket">${arr.map((round) => `<div class="pa-round">${round.map((m: Detail) => `<div class="pa-seed">${line(m.aName, m.winnerId === m.aId)}${line(m.bName, m.winnerId === m.bId)}</div>`).join("")}</div>`).join("")}</div>`;
+    const f = t.finals;
+    if (f.format === "roundrobin") {
+      bracket = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>Diff.</th></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td>${r.gd > 0 ? "+" : ""}${r.gd}</td></tr>`).join("")}</tbody></table>`;
+    } else if (f.format === "double") {
+      bracket = `<div class="pa-h" style="font-size:13px">Vainqueurs</div>${rounds(f.wb.map((r: Detail) => r.matches))}<div class="pa-h" style="font-size:13px;margin-top:8px">Perdants</div>${rounds(f.lb.map((r: Detail) => r.matches))}`;
+    } else {
+      bracket = rounds(f.rounds.map((r: Detail) => r.matches));
+    }
+  }
+  const now = new Date().toLocaleString("fr-FR");
+  return `<div class="pa">
+    <div class="pa-head"><div class="pa-brand">VLOME ESPORT</div><div class="pa-title">${escHtml(t.name)}</div>${meta ? `<div class="pa-meta">${meta}</div>` : ""}</div>
+    ${champHtml}
+    <div class="pa-cols">
+      <div class="pa-col"><div class="pa-h">Classement général</div>${standings}</div>
+      <div class="pa-col">${pools ? `<div class="pa-h">Qualifiés par poule</div>${pools}` : ""}${bracket ? `<div class="pa-h" style="margin-top:14px">Phase finale</div>${bracket}` : ""}</div>
+    </div>
+    <div class="pa-foot">Édité le ${now} · VLOME Esport</div>
+  </div>`;
+}
+
 function pTournoi(S: State) {
   const t = S.detail;
   if (!t) return `<main style="max-width:1220px;margin:0 auto;padding:40px 22px;text-align:center;color:#8E8FA6">Chargement du tournoi…</main>`;
@@ -1545,6 +1586,7 @@ function pTournoi(S: State) {
   </div>`;
   const head = `${cover}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
+    <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
     ${manage ? `<button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
     ${t.status !== "setup" ? `${t.canUndo ? `<button data-undo="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.arrow, 15)}Annuler</button>` : ""}
     <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
@@ -2795,7 +2837,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -2998,6 +3040,16 @@ export default function Page() {
     else if (d.paypick) setS((s) => ({ ...s, payPick: d.paypick! }));
     else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
+    else if (d.print) {
+      if (!S.detail || S.detail.id !== d.print) return;
+      let area = document.getElementById("print-area");
+      if (!area) { area = document.createElement("div"); area.id = "print-area"; document.body.appendChild(area); }
+      area.innerHTML = buildPoster(S.detail);
+      document.body.classList.add("printing");
+      const cleanup = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", cleanup); };
+      window.addEventListener("afterprint", cleanup);
+      setTimeout(() => window.print(), 60);
+    }
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") {
       setS((s) => ({

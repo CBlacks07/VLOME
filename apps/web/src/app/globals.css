@@ -87,3 +87,38 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
 @media (prefers-reduced-motion: reduce) {
   .rise, .slidein, .hcard, button, .kb, .blob, .marquee-track, .glow { animation: none !important; transition: none !important; }
 }
+
+/* ---- Affiche imprimable (résultats d'un tournoi) : #print-area injecté au clic, tout le reste masqué à l'impression ---- */
+#print-area { display: none; }
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff !important; }
+  body.printing > *:not(#print-area) { display: none !important; }
+  #print-area { display: block; color: #111; font-family: 'Inter', system-ui, sans-serif; }
+  .pa { max-width: 100%; color: #111; }
+  .pa-head { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .pa-brand { font-family: 'Bebas Neue', sans-serif; letter-spacing: 2px; font-size: 15px; color: #555; }
+  .pa-title { font-family: 'Bebas Neue', sans-serif; font-size: 38px; letter-spacing: 1px; line-height: 1; margin-top: 4px; }
+  .pa-meta { color: #555; font-size: 12px; margin-top: 6px; }
+  .pa-champ { text-align: center; margin: 12px 0; }
+  .pa-clabel { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #777; }
+  .pa-cname { font-family: 'Bebas Neue', sans-serif; font-size: 30px; letter-spacing: 1px; }
+  .pa-podium { display: flex; justify-content: center; gap: 14px; margin: 6px 0 4px; font-size: 13px; }
+  .pa-pod { border: 1px solid #bbb; border-radius: 8px; padding: 5px 12px; }
+  .pa-pod .pa-rk { font-family: 'Bebas Neue', sans-serif; margin-right: 6px; }
+  .pa-pod .pa-pp { color: #666; }
+  .pa-cols { display: flex; gap: 22px; margin-top: 12px; }
+  .pa-col { flex: 1; }
+  .pa-h { font-family: 'Bebas Neue', sans-serif; font-size: 17px; letter-spacing: 1px; border-bottom: 1px solid #ccc; padding-bottom: 3px; margin-bottom: 8px; }
+  .pa-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .pa-table th { text-align: left; color: #666; font-size: 10px; text-transform: uppercase; padding: 3px 6px; border-bottom: 1px solid #ccc; }
+  .pa-table td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .pa-pool { font-size: 12.5px; padding: 3px 0; }
+  .pa-bracket { display: flex; gap: 12px; font-size: 11px; }
+  .pa-round { flex: 1; }
+  .pa-seed { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+  .pa-seed > div { padding: 3px 7px; border-bottom: 1px solid #eee; }
+  .pa-seed > div:last-child { border-bottom: 0; }
+  .pa-seed .w { font-weight: 700; }
+  .pa-foot { text-align: center; color: #999; font-size: 10px; margin-top: 18px; border-top: 1px solid #ddd; padding-top: 8px; }
+}

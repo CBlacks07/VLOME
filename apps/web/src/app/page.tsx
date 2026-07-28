@@ -1928,7 +1928,7 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
       body += `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#7C82FF;font-weight:800;padding:12px 8px 6px">Phase 2 · finale</div><div style="padding:8px 10px;font-size:12px;color:#63C6DA">Poules terminées — à lancer</div>`;
     }
   }
-  const nav = `<div style="border-top:1px solid #1B1B27;padding-top:12px;display:flex;flex-direction:column;gap:2px">
+  const nav = `<div style="margin-top:16px;border-top:1px solid #1B1B27;padding-top:12px;display:flex;flex-direction:column;gap:2px">
     <div data-regiepanel="joueurs" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.user, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Joueurs</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5D5E72">${(t.players || []).length}</span></div>
     <div data-regiepanel="paiements" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.cart, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Paiements</span></div>
     <div data-regiepanel="reglages" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.warn, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Réglages &amp; barème</span></div>
@@ -1936,7 +1936,6 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
   return `<div style="width:236px;flex:none;border-right:1px solid #1B1B27;padding:20px 16px;display:flex;flex-direction:column;gap:6px;background:#0a0a10;overflow-y:auto">
     <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Déroulé du tournoi</div>
     ${body}
-    <div style="flex:1"></div>
     ${nav}
   </div>`;
 }
@@ -1945,6 +1944,12 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
 function regieTopBanner(S: State, t: Detail): string {
   const dist = t.distributed || 0, total = t.cagnotte?.total || 0;
   const pct = total ? Math.min(100, (dist / total) * 100) : 0;
+  // La cagnotte (points distribués par victoire) ne concerne que le mode Survival — les autres formats se jouent sans elle.
+  const cagnotteBlock = t.mainFormat === "survival" ? `<div style="text-align:right;flex:none">
+      <div style="font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:#5D5E72;font-weight:750">Cagnotte distribuée</div>
+      <div style="display:flex;align-items:center;gap:9px;margin-top:5px"><span style="width:104px;height:5px;border-radius:99px;background:#22222F;overflow:hidden;display:inline-block"><span style="display:block;width:${pct}%;height:100%;background:#FBBF24"></span></span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#FBBF24">${dist}/${total}</span></div>
+    </div>
+    <span style="width:1px;height:32px;background:#22222F"></span>` : "";
   return `<div style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid #1B1B27;background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
     <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid #282838;background:#14141D;color:#8E8FA6;flex:none;cursor:pointer">${ic(I.arrow, 14)}</button>
     <div style="min-width:0">
@@ -1955,11 +1960,7 @@ function regieTopBanner(S: State, t: Detail): string {
       <div style="font-size:12px;color:#8E8FA6;margin-top:3px">${[t.game, t.format].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
     </div>
     <span style="flex:1"></span>
-    <div style="text-align:right;flex:none">
-      <div style="font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:#5D5E72;font-weight:750">Cagnotte distribuée</div>
-      <div style="display:flex;align-items:center;gap:9px;margin-top:5px"><span style="width:104px;height:5px;border-radius:99px;background:#22222F;overflow:hidden;display:inline-block"><span style="display:block;width:${pct}%;height:100%;background:#FBBF24"></span></span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#FBBF24">${dist}/${total}</span></div>
-    </div>
-    <span style="width:1px;height:32px;background:#22222F"></span>
+    ${cagnotteBlock}
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #33334A;background:#14141D;color:#F4F5FB;border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #33334A;background:#14141D;color:#F4F5FB;border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
     <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(251,191,36,.35);background:transparent;color:#FBBF24;border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>
@@ -2104,7 +2105,7 @@ function regiePage(S: State): string {
     <div style="display:flex;align-items:center;gap:9px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6">Joueurs</span><span style="flex:1"></span><span data-regiepanel="joueurs" style="font-size:11px;font-weight:700;color:#22D3EE;cursor:pointer">Voir tout</span></div>
     <div style="font-size:11px;color:#5D5E72;margin-top:6px">Renommer, disqualifier, ajuster les points — sans quitter la régie.</div>
   </div>`;
-  return `<div style="min-height:100vh;background:#08080d;display:flex;flex-direction:column">
+  return `<div style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
     <div style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, active)}
@@ -2148,7 +2149,7 @@ function pTournoi(S: State) {
     <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
     <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>` : ""}
     <div style="flex:1"></div>
-    <div style="min-width:200px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>
+    ${t.mainFormat === "survival" ? `<div style="min-width:200px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8E8FA6;margin-bottom:6px"><span>Cagnotte distribuée</span><span style="font-weight:700;color:#F4F5FB">${dist} / ${total} pts</span></div><div style="height:9px;border-radius:99px;background:#22222F;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div></div>` : ""}
   </div>`;
 
   const inpE = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
@@ -2290,14 +2291,16 @@ function pTournoi(S: State) {
       <button data-reportf="${nextMatch.matchId}|${nextMatch.bId}" style="display:block;width:100%;border:1px solid rgba(244,63,126,.4);border-radius:10px;background:rgba(244,63,126,.06);padding:12px;text-align:center;color:#F43F7E;font-family:'Bebas Neue',sans-serif;font-size:22px;cursor:pointer">${escHtml(nextMatch.bName)}</button>
       <p style="color:#5D5E72;font-size:11px;margin:10px 0 0;text-align:center">Touche un nom pour déclarer le vainqueur.</p>
     </div>` : "";
-    const cagnotteTracker = `<div style="border:1px solid #282838;border-radius:11px;background:#14141D;padding:14px">
+    // La cagnotte (points distribués par victoire) ne concerne que le mode Survival.
+    const cagnotteTracker = t.mainFormat === "survival" ? `<div style="border:1px solid #282838;border-radius:11px;background:#14141D;padding:14px">
       <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:10px">Cagnotte</div>
       <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#8E8FA6;margin-bottom:6px">Distribuée<b style="color:#F4F5FB;font-family:'JetBrains Mono',monospace">${dist}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#8E8FA6;margin-bottom:10px">Reste à distribuer<b style="color:#FBBF24;font-family:'JetBrains Mono',monospace">${Math.max(0, total - dist)}</b></div>
       <div style="height:7px;border-radius:99px;background:#1B1B27;border:1px solid #282838;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:linear-gradient(90deg,#22D3EE,#7C82FF)"></span></div>
-    </div>`;
-    finalsHtml = manage
-      ? `<div style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${bracketCol}</div><div class="rise d2" style="display:flex;flex-direction:column;gap:16px">${arbitragePanel}${cagnotteTracker}</div></div>`
+    </div>` : "";
+    const sideCol = `${arbitragePanel}${cagnotteTracker}`;
+    finalsHtml = manage && sideCol
+      ? `<div style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${bracketCol}</div><div class="rise d2" style="display:flex;flex-direction:column;gap:16px">${sideCol}</div></div>`
       : `<div class="rise" style="margin-top:26px">${bracketCol}</div>`;
   }
 

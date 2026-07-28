@@ -9,6 +9,16 @@ const FORMAT_LABEL: Record<string, string> = {
   SWISS: 'Swiss', ROUND_ROBIN: 'Round Robin', POOLS: 'Poules', BATTLE_ROYALE: 'Battle Royale',
 };
 
+/** Étiquette de format (stockée en base, purement cosmétique historiquement) → format réel piloté par le moteur. */
+const DB_TO_ENGINE_FORMAT: Record<string, Engine.TournamentFormat> = {
+  SURVIVAL: 'survival', POOLS: 'survival',
+  SINGLE_ELIM: 'single', DOUBLE_ELIM: 'double', ROUND_ROBIN: 'roundrobin',
+  SWISS: 'swiss', BATTLE_ROYALE: 'battle_royale',
+};
+function engineFormatFor(dbFormat: string | null | undefined): Engine.TournamentFormat {
+  return DB_TO_ENGINE_FORMAT[dbFormat || 'SURVIVAL'] || 'survival';
+}
+
 @Injectable()
 export class TournamentsService {
   constructor(private prisma: PrismaService) {}
@@ -63,6 +73,7 @@ export class TournamentsService {
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
       nbPools: dto.nbPools ?? 2, pointsPerPlayer: dto.pointsPerPlayer ?? 5,
+      format: engineFormatFor(dto.format),
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -319,7 +330,7 @@ export class TournamentsService {
     const demos: Array<CreateTournamentDto & { status: string; live?: boolean }> = [
       { name: 'Survival Cup · Lomé', game: 'EA FC 26', format: 'SURVIVAL', place: 'Lomé', date: '2026-07-12', pointsPerPlayer: 5, players: gen(32), status: 'LIVE' },
       { name: 'Tekken Kings Cup', game: 'Tekken 8', format: 'DOUBLE_ELIM', place: 'Lomé', date: '2026-07-19', pointsPerPlayer: 5, players: gen(24), status: 'DRAFT' },
-      { name: 'Free Fire Togo Series', game: 'Free Fire', format: 'BATTLE_ROYALE', place: 'Kara', date: '2026-07-26', pointsPerPlayer: 5, players: gen(48), status: 'LIVE' },
+      { name: 'Free Fire Togo Series', game: 'Free Fire', format: 'BATTLE_ROYALE', place: 'Kara', date: '2026-07-26', pointsPerPlayer: 5, nbPools: 6, players: gen(48), status: 'LIVE' },
       { name: 'Valorant Lomé Open', game: 'Valorant', format: 'ROUND_ROBIN', place: 'Lomé', date: '2026-08-02', pointsPerPlayer: 5, players: gen(16), status: 'DRAFT' },
       { name: 'eFootball Coupe Kara', game: 'eFootball', format: 'POOLS', place: 'Kara', date: '2026-06-28', pointsPerPlayer: 5, players: gen(24), status: 'FINISHED' },
       { name: 'Mortal Kombat Bash', game: 'MK1', format: 'SINGLE_ELIM', place: 'Sokodé', date: '2026-08-09', pointsPerPlayer: 5, players: gen(12), status: 'DRAFT' },
@@ -327,28 +338,51 @@ export class TournamentsService {
     ];
 
     for (const d of demos) {
-      const t = Engine.newTournament({ name: d.name, game: d.game, place: d.place, nbPools: d.nbPools ?? 2, pointsPerPlayer: d.pointsPerPlayer ?? 5 });
+      const engineFormat = engineFormatFor(d.format);
+      const t = Engine.newTournament({ name: d.name, game: d.game, place: d.place, nbPools: d.nbPools ?? 2, pointsPerPlayer: d.pointsPerPlayer ?? 5, format: engineFormat });
       Engine.setPlayers(t, d.players ?? []);
       // Rend l'état cohérent : les LIVE sont lancés & partiellement joués, les FINISHED joués jusqu'au champion.
       if (d.status === 'LIVE' || d.status === 'FINISHED') {
-        Engine.distributePools(t);
-        t.pools.forEach((p) => (p.order = p.playerIds.slice()));
-        Engine.launch(t);
-        let guard = 0;
         const full = d.status === 'FINISHED';
-        while (!Engine.allPoolsDone(t) && guard++ < 800) {
-          let acted = false;
-          for (const pool of t.pools) { const m = Engine.currentMatch(pool); if (m) { Engine.reportResult(t, pool.id, m.a); acted = true; break; } }
-          if (!acted) break;
-          if (!full && guard >= 4) break; // LIVE : quelques matchs seulement
-        }
-        if (full) {
-          Engine.startFinals(t);
-          guard = 0;
-          while (t.status !== 'finished' && guard++ < 80) {
+        if (engineFormat === 'survival') {
+          Engine.distributePools(t);
+          t.pools.forEach((p) => (p.order = p.playerIds.slice()));
+          Engine.launch(t);
+          let guard = 0;
+          while (!Engine.allPoolsDone(t) && guard++ < 800) {
             let acted = false;
-            for (const m of Engine.allFinalsMatches(t)) {
-              if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; }
+            for (const pool of t.pools) { const m = Engine.currentMatch(pool); if (m) { Engine.reportResult(t, pool.id, m.a); acted = true; break; } }
+            if (!acted) break;
+            if (!full && guard >= 4) break; // LIVE : quelques matchs seulement
+          }
+          if (full) {
+            Engine.startFinals(t);
+            guard = 0;
+            while (t.status !== 'finished' && guard++ < 80) {
+              let acted = false;
+              for (const m of Engine.allFinalsMatches(t)) {
+                if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; }
+              }
+              if (!acted) break;
+            }
+          }
+        } else {
+          Engine.launchTournament(t);
+          let guard = 0;
+          while (t.status !== 'finished' && guard++ < (full ? 2000 : 3)) {
+            let acted = false;
+            if (engineFormat === 'swiss') {
+              const f = t.finals as Engine.SwissFinals;
+              const round = f.rounds[f.rounds.length - 1];
+              for (const m of round) { if (m.a && m.b && !m.winner && !m.bye) { Engine.reportSwiss(t, m.id, m.a); acted = true; break; } }
+            } else if (engineFormat === 'battle_royale') {
+              const f = t.finals as Engine.BattleRoyaleFinals;
+              const g = f.games.find((x) => !x.ranking);
+              if (g) { Engine.reportBattleRoyale(t, g.id, t.players.map((p) => p.id)); acted = true; }
+            } else {
+              for (const m of Engine.allFinalsMatches(t)) {
+                if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; break; }
+              }
             }
             if (!acted) break;
           }
@@ -372,10 +406,11 @@ export class TournamentsService {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = r.engineState as unknown as Engine.Tournament;
-    // Compat : tournois créés avant l'ajout de la disqualification / des formats de finale.
+    // Compat : tournois créés avant l'ajout de la disqualification / des formats de finale / du format principal.
     if (!t.disqualified) t.disqualified = [];
     if (!t.finalsFormat) t.finalsFormat = 'single';
     if (t.finals && !(t.finals as { format?: string }).format) (t.finals as unknown as { format: string }).format = 'single';
+    if (!t.format) t.format = 'survival';
     return { record: r, t };
   }
 
@@ -426,6 +461,27 @@ export class TournamentsService {
         gf2: f.gf2 ? this.serializeMatch(t, f.gf2) : null,
       };
     }
+    if (f.format === 'swiss') {
+      const standings = Engine.swissStandings(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, buchholz: r.buchholz, pts: t.points[r.id] || 0 }));
+      return {
+        format: 'swiss' as const, champion, roundCount: f.roundCount,
+        rounds: f.rounds.map((round, r) => ({ label: 'Ronde ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+        standings,
+      };
+    }
+    if (f.format === 'battle_royale') {
+      const standings = t.players.slice()
+        .sort((a, b) => (t.points[b.id] || 0) - (t.points[a.id] || 0))
+        .map((p) => ({ id: p.id, name: p.name, pts: t.points[p.id] || 0 }));
+      return {
+        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable,
+        games: f.games.map((g, i) => ({
+          id: g.id, label: 'Partie ' + (i + 1), played: !!g.ranking,
+          ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, pts: f.pointsTable[rk] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0 })) : null,
+        })),
+        standings,
+      };
+    }
     const total = f.bracket.rounds.length;
     return {
       format: 'single' as const, champion,
@@ -453,10 +509,13 @@ export class TournamentsService {
     });
     return {
       id, name: t.name, game: t.game || '', status: t.status,
+      mainFormat: t.format, // format réellement piloté par le moteur ('survival' | 'single' | 'double' | 'roundrobin' | 'swiss' | 'battle_royale') — distinct de `format` (étiquette d'affichage)
       champion: t.champion ? Engine.playerName(t, t.champion) : null,
       cagnotte: Engine.cagnotte(t), distributed: Engine.distributed(t),
       allPoolsDone: Engine.allPoolsDone(t),
       players: t.players.map((p) => ({ id: p.id, name: p.name, club: p.club, disqualified: t.disqualified.includes(p.id) })),
+      // Classement global (id/nom/points/V/D), format-agnostique — utile hors survival où il n'y a pas de poules pour dériver un classement.
+      standings: Engine.overallRanking(t),
       nbPools: t.nbPools,
       pointsPerPlayer: t.pointsPerPlayer,
       scoring: t.scoring,
@@ -486,8 +545,13 @@ export class TournamentsService {
     if (!l) return null;
     this.assertCanManage(l.record, user);
     const { t } = l;
-    if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
-    Engine.launch(t);
+    if (!t.players.length) throw new BadRequestException('Ajoute des joueurs avant de lancer le tournoi.');
+    if (t.format === 'survival') {
+      if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
+      Engine.launch(t);
+    } else {
+      Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
+    }
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }
@@ -507,8 +571,24 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     const { t } = l;
     const sa = dto.scoreA ?? 0, sb = dto.scoreB ?? 0;
-    if (dto.matchId) Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+    if (dto.matchId) {
+      if (t.finals?.format === 'swiss') Engine.reportSwiss(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+      else Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+    }
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
+    await this.persist(id, t);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+  }
+
+  /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier). */
+  async reportBattleRoyale(id: string, gameId: string, ranking: string[], user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    const { t } = l;
+    if (t.finals?.format !== 'battle_royale') throw new ConflictException('Ce tournoi n\'est pas au format Battle Royale.');
+    const res = Engine.reportBattleRoyale(t, gameId, ranking);
+    if (!res.ok) throw new BadRequestException('Partie introuvable, déjà rapportée, ou classement invalide.');
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
   }

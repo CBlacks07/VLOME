@@ -5,9 +5,10 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BYE = void 0;
+exports.DEFAULT_BR_POINTS = exports.BYE = void 0;
 exports.uid = uid;
 exports.newTournament = newTournament;
+exports.swissRoundCount = swissRoundCount;
 exports.parseEntry = parseEntry;
 exports.setPlayers = setPlayers;
 exports.addPlayer = addPlayer;
@@ -26,6 +27,7 @@ exports.distributePools = distributePools;
 exports.shuffleOrder = shuffleOrder;
 exports.moveInOrder = moveInOrder;
 exports.launch = launch;
+exports.launchTournament = launchTournament;
 exports.buildBracket = buildBracket;
 exports.propagateBracket = propagateBracket;
 exports.bracketChampion = bracketChampion;
@@ -39,6 +41,9 @@ exports.startFinals = startFinals;
 exports.allFinalsMatches = allFinalsMatches;
 exports.findFinalsMatch = findFinalsMatch;
 exports.reportFinals = reportFinals;
+exports.swissStandings = swissStandings;
+exports.reportSwiss = reportSwiss;
+exports.reportBattleRoyale = reportBattleRoyale;
 exports.disqualifyPlayer = disqualifyPlayer;
 exports.cagnotte = cagnotte;
 exports.autoFitScoring = autoFitScoring;
@@ -67,6 +72,7 @@ function newTournament(cfg = {}) {
         game: cfg.game || '', date: cfg.date || '', place: cfg.place || '',
         pointsPerPlayer: cfg.pointsPerPlayer || 5,
         nbPools: cfg.nbPools || 2,
+        format: cfg.format || 'survival',
         players: [],
         disqualified: [],
         scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3 },
@@ -75,6 +81,11 @@ function newTournament(cfg = {}) {
         champion: null, _undo: [],
     };
 }
+/** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */
+function swissRoundCount(nPlayers) {
+    return Math.max(3, Math.ceil(Math.log2(Math.max(2, nPlayers))));
+}
+exports.DEFAULT_BR_POINTS = [15, 12, 10, 8, 6, 4, 2, 1];
 function parseEntry(raw) {
     let name = String(raw).trim(), club = '';
     const at = name.lastIndexOf('@');
@@ -271,6 +282,46 @@ function initSurvival(pool) {
     pool.wSurvivor = pool.order[0];
     pool.wIndex = 1;
     pool.wStreak = 0;
+}
+/**
+ * Point d'entrée unique du lancement, quel que soit le format. Le format survival garde
+ * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :
+ * le tournoi entier est directement la structure de compétition (bracket, rondes Swiss, parties BR).
+ */
+function launchTournament(t) {
+    if (t.format === 'survival' || !t.format) {
+        launch(t);
+        return;
+    }
+    snapshot(t);
+    t.pools = []; // pas de poules hors survival — efface une éventuelle répartition prévisualisée avant le lancement
+    const ids = t.players.map(p => p.id);
+    t.players.forEach(p => { t.points[p.id] = t.points[p.id] || 0; });
+    // Posé AVANT le montage du format : un format qui se termine immédiatement (ex. Swiss à
+    // effectif impair réduit à des exempts) doit pouvoir écraser ce 'live' par 'finished' via
+    // finishFinals — pas l'inverse.
+    t.status = 'live';
+    if (t.format === 'swiss') {
+        t.finals = { format: 'swiss', rounds: [], roundCount: swissRoundCount(ids.length) };
+        generateSwissRound(t); // peut déjà couronner le champion (cascade interne) pour un très petit effectif
+    }
+    else if (t.format === 'battle_royale') {
+        const nGames = Math.max(1, t.nbPools || 3); // réutilise nbPools comme "nombre de parties" pour ce format (pas de poules ici)
+        t.finals = { format: 'battle_royale', games: Array.from({ length: nGames }, () => ({ id: uid(), ranking: null })), pointsTable: exports.DEFAULT_BR_POINTS };
+    }
+    else if (t.format === 'roundrobin') {
+        const rr = buildRoundRobin(ids);
+        t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
+        checkFinalsChampion(t); // couronne immédiatement les cas triviaux (0-1 match, ex. 1-2 joueurs)
+    }
+    else if (t.format === 'double') {
+        t.finals = buildDoubleElim(ids);
+        checkFinalsChampion(t);
+    }
+    else {
+        t.finals = { format: 'single', bracket: buildBracket(ids) };
+        checkFinalsChampion(t);
+    }
 }
 /* ---------- Bracket générique (élimination directe) ---------- */
 function nextPow2(n) { let p = 1; while (p < n)
@@ -578,6 +629,11 @@ function propagateDouble(fin) {
         // cas dégénéré : pas de losers bracket (≤2 qualifiés)
         if (!fin.lb.length && fin.wbChampion && placeSlot(fin.gf, 1, exports.BYE))
             changed = true;
+        // La grande finale elle-même peut être un bye (1-2 joueurs au total) — sans quoi elle ne se résout jamais.
+        if (resolveBye(fin.gf))
+            changed = true;
+        if (fin.gf2 && resolveBye(fin.gf2))
+            changed = true;
     }
 }
 function startFinals(t, format) {
@@ -608,7 +664,9 @@ function allFinalsMatches(t) {
         return f.bracket.rounds.flat();
     if (f.format === 'double')
         return [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
-    return [];
+    if (f.format === 'swiss')
+        return f.rounds.flat();
+    return []; // battle_royale : pas de duels 1v1, se pilote via reportBattleRoyale (classement de partie)
 }
 function findFinalsMatch(t, matchId) {
     return allFinalsMatches(t).find(m => m.id === matchId) || null;
@@ -679,6 +737,150 @@ function checkFinalsChampion(t) {
         }
     }
 }
+/* ---------- Format Swiss (rondes appariées par classement, sans poules) ---------- */
+function pairKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+/** Classement Swiss courant : victoires puis Buchholz (somme des victoires des adversaires affrontés) puis points. */
+function swissStandings(t) {
+    const f = t.finals;
+    if (!f || f.format !== 'swiss')
+        return [];
+    const wins = {};
+    const opponents = {};
+    t.players.forEach(p => { wins[p.id] = 0; opponents[p.id] = []; });
+    f.rounds.forEach(round => round.forEach(m => {
+        if (!m.a)
+            return;
+        if (m.b) {
+            opponents[m.a] = (opponents[m.a] || []).concat(m.b);
+            opponents[m.b] = (opponents[m.b] || []).concat(m.a);
+        }
+        if (m.winner)
+            wins[m.winner] = (wins[m.winner] || 0) + 1;
+    }));
+    const buchholz = (id) => (opponents[id] || []).reduce((s, oid) => s + (wins[oid] || 0), 0);
+    return t.players.slice()
+        .sort((a, b) => (wins[b.id] || 0) - (wins[a.id] || 0) || buchholz(b.id) - buchholz(a.id) || (t.points[b.id] || 0) - (t.points[a.id] || 0))
+        .map(p => ({ id: p.id, wins: wins[p.id] || 0, buchholz: buchholz(p.id) }));
+}
+/** Génère la ronde Swiss suivante : apparie par classement courant, évite les rematchs quand c'est possible, exempte le surnombre. */
+function generateSwissRound(t) {
+    const f = t.finals;
+    if (!f || f.format !== 'swiss')
+        return;
+    const ids = t.players.map(p => p.id).filter(id => !t.disqualified.includes(id));
+    const standing = swissStandings(t);
+    const order = standing.map(s => s.id).filter(id => ids.includes(id));
+    const played = new Set();
+    f.rounds.forEach(round => round.forEach(m => { if (m.a && m.b)
+        played.add(pairKey(m.a, m.b)); }));
+    const used = new Set();
+    const matches = [];
+    for (let i = 0; i < order.length; i++) {
+        const a = order[i];
+        if (used.has(a))
+            continue;
+        used.add(a);
+        let opp = null;
+        for (let j = i + 1; j < order.length; j++) {
+            const b = order[j];
+            if (!used.has(b) && !played.has(pairKey(a, b))) {
+                opp = b;
+                break;
+            }
+        }
+        if (!opp)
+            for (let j = i + 1; j < order.length; j++) {
+                const b = order[j];
+                if (!used.has(b)) {
+                    opp = b;
+                    break;
+                }
+            } // repli : rematch si inévitable (petit effectif)
+        if (opp) {
+            used.add(opp);
+            matches.push({ id: uid(), a, b: opp, winner: null, bye: false });
+        }
+        else
+            matches.push({ id: uid(), a, b: null, winner: a, bye: true }); // nombre impair : exempt, victoire automatique
+    }
+    f.rounds.push(matches);
+    matches.forEach(m => {
+        if (m.bye && m.winner) {
+            const pts = t.scoring.finalsWin;
+            award(t, m.winner, pts);
+            t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: m.a, b: null, winner: m.winner, pts, ts: Date.now(), reason: 'bye' });
+        }
+    });
+    advanceSwissIfRoundDone(t); // effectif impair au point de n'avoir que des exempts : la ronde est déjà "jouée", il faut enchaîner tout de suite
+}
+/** Une fois toutes les rencontres de la ronde décidées : ronde suivante, ou couronnement si c'était la dernière. */
+function advanceSwissIfRoundDone(t) {
+    const f = t.finals;
+    if (!f || f.format !== 'swiss')
+        return;
+    const round = f.rounds[f.rounds.length - 1];
+    if (!round.length || !round.every(m => m.winner))
+        return;
+    if (f.rounds.length < f.roundCount)
+        generateSwissRound(t);
+    else {
+        const st = swissStandings(t);
+        finishFinals(t, st[0]?.id || null);
+    }
+}
+/** Rapporte le résultat d'un match Swiss de la ronde en cours ; enchaîne la ronde suivante ou couronne le champion. */
+function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason) {
+    const f = t.finals;
+    if (!f || f.format !== 'swiss')
+        return null;
+    const round = f.rounds[f.rounds.length - 1];
+    const match = round && round.find(m => m.id === matchId);
+    if (!match || match.winner || match.bye || !match.a || !match.b)
+        return null;
+    if (sa || sb)
+        winnerId = sa >= sb ? match.a : match.b;
+    if (winnerId !== match.a && winnerId !== match.b)
+        return null;
+    snapshot(t);
+    match.winner = winnerId;
+    if (sa || sb) {
+        match.sa = sa;
+        match.sb = sb;
+    }
+    const pts = t.scoring.finalsWin;
+    award(t, winnerId, pts);
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    advanceSwissIfRoundDone(t);
+    return { winnerId, pts };
+}
+/* ---------- Format Battle Royale (parties à N joueurs, classement par palier de points) ---------- */
+/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier) ; enchaîne ou couronne le champion après la dernière partie. */
+function reportBattleRoyale(t, gameId, ranking) {
+    const f = t.finals;
+    if (!f || f.format !== 'battle_royale')
+        return { ok: false };
+    const game = f.games.find(g => g.id === gameId);
+    if (!game || game.ranking)
+        return { ok: false };
+    const validIds = new Set(t.players.map(p => p.id));
+    const clean = ranking.filter(id => validIds.has(id));
+    if (!clean.length)
+        return { ok: false };
+    snapshot(t);
+    game.ranking = clean;
+    clean.forEach((pid, i) => {
+        const pts = f.pointsTable[i] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0;
+        if (pts > 0) {
+            award(t, pid, pts);
+            t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: pid, b: null, winner: pid, pts, ts: Date.now() });
+        }
+    });
+    if (f.games.every(g => g.ranking)) {
+        const top = t.players.slice().sort((a, b) => (t.points[b.id] || 0) - (t.points[a.id] || 0))[0];
+        finishFinals(t, top ? top.id : null);
+    }
+    return { ok: true };
+}
 /* ---------- Disqualification (en direct) ---------- */
 /** Le match en cours (poule ou finale, tous formats) impliquant ce joueur, s'il y en a un. */
 function pendingFinalsMatchFor(t, playerId) {
@@ -727,11 +929,22 @@ function disqualifyPlayer(t, playerId) {
                 acted = true;
             }
         }
-        const fm = pendingFinalsMatchFor(t, playerId);
-        if (fm) {
-            const winner = (fm.a === playerId ? fm.b : fm.a);
-            reportFinals(t, fm.id, winner, 0, 0, 'forfeit');
-            acted = true;
+        if (t.finals && t.finals.format === 'swiss') {
+            const round = t.finals.rounds[t.finals.rounds.length - 1];
+            const m = round && round.find(x => !x.winner && !x.bye && x.a && x.b && (x.a === playerId || x.b === playerId));
+            if (m) {
+                const winner = (m.a === playerId ? m.b : m.a);
+                reportSwiss(t, m.id, winner, 0, 0, 'forfeit');
+                acted = true;
+            }
+        }
+        else {
+            const fm = pendingFinalsMatchFor(t, playerId);
+            if (fm) {
+                const winner = (fm.a === playerId ? fm.b : fm.a);
+                reportFinals(t, fm.id, winner, 0, 0, 'forfeit');
+                acted = true;
+            }
         }
         if (!acted)
             break;

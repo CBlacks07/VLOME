@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, ClubDto, CreateTournamentDto, MoveOrderDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, RegisterDto, ReportDto,
   ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -136,6 +136,16 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async report(@Param('id') id: string, @Body() dto: ReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.report(id, dto, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  /** Format Battle Royale : classement complet d'une partie (pas de duel 1v1, donc pas /report). */
+  @Post(':id/battle-royale-report')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async reportBattleRoyale(@Param('id') id: string, @Body() dto: BattleRoyaleReportDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.reportBattleRoyale(id, dto.gameId, dto.ranking, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

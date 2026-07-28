@@ -57,6 +57,17 @@ export interface LogEntry {
 }
 export type Status = 'setup' | 'live' | 'finished';
 export type FinalsFormat = 'single' | 'double' | 'roundrobin';
+/**
+ * Format principal du tournoi (phase de poules) :
+ * - survival (par défaut, rétrocompatible) : poules Survival + repêchage + finale de poule, cagnotte pilotée par le barème.
+ * - single/double/roundrobin : le tournoi ENTIER est directement un bracket/round-robin (pas de poules) —
+ *   réutilise telle quelle la structure et les fonctions déjà écrites pour la phase finale de Survival.
+ * - swiss : appariement par rondes selon le classement courant, sans réutiliser matchs déjà joués quand c'est possible.
+ * - battle_royale : parties à N joueurs classées du 1er au dernier, points par palier (pas de duels 1v1).
+ * Le barème détaillé (survWin/loserWin/poolFinalWin) ne concerne QUE le format survival ; les autres formats
+ * utilisent simplement scoring.finalsWin comme "points par victoire/partie" et scoring.championBonus au sacre.
+ */
+export type TournamentFormat = 'survival' | 'single' | 'double' | 'roundrobin' | 'swiss' | 'battle_royale';
 export interface SingleFinals {
     format: 'single';
     bracket: Bracket;
@@ -75,7 +86,22 @@ export interface DoubleFinals {
     wbChampion: string | null;
     lbChampion: string | null;
 }
-export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals;
+/** Une ronde = les matchs de cette ronde (appariements). Les rondes précédentes sont conservées pour l'historique/l'affiche. */
+export interface SwissFinals {
+    format: 'swiss';
+    rounds: BracketMatch[][];
+    roundCount: number;
+}
+export interface BRGame {
+    id: string;
+    ranking: string[] | null;
+}
+export interface BattleRoyaleFinals {
+    format: 'battle_royale';
+    games: BRGame[];
+    pointsTable: number[];
+}
+export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals | SwissFinals | BattleRoyaleFinals;
 export interface Tournament {
     id: string;
     createdAt: number;
@@ -86,6 +112,8 @@ export interface Tournament {
     place: string;
     pointsPerPlayer: number;
     nbPools: number;
+    /** Format principal — absent sur d'anciennes données stockées : toujours traiter undefined comme 'survival'. */
+    format: TournamentFormat;
     players: Player[];
     disqualified: string[];
     scoring: Scoring;
@@ -101,6 +129,9 @@ export interface Tournament {
 }
 export declare function uid(): string;
 export declare function newTournament(cfg?: Partial<Tournament>): Tournament;
+/** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */
+export declare function swissRoundCount(nPlayers: number): number;
+export declare const DEFAULT_BR_POINTS: number[];
 export declare function parseEntry(raw: string): {
     name: string;
     club: string;
@@ -136,6 +167,12 @@ export declare function shuffleOrder(pool: Pool): void;
 /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement) : dir = -1 (monte) ou +1 (descend). */
 export declare function moveInOrder(pool: Pool, index: number, dir: number): boolean;
 export declare function launch(t: Tournament): void;
+/**
+ * Point d'entrée unique du lancement, quel que soit le format. Le format survival garde
+ * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :
+ * le tournoi entier est directement la structure de compétition (bracket, rondes Swiss, parties BR).
+ */
+export declare function launchTournament(t: Tournament): void;
 export declare function buildBracket(ids: string[]): Bracket;
 export declare function propagateBracket(bracket: Bracket): void;
 export declare function bracketChampion(bracket: Bracket | null): string | null;
@@ -172,6 +209,21 @@ export declare function reportFinals(t: Tournament, matchId: string, winnerId: s
     winnerId: string;
     pts: number;
 } | null;
+/** Classement Swiss courant : victoires puis Buchholz (somme des victoires des adversaires affrontés) puis points. */
+export declare function swissStandings(t: Tournament): {
+    id: string;
+    wins: number;
+    buchholz: number;
+}[];
+/** Rapporte le résultat d'un match Swiss de la ronde en cours ; enchaîne la ronde suivante ou couronne le champion. */
+export declare function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
+    winnerId: string;
+    pts: number;
+} | null;
+/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier) ; enchaîne ou couronne le champion après la dernière partie. */
+export declare function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[]): {
+    ok: boolean;
+};
 /**
  * Disqualifie un joueur en cours de tournoi : forfait immédiat sur son match en
  * cours (s'il y en a un, poule ou finale — l'adversaire est déclaré vainqueur via

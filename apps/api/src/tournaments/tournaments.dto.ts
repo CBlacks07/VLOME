@@ -69,3 +69,8 @@ export class ReportDto {
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
 }
+
+export class BattleRoyaleReportDto {
+  @IsString() gameId!: string;
+  @IsArray() @IsString({ each: true }) ranking!: string[];
+}

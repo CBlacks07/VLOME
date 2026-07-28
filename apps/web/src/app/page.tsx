@@ -1977,18 +1977,17 @@ function partnersMarquee(S: State) {
 }
 
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
-const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique };
+const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard };
 
 function renderPage(S: State) {
   if (S.page === "show") return pShow(S);
-  // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le header/nav public.
+  // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le rail du module contenu.
   if (S.page === "profil" && canManage(S)) return consolePage(S);
   if (RAIL_PAGES[S.page]) {
     const activeKey = S.page === "tournoi" ? "tournois" : S.page;
     return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S);
   }
-  const pages: Record<string, (s: State) => string> = { profil: pDashboard, auth: pAuth };
-  const body = (pages[S.page] || pAccueil)(S);
+  const body = S.page === "auth" ? pAuth(S) : pAccueil(S);
   const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain</footer>`;
   return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }

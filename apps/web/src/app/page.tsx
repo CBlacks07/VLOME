@@ -41,6 +41,7 @@ type State = {
   matchScoreA: number; matchScoreB: number; // score en cours de saisie (stepper) pour le match actif de la régie
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
   bracketView: "tree" | "list"; // bascule d'affichage de la phase finale en régie
+  rosterQ: string; // recherche dans le panneau Joueurs de la régie
   finalsFormatPick: string; // format de phase finale choisi avant de lancer les finales
   // Assistant de création (5 étapes) — accumule les champs au fil des étapes avant l'envoi final.
   wizStep: number;
@@ -1679,9 +1680,16 @@ function playersRosterPanel(S: State, t: Detail, manage: boolean): string {
     <button data-pledit-save="${t.id}|${p.id}" style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;cursor:pointer">OK</button>
     <button data-pledit-cancel="1" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;font-size:12px">Annuler</button>
   </div>`;
+  const q = S.rosterQ.trim().toLowerCase();
+  const filtered = q ? roster2.filter((p) => p.name.toLowerCase().includes(q) || (p.club || "").toLowerCase().includes(q)) : roster2;
+  const searchBar = roster2.length > 8 ? `<div style="position:relative;max-width:320px;margin:14px 0 4px">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 14)}</span>
+      <input id="regie-roster-search" value="${escAttr(S.rosterQ)}" placeholder="Chercher un joueur…" style="width:100%;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px 9px 33px" />
+    </div>${q ? `<div style="margin-top:8px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:#8E8FA6;background:#14141D;border:1px solid #282838;border-radius:999px;padding:5px 10px">Recherche : <b style="color:#F4F5FB">${escHtml(S.rosterQ)}</b><button data-rosterqclear="1" style="display:grid;place-items:center;width:16px;height:16px;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 11)}</button></span></div>` : ""}` : "";
   return `<details open style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px 20px;margin-bottom:20px">
       <summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Joueurs (${roster2.length})</summary>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${roster2.map((p) => S.editingPlayerId === p.id ? editRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:${p.disqualified ? "#5D5E72" : "#F4F5FB"};background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px${p.disqualified ? ";text-decoration:line-through" : ""}"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<button data-pledit-open="${p.id}" title="Renommer / club / points" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button>${p.disqualified ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#FB7185">DQ</span>` : t.status === "live" ? `<button data-pldq="${t.id}|${p.id}" title="Disqualifier" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#FB7185;cursor:pointer">${ic(I.warn, 12)}</button>` : ""}</span>`).join("")}</div>
+      ${searchBar}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${filtered.length ? filtered.map((p) => S.editingPlayerId === p.id ? editRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:${p.disqualified ? "#5D5E72" : "#F4F5FB"};background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px${p.disqualified ? ";text-decoration:line-through" : ""}"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<button data-pledit-open="${p.id}" title="Renommer / club / points" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button>${p.disqualified ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:#FB7185">DQ</span>` : t.status === "live" ? `<button data-pldq="${t.id}|${p.id}" title="Disqualifier" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#FB7185;cursor:pointer">${ic(I.warn, 12)}</button>` : ""}</span>`).join("") : `<div style="color:#5D5E72;font-size:13px;padding:6px 2px">Aucun joueur ne correspond à « ${escHtml(S.rosterQ)} ».</div>`}</div>
     </details>`;
 }
 
@@ -1727,6 +1735,34 @@ function roundCol(label: string, matches: Detail[], manage: boolean): string {
   return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map((m) => matchBox(m, manage)).join("")}</div>`;
 }
 
+/** Une ligne de match Round Robin en tableau compact — remplace la grille de mini-cartes, illisible dès qu'il y a beaucoup de joueurs (ex : 16 joueurs = 120 matchs). Clic sur un nom = victoire directe (1 manche), même sémantique que matchBox. */
+function roundRobinMatchRow(m: Detail, manage: boolean): string {
+  const nameCell = (name: string, id: string, isWin: boolean) => {
+    if (manage && m.playable) return `<button data-reportf="${m.matchId}|${id}" style="background:transparent;border:0;color:#F4F5FB;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:3px 6px;border-radius:6px;text-align:inherit">${escHtml(name)}</button>`;
+    return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
+  };
+  const status = m.winnerId
+    ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
+    : m.playable ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#22D3EE">À JOUER</span>` : `<span style="font-size:10px;color:#5D5E72">—</span>`;
+  return `<div style="display:grid;grid-template-columns:1fr 26px 1fr 68px;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #15151f">
+    <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
+    <div style="text-align:center;color:#5D5E72;font-size:10.5px">vs</div>
+    <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
+    <div style="text-align:right">${status}</div>
+  </div>`;
+}
+/** Liste complète des matchs Round Robin, groupée à jouer / joués (repliés), scrollable — remplace la grille de mini-cartes plate de tous les matchs. */
+function roundRobinMatchList(matches: Detail[], manage: boolean): string {
+  const todo = matches.filter((m: Detail) => !m.winnerId);
+  const done = matches.filter((m: Detail) => m.winnerId);
+  const todoList = `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden"><div style="max-height:440px;overflow-y:auto">${todo.length ? todo.map((m) => roundRobinMatchRow(m, manage)).join("") : `<div style="padding:16px;text-align:center;color:#5D5E72;font-size:13px">Tous les matchs ont été joués.</div>`}</div></div>`;
+  const doneList = done.length ? `<details style="margin-top:16px">
+      <summary style="cursor:pointer;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;padding:2px 0">Matchs joués (${done.length})</summary>
+      <div style="border:1px solid #282838;border-radius:12px;overflow:hidden;margin-top:10px"><div style="max-height:300px;overflow-y:auto">${done.map((m) => roundRobinMatchRow(m, manage)).join("")}</div></div>
+    </details>` : "";
+  return `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Matchs à jouer (${todo.length})</div>${todoList}${doneList}`;
+}
+
 const FINALS_FORMATS: [string, string][] = [["single", "Élimination simple"], ["double", "Double élimination"], ["roundrobin", "Round Robin"]];
 /** Sélecteur de format + bouton "Lancer la phase finale", une fois toutes les poules Survival terminées. Partagé entre pTournoi et la régie. */
 function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
@@ -1759,6 +1795,9 @@ function getActiveMatch(S: State, t: Detail): ActiveMatch | null {
 
 /** Les autres matchs jouables que celui affiché dans le contrôle — "Lancer" bascule S.activeMatchId. */
 function matchQueuePanel(t: Detail, active: ActiveMatch): string {
+  // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), la liste complète du centre
+  // (roundRobinMatchList, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
+  if (t.finals?.format === "roundrobin") return "";
   const items: { id: string; label: string }[] = [];
   if (t.finals && t.finals.format !== "battle_royale") {
     for (const arr of finalsMatchGroups(t.finals)) for (const m of arr) {
@@ -1770,7 +1809,29 @@ function matchQueuePanel(t: Detail, active: ActiveMatch): string {
   if (!items.length) return "";
   return `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden;margin-top:16px">
     <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid #22222F"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6">File d'attente</span><span style="flex:1"></span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5D5E72">${items.length}</span></div>
-    <div style="padding:6px 12px 12px">${items.map((it) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #1B1B27"><span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span><span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`).join("")}</div>
+    <div style="padding:6px 12px 12px;max-height:280px;overflow-y:auto">${items.map((it) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #1B1B27"><span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span><span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`).join("")}</div>
+  </div>`;
+}
+
+/** Aperçu compact du panneau Joueurs, colonne de contrôle de la régie — recherche + joueurs qui réclament une action (disqualifiés, paiement en attente), données réelles uniquement. */
+function regieRosterMini(S: State, t: Detail): string {
+  const roster: { id: string; name: string; club?: string; disqualified?: boolean }[] = Array.isArray(t.players) ? t.players : [];
+  const dqCount = roster.filter((p) => p.disqualified).length;
+  const pending = (S.regsPanel || []).filter((r: Detail) => r.paymentStatus === "pending");
+  const flagged: { label: string; sub: string; tag: string; color: string }[] = [
+    ...roster.filter((p) => p.disqualified).map((p) => ({ label: p.name, sub: p.club ? `@${p.club}` : "", tag: "Disqualifié", color: "#FB7185" })),
+    ...pending.map((r: Detail) => ({ label: r.playerName, sub: "", tag: "Paiement en attente", color: "#FBBF24" })),
+  ].slice(0, 3);
+  const rows = flagged.length ? `<div style="display:flex;flex-direction:column;gap:2px;margin-top:10px">${flagged.map((f) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px"><span style="width:6px;height:6px;border-radius:50%;background:${f.color};flex:none"></span><span style="font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(f.label)}${f.sub ? ` <span style="color:#5D5E72;font-weight:500">${escHtml(f.sub)}</span>` : ""}</span><span style="font-size:10.5px;font-weight:750;color:${f.color};flex:none">${f.tag}</span></div>`).join("")}</div>` : "";
+  const alert = pending.length ? `<div style="display:flex;align-items:center;gap:9px;margin-top:12px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.06);border-radius:10px;padding:9px 11px">
+      <span style="color:#FBBF24;flex:none">${ic(I.warn, 14)}</span>
+      <span style="font-size:11.5px;color:#F4F5FB;flex:1">${pending.length} paiement${pending.length > 1 ? "s" : ""} en attente</span>
+      <span data-regiepanel="paiements" style="font-size:11px;font-weight:750;color:#FBBF24;cursor:pointer;flex:none">Traiter</span>
+    </div>` : "";
+  return `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:13px 14px">
+    <div style="display:flex;align-items:center;gap:9px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6">Joueurs</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5D5E72">${roster.length}</span>${dqCount ? `<span style="font-size:10px;font-weight:750;color:#FB7185">${dqCount} disqualifié${dqCount > 1 ? "s" : ""}</span>` : ""}<span style="flex:1"></span><span data-regiepanel="joueurs" style="font-size:11px;font-weight:700;color:#22D3EE;cursor:pointer">Voir tout</span></div>
+    ${rows || `<div style="font-size:11px;color:#5D5E72;margin-top:6px">Renommer, disqualifier, ajuster les points — sans quitter la régie.</div>`}
+    ${alert}
   </div>`;
 }
 
@@ -2050,14 +2111,16 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
   if (t.finals && (t.finals.format === "roundrobin" || t.finals.format === "swiss")) {
     const isSwiss = t.finals.format === "swiss";
     const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">V</td><td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td><td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td><td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
-    const matches = isSwiss ? t.finals.rounds[t.finals.rounds.length - 1].matches : t.finals.matches;
-    const label = isSwiss ? `Ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : "Tous les matchs";
+    const label = isSwiss ? `Ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : `${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués`;
+    const body = isSwiss
+      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.rounds[t.finals.rounds.length - 1].matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`
+      : roundRobinMatchList(t.finals.matches, manage);
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
         <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${label}</div>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">${isSwiss ? "Classement Swiss" : "Round Robin"}</h2></div>
       </div>
       ${champ}
-      <div style="padding:18px 28px 30px">${standings}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${matches.map((m: Detail) => matchBox(m, manage)).join("")}</div></div>`;
+      <div style="padding:18px 28px 30px">${standings}${body}</div>`;
   }
 
   // Survival, poules en cours (pas encore de phase finale) : la poule active en avant, les autres restent dans le rail.
@@ -2106,16 +2169,12 @@ function regiePage(S: State): string {
   const control = active
     ? matchScoreControl(S, t, active)
     : `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:24px;text-align:center;color:#8E8FA6;font-size:13px">Aucun match en attente pour l'instant.</div>`;
-  const searchMini = `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:13px 14px">
-    <div style="display:flex;align-items:center;gap:9px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6">Joueurs</span><span style="flex:1"></span><span data-regiepanel="joueurs" style="font-size:11px;font-weight:700;color:#22D3EE;cursor:pointer">Voir tout</span></div>
-    <div style="font-size:11px;color:#5D5E72;margin-top:6px">Renommer, disqualifier, ajuster les points — sans quitter la régie.</div>
-  </div>`;
   return `<div style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
     <div style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, active)}
       <div style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, active)}</div>
-      <div style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${searchMini}</div>
+      <div style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${regieRosterMini(S, t)}</div>
     </div>
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${cartDrawer(S)}`;
 }
@@ -2561,7 +2620,7 @@ export default function Page() {
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
-    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree",
+    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "",
     wizStep: 1,
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
@@ -3362,7 +3421,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -3414,8 +3473,9 @@ export default function Page() {
       }
     }
     else if (d.activematch) setS((s) => ({ ...s, activeMatchId: d.activematch!, matchScoreA: 0, matchScoreB: 0 }));
-    else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"] }));
+    else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));
     else if (d.bracketview) setS((s) => ({ ...s, bracketView: d.bracketview as State["bracketView"] }));
+    else if (d.rosterqclear !== undefined) setS((s) => ({ ...s, rosterQ: "" }));
     else if (d.livescoresave) saveLiveScoring(d.livescoresave);
     else if (d.reportscore) {
       const poolId = d.reportscore;
@@ -3670,6 +3730,9 @@ export default function Page() {
     }
     if (e.key === "Enter" && t.id === "wiz-roster-search") {
       setS((s) => ({ ...s, wizRosterSearch: (t as HTMLInputElement).value.trim() }));
+    }
+    if (e.key === "Enter" && t.id === "regie-roster-search") {
+      setS((s) => ({ ...s, rosterQ: (t as HTMLInputElement).value.trim() }));
     }
   }
 

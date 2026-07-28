@@ -474,7 +474,7 @@ function wizInfosStep(S: State) {
         ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />`)}
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
-        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" style="${WIZ_INP}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Détermine les points disponibles (le barème détaillé ne concerne que Survival).")}
+        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>

@@ -42,6 +42,7 @@ type State = {
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
   bracketView: "tree" | "list"; // bascule d'affichage de la phase finale en régie
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
+  showSlide: number; // diapositive active du Mode Show (classement / matchs en direct / derniers résultats…), tourne automatiquement
   finalsFormatPick: string; // format de phase finale choisi avant de lancer les finales
   // Assistant de création (5 étapes) — accumule les champs au fil des étapes avant l'envoi final.
   wizStep: number;
@@ -2503,6 +2504,43 @@ function cartDrawer(S: State) {
     </div></div>`;
 }
 
+/** Table de classement plein écran (Mode Show) — top 8, réutilisée pour poules Survival, Round Robin/Swiss et Battle Royale. */
+function showStandingsTable(rows: { name: string; pts: number }[], ptsLabel: string): string {
+  if (!rows.length) return `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">Classement pas encore disponible.</div>`;
+  return `<div style="max-width:min(880px,74vw);margin:2.4vh auto 0"><table style="width:100%;border-collapse:collapse">
+    <thead><tr style="color:#5D5E72;font-size:1.4vh;text-transform:uppercase;letter-spacing:2px"><td style="padding:.7vh 1vw">#</td><td style="padding:.7vh 1vw">Joueur</td><td style="padding:.7vh 1vw;text-align:right">${ptsLabel}</td></tr></thead>
+    <tbody>${rows.map((r, i) => `<tr style="border-top:1px solid #22222F"><td style="padding:1vh 1vw;font-family:'Bebas Neue',sans-serif;font-size:3vh;color:${i === 0 ? "#FBBF24" : "#5D5E72"}">${i + 1}</td><td style="padding:1vh 1vw;font-weight:700;font-size:2.2vh">${escHtml(r.name)}</td><td style="padding:1vh 1vw;text-align:right;font-weight:800;color:#22D3EE;font-size:2.6vh">${r.pts}</td></tr>`).join("")}</tbody>
+  </table></div>`;
+}
+/** Un à trois duels en gros plan (Mode Show) — phase finale single/double/round robin/swiss, ou file d'attente Survival. */
+function showMatchesFocus(matches: { aName: string; bName: string }[]): string {
+  if (!matches.length) return `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
+  const box = (m: { aName: string; bName: string }) => `<div style="display:flex;align-items:center;justify-content:center;gap:2vw;flex-wrap:wrap">
+    <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#22D3EE;line-height:1">${escHtml(m.aName)}</div></div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 2 : 3.4}vh;color:#5D5E72;flex:none">VS</div>
+    <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#F43F7E;line-height:1">${escHtml(m.bName)}</div></div>
+  </div>`;
+  return `<div style="display:flex;flex-direction:column;gap:${matches.length > 1 ? 2.6 : 0}vh;margin-top:3vh;max-width:82vw;margin-left:auto;margin-right:auto">${matches.map(box).join("")}</div>`;
+}
+/** Derniers résultats (Mode Show) — vainqueur mis en avant, une ligne par match. */
+function showRecentResults(matches: Detail[]): string {
+  return `<div style="max-width:min(760px,66vw);margin:2.6vh auto 0;display:flex;flex-direction:column;gap:1.6vh">${matches.map((m: Detail) => {
+    const win = m.winnerId === m.aId ? m.aName : m.bName, lose = m.winnerId === m.aId ? m.bName : m.aName;
+    return `<div style="display:flex;align-items:center;justify-content:center;gap:1.2vw;font-size:2.4vh;border-bottom:1px solid #1B1B27;padding-bottom:1.4vh">${ic(I.crown, 18)}<span style="color:#22D3EE;font-weight:800">${escHtml(win)}</span><span style="color:#5D5E72;font-size:1.9vh">a battu</span><span style="color:#5D5E72">${escHtml(lose)}</span></div>`;
+  }).join("")}</div>`;
+}
+/** Battle Royale (Mode Show) — partie à venir, ou podium de la dernière partie jouée. */
+function showBRSlide(f: Detail): string {
+  const nextGame = f.games.find((g: Detail) => !g.played);
+  const lastGame = [...f.games].reverse().find((g: Detail) => g.played);
+  const status = nextGame
+    ? `<div style="color:#22D3EE;font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase">${escHtml(nextGame.label)} à venir</div>`
+    : `<div style="color:#34D399;font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase">Toutes les parties ont été jouées</div>`;
+  const podium = lastGame ? `<div style="margin-top:3vh;display:flex;justify-content:center;align-items:flex-end;gap:3vw"><div style="text-align:center;color:#5D5E72;font-size:1.4vh">${escHtml(lastGame.label)}</div></div>
+    <div style="margin-top:1vh;display:flex;justify-content:center;align-items:flex-end;gap:3vw">${lastGame.ranking.slice(0, 3).map((r: Detail, i: number) => `<div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:${i === 0 ? 8 : 5.5}vh;color:${i === 0 ? "#FBBF24" : i === 1 ? "#D1D5DB" : "#B45309"};line-height:1">${escHtml(r.name)}</div><div style="color:#5D5E72;font-size:1.4vh;margin-top:.6vh">${i + 1}${i === 0 ? "ʳᵉ" : "ᵉ"} place</div></div>`).join("")}</div>` : "";
+  return `<div style="text-align:center">${status}${podium}</div>`;
+}
+
 function pShow(S: State) {
   const t = S.detail;
   const close = `<button data-showclose="1" style="position:absolute;top:16px;right:18px;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;z-index:5">Fermer</button>`;
@@ -2514,35 +2552,58 @@ function pShow(S: State) {
       <div style="font-family:'Bebas Neue',sans-serif;font-size:14vh;line-height:.9;color:#22D3EE;letter-spacing:1px;margin-top:1vh">${t.champion}</div>
       <div style="color:#8E8FA6;font-size:2.4vh;margin-top:1vh">${t.name}</div></div></div>`;
   }
-  // Phase finale en cours (bracket lancé, champion pas encore couronné) : plein écran sur le match en cours plutôt que les poules (déjà terminées à ce stade).
-  if (t.finals) {
-    const fmtLabel = t.finals.format === "roundrobin" ? "Round Robin" : t.finals.format === "double" ? "Double élimination" : "Élimination simple";
-    const nextMatch = findPlayableFinalsMatch(t.finals);
-    const matchBlock = nextMatch
-      ? `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap;margin-top:3vh">
-          <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:8vh;color:#22D3EE;line-height:1">${escHtml(nextMatch.aName)}</div></div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div>
-          <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:8vh;color:#F43F7E;line-height:1">${escHtml(nextMatch.bName)}</div></div>
-        </div>`
-      : `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
-    return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
-      <div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${escHtml(t.name)}</div>
-      <div style="display:inline-flex;align-items:center;gap:.8vh;color:#FBBF24;font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh"><span style="width:1vh;height:1vh;border-radius:50%;background:#FBBF24;animation:blink 1.2s infinite"></span>Phase finale · ${fmtLabel}</div></div>
-      ${matchBlock}</div>`;
+
+  // Construit les diapositives disponibles pour l'état actuel (format + phase) — tournent automatiquement.
+  type Slide = { caption: string; body: string };
+  const slides: Slide[] = [];
+  let phaseLabel = "";
+  if (!t.finals) {
+    // Survival, poules en cours.
+    phaseLabel = "Phase 1 · poules";
+    const poolCard = (p: Detail) => {
+      let match: string;
+      if (p.current) {
+        match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
+      } else if (p.done) {
+        match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${p.top1}${p.top2 ? ", " + p.top2 : ""}</div>`;
+      } else match = `<div style="text-align:center;color:#5D5E72;padding:1vh 0">En attente du lancement…</div>`;
+      const lead = p.ranking?.[0] ? `<div style="text-align:center;color:#8E8FA6;font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:#F4F5FB">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
+      return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:#8E8FA6">${p.name}</div>${match}${lead}</div>`;
+    };
+    const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,92vw),1fr));gap:2vh;margin-top:2.4vh">${(t.pools || []).map(poolCard).join("")}</div>`;
+    slides.push({ caption: "Poules en direct", body: grid });
+    const overall: Detail[] = ([] as Detail[]).concat(...(t.pools || []).map((p: Detail) => p.ranking || [])).sort((a: Detail, b: Detail) => b.pts - a.pts || b.wins - a.wins);
+    if (overall.some((r) => r.pts > 0)) slides.push({ caption: "Classement général", body: showStandingsTable(overall.slice(0, 8), "Pts") });
+  } else if (t.finals.format === "battle_royale") {
+    phaseLabel = "Battle Royale";
+    slides.push({ caption: "Classement cumulé", body: showStandingsTable(t.finals.standings.slice(0, 8), "Pts") });
+    slides.push({ caption: "Parties", body: showBRSlide(t.finals) });
+  } else if (t.finals.format === "roundrobin" || t.finals.format === "swiss") {
+    phaseLabel = t.finals.format === "swiss" ? `Swiss · ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : "Round Robin";
+    slides.push({ caption: "Classement", body: showStandingsTable(t.finals.standings.slice(0, 8), "Pts") });
+    const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable);
+    if (playable.length) slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Match en direct", body: showMatchesFocus(playable.slice(0, 3)) });
+    const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId).slice(-4).reverse();
+    if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
+  } else {
+    // single / double élimination.
+    phaseLabel = t.finals.format === "double" ? "Double élimination" : "Élimination simple";
+    const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable);
+    slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable.slice(0, 3)) });
+    const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
+    if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
   }
-  const title = `<div style="text-align:center;margin-bottom:1vh"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${t.name}</div><div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "#8E8FA6"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct` : t.status === "setup" ? "À lancer" : ""}</div></div>`;
-  const poolCard = (p: Detail) => {
-    let match: string;
-    if (p.current) {
-      match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
-    } else if (p.done) {
-      match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${p.top1}${p.top2 ? ", " + p.top2 : ""}</div>`;
-    } else match = `<div style="text-align:center;color:#5D5E72;padding:1vh 0">En attente du lancement…</div>`;
-    const lead = p.ranking?.[0] ? `<div style="text-align:center;color:#8E8FA6;font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:#F4F5FB">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
-    return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:#8E8FA6">${p.name}</div>${match}${lead}</div>`;
-  };
-  const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,92vw),1fr));gap:2vh;margin-top:2.4vh">${t.pools.map(poolCard).join("")}</div>`;
-  return `<div style="min-height:100vh;padding:4vh 3vw;position:relative">${close}${brand}${title}${grid}</div>`;
+  if (!slides.length) slides.push({ caption: "", body: `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">En attente…</div>` });
+  const idx = ((S.showSlide % slides.length) + slides.length) % slides.length;
+  const active = slides[idx];
+  const dots = slides.length > 1 ? `<div style="display:flex;gap:.9vh;justify-content:center;margin-top:4vh">${slides.map((_, i) => `<span style="display:inline-block;width:${i === idx ? "2.6vh" : "1vh"};height:.6vh;border-radius:99px;background:${i === idx ? "#22D3EE" : "#33334A"};transition:width .3s"></span>`).join("")}</div>` : "";
+
+  const title = `<div style="text-align:center;margin-bottom:1vh"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${escHtml(t.name)}</div>
+    <div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "#8E8FA6"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>` : ""}${phaseLabel}</div></div>`;
+  const caption = active.caption ? `<div style="text-align:center;color:#5D5E72;font-size:1.6vh;letter-spacing:1.5px;text-transform:uppercase;font-weight:750;margin-top:2.4vh">${escHtml(active.caption)}</div>` : "";
+  return `<div style="min-height:100vh;padding:4vh 3vw 6vh;position:relative;display:flex;flex-direction:column;justify-content:center">${close}${brand}${title}
+    <div class="slidein">${caption}${active.body}</div>
+    ${dots}</div>`;
 }
 
 /**
@@ -2620,7 +2681,7 @@ export default function Page() {
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
-    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "",
+    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0,
     wizStep: 1,
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
@@ -2636,7 +2697,7 @@ export default function Page() {
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, brPick: [] }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, brPick: [], showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -3160,6 +3221,13 @@ export default function Page() {
     }, 2500);
     return () => clearInterval(id);
   }, [S.page, S.openId]);
+
+  // Mode Show : fait tourner automatiquement les diapositives (classement / matchs en direct / derniers résultats…).
+  useEffect(() => {
+    if (S.page !== "show") return;
+    const id = setInterval(() => setS((s) => ({ ...s, showSlide: s.showSlide + 1 })), 8000);
+    return () => clearInterval(id);
+  }, [S.page]);
 
   // Montage : charge les tournois, restaure la session, gère #creer.
   useEffect(() => {

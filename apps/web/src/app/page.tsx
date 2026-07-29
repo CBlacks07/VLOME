@@ -886,7 +886,7 @@ function pGalerie(S: State) {
     const on = S.galleryType === v;
     return `<span data-gtype="${v}" class="chip" style="font-size:12px;font-weight:${on ? 700 : 600};color:${on ? "#7C82FF" : "#8E8FA6"};background:${on ? "rgba(124,130,255,.1)" : "transparent"};border:1px solid ${on ? "#7C82FF" : "#282838"};border-radius:99px;padding:6px 12px;cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease">${label}</span>`;
   };
-  const rail = `<div class="rise d1" style="width:220px;flex:none;border-right:1px solid #1B1B27;padding:32px 20px">
+  const rail = `<div class="rise d1 page-filter-rail" style="width:220px;flex:none;border-right:1px solid #1B1B27;padding:32px 20px">
     <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:14px">Événements</div>
     <div style="display:flex;flex-direction:column;gap:2px">${eventRow("", "Tous", all.length)}${tournFilters.map(([id, name]) => eventRow(id as string, name as string, all.filter((it) => it.tournament?.id === id).length)).join("")}</div>
     <div style="margin-top:24px;padding-top:18px;border-top:1px solid #1B1B27">
@@ -908,13 +908,13 @@ function pGalerie(S: State) {
       <div style="position:absolute;left:12px;right:12px;bottom:11px"><div style="font-weight:700;font-size:13.5px;color:#fff;line-height:1.3">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#22D3EE;font-weight:700;margin-top:3px">${escHtml(it.tournament.name)}</div>` : ""}</div></div>`;
   };
   const grid = items.length
-    ? `<div class="rise d2" style="padding:0 40px 40px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:150px;gap:12px">${items.map(card).join("")}</div>`
+    ? `<div class="rise d2 gallery-grid" style="padding:0 40px 40px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:150px;gap:12px">${items.map(card).join("")}</div>`
     : `<div class="rise d2" style="margin:0 40px 40px;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">Aucun média ne correspond à ce filtre.</div>`;
   const content = `<div style="flex:1;min-width:0">
     <div class="rise d1" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix VLOME</p></div></div>
     ${grid}
   </div>`;
-  return `<div style="display:flex">${rail}${content}</div>${galleryLightbox(S, items)}`;
+  return `<div style="display:flex;flex-wrap:wrap">${rail}${content}</div>${galleryLightbox(S, items)}`;
 }
 
 /** Visionneuse plein écran (photo/vidéo, navigation précédent/suivant). */
@@ -976,7 +976,7 @@ function pBoutique(S: State) {
     const on = S.boutiqueInStock === v;
     return `<span data-instock="${v ? 1 : 0}" class="chip" style="font-size:12px;font-weight:${on ? 700 : 600};color:${on ? "#FBBF24" : "#8E8FA6"};background:${on ? "rgba(251,191,36,.1)" : "transparent"};border:1px solid ${on ? "#FBBF24" : "#282838"};border-radius:99px;padding:6px 12px;cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease">${label}</span>`;
   };
-  const rail = `<div class="rise d1" style="width:220px;flex:none;border-right:1px solid #1B1B27;padding:32px 20px">
+  const rail = `<div class="rise d1 page-filter-rail" style="width:220px;flex:none;border-right:1px solid #1B1B27;padding:32px 20px">
     <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:14px">Catégories</div>
     <div style="display:flex;flex-direction:column;gap:2px">${catRow("Tous", "Tout", source.length)}${CATS.filter((c) => c !== "Tous").map((c) => catRow(c, c, source.filter((p) => p.cat === c).length)).join("")}</div>
     <div style="margin-top:24px;padding-top:18px;border-top:1px solid #1B1B27">
@@ -995,7 +995,7 @@ function pBoutique(S: State) {
     <button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#FBBF24;border:0;color:#0b0b11;border-radius:10px;padding:11px 17px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.cart, 17)}Panier · <span style="font-family:'JetBrains Mono',monospace">${S.cartItems.length}</span></button>
   </div>`;
 
-  return `<div style="display:flex">${rail}<div style="flex:1;min-width:0">${head}${grid}</div></div>`;
+  return `<div style="display:flex;flex-wrap:wrap">${rail}<div style="flex:1;min-width:0">${head}${grid}</div></div>`;
 }
 
 const canManage = (S: State) => !!S.user && (S.user.role === "ORGANIZER" || S.user.role === "ADMIN");
@@ -2693,7 +2693,7 @@ function partnersMarquee(S: State) {
 }
 
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
-const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard };
+const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
 
 function renderPage(S: State) {
   if (S.page === "show") return pShow(S);

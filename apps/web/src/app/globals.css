@@ -94,6 +94,19 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .detail-left { border-right: 0 !important; }
 }
 
+/* ---- Rail de filtres (Boutique, Galerie) : pleine largeur au-dessus du contenu sous 1024px (le conteneur
+   parent passe en flex-wrap:wrap inline, ce rail devient alors le premier bloc empilé). ---- */
+@media (max-width: 1024px) {
+  .page-filter-rail { width: 100% !important; border-right: 0 !important; border-bottom: 1px solid #1B1B27; padding: 20px 24px !important; }
+}
+/* ---- Mosaïque Galerie : 4 colonnes fixes → moins de colonnes en dessous des points de rupture. ---- */
+@media (max-width: 1024px) {
+  .gallery-grid { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 640px) {
+  .gallery-grid { grid-template-columns: repeat(2, 1fr) !important; grid-auto-rows: 120px !important; }
+}
+
 /* =====================================================================
    Responsive — mobile / tablette
    Deux paliers : 1024px (les coquilles à largeurs fixes — rail, console

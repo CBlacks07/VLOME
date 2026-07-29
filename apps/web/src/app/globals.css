@@ -83,9 +83,14 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
 @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 26px rgba(34, 211, 238, .22); } 50% { box-shadow: 0 0 44px rgba(34, 211, 238, .45); } }
 .glow { animation: pulseGlow 3.2s ease-in-out infinite; }
 
-/* ---- Grilles deux colonnes : une seule colonne sur petit écran ---- */
+/* ---- Grilles deux colonnes : une seule colonne sur petit écran. On force aussi min-width:0 sur les
+   enfants directs : par défaut une piste de grille a min-width:auto, qui vaut la largeur min-content de
+   son contenu (ex : un tableau avec min-width:560px) — sans ce reset, c'est TOUTE la grille (et donc la
+   page) qui s'étire pour l'accueillir au lieu de laisser le tableau défiler dans son propre
+   overflow-x:auto, provoquant un débordement horizontal global sur mobile. ---- */
 @media (max-width: 920px) {
   .grid2, .grid2b, .grid2c { grid-template-columns: 1fr !important; }
+  .grid2 > *, .grid2b > *, .grid2c > * { min-width: 0 !important; }
 }
 
 /* ---- Colonne latérale flex à largeur fixe (page tournoi, état "à lancer") : pleine largeur sous 1024px. ---- */
@@ -109,6 +114,40 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
 }
 @media (max-width: 640px) {
   .gallery-grid { grid-template-columns: repeat(2, 1fr) !important; grid-auto-rows: 120px !important; }
+}
+
+/* ---- Marges/paddings horizontaux de 44px (en-têtes de page, Tournois, Classements) : pensés pour
+   desktop, ils mangent trop d'espace utile sur mobile (ex : le tableau de classement, déjà proche de
+   sa largeur mini de 560px, n'a alors presque plus de place et force un scroll horizontal évitable). ---- */
+@media (max-width: 1024px) {
+  .page-hpad { padding-left: 24px !important; padding-right: 24px !important; }
+  .page-hpad-m { margin-left: 24px !important; margin-right: 24px !important; }
+}
+@media (max-width: 640px) {
+  .page-hpad { padding-left: 16px !important; padding-right: 16px !important; }
+  .page-hpad-m { margin-left: 16px !important; margin-right: 16px !important; }
+}
+
+/* ---- Grille de cartes Tournois : 3 colonnes fixes → écrasées et illisibles sur mobile/tablette.
+   Les cellules ont des bordures/paddings calculés en JS pour un rythme à 3 colonnes (border-right sur
+   1 cellule sur 3, border-bottom sur la dernière rangée) ; on les réinitialise proprement pour 2 puis
+   1 colonne plutôt que de laisser le rythme d'origine se désaligner. ---- */
+@media (max-width: 1024px) {
+  .tourn-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .tourn-grid .fcell { padding-left: 16px !important; padding-right: 16px !important; border-right: 0 !important; border-bottom: 1px solid #1B1B27 !important; }
+  .tourn-grid .fcell:nth-child(odd) { border-right: 1px solid #1B1B27 !important; }
+}
+@media (max-width: 640px) {
+  .tourn-grid { grid-template-columns: 1fr !important; }
+  .tourn-grid .fcell { padding-left: 0 !important; padding-right: 0 !important; border-right: 0 !important; }
+}
+
+/* ---- Podium Classements : 3 cartes de 112px + gaps (364px) dépassent de peu la largeur utile sur un
+   téléphone étroit (358px avec le padding réduit ci-dessus) ; flex-wrap ne rattrape pas un dépassement
+   aussi faible proprement, donc on réduit directement cartes + espacement sous 640px. ---- */
+@media (max-width: 640px) {
+  .podium-row { gap: 8px !important; }
+  .podium-item { width: 92px !important; }
 }
 
 /* =====================================================================

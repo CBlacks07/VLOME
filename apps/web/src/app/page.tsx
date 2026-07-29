@@ -275,7 +275,7 @@ function railShell(S: State, activeKey: string, body: string): string {
 
 /** En-tête de page réutilisé par les pages du shell rail : titre + sous-titre + zone d'actions (recherche, boutons…). */
 function railPageHead(title: string, sub: string, actions = ""): string {
-  return `<div class="rise" style="display:flex;align-items:flex-end;gap:20px;padding:32px 44px 20px;flex-wrap:wrap">
+  return `<div class="rise page-hpad" style="display:flex;align-items:flex-end;gap:20px;padding:32px 44px 20px;flex-wrap:wrap">
     <div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">${title}</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0;max-width:640px">${sub}</p></div>
     <span style="flex:1"></span>
     ${actions}
@@ -706,7 +706,7 @@ function pTournois(S: State) {
     const on = S.tournStatus === st;
     return `<span data-tournstatus="${st}" style="padding:8px 15px;font-size:12.5px;font-weight:${on ? 750 : 600};cursor:pointer;background:${on ? "#22D3EE" : "transparent"};color:${on ? "#04222a" : "#8E8FA6"};transition:background .2s ease,color .2s ease;white-space:nowrap;flex:none;${i > 0 ? "border-left:1px solid #282838" : ""}">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1};color:${on ? "#04222a" : "#5D5E72"}">${n}</span></span>`;
   }).join("")}</div>`;
-  const filt = `<div class="rise d1" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:#22222F"></span><div style="display:flex;gap:7px;flex-wrap:wrap">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
+  const filt = `<div class="rise d1 page-hpad" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:#22222F"></span><div style="display:flex;gap:7px;flex-wrap:wrap">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
 
   const head = railPageHead("Tournois", `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${searchBox}${createBtn}`);
 
@@ -714,7 +714,7 @@ function pTournois(S: State) {
 
   // Tournoi en direct mis en avant, extrait de la grille.
   const liveT = source.find((t) => t.live);
-  const featured = liveT ? `<div class="rise d2" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer">
+  const featured = liveT ? `<div class="rise d2 page-hpad" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer">
     <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span><span style="font-size:12px;color:#63C6DA;font-weight:600">${escHtml(liveT.format)}</span></div>
     <h3 style="font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:1.2px;margin:12px 0 0;line-height:.95">${escHtml(liveT.name)}</h3>
     <div style="color:#A6C9D3;font-size:13.5px;margin-top:8px">${[liveT.game, liveT.players + " joueurs", liveT.place, liveT.date].filter(Boolean).map(escHtml).join(" · ")}</div>
@@ -725,7 +725,7 @@ function pTournois(S: State) {
   </div></div>` : "";
 
   const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
-  const empty = `<div style="margin:26px 44px 0;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">${emptyMsg}</div>`;
+  const empty = `<div class="page-hpad-m" style="margin:26px 44px 0;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">${emptyMsg}</div>`;
   const rest = list.filter((t) => !liveT || t.id !== liveT.id);
   const filetCard = (t: TournCard, i: number) => {
     const n = rest.length;
@@ -750,10 +750,10 @@ function pTournois(S: State) {
   };
   const gridHead = `<div style="display:flex;align-items:center;gap:10px;margin:0 0 4px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:#5D5E72;font-family:'JetBrains Mono',monospace">${rest.length}</span></div>`;
   const grid = rest.length
-    ? `<div class="rise d3" style="padding:34px 44px 44px">${gridHead}<div style="display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #22222F;margin-top:12px">${rest.map(filetCard).join("")}</div></div>`
+    ? `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}<div class="tourn-grid" style="display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #22222F;margin-top:12px">${rest.map(filetCard).join("")}</div></div>`
     : (liveT ? "" : empty);
 
-  return `${head}${filt}${form}${featured}${grid}<div style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
+  return `${head}${filt}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
 }
 
 /** Rend le podium + tableau d'UN classement (déjà trié par points desc) pour un jeu donné. Jamais de stats mélangées entre jeux. */
@@ -764,10 +764,10 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
   if (opts.podium && list.length) {
     const top3 = list.slice(0, 3);
     const order = top3.length > 1 ? [top3[1], top3[0], top3[2]].filter(Boolean) : top3;
-    podiumHtml = `<div style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
+    podiumHtml = `<div class="podium-row" style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
       const rank = list.indexOf(r);
       const [plColor, avA, h] = podiumColors[rank];
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:#8E8FA6">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+      return `<div class="podium-item" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:#8E8FA6">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid #282838;border-bottom:0;background:#1B1B27;display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
@@ -821,9 +821,9 @@ function pClassements(S: State) {
   const viewToggle = (v: "joueurs" | "clubs", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "#8E8FA6"}">${label}</span>`;
   const head = railPageHead("Classements", `Points, victoires et titres calculés depuis les résultats réels. <b style="color:#F4F5FB">Un classement distinct par jeu</b> — les points ne sont jamais additionnés entre deux jeux.`,
     `<div style="display:flex;border:1px solid #282838;border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${viewToggle("clubs", "Clubs")}</div>`);
-  if (S.leaderboard === null) return `${head}<div style="padding:0 44px;color:#5D5E72;text-align:center">Chargement…</div>`;
+  if (S.leaderboard === null) return `${head}<div class="page-hpad" style="padding:0 44px;color:#5D5E72;text-align:center">Chargement…</div>`;
   if (!all.length) {
-    return `${head}<div style="margin:0 44px 40px;border:1px solid #282838;border-radius:18px;background:#14141D;padding:56px 24px;text-align:center;color:#8E8FA6">
+    return `${head}<div class="page-hpad-m" style="margin:0 44px 40px;border:1px solid #282838;border-radius:18px;background:#14141D;padding:56px 24px;text-align:center;color:#8E8FA6">
       <div style="display:grid;place-items:center;width:60px;height:60px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#FBBF24;margin:0 auto 14px">${ic(I.medal, 26)}</div>
       Aucun résultat pour l'instant. Le classement se remplit au fil des matchs joués !</div>`;
   }
@@ -834,14 +834,14 @@ function pClassements(S: State) {
   const activeGame = gamesPresent.includes(S.game) ? S.game : (gamesPresent[0] || "Tous");
   const block = (rows: Detail[], opts: { podium: boolean; limit?: number }) => S.classementView === "clubs" ? clubLeaderboardBlock(rows) : gameLeaderboardBlock(rows, opts);
 
-  const tabs = `<div class="rise d1" style="display:flex;gap:0;padding:0 44px;border-bottom:1px solid #1B1B27;overflow-x:auto">${gamesPresent.map((g) => {
+  const tabs = `<div class="rise d1 page-hpad" style="display:flex;gap:0;padding:0 44px;border-bottom:1px solid #1B1B27;overflow-x:auto">${gamesPresent.map((g) => {
     const on = g === activeGame;
     return `<span data-game="${g}" style="padding:14px 22px 13px;border-bottom:2px solid ${on ? "#22D3EE" : "transparent"};display:flex;align-items:baseline;gap:9px;cursor:pointer;flex:none;transition:border-color .2s ease"><span style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:${on ? "#fff" : "#8E8FA6"};transition:color .2s ease">${escHtml(g)}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:${on ? "#22D3EE" : "#5D5E72"}">${(byGame.get(g) ?? []).length}</span></span>`;
   }).join("")}</div>`;
 
   const rows = byGame.get(activeGame) ?? [];
   if (!rows.length) {
-    return `${head}${tabs}<div style="margin:26px 44px 40px;border:1px solid #282838;border-radius:18px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">Aucun résultat pour « ${escHtml(activeGame)} » pour l'instant.</div>`;
+    return `${head}${tabs}<div class="page-hpad-m" style="margin:26px 44px 40px;border:1px solid #282838;border-radius:18px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">Aucun résultat pour « ${escHtml(activeGame)} » pour l'instant.</div>`;
   }
   const topClubs = topClubsCompact(rows);
   const sidePanel = `<div style="display:flex;flex-direction:column;gap:16px">
@@ -854,7 +854,7 @@ function pClassements(S: State) {
       <div style="font-size:12.5px;color:#8E8FA6;line-height:1.7">Chaque tournoi distribue une cagnotte fixée à l'avance (participants × points par joueur). Les points gagnés en match s'ajoutent au classement du jeu concerné. Un joueur peut figurer dans plusieurs classements sans jamais cumuler.</div>
     </div>
   </div>`;
-  const body = `<div class="rise d2" style="padding:30px 44px 44px"><div class="grid2c" style="display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start">
+  const body = `<div class="rise d2 page-hpad" style="padding:30px 44px 44px"><div class="grid2c" style="display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start">
     <div>${block(rows, { podium: true })}</div>
     ${S.classementView === "joueurs" ? sidePanel : ""}
   </div></div>`;

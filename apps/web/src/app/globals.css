@@ -95,9 +95,13 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
 }
 
 /* ---- Rail de filtres (Boutique, Galerie) : pleine largeur au-dessus du contenu sous 1024px (le conteneur
-   parent passe en flex-wrap:wrap inline, ce rail devient alors le premier bloc empilé). ---- */
+   parent passe en flex-wrap:wrap inline, ce rail devient alors le premier bloc empilé). Le frère (contenu,
+   flex:1 avec flex-basis 0) doit aussi passer à 100% de base — sinon flex-wrap ne déclenche jamais le retour
+   à la ligne (sa taille hypothétique de 0 "tient" toujours sur la même ligne que le rail) et il s'écrase à
+   une largeur de 0 au lieu de passer dessous. ---- */
 @media (max-width: 1024px) {
   .page-filter-rail { width: 100% !important; border-right: 0 !important; border-bottom: 1px solid #1B1B27; padding: 20px 24px !important; }
+  .page-filter-rail + div { flex: 1 1 100% !important; }
 }
 /* ---- Mosaïque Galerie : 4 colonnes fixes → moins de colonnes en dessous des points de rupture. ---- */
 @media (max-width: 1024px) {

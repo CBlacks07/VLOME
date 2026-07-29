@@ -29,6 +29,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^5.22.0",
+    "@vercel/blob": "^2.6.1",
     "@vlome/engine": "workspace:*",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",

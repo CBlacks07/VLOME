@@ -2,6 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+/** URL d'un média envoyé (image/vidéo) : le stockage objet (Vercel Blob) renvoie déjà une URL absolue,
+ * l'ancien stockage disque local renvoyait un chemin relatif "/uploads/..." à préfixer par l'API. */
+function mediaUrl(path?: string | null): string { return !path ? "" : /^https?:\/\//.test(path) ? path : `${API}${path}`; }
 
 function token(): string | null { return typeof window !== "undefined" ? localStorage.getItem("vlome_token") : null; }
 function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
@@ -162,7 +165,7 @@ function normPartners(S: State): { name: string; logoUrl: string | null }[] {
 /** Logo du site : image envoyée depuis l'admin, sinon l'éclair par défaut. */
 function brandLogo(S: State, size = 34, iconSize = 20) {
   const url = S.site?.brand?.logoUrl;
-  if (url) return `<img src="${API}${url}" alt="logo" style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.3)}px;object-fit:cover;box-shadow:0 0 30px rgba(34,211,238,.25)" />`;
+  if (url) return `<img src="${mediaUrl(url)}" alt="logo" style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.3)}px;object-fit:cover;box-shadow:0 0 30px rgba(34,211,238,.25)" />`;
   return `<span style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.3)}px;background:linear-gradient(140deg,#22D3EE,#7C82FF);color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.35)">${ic(I.bolt, iconSize)}</span>`;
 }
 
@@ -286,7 +289,7 @@ function tournCard(t: TournCard, big: boolean) {
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
   // Bandeau : image du tournoi si fournie, sinon dégradé par défaut.
   const bannerBg = t.imageUrl
-    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.55)),url('${API}${t.imageUrl}');background-size:cover;background-position:center`
+    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.55)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
     : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
   return `<div ${openAttr} class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,#14141D,#0E0E16)">
     <div class="zoom" style="height:${t.imageUrl ? (big ? 130 : 110) : big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;${bannerBg}">
@@ -300,7 +303,7 @@ function tournCard(t: TournCard, big: boolean) {
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
 function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null) {
   const isVideo = !!existingUrl && /\.(mp4|webm)$/i.test(existingUrl);
-  const preview = `<div id="pv-${id}" style="width:50px;height:50px;border-radius:11px;border:1px solid #282838;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;color:#5D5E72;background:${existingUrl && !isVideo ? `url('${API}${existingUrl}') center/cover` : "#1B1B27"}">${isVideo ? ic(I.tv, 18) : !existingUrl ? ic(I.image, 18) : ""}</div>`;
+  const preview = `<div id="pv-${id}" style="width:50px;height:50px;border-radius:11px;border:1px solid #282838;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;color:#5D5E72;background:${existingUrl && !isVideo ? `url('${mediaUrl(existingUrl)}') center/cover` : "#1B1B27"}">${isVideo ? ic(I.tv, 18) : !existingUrl ? ic(I.image, 18) : ""}</div>`;
   return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0;flex-wrap:wrap">
     ${preview}
     <input id="${id}" type="file" accept="${accept}" style="display:none" />
@@ -332,8 +335,8 @@ function pAccueil(S: State) {
   const heroIsVideo = !!heroBg && /\.(mp4|webm)$/i.test(heroBg);
   const heroMedia = heroBg
     ? (heroIsVideo
-      ? `<video class="heromedia" src="${API}${heroBg}" autoplay muted loop playsinline></video>`
-      : `<div class="heromedia kb" style="background-image:url('${API}${heroBg}');background-size:cover;background-position:center"></div>`)
+      ? `<video class="heromedia" src="${mediaUrl(heroBg)}" autoplay muted loop playsinline></video>`
+      : `<div class="heromedia kb" style="background-image:url('${mediaUrl(heroBg)}');background-size:cover;background-position:center"></div>`)
       + `<div style="position:absolute;inset:0;background:linear-gradient(105deg,rgba(11,11,17,.92) 25%,rgba(11,11,17,.55) 60%,rgba(11,11,17,.3));pointer-events:none"></div>`
     : `<span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>`;
   const hero = `<section class="grid2 rise" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;align-items:stretch;margin-bottom:20px">
@@ -351,7 +354,7 @@ function pAccueil(S: State) {
       </div></div>
     <div style="border-radius:20px;border:1px solid #282838;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;display:flex;flex-direction:column;position:relative;overflow:hidden">
       ${s.imageUrl
-        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${API}${s.imageUrl}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.5),rgba(11,11,17,.86) 78%);pointer-events:none"></div>`
+        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${mediaUrl(s.imageUrl)}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.5),rgba(11,11,17,.86) 78%);pointer-events:none"></div>`
         : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(34,211,238,.14),transparent 55%);pointer-events:none"></div>`}
       <div style="display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:#5D5E72;font-weight:600">${S.slide + 1} / ${slides.length}</span></div>
       <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 4px;position:relative;z-index:1;min-height:240px">
@@ -397,15 +400,15 @@ function pAccueil(S: State) {
   const newsItems: { cat: string; ph: string; t: string; date: string; img?: string | null }[] = S.news
     ? S.news.slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date, img: n.imageUrl }))
     : NEWS;
-  const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${API}${a.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
+  const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${mediaUrl(a.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
 
   const shopProducts: { name: string; price: number; ph: string; img?: string | null }[] = S.products ?? [];
   const shopSec = shopProducts.length
-    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${shopProducts.slice(0, 4).map((p) => `<div class="hcard" style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`
+    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px;margin-bottom:40px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px">${shopProducts.slice(0, 4).map((p) => `<div class="hcard" style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${p.name}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`).join("")}</div></section>`
     : "";
 
   const partnerList = normPartners(S);
-  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
+  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${mediaUrl(p.logoUrl)}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
 
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
@@ -528,7 +531,7 @@ function wizParticipantsStep(S: State) {
   const roster = q ? fullRoster.filter((p: Detail) => `${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase().includes(q)) : fullRoster;
   const chip = (p: Detail) => {
     const on = inList(p.name);
-    return `<button data-wiztoggleroster="${escAttr(p.name)}|${escAttr(p.clubName || "")}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 10px 6px 6px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}"><span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22222F;font-size:9px;font-weight:800;color:#8E8FA6;overflow:hidden">${p.clubLogoUrl ? `<img src="${API}${p.clubLogoUrl}" style="width:100%;height:100%;object-fit:cover" />` : p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${ic(I.plus, 11)}</button>`;
+    return `<button data-wiztoggleroster="${escAttr(p.name)}|${escAttr(p.clubName || "")}" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 10px 6px 6px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}"><span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22222F;font-size:9px;font-weight:800;color:#8E8FA6;overflow:hidden">${p.clubLogoUrl ? `<img src="${mediaUrl(p.clubLogoUrl)}" style="width:100%;height:100%;object-fit:cover" />` : p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${ic(I.plus, 11)}</button>`;
   };
   // Regroupe par club (« Sans club » toujours en dernier) pour repérer vite une équipe entière.
   const byClub = new Map<string, Detail[]>();
@@ -729,7 +732,7 @@ function pTournois(S: State) {
     const isRight = (i + 1) % 3 === 0 || i === n - 1;
     const isLastRow = i >= n - (n % 3 === 0 ? 3 : n % 3);
     const bannerBg = t.imageUrl
-      ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.6)),url('${API}${t.imageUrl}');background-size:cover;background-position:center`
+      ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.6)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
       : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
     const statusBadge = t.live
       ? `<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
@@ -896,8 +899,8 @@ function pGalerie(S: State) {
   const SPANS = ["grid-column:span 2;grid-row:span 2", "", "", "grid-column:span 2", "grid-row:span 2", ""];
   const card = (it: Detail, i: number) => {
     const media = it.mediaType === "video"
-      ? `<video class="zoom" src="${API}${it.mediaUrl}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()" style="width:100%;height:100%;object-fit:cover"></video>`
-      : `<div class="zoom" style="width:100%;height:100%;background-image:url('${API}${it.mediaUrl}');background-size:cover;background-position:center"></div>`;
+      ? `<video class="zoom" src="${mediaUrl(it.mediaUrl)}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()" style="width:100%;height:100%;object-fit:cover"></video>`
+      : `<div class="zoom" style="width:100%;height:100%;background-image:url('${mediaUrl(it.mediaUrl)}');background-size:cover;background-position:center"></div>`;
     return `<div data-gopen="${it.id}" class="hcard" style="${SPANS[i % SPANS.length]};cursor:pointer;border-radius:12px;overflow:hidden;background:#14141D;position:relative">
       <div style="position:absolute;inset:0">${media}</div>
       <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(11,11,17,.9));pointer-events:none"></div>
@@ -921,8 +924,8 @@ function galleryLightbox(S: State, items: Detail[]) {
   const it = items[idx];
   if (!it) return "";
   const media = it.mediaType === "video"
-    ? `<video src="${API}${it.mediaUrl}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:12px"></video>`
-    : `<img src="${API}${it.mediaUrl}" alt="${escAttr(it.title)}" style="max-width:100%;max-height:78vh;border-radius:12px;object-fit:contain" />`;
+    ? `<video src="${mediaUrl(it.mediaUrl)}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:12px"></video>`
+    : `<img src="${mediaUrl(it.mediaUrl)}" alt="${escAttr(it.title)}" style="max-width:100%;max-height:78vh;border-radius:12px;object-fit:contain" />`;
   const nav = (dir: "prev" | "next", disabled: boolean) => `<button data-g${dir}="1" ${disabled ? "disabled" : ""} style="display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:${disabled ? "#33334A" : "#F4F5FB"};cursor:${disabled ? "default" : "pointer"};flex:none;transform:${dir === "prev" ? "scaleX(-1)" : "none"}">${ic(I.arrow, 18)}</button>`;
   return `<div data-gclose="1" style="position:fixed;inset:0;z-index:250;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;background:rgba(6,6,10,.92);backdrop-filter:blur(8px)">
     <div data-stop="1" style="display:flex;align-items:center;gap:16px;max-width:1100px;width:100%">
@@ -942,7 +945,7 @@ function pBoutique(S: State) {
   let list = S.cat === "Tous" ? source : source.filter((p) => p.cat === S.cat);
   if (S.boutiqueInStock) list = list.filter((p) => (p.stock ?? 0) > 0);
   const pImg = (p: { ph: string; img?: string | null }, h: number) => p.img
-    ? `<div class="zoom" style="height:${h}px;background-image:url('${API}${p.img}');background-size:cover;background-position:center"></div>`
+    ? `<div class="zoom" style="height:${h}px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>`
     : `<div class="zoom" style="height:${h}px;background:repeating-linear-gradient(45deg,#191922,#191922 13px,#14141D 13px,#14141D 26px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
   const productCard = (p: typeof source[number]) => {
     const out = (p.stock ?? 0) <= 0;
@@ -1451,7 +1454,7 @@ function adminClubsView(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const filtered = q ? clubs.filter((c: Detail) => `${c.name} ${c.city || ""}`.toLowerCase().includes(q)) : clubs;
   const clubAvatar = (c: Detail) => c.logoUrl
-    ? `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;overflow:hidden;flex:none;background:url('${API}${c.logoUrl}') center/cover;border:1px solid #282838"></span>`
+    ? `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;overflow:hidden;flex:none;background:url('${mediaUrl(c.logoUrl)}') center/cover;border:1px solid #282838"></span>`
     : `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#22222F;border:1px solid #282838;color:#7C82FF;flex:none">${ic(I.image, 16)}</span>`;
   const rows = filtered.length ? filtered.map((c: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;flex-wrap:wrap">
       ${clubAvatar(c)}
@@ -1479,7 +1482,7 @@ function adminNews(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const news = q ? a.news.filter((n: Detail) => `${n.title} ${n.category}`.toLowerCase().includes(q)) : a.news;
   const rows = news.length ? news.map((n: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
-      ${n.imageUrl ? `<img src="${API}${n.imageUrl}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.image, 17)}</span>`}
+      ${n.imageUrl ? `<img src="${mediaUrl(n.imageUrl)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.image, 17)}</span>`}
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(n.title)}</div><div style="font-size:12px;color:#5D5E72">${escHtml(n.category)} · ${new Date(n.createdAt).toLocaleDateString("fr-FR")}</div></div>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${n.published ? "#34D399" : "#8E8FA6"};background:${n.published ? "rgba(52,211,153,.08)" : "#14141D"};border:1px solid ${n.published ? "rgba(52,211,153,.4)" : "#282838"};border-radius:99px;padding:4px 10px">${n.published ? "Publié" : "Brouillon"}</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-newspub="${n.id}|${n.published ? 0 : 1}"`, n.published ? "Masquer" : "Publier", n.published ? "#8E8FA6" : "#34D399", n.published ? "#282838" : "rgba(52,211,153,.4)")}${btnSm(`data-newsedit="${n.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-newsdel="${n.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
@@ -1504,7 +1507,7 @@ function adminGallery(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const filtered = q ? items.filter((it: Detail) => `${it.title} ${it.tournament?.name ?? ""}`.toLowerCase().includes(q)) : items;
   const grid = filtered.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${filtered.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E0E16;position:relative">
-      <div style="height:150px;position:relative;background:${it.mediaType === "video" ? "#14141D" : `url('${API}${it.mediaUrl}')`};background-size:cover;background-position:center">
+      <div style="height:150px;position:relative;background:${it.mediaType === "video" ? "#14141D" : `url('${mediaUrl(it.mediaUrl)}')`};background-size:cover;background-position:center">
         ${it.mediaType === "video" ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#7C82FF">${ic(I.tv, 30)}</span>` : ""}
         <button data-gallerydel="${it.id}" style="position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 13)}</button>
       </div>
@@ -1549,7 +1552,7 @@ function adminProducts(S: State) {
   };
   const thead = `<tr>${sortTh("Produit", "name", false)}${sortTh("Prix", "price")}${sortTh("Stock", "stock")}<th style="text-align:right;color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">Actions</th></tr>`;
   const rows = products.length ? products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
-      <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${API}${p.imageUrl}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
+      <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${mediaUrl(p.imageUrl)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
       <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
       <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
       <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
@@ -2234,7 +2237,7 @@ function pTournoi(S: State) {
 
   // Couverture : l'affiche du tournoi (si fournie) constitue le fond de la section détail, comme sur les cartes.
   const coverBg = t.imageUrl
-    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.2) 35%,rgba(11,11,17,.94)),url('${API}${t.imageUrl}');background-size:cover;background-position:center`
+    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.2) 35%,rgba(11,11,17,.94)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
     : `background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(124,130,255,.06) 55%,#0E0E16)`;
   const cover = `<div style="border-radius:20px;border:1px solid #282838;overflow:hidden;position:relative;margin-bottom:14px;${coverBg}">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-wrap:wrap;gap:10px">
@@ -2665,7 +2668,7 @@ function adCarousel(S: State, pageKey: string) {
   const label = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:5px;height:22px;border-radius:3px;background:#5D5E72;display:inline-block"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Contenu sponsorisé</h3></div>`;
   const inner = `<div class="slidein" style="display:flex;align-items:center;gap:26px;padding:20px 24px;flex-wrap:wrap">
     <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:#0B0B11;display:flex;align-items:center;justify-content:center">
-      <img src="${API}${ad.imageUrl}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
+      <img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
     </div>
     <div style="flex:1;min-width:200px">
       <div style="font-weight:750;font-size:16px">${ad.label ? escHtml(ad.label) : "Un partenaire VLOME Esport"}</div>
@@ -2685,7 +2688,7 @@ function adCarousel(S: State, pageKey: string) {
 function partnersMarquee(S: State) {
   const partners = normPartners(S);
   if (!partners.length) return "";
-  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${p.logoUrl ? `<img src="${API}${p.logoUrl}" alt="" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : ic(I.crown, 12)}${escHtml(p.name)}</span>`).join("");
+  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${p.logoUrl ? `<img src="${mediaUrl(p.logoUrl)}" alt="" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : ic(I.crown, 12)}${escHtml(p.name)}</span>`).join("");
   return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:7px 0"><div class="marquee-track">${items}${items}</div></div>`;
 }
 

@@ -4,23 +4,36 @@ import { diskStorage, memoryStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { put } from '@vercel/blob';
+import { Readable } from 'stream';
+import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 
 // Dossier local des fichiers envoyés (servi statiquement sous /uploads) — utilisé uniquement en dev,
-// quand BLOB_READ_WRITE_TOKEN n'est pas défini. En production (Vercel), le système de fichiers est en
-// lecture seule hors /tmp : les fichiers vont sur Vercel Blob (stockage objet) à la place.
+// quand CLOUDINARY_URL n'est pas défini. En production (Vercel), le système de fichiers est en lecture
+// seule hors /tmp : les fichiers vont sur Cloudinary (stockage image/vidéo) à la place. Le SDK Cloudinary
+// se configure tout seul depuis process.env.CLOUDINARY_URL, pas d'appel .config() nécessaire.
 export const UPLOADS_DIR = join(process.cwd(), 'uploads');
-const USE_BLOB = !!process.env.BLOB_READ_WRITE_TOKEN;
+const USE_CLOUDINARY = !!process.env.CLOUDINARY_URL;
 
 const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm'];
+const VIDEO_EXT = ['.mp4', '.webm'];
 const MAX_SIZE = 20 * 1024 * 1024; // 20 Mo (vidéos de fond incluses)
 
 function randomFilename(originalname: string): string {
   const ext = extname(originalname).toLowerCase();
   return `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}${ext}`;
+}
+
+function uploadToCloudinary(buffer: Buffer, publicId: string, resourceType: 'image' | 'video'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: resourceType, public_id: publicId, folder: 'vlome' },
+      (err, result?: UploadApiResponse) => (err || !result ? reject(err) : resolve(result.secure_url)),
+    );
+    Readable.from(buffer).pipe(stream);
+  });
 }
 
 @Controller('uploads')
@@ -30,7 +43,7 @@ export class UploadsController {
   @Roles('ORGANIZER', 'ADMIN')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: USE_BLOB
+      storage: USE_CLOUDINARY
         ? memoryStorage()
         : diskStorage({
             destination: (_req, _file, cb) => {
@@ -49,9 +62,11 @@ export class UploadsController {
   )
   async upload(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException('Aucun fichier reçu.');
-    if (USE_BLOB) {
-      const blob = await put(randomFilename(file.originalname), file.buffer, { access: 'public', addRandomSuffix: false });
-      return { url: blob.url };
+    if (USE_CLOUDINARY) {
+      const ext = extname(file.originalname).toLowerCase();
+      const publicId = randomFilename(file.originalname).slice(0, -ext.length);
+      const url = await uploadToCloudinary(file.buffer, publicId, VIDEO_EXT.includes(ext) ? 'video' : 'image');
+      return { url };
     }
     return { url: `/uploads/${file.filename}` };
   }

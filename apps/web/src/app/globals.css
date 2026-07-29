@@ -88,6 +88,69 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .grid2, .grid2b, .grid2c { grid-template-columns: 1fr !important; }
 }
 
+/* ---- Colonne latérale flex à largeur fixe (page tournoi, état "à lancer") : pleine largeur sous 1024px. ---- */
+@media (max-width: 1024px) {
+  .stack-sidebar { width: 100% !important; }
+  .detail-left { border-right: 0 !important; }
+}
+
+/* =====================================================================
+   Responsive — mobile / tablette
+   Deux paliers : 1024px (les coquilles à largeurs fixes — rail, console
+   admin, régie, assistant — basculent en mise en page empilée/mobile)
+   et 640px (affinages fins en dessous). Le style de base reste inline
+   (comme partout ailleurs dans ce fichier) ; ces classes ne servent qu'à
+   forcer un repli avec !important sous le point de rupture, exactement
+   comme .grid2/.grid2b/.grid2c ci-dessus.
+   ===================================================================== */
+
+/* ---- Rail public (icônes, 88px) → barre d'onglets fixée en bas + bandeau haut compact.
+   .rail-mobile-top/.rail-mobile-bottom sont des éléments neufs, cachés par défaut (desktop),
+   révélés sous 1024px ; .rail-desktop est l'inverse (rail existant, caché sous 1024px). ---- */
+.rail-mobile-top, .rail-mobile-bottom { display: none; }
+@media (max-width: 1024px) {
+  .rail-desktop { display: none !important; }
+  .rail-mobile-top { display: flex !important; }
+  .rail-mobile-bottom { display: flex !important; }
+  .rail-content { margin-left: 0 !important; padding-bottom: 74px !important; }
+}
+
+/* ---- Console admin/organisateur : sidebar fixe → tiroir coulissant sous 1024px. ---- */
+.console-mobile-top { display: none; }
+.console-backdrop { display: none; }
+@media (max-width: 1024px) {
+  .console-mobile-top { display: flex !important; }
+  .console-desktop-title { display: none !important; }
+  .console-sidebar {
+    position: fixed !important; top: 0; left: 0; bottom: 0; z-index: 250;
+    transform: translateX(-100%); transition: transform .25s ease; box-shadow: 0 0 60px rgba(0,0,0,.5);
+  }
+  .console-sidebar.console-sidebar-open { transform: translateX(0); }
+  .console-backdrop.console-backdrop-open { display: block; position: fixed; inset: 0; z-index: 240; background: rgba(6,6,10,.6); backdrop-filter: blur(3px); }
+}
+
+/* ---- Assistant de création : modal fixe → plein écran empilé sous 1024px. ---- */
+.wiz-mobile-progress { display: none; }
+@media (max-width: 1024px) {
+  .wiz-overlay { padding: 0 !important; align-items: stretch !important; }
+  .wiz-dialog { max-width: 100% !important; min-height: 100vh !important; border-radius: 0 !important; margin-bottom: 0 !important; flex-direction: column !important; }
+  .wiz-sidebar { display: none !important; }
+  .wiz-mobile-progress { display: block !important; }
+  .wiz-body { padding: 18px 16px !important; }
+}
+
+/* ---- Régie live : grille fixe 3 colonnes (rail·centre·contrôle) → empilée sous 1024px,
+   contrôle du score en premier (action prioritaire tactile), rail en dernier. ---- */
+@media (max-width: 1024px) {
+  .regie-page-outer { height: auto !important; overflow: visible !important; min-height: 100vh; }
+  .regie-banner { height: auto !important; min-height: 70px; flex-wrap: wrap; padding: 12px 16px !important; row-gap: 10px; }
+  .regie-grid { grid-template-columns: 1fr !important; }
+  .regie-rail, .regie-center, .regie-control { overflow-y: visible !important; max-height: none !important; border-left: 0 !important; border-right: 0 !important; border-top: 1px solid #1B1B27; width: 100% !important; }
+  .regie-control { order: 1 !important; border-top: 0; }
+  .regie-center { order: 2 !important; }
+  .regie-rail { order: 3 !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise, .slidein, .hcard, button, .kb, .blob, .marquee-track, .glow { animation: none !important; transition: none !important; }
 }

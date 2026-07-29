@@ -43,6 +43,7 @@ type State = {
   bracketView: "tree" | "list"; // bascule d'affichage de la phase finale en régie
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
   showSlide: number; // diapositive active du Mode Show (classement / matchs en direct / derniers résultats…), tourne automatiquement
+  consoleMenuOpen: boolean; // tiroir de navigation de la console admin/organisateur ouvert (mobile/tablette uniquement)
   finalsFormatPick: string; // format de phase finale choisi avant de lancer les finales
   // Assistant de création (5 étapes) — accumule les champs au fil des étapes avant l'envoi final.
   wizStep: number;
@@ -110,6 +111,7 @@ function ic(p: string, s = 18) { return `<svg width="${s}" height="${s}" viewBox
 function icBack(s = 18) { return `<span style="display:inline-flex;transform:scaleX(-1)">${ic(I.arrow, s)}</span>`; }
 const I = {
   bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   cart: '<path d="M4 5h2l1.6 10h9L18 8H7"/><circle cx="9" cy="20" r="1.4"/><circle cx="16" cy="20" r="1.4"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', plus: '<path d="M12 5v14M5 12h14"/>',
   tv: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/>',
@@ -227,7 +229,7 @@ function railNav(S: State, activeKey: string): string {
   const userBtn = S.user
     ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
     : `<button data-auth-open="1" title="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer">${ic(I.user, 18)}</button>`;
-  return `<div style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;overflow-y:auto;border-right:1px solid #1B1B27;display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:#0B0B11">
+  return `<div class="rail-desktop" style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;overflow-y:auto;border-right:1px solid #1B1B27;display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:#0B0B11">
     <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;margin-bottom:16px;cursor:pointer">${brandLogo(S, 40, 22)}</div>
     ${items}
     <div style="width:32px;height:1px;background:#1B1B27;margin:10px 0"></div>
@@ -236,10 +238,33 @@ function railNav(S: State, activeKey: string): string {
   </div>`;
 }
 
-/** Shell rail complet : barre live + rail d'icônes + contenu de la page. Utilisé par Tournois/Classements/Galerie/Boutique. */
+/** Équivalent mobile du rail d'icônes : bandeau haut compact (logo + panier + profil) + barre d'onglets fixée en bas
+ * (les 5 destinations de RAIL_NAV). Toujours émis, masqué en CSS au-dessus de 1024px (voir globals.css). */
+function railMobileBars(S: State, activeKey: string): string {
+  const top = `<div class="rail-mobile-top" style="position:sticky;top:0;z-index:45;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #1B1B27;background:rgba(11,11,17,.92);backdrop-filter:blur(10px)">
+    <div data-go="accueil" style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0">${brandLogo(S, 28, 16)}<span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
+    <button data-cart-open="1" title="Panier" style="position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer;flex:none">${ic(I.cart, 16)}
+      ${S.cartItems.length ? `<span style="position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:9.5px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
+    ${S.user
+      ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;border:0;cursor:pointer;flex:none">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
+      : `<button data-auth-open="1" title="Connexion" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer;flex:none">${ic(I.user, 16)}</button>`}
+  </div>`;
+  const tabs = RAIL_NAV.map(([key, label, icon]) => {
+    const on = key === activeKey;
+    return `<button data-go="${key}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;height:100%;border:0;background:transparent;cursor:pointer">
+      <span style="color:${on ? "#22D3EE" : "#8E8FA6"}">${ic(icon, 19)}</span>
+      <span style="font-size:9px;font-weight:${on ? 800 : 700};letter-spacing:.3px;color:${on ? "#22D3EE" : "#8E8FA6"};text-transform:uppercase">${label}</span>
+    </button>`;
+  }).join("");
+  const bottom = `<div class="rail-mobile-bottom" style="position:fixed;left:0;right:0;bottom:0;z-index:45;height:64px;border-top:1px solid #1B1B27;background:rgba(11,11,17,.96);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">${tabs}</div>`;
+  return top + bottom;
+}
+
+/** Shell rail complet : barre live + rail d'icônes + contenu de la page. Utilisé par Tournois/Classements/Galerie/Boutique.
+ * Sous 1024px, le rail à icônes cède la place à railMobileBars() (bandeau haut + barre d'onglets bas), voir globals.css. */
 function railShell(S: State, activeKey: string, body: string): string {
-  return `${railNav(S, activeKey)}
-  <div style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
+  return `${railNav(S, activeKey)}${railMobileBars(S, activeKey)}
+  <div class="rail-content" style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
     ${railLiveBar(S)}
     <div style="flex:1;min-width:0">${body}</div>
   </div>`;
@@ -621,12 +646,23 @@ function wizValidateStep(S: State) {
 /** Assistant de création/modification : modal plein écran (fond flouté), sidebar d'étapes + contenu.
  * Ne se ferme jamais au clic extérieur — un formulaire à 5 étapes est trop long à ressaisir pour un
  * clic accidentel ; seule la croix ferme explicitement. */
+/** Libellé court de l'étape active, pour l'indicateur compact affiché à la place de la liste complète sous 1024px. */
+const WIZ_STEP_LABELS: Record<number, string> = { 1: "Infos générales", 2: "Participants", 3: "Poules", 4: "Barème des points", 5: "Validation" };
 function tournamentWizard(S: State) {
   const editing = !!S.wizEditId;
   const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
-  return `<div style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
-    <div data-stop="1" style="width:100%;max-width:1160px;border:1px solid #282838;border-radius:20px;background:#0B0B11;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px;display:flex;overflow:hidden;min-height:600px">
-      <div style="width:230px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column">
+  const stepLabel = S.wizStep === 3 && S.wizData.format === "BATTLE_ROYALE" ? "Parties" : (WIZ_STEP_LABELS[S.wizStep] || "");
+  const mobileProgress = `<div class="wiz-mobile-progress" style="border-bottom:1px solid #1B1B27">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px">
+      <div><span style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">${editing ? "Modifier" : "Nouveau tournoi"}</span><div style="font-size:11.5px;color:#8E8FA6;margin-top:2px">Étape ${S.wizStep}/5 — ${stepLabel}</div></div>
+      <button data-act="create-cancel" style="display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.x, 14)}</button>
+    </div>
+    <div style="height:3px;background:#1B1B27"><span style="display:block;height:100%;width:${(S.wizStep / 5) * 100}%;background:#22D3EE;transition:width .25s ease"></span></div>
+  </div>`;
+  return `<div class="wiz-overlay" style="position:fixed;inset:0;z-index:260;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,36px) 18px;background:rgba(6,6,10,.82);backdrop-filter:blur(8px);overflow-y:auto">
+    <div data-stop="1" class="wiz-dialog" style="width:100%;max-width:1160px;border:1px solid #282838;border-radius:20px;background:#0B0B11;box-shadow:0 40px 100px rgba(0,0,0,.6);animation:fadeUp .18s ease both;margin-bottom:36px;display:flex;overflow:hidden;min-height:600px">
+      ${mobileProgress}
+      <div class="wiz-sidebar" style="width:230px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 16px 16px 18px;border-bottom:1px solid #1B1B27">
           <span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px">${editing ? "Modifier" : "Nouveau tournoi"}</span>
           <button data-act="create-cancel" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.x, 13)}</button>
@@ -635,7 +671,7 @@ function tournamentWizard(S: State) {
         <div style="flex:1"></div>
         <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">Format : <b style="color:#8E8FA6">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : " — points par victoire génériques (pas de barème détaillé, réservé à Survival)."}</div>
       </div>
-      <div style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
+      <div class="wiz-body" style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
     </div>
   </div>`;
 }
@@ -663,9 +699,9 @@ function pTournois(S: State) {
     : "";
   const searchBox = `<div style="position:relative;width:240px"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72">${ic(I.search, 15)}</span><input id="hsearch" value="${escAttr(S.q)}" placeholder="Tournoi, jeu, lieu…" style="width:100%;background:#14141D;border:1px solid #282838;border-radius:9px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:10px 12px 10px 34px" /></div>`;
   const statusCounts = TOURN_STATUSES.map((st) => [st, st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length] as const);
-  const statusBar = `<div style="display:flex;border:1px solid #282838;border-radius:9px;overflow:hidden">${statusCounts.map(([st, n], i) => {
+  const statusBar = `<div style="display:flex;border:1px solid #282838;border-radius:9px;overflow-x:auto;max-width:100%">${statusCounts.map(([st, n], i) => {
     const on = S.tournStatus === st;
-    return `<span data-tournstatus="${st}" style="padding:8px 15px;font-size:12.5px;font-weight:${on ? 750 : 600};cursor:pointer;background:${on ? "#22D3EE" : "transparent"};color:${on ? "#04222a" : "#8E8FA6"};transition:background .2s ease,color .2s ease;${i > 0 ? "border-left:1px solid #282838" : ""}">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1};color:${on ? "#04222a" : "#5D5E72"}">${n}</span></span>`;
+    return `<span data-tournstatus="${st}" style="padding:8px 15px;font-size:12.5px;font-weight:${on ? 750 : 600};cursor:pointer;background:${on ? "#22D3EE" : "transparent"};color:${on ? "#04222a" : "#8E8FA6"};transition:background .2s ease,color .2s ease;white-space:nowrap;flex:none;${i > 0 ? "border-left:1px solid #282838" : ""}">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1};color:${on ? "#04222a" : "#5D5E72"}">${n}</span></span>`;
   }).join("")}</div>`;
   const filt = `<div class="rise d1" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:#22222F"></span><div style="display:flex;gap:7px;flex-wrap:wrap">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
 
@@ -815,7 +851,7 @@ function pClassements(S: State) {
       <div style="font-size:12.5px;color:#8E8FA6;line-height:1.7">Chaque tournoi distribue une cagnotte fixée à l'avance (participants × points par joueur). Les points gagnés en match s'ajoutent au classement du jeu concerné. Un joueur peut figurer dans plusieurs classements sans jamais cumuler.</div>
     </div>
   </div>`;
-  const body = `<div class="rise d2" style="padding:30px 44px 44px"><div style="display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start">
+  const body = `<div class="rise d2" style="padding:30px 44px 44px"><div class="grid2c" style="display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start">
     <div>${block(rows, { podium: true })}</div>
     ${S.classementView === "joueurs" ? sidePanel : ""}
   </div></div>`;
@@ -1197,7 +1233,8 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
     return `<button data-admintab="${k}" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 16px;margin:0 8px;border-radius:9px;border:0;background:${on ? "rgba(34,211,238,.1)" : "transparent"};color:${on ? "#F4F5FB" : "#8E8FA6"};font-weight:${on ? 700 : 600};font-size:13.5px;cursor:pointer">${ic(CONSOLE_TAB_ICON[k] || I.bolt, 17)}${label}</button>`;
   }).join("");
   return `<div style="min-height:100vh;display:flex" class="console-shell">
-    <div class="console-sidebar" style="width:250px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column;padding:16px 0">
+    <div class="console-backdrop${S.consoleMenuOpen ? " console-backdrop-open" : ""}" data-consolemenu=""></div>
+    <div class="console-sidebar${S.consoleMenuOpen ? " console-sidebar-open" : ""}" style="width:250px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column;padding:16px 0">
       <div data-go="accueil" style="display:flex;align-items:center;gap:10px;padding:0 16px 18px;border-bottom:1px solid #1B1B27;cursor:pointer">
         ${brandLogo(S, 34, 19)}
         <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1.4px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span>
@@ -1213,8 +1250,12 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
       </div>
     </div>
     <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="console-mobile-top" style="align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #1B1B27">
+        <button data-consolemenu="1" title="Menu" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer;flex:none">${ic(I.menu, 17)}</button>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>
+      </div>
       <div style="display:flex;align-items:center;gap:16px;padding:16px 28px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">
-        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;margin:0;line-height:1">${title}</h1>
+        <h1 class="console-desktop-title" style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;margin:0;line-height:1">${title}</h1>
         <span style="flex:1"></span>
         <div style="position:relative;min-width:220px">
           <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 15)}</span>
@@ -1619,7 +1660,7 @@ function battleRoyalePanel(S: State, t: Detail, manage: boolean): string {
     <div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:18px;margin-bottom:18px"><div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:12px">Classement cumulé</div>${standings}</div>
     <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:10px">Parties</div>${gamesList}`;
   return manage
-    ? `<div style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${left}</div><div class="rise d2">${pickPanel}</div></div>`
+    ? `<div class="grid2c" style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${left}</div><div class="rise d2">${pickPanel}</div></div>`
     : `<div class="rise" style="margin-top:26px">${left}</div>`;
 }
 
@@ -2002,7 +2043,7 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
     <div data-regiepanel="paiements" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.cart, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Paiements</span></div>
     <div data-regiepanel="reglages" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.warn, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Réglages &amp; barème</span></div>
   </div>`;
-  return `<div style="width:236px;flex:none;border-right:1px solid #1B1B27;padding:20px 16px;display:flex;flex-direction:column;gap:6px;background:#0a0a10;overflow-y:auto">
+  return `<div class="regie-rail" style="width:236px;flex:none;border-right:1px solid #1B1B27;padding:20px 16px;display:flex;flex-direction:column;gap:6px;background:#0a0a10;overflow-y:auto">
     <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Déroulé du tournoi</div>
     ${body}
     ${nav}
@@ -2019,7 +2060,7 @@ function regieTopBanner(S: State, t: Detail): string {
       <div style="display:flex;align-items:center;gap:9px;margin-top:5px"><span style="width:104px;height:5px;border-radius:99px;background:#22222F;overflow:hidden;display:inline-block"><span style="display:block;width:${pct}%;height:100%;background:#FBBF24"></span></span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#FBBF24">${dist}/${total}</span></div>
     </div>
     <span style="width:1px;height:32px;background:#22222F"></span>` : "";
-  return `<div style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid #1B1B27;background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
+  return `<div class="regie-banner" style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid #1B1B27;background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
     <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid #282838;background:#14141D;color:#8E8FA6;flex:none;cursor:pointer">${icBack(14)}</button>
     <div style="min-width:0">
       <div style="display:flex;align-items:center;gap:10px">
@@ -2172,12 +2213,12 @@ function regiePage(S: State): string {
   const control = active
     ? matchScoreControl(S, t, active)
     : `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:24px;text-align:center;color:#8E8FA6;font-size:13px">Aucun match en attente pour l'instant.</div>`;
-  return `<div style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
+  return `<div class="regie-page-outer" style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
-    <div style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
+    <div class="regie-grid" style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, active)}
-      <div style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, active)}</div>
-      <div style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${regieRosterMini(S, t)}</div>
+      <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, active)}</div>
+      <div class="regie-control" style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${regieRosterMini(S, t)}</div>
     </div>
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${cartDrawer(S)}`;
 }
@@ -2312,8 +2353,8 @@ function pTournoi(S: State) {
       <p style="color:#8E8FA6;font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${formatInfo}${participants}${pendingPanel}${poolsPreview}</div>`;
-    const right = `<div class="rise d2" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
+    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${formatInfo}${participants}${pendingPanel}${poolsPreview}</div>`;
+    const right = `<div class="rise d2 stack-sidebar" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     return `<main class="rise" style="width:100%"><div style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
 
@@ -2367,7 +2408,7 @@ function pTournoi(S: State) {
     </div>` : "";
     const sideCol = `${arbitragePanel}${cagnotteTracker}`;
     finalsHtml = manage && sideCol
-      ? `<div style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${bracketCol}</div><div class="rise d2" style="display:flex;flex-direction:column;gap:16px">${sideCol}</div></div>`
+      ? `<div class="grid2c" style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${bracketCol}</div><div class="rise d2" style="display:flex;flex-direction:column;gap:16px">${sideCol}</div></div>`
       : `<div class="rise" style="margin-top:26px">${bracketCol}</div>`;
   }
 
@@ -2683,7 +2724,7 @@ export default function Page() {
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
-    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0,
+    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
@@ -3491,7 +3532,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -3631,7 +3672,8 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
-    else if (d.admintab) { setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "" })); if (d.admintab === "joueurs" && !S.roster) loadRoster(); }
+    else if (d.admintab) { setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "", consoleMenuOpen: false })); if (d.admintab === "joueurs" && !S.roster) loadRoster(); }
+    else if (d.consolemenu !== undefined) setS((s) => ({ ...s, consoleMenuOpen: d.consolemenu === "1" }));
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.herobgclear !== undefined) clearHeroBg();

@@ -1804,7 +1804,7 @@ function poolCard(S: State, p: Detail, manage: boolean): string {
           <div style="${divider}">–</div>
           <div style="flex:1;display:flex;justify-content:center"><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /></div>
         </div>
-        <button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="display:block;width:100%;height:44px;margin-top:10px;background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:10px;font-weight:750;font-size:13px;cursor:pointer">Valider le score</button>`;
+        <div style="display:flex;justify-content:center;margin-top:10px"><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="height:44px;background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:10px;padding:0 20px;font-weight:750;font-size:13px;cursor:pointer">Valider le score</button></div>`;
     } else {
       const sideRO = (name: string, cls: string, sub: string) => `<div style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></div>`;
       body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageTitle} — en direct</div>
@@ -1959,7 +1959,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
     <div style="padding:14px">
       ${side(active.aName, sa, "a")}
       ${side(active.bName, sb, "b")}
-      <button data-matchvalidate="1" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px;font-weight:800;font-size:13px;margin-top:12px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button>
+      <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="1" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button></div>
       <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:750;margin-top:12px">Déclarer forfait</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button data-matchforfeit="a" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.aName)}</button>

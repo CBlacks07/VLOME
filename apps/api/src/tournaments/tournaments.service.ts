@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
 import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtUser } from '../common/jwt-auth.guard';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { LoyaltyReason } from '../../generated/prisma';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
@@ -21,7 +23,7 @@ function engineFormatFor(dbFormat: string | null | undefined): Engine.Tournament
 
 @Injectable()
 export class TournamentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private loyalty: LoyaltyService) {}
 
   // Seul le propriétaire (ou un ADMIN) peut piloter/éditer. Les tournois sans
   // propriétaire (démo) sont pilotables par tout utilisateur authentifié.
@@ -35,7 +37,7 @@ export class TournamentsService {
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
-    imageUrl?: string | null; entryFeeXof?: number;
+    imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -52,6 +54,7 @@ export class TournamentsService {
       cagnotte: players * r.pointsPerPlayer,
       imageUrl: r.imageUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
+      givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
     };
   }
 
@@ -88,6 +91,7 @@ export class TournamentsService {
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
+        givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
@@ -105,6 +109,7 @@ export class TournamentsService {
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
+    if (dto.givesLoyaltyPoint !== undefined) data.givesLoyaltyPoint = dto.givesLoyaltyPoint;
 
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
@@ -211,7 +216,21 @@ export class TournamentsService {
     if (!u) throw new NotFoundException('Utilisateur introuvable');
 
     const fee = r.entryFeeXof || 0;
-    if (fee > 0 && !dto.paymentMethod) {
+
+    // Réduction en points fidélité sur les frais d'inscription (seulement si le tournoi est payant).
+    let pointsUsed = 0;
+    let netFee = fee;
+    if (dto.pointsToRedeem) {
+      if (fee === 0) throw new BadRequestException("Ce tournoi est gratuit : rien à réduire avec des points.");
+      const maxPoints = await this.loyalty.maxRedeemablePoints(user.sub, fee, fee);
+      pointsUsed = Math.min(dto.pointsToRedeem, maxPoints);
+      if (pointsUsed > 0) {
+        const settings = await this.loyalty.getSettings();
+        netFee = Math.max(0, fee - pointsUsed * settings.pointValueXof);
+      }
+    }
+
+    if (netFee > 0 && !dto.paymentMethod) {
       throw new BadRequestException('Choisis un moyen de paiement pour finaliser ton inscription.');
     }
 
@@ -226,21 +245,49 @@ export class TournamentsService {
       playerName = `${playerName} (${n})`;
     }
 
-    if (fee === 0) {
-      // Gratuit : ajouté tout de suite.
+    if (netFee === 0) {
+      // Gratuit (ou entièrement couvert par des points) : ajouté tout de suite.
       t.players.push({ id: Engine.uid(), name: playerName, club: u.city || '' });
-      await this.prisma.$transaction([
-        this.prisma.registration.create({ data: { userId: user.sub, tournamentId: id, playerName, amountXof: 0, paymentStatus: 'paid' } }),
-        this.prisma.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
-      ]);
-      return { registered: true, pending: false, playerName, amountXof: 0, players: t.players.length };
+      const reg = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.registration.create({
+          data: {
+            userId: user.sub, tournamentId: id, playerName, amountXof: 0, paymentStatus: 'paid',
+            paymentMethod: pointsUsed > 0 ? 'Points fidélité' : null, pointsRedeemed: pointsUsed,
+          },
+        });
+        await tx.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } });
+        return created;
+      });
+      if (pointsUsed > 0) {
+        try {
+          await this.loyalty.redeem(user.sub, pointsUsed, LoyaltyReason.REGISTRATION_REDEMPTION, { registrationId: reg.id, note: r.name });
+        } catch (e) {
+          await this.prisma.registration.delete({ where: { id: reg.id } });
+          throw e;
+        }
+      }
+      if (r.givesLoyaltyPoint) {
+        await this.loyalty.award(user.sub, 1, LoyaltyReason.PARTICIPATION, { registrationId: reg.id, note: r.name });
+      }
+      return { registered: true, pending: false, playerName, amountXof: 0, pointsRedeemed: pointsUsed, players: t.players.length };
     }
 
-    // Payant : réservé, en attente de confirmation (voir confirmPayment).
-    await this.prisma.registration.create({
-      data: { userId: user.sub, tournamentId: id, playerName, amountXof: fee, paymentMethod: dto.paymentMethod, paymentStatus: 'pending' },
+    // Payant (au moins en partie) : réservé, en attente de confirmation (voir confirmPayment).
+    const reg = await this.prisma.registration.create({
+      data: {
+        userId: user.sub, tournamentId: id, playerName, amountXof: netFee,
+        paymentMethod: dto.paymentMethod, paymentStatus: 'pending', pointsRedeemed: pointsUsed,
+      },
     });
-    return { registered: true, pending: true, playerName, amountXof: fee };
+    if (pointsUsed > 0) {
+      try {
+        await this.loyalty.redeem(user.sub, pointsUsed, LoyaltyReason.REGISTRATION_REDEMPTION, { registrationId: reg.id, note: r.name });
+      } catch (e) {
+        await this.prisma.registration.delete({ where: { id: reg.id } });
+        throw e;
+      }
+    }
+    return { registered: true, pending: true, playerName, amountXof: netFee, pointsRedeemed: pointsUsed };
   }
 
   /** Confirme le paiement d'une inscription en attente (organisateur/admin) et ajoute le joueur au moteur. */
@@ -260,6 +307,9 @@ export class TournamentsService {
       this.prisma.registration.update({ where: { id: registrationId }, data: { paymentStatus: 'paid' } }),
       this.prisma.tournament.update({ where: { id: tournamentId }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
     ]);
+    if (r.givesLoyaltyPoint) {
+      await this.loyalty.award(reg.userId, 1, LoyaltyReason.PARTICIPATION, { registrationId: reg.id, note: r.name });
+    }
     return { confirmed: true, playerName: reg.playerName, players: t.players.length };
   }
 
@@ -301,6 +351,14 @@ export class TournamentsService {
         data: t ? { engineState: JSON.parse(JSON.stringify(t)) } : {},
       }),
     ]);
+    // Rembourse les points dépensés sur cette inscription, et retire le point de participation
+    // gagné s'il l'avait déjà été (désinscription possible tant que le tournoi n'a pas démarré).
+    if (reg.pointsRedeemed > 0) {
+      await this.loyalty.award(user.sub, reg.pointsRedeemed, LoyaltyReason.REFUND, { registrationId: reg.id, note: r.name });
+    }
+    if (reg.paymentStatus === 'paid' && r.givesLoyaltyPoint) {
+      await this.loyalty.revokeUpTo(user.sub, 1, LoyaltyReason.REFUND, { registrationId: reg.id, note: r.name });
+    }
     return { registered: false, players: t ? t.players.length : 0 };
   }
 
@@ -402,7 +460,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = r.engineState as unknown as Engine.Tournament;
@@ -492,7 +550,7 @@ export class TournamentsService {
   /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
   private toState(
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
-    format: string | null = null, place: string | null = null, date: Date | null = null,
+    format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -522,6 +580,7 @@ export class TournamentsService {
       finalsFormat: t.finalsFormat,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
+      givesLoyaltyPoint,
       imageUrl,
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
@@ -537,7 +596,7 @@ export class TournamentsService {
 
   async getState(id: string) {
     const l = await this.loadEngine(id);
-    return l ? this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date) : null;
+    return l ? this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint) : null;
   }
 
   async launch(id: string, user: JwtUser) {
@@ -553,7 +612,7 @@ export class TournamentsService {
       Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
     }
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   async startFinals(id: string, user: JwtUser, format?: Engine.FinalsFormat) {
@@ -562,7 +621,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     Engine.startFinals(l.t, format);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   async report(id: string, dto: ReportDto, user: JwtUser) {
@@ -577,7 +636,7 @@ export class TournamentsService {
     }
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier). */
@@ -590,7 +649,7 @@ export class TournamentsService {
     const res = Engine.reportBattleRoyale(t, gameId, ranking);
     if (!res.ok) throw new BadRequestException('Partie introuvable, déjà rapportée, ou classement invalide.');
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Ajout manuel d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
@@ -602,7 +661,7 @@ export class TournamentsService {
     const p = Engine.addPlayer(l.t, name);
     if (!p) throw new BadRequestException('Nom invalide ou déjà utilisé dans ce tournoi.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Retrait d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
@@ -613,7 +672,7 @@ export class TournamentsService {
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible de retirer un joueur.');
     if (!Engine.removePlayer(l.t, playerId)) throw new NotFoundException('Joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Disqualification en direct — forfait immédiat, l'adversaire est déclaré vainqueur. */
@@ -628,7 +687,7 @@ export class TournamentsService {
       throw new NotFoundException('Joueur introuvable.');
     }
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Annule la dernière action mutante (résultat, ajustement, changement de barème, reset…). */
@@ -639,7 +698,7 @@ export class TournamentsService {
     const restored = Engine.undo(l.t);
     if (!restored) throw new ConflictException('Rien à annuler.');
     await this.persist(id, restored);
-    return this.toState(id, restored, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, restored, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Remet un tournoi lancé par erreur à l'état "à lancer" (garde joueurs, poules-config, barème). */
@@ -650,7 +709,7 @@ export class TournamentsService {
     if (l.t.status === 'setup') throw new ConflictException('Ce tournoi n\'a pas encore été lancé.');
     Engine.resetTournament(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Renomme un joueur (coquille repérée après coup) — à tout moment. */
@@ -660,7 +719,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.renamePlayer(l.t, playerId, name)) throw new BadRequestException('Nom invalide ou joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Modifie le club affiché d'un joueur — à tout moment. */
@@ -670,7 +729,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.setPlayerClub(l.t, playerId, club)) throw new NotFoundException('Joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Bonus/pénalité manuel avec motif, tracé dans le journal. */
@@ -680,7 +739,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.manualAdjust(l.t, playerId, delta, reason)) throw new BadRequestException('Ajustement invalide (montant nul ou joueur introuvable).');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Modifie une valeur du barème (à tout moment) — resynchronise automatiquement les points déjà distribués. */
@@ -690,7 +749,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.setScoring(l.t, key as keyof Engine.Scoring, value)) throw new BadRequestException('Clé de barème invalide.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Répartit les joueurs en poules avant le lancement, pour prévisualiser/réordonner l'ordre de passage. */
@@ -703,7 +762,7 @@ export class TournamentsService {
     Engine.distributePools(l.t);
     l.t.pools.forEach((p) => (p.order = p.playerIds.slice()));
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Rebrasse l'ordre de passage d'une poule (avant lancement). */
@@ -716,7 +775,7 @@ export class TournamentsService {
     if (!pool) throw new NotFoundException('Poule introuvable.');
     Engine.shuffleOrder(pool);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement). */
@@ -729,7 +788,7 @@ export class TournamentsService {
     if (!pool) throw new NotFoundException('Poule introuvable.');
     Engine.moveInOrder(pool, index, dir);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 }
 

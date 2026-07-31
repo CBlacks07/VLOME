@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
+import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
-export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads'] as const;
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty'] as const;
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'VLOME', name2: 'ESPORT', logoUrl: null },
+  loyalty: DEFAULT_LOYALTY_SETTINGS,
   hero: {
     kicker: 'VLOME Esport · Togo',
     title: "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN",
@@ -129,6 +131,7 @@ export class AdminService {
       data: {
         name: dto.name.trim(), category: dto.category.trim() || 'Goodies',
         priceXof: dto.priceXof, stock: dto.stock, imageUrl: dto.imageUrl || null,
+        loyaltyEligible: dto.loyaltyEligible ?? false,
       },
     });
   }
@@ -142,6 +145,7 @@ export class AdminService {
     if (dto.priceXof !== undefined) data.priceXof = dto.priceXof;
     if (dto.stock !== undefined) data.stock = dto.stock;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
+    if (dto.loyaltyEligible !== undefined) data.loyaltyEligible = dto.loyaltyEligible;
     return this.prisma.product.update({ where: { id }, data });
   }
 

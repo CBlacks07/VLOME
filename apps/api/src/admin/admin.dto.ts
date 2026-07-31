@@ -78,6 +78,10 @@ export class ProductDto {
   @IsString()
   @MaxLength(300)
   imageUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  loyaltyEligible?: boolean;
 }
 
 export class ProductUpdateDto {
@@ -106,6 +110,10 @@ export class ProductUpdateDto {
   @IsString()
   @MaxLength(300)
   imageUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  loyaltyEligible?: boolean;
 }
 
 export class OrderStatusDto {

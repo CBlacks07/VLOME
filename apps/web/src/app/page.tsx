@@ -13,13 +13,17 @@ function authHeaders(): Record<string, string> { const t = token(); return t ? {
 type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number; status: string; imageUrl?: string | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
-type CartItem = { name: string; price: number };
+type CartItem = { name: string; price: number; id?: string };
 type AuthUser = { displayName: string; role: string; email: string };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
-  cartItems: CartItem[]; cartOpen: boolean; products: { cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number }[] | null; boutiqueInStock: boolean;
+  cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
+  cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
+  regPointsToRedeem: number; // idem, pour réduire les frais d'inscription à un tournoi
+  loyaltySettings: { pointValueXof: number; maxRedeemPercent: number } | null;
+  loyaltyHistory: Detail[] | null; loyaltyBalance: number;
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -52,7 +56,7 @@ type State = {
   wizStep: number;
   wizData: {
     name: string; game: string; date: string; place: string; format: string;
-    pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number;
+    pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number;
     imageUrl: string | null;
   };
@@ -504,6 +508,7 @@ function wizInfosStep(S: State) {
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
         ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
+        ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>
       ${formatPicker}`)}
@@ -952,14 +957,14 @@ function pBoutique(S: State) {
     return `<div class="${out ? "" : "hcard"}" style="border:1px solid #282838;border-radius:12px;overflow:hidden;background:#14141D;${out ? "opacity:.6" : ""}">
       <div style="position:relative">${pImg(p, 180)}${out ? `<span style="position:absolute;top:10px;left:10px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FB7185;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);border-radius:99px;padding:4px 9px">Rupture</span>` : ""}</div>
       <div style="padding:14px 15px 16px">
-        <span style="font-size:11px;color:#7C82FF;font-weight:700">${escHtml(p.cat)}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${escHtml(p.cat)}</span>${p.loyaltyEligible ? `<span title="Réduction possible avec les points fidélité" style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points</span>` : ""}</div>
         <div style="font-weight:650;font-size:15px;margin:5px 0 4px">${escHtml(p.name)}</div>
         <div style="font-size:11.5px;color:#5D5E72;margin-bottom:11px">${p.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">épuisé</span>` : `<span style="color:#34D399;font-weight:700">${p.stock} en stock</span>`) : ""}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <span style="font-weight:800;color:${out ? "#8E8FA6" : "#22D3EE"};font-size:16px;font-family:'JetBrains Mono',monospace">${money(p.price)}</span>
           ${out
             ? `<span style="border:1px solid #282838;color:#5D5E72;border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px">Épuisé</span>`
-            : `<button data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button>`}
+            : `<button data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" data-add-id="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button>`}
         </div>
       </div>
     </div>`;
@@ -1033,7 +1038,25 @@ function pDashboard(S: State) {
   const editor = S.profileEdit ? profileEditor(S) : "";
   // ADMIN/ORGANIZER passent par la console (sidebar) — voir renderPage(). Cette page ne sert plus qu'aux PLAYER.
   const body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
-  return wrap(header + editor + statTiles + body);
+  return wrap(header + editor + statTiles + body + loyaltyCard(S));
+}
+
+/** Solde + historique des points fidélité (gagnés par participation, dépensés en boutique ou sur des frais d'inscription). */
+function loyaltyCard(S: State) {
+  const balance = S.me?.loyaltyPoints ?? 0;
+  const history: Detail[] = S.loyaltyHistory ?? [];
+  const reasonLabel: Record<string, string> = {
+    PARTICIPATION: "Participation à un tournoi", ORDER_REDEMPTION: "Dépensé en boutique",
+    REGISTRATION_REDEMPTION: "Dépensé sur une inscription", ADMIN_ADJUST: "Ajustement", REFUND: "Remboursement",
+  };
+  const rows = history.length ? history.map((h) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid #22222F">
+      <div><div style="font-size:13.5px;font-weight:600">${reasonLabel[h.reason] || h.reason}${h.note ? ` · ${escHtml(h.note)}` : ""}</div><div style="font-size:11.5px;color:#5D5E72">${new Date(h.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</div></div>
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:14px;color:${h.amount > 0 ? "#34D399" : "#FB7185"};flex:none">${h.amount > 0 ? "+" : ""}${h.amount}</span>
+    </div>`).join("") : `<div style="color:#5D5E72;font-size:13.5px;text-align:center;padding:20px 0">Aucun mouvement pour l'instant. Inscris-toi à un tournoi pour gagner ton premier point !</div>`;
+  return card(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px">
+    ${secTitle("Points fidélité")}
+    <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:#22D3EE">${balance} pt${balance > 1 ? "s" : ""}</span>
+  </div>${scrollBox(rows, 320)}`);
 }
 
 const grid2 = (a: string, b: string) => `<div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">${a}${b}</div>`;
@@ -1046,7 +1069,8 @@ function memberStats(S: State) {
   const stat = (v: string | number, k: string, color = "#F4F5FB") => `<div style="border:1px solid #282838;border-radius:14px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-top:6px">${k}</div></div>`;
   const tiles = [
     stat(me.stats?.registrations ?? 0, "Inscriptions", "#22D3EE"),
-    stat(me.stats?.totalPoints ?? 0, "Points cumulés", "#7C82FF"),
+    stat(me.stats?.totalPoints ?? 0, "Points cumulés (classement)", "#7C82FF"),
+    stat(me.loyaltyPoints ?? 0, "Points fidélité (à dépenser)", "#22D3EE"),
     stat(me.stats?.totalWins ?? 0, "Victoires", "#34D399"),
     stat(me.stats?.championships ?? 0, "Titres remportés", "#FBBF24"),
     ...(me.role !== "PLAYER" ? [stat(me.stats?.tournaments ?? 0, "Tournois créés", "#FBBF24")] : []),
@@ -1143,7 +1167,7 @@ function profileSecurity(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -1171,7 +1195,7 @@ const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["compte", 
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
   apercu: I.bolt, site: I.edit, users: I.user, joueurs: I.crown, news: I.flame, galerie: I.image,
-  produits: I.cart, paiements: I.warn, commandes: I.cart, compte: I.user,
+  produits: I.cart, fidelite: I.medal, paiements: I.warn, commandes: I.cart, compte: I.user,
 };
 
 /** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
@@ -1286,12 +1310,13 @@ function consolePage(S: State): string {
       S.adminTab === "news" ? adminNews(S) :
       S.adminTab === "galerie" ? adminGallery(S) :
       S.adminTab === "produits" ? adminProducts(S) :
+      S.adminTab === "fidelite" ? adminLoyalty(S) :
       S.adminTab === "paiements" ? adminPayments(S) :
       S.adminTab === "commandes" ? adminOrders(a) :
       consoleOverview(S);
   } else {
     body = S.adminTab === "compte"
-      ? grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S))
+      ? grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S)
       : consoleOverview(S);
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
@@ -1528,6 +1553,7 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Prix (FCFA)<input id="pr-price" type="number" min="0" value="${e.priceXof ?? 0}" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer"><input id="pr-loyalty" type="checkbox" ${e.loyaltyEligible ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Éligible à la réduction en points fidélité</span></label>
     <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — 3 Mo max)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
@@ -1552,13 +1578,32 @@ function adminProducts(S: State) {
   };
   const thead = `<tr>${sortTh("Produit", "name", false)}${sortTh("Prix", "price")}${sortTh("Stock", "stock")}<th style="text-align:right;color:#8E8FA6;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">Actions</th></tr>`;
   const rows = products.length ? products.map((p: Detail) => `<tr style="border-top:1px solid #22222F">
-      <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${mediaUrl(p.imageUrl)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
+      <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px">${p.imageUrl ? `<img src="${mediaUrl(p.imageUrl)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:9px;border:1px solid #282838;flex:none" />` : `<span style="display:grid;place-items:center;width:38px;height:38px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#5D5E72;flex:none">${ic(I.cart, 15)}</span>`}<div><div style="font-weight:650;display:flex;align-items:center;gap:7px">${escHtml(p.name)}${p.loyaltyEligible ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">Points</span>` : ""}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(p.category)}</div></div></div></td>
       <td style="padding:10px 8px;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.priceXof)}</td>
       <td style="padding:10px 8px;text-align:right;color:${p.stock > 0 ? "#8E8FA6" : "#FB7185"};font-weight:700;white-space:nowrap">${p.stock > 0 ? p.stock + " en stock" : "Rupture"}</td>
       <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px">${btnSm(`data-prodedit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-proddel="${p.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
     : `<tr><td colspan="4" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun produit trouvé." : "Aucun produit."}</td></tr>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Produits (${products.length}/${a.products.length})`)}<button data-prodnew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau produit</button></div>`;
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou catégorie…")}${catChips}${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`)}</div>`;
+}
+
+/** Onglet Fidélité : taux de conversion des points (valeur en FCFA, plafond de réduction). */
+function adminLoyalty(S: State) {
+  const ly = S.site?.loyalty || { pointValueXof: 100, maxRedeemPercent: 50 };
+  const ok = S.siteMsg === "Réglages enregistrés.";
+  return card(`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle("Points fidélité")}
+      ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
+    </div>
+    <p style="color:#8E8FA6;font-size:13.5px;line-height:1.7;margin:0 0 18px">Chaque participation validée à un tournoi Vlome rapporte 1 point (désactivable par tournoi). Les membres peuvent ensuite dépenser leurs points sur les produits marqués « éligibles » en boutique, ou sur les frais d'inscription d'un futur tournoi.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Valeur d'un point (FCFA)<input id="ly-value" type="number" min="1" value="${ly.pointValueXof}" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Plafond de réduction (% du montant)<input id="ly-percent" type="number" min="0" max="100" value="${ly.maxRedeemPercent}" style="${adminInp}" /></label>
+    </div>
+    <div style="margin-top:16px"><button data-loyaltysave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button></div>
+    <p style="color:#5D5E72;font-size:12px;margin:14px 0 0">L'éligibilité produit se règle depuis l'onglet Produits, et le gain de point par tournoi depuis l'assistant de création (étape 1).</p>
+  `);
 }
 
 function adminPayments(S: State) {
@@ -2299,9 +2344,29 @@ function pTournoi(S: State) {
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button></div>`;
     } else if (fee > 0) {
       const chips = PAYMENTS.map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.payPick === m ? "#22D3EE" : "#282838"};color:${S.payPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
+      const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
+      const maxXof = Math.floor((fee * ly.maxRedeemPercent) / 100);
+      const maxPoints = Math.max(0, Math.min(S.loyaltyBalance, Math.floor(maxXof / ly.pointValueXof)));
+      const chosenPoints = Math.min(S.regPointsToRedeem, maxPoints);
+      const discount = chosenPoints * ly.pointValueXof;
+      const netFee = Math.max(0, fee - discount);
+      const loyaltyBox = maxPoints > 0 ? `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:12px 14px;width:100%;max-width:320px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+          <span style="font-size:12px;color:#8E8FA6;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Points fidélité</span>
+          <span style="font-size:12px;color:#5D5E72">Solde : <b style="color:#F4F5FB">${S.loyaltyBalance}</b></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button data-regpts="${Math.max(0, chosenPoints - 1)}" style="width:30px;height:30px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer">−</button>
+          <span style="flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700">${chosenPoints} pt${chosenPoints > 1 ? "s" : ""}</span>
+          <button data-regpts="${Math.min(maxPoints, chosenPoints + 1)}" style="width:30px;height:30px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer">+</button>
+          <button data-regpts="${maxPoints}" style="font-size:11.5px;font-weight:700;color:#22D3EE;background:transparent;border:1px solid rgba(34,211,238,.35);border-radius:8px;padding:0 10px;height:30px;cursor:pointer">Max</button>
+        </div>
+        ${discount > 0 ? `<div style="margin-top:8px;font-size:12.5px;color:#34D399;font-weight:700">− ${money(discount)} appliqués</div>` : ""}
+      </div>` : "";
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:14px">
         <div><div style="color:#8E8FA6;font-size:12.5px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${chips}</div></div>
-        <button data-reg="${t.id}" ${S.payPick ? "" : "disabled"} style="display:inline-flex;align-items:center;gap:8px;background:${S.payPick ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${S.payPick ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.payPick ? "pointer" : "default"};box-shadow:${S.payPick ? "0 0 34px rgba(34,211,238,.24)" : "none"}">${ic(I.plus, 18)}S'inscrire · ${money(fee)}</button>
+        ${loyaltyBox}
+        <button data-reg="${t.id}" ${S.payPick || netFee === 0 ? "" : "disabled"} style="display:inline-flex;align-items:center;gap:8px;background:${S.payPick || netFee === 0 ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${S.payPick || netFee === 0 ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.payPick || netFee === 0 ? "pointer" : "default"};box-shadow:${S.payPick || netFee === 0 ? "0 0 34px rgba(34,211,238,.24)" : "none"}">${ic(I.plus, 18)}S'inscrire · ${discount > 0 ? `<span style="text-decoration:line-through;opacity:.6;font-weight:600;font-size:13px">${money(fee)}</span> ` : ""}${money(netFee)}</button>
       </div>`;
     } else {
       action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
@@ -2310,7 +2375,8 @@ function pTournoi(S: State) {
       ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
       : fee > 0 ? "Inscription payante : choisis un moyen de paiement, l'organisateur confirmera à réception."
       : "Les inscriptions sont ouvertes jusqu'au lancement par l'organisateur.";
-    const feeBadge = fee > 0 ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px">${ic(I.cart, 14)}Frais d'inscription : ${money(fee)}</div>` : "";
+    const feeBadge = fee > 0 ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px;margin-right:10px">${ic(I.cart, 14)}Frais d'inscription : ${money(fee)}</div>` : "";
+    const pointBadge = !manage && t.givesLoyaltyPoint !== false ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#22D3EE;font-weight:700;font-size:13px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px">${ic(I.medal, 14)}+1 point fidélité</div>` : "";
     const roster: { id: string; name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
     const participants = roster.length || manage
       ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
@@ -2352,7 +2418,7 @@ function pTournoi(S: State) {
     </div>`;
     const actionRail = `<div style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
       <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? "Prêt à démarrer" : "Inscription"}</div>
-      ${feeBadge}
+      ${feeBadge}${pointBadge}
       <p style="color:#8E8FA6;font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
@@ -2536,13 +2602,38 @@ function cartDrawer(S: State) {
     <div style="color:#8E8FA6;font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">${PAYMENTS.map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "#282838"};color:${S.cartPayPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("")}</div>
   </div>` : "";
+  // Réduction en points fidélité : uniquement sur la part du panier composée d'articles éligibles (choix admin).
+  const eligibleSubtotal = S.cartItems.reduce((a, i) => {
+    const prod = (S.products ?? []).find((p) => p.id === i.id);
+    return a + (prod?.loyaltyEligible ? i.price : 0);
+  }, 0);
+  const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
+  const maxXof = Math.min(eligibleSubtotal, Math.floor((total * ly.maxRedeemPercent) / 100));
+  const maxPoints = Math.max(0, Math.min(S.loyaltyBalance, Math.floor(maxXof / ly.pointValueXof)));
+  const chosenPoints = Math.min(S.cartPointsToRedeem, maxPoints);
+  const discount = chosenPoints * ly.pointValueXof;
+  const netTotal = Math.max(0, total - discount);
+  const loyaltyBox = S.user && maxPoints > 0 ? `<div style="margin-bottom:14px;border:1px solid #282838;border-radius:12px;background:#14141D;padding:12px 14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+      <span style="font-size:12px;color:#8E8FA6;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Points fidélité</span>
+      <span style="font-size:12px;color:#5D5E72">Solde : <b style="color:#F4F5FB">${S.loyaltyBalance}</b></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button data-cartpts="${Math.max(0, chosenPoints - 1)}" style="width:30px;height:30px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer">−</button>
+      <span style="flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700">${chosenPoints} pt${chosenPoints > 1 ? "s" : ""}</span>
+      <button data-cartpts="${Math.min(maxPoints, chosenPoints + 1)}" style="width:30px;height:30px;border-radius:8px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer">+</button>
+      <button data-cartpts="${maxPoints}" style="font-size:11.5px;font-weight:700;color:#22D3EE;background:transparent;border:1px solid rgba(34,211,238,.35);border-radius:8px;padding:0 10px;height:30px;cursor:pointer">Max</button>
+    </div>
+    ${discount > 0 ? `<div style="margin-top:8px;font-size:12.5px;color:#34D399;font-weight:700">− ${money(discount)} appliqués</div>` : ""}
+  </div>` : "";
   const canOrder = S.cartItems.length > 0 && !!S.cartPayPick && !S.cartBusy;
   return `<div data-cart-close="1" style="position:fixed;inset:0;z-index:200;background:rgba(6,6,10,.6);backdrop-filter:blur(4px)">
     <div data-stop="1" style="position:absolute;top:0;right:0;height:100%;width:min(420px,92vw);background:#0E0E16;border-left:1px solid #282838;padding:22px;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">Panier</span><span data-cart-close="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 20)}</span></div>
       <div style="flex:1;overflow-y:auto">${rows}</div>
       <div style="border-top:1px solid #282838;padding-top:16px;margin-top:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:#8E8FA6;font-size:14px">Total</span><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:#22D3EE">${money(total)}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:#8E8FA6;font-size:14px">Total</span><span style="text-align:right">${discount > 0 ? `<div style="font-size:13px;color:#5D5E72;text-decoration:line-through">${money(total)}</div>` : ""}<span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:#22D3EE">${money(netTotal)}</span></span></div>
+        ${loyaltyBox}
         ${payChips}
         <button ${canOrder ? "" : "disabled"} data-checkout="1" style="width:100%;background:${canOrder ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canOrder ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${canOrder ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">${S.cartBusy ? "Envoi…" : "Commander"}</button>
         ${S.cartItems.length ? `<button data-cart-clear="1" style="width:100%;margin-top:8px;background:transparent;border:1px solid #282838;color:#8E8FA6;border-radius:12px;padding:11px;font-weight:600;font-size:13px;cursor:pointer">Vider le panier</button>` : ""}
@@ -2716,6 +2807,7 @@ export default function Page() {
     page: "accueil", slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
+    cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -2729,7 +2821,7 @@ export default function Page() {
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
   });
@@ -2743,7 +2835,7 @@ export default function Page() {
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, brPick: [], showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, brPick: [], showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -2931,22 +3023,41 @@ export default function Page() {
     try {
       const r = await fetch(`${API}/api/products`);
       if (!r.ok) return;
-      const rows: { name: string; category: string; priceXof: number; imageUrl?: string | null }[] = await r.json();
+      const rows: { id: string; name: string; category: string; priceXof: number; imageUrl?: string | null; loyaltyEligible?: boolean }[] = await r.json();
       if (Array.isArray(rows) && rows.length) {
-        setS((s) => ({ ...s, products: rows.map((p) => ({ cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null })) }));
+        setS((s) => ({ ...s, products: rows.map((p) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, loyaltyEligible: !!p.loyaltyEligible })) }));
       }
     } catch { /* repli statique */ }
+  }
+  async function loadLoyaltySettings() {
+    try {
+      const r = await fetch(`${API}/api/loyalty/settings`);
+      if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, loyaltySettings: v })); }
+    } catch { /* ignore */ }
+  }
+  async function loadLoyaltyMe() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/loyalty/me`, { headers: authHeaders() });
+      if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, loyaltyHistory: v.history, loyaltyBalance: v.balance })); }
+    } catch { /* ignore */ }
   }
   async function checkout() {
     if (!S.cartItems.length || !S.cartPayPick) return;
     if (!token()) { setS((s) => ({ ...s, cartOpen: false, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, cartBusy: true }));
     try {
-      const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price })), paymentMethod: S.cartPayPick }) });
+      const r = await fetch(`${API}/api/orders`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          items: S.cartItems.map((i) => ({ name: i.name, priceXof: i.price, productId: i.id })),
+          paymentMethod: S.cartPayPick, pointsToRedeem: S.cartPointsToRedeem || 0,
+        }),
+      });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null, cartBusy: false })); return; }
       if (r.ok) {
         const o = await r.json();
-        setS((s) => ({ ...s, cartItems: [], cartPayPick: "", cartBusy: false, me: null, myOrders: null, lastOrder: { reference: o.reference, totalXof: o.totalXof, paymentMethod: o.paymentMethod } }));
+        setS((s) => ({ ...s, cartItems: [], cartPayPick: "", cartBusy: false, cartPointsToRedeem: 0, me: null, myOrders: null, loyaltyHistory: null, lastOrder: { reference: o.reference, totalXof: o.totalXof, paymentMethod: o.paymentMethod } }));
       } else setS((s) => ({ ...s, cartBusy: false }));
     } catch { setS((s) => ({ ...s, cartBusy: false })); }
   }
@@ -3042,6 +3153,19 @@ export default function Page() {
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
 
+  /** Enregistre le taux de conversion des points fidélité (Setting générique, clé "loyalty"). */
+  async function saveLoyalty() {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const value = { pointValueXof: Math.max(1, parseInt(val("ly-value")) || 100), maxRedeemPercent: Math.min(100, Math.max(0, parseInt(val("ly-percent")) || 0)) };
+    try {
+      const r = await fetch(`${API}/api/admin/settings/loyalty`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
+      });
+      if (r.ok) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés." })); }
+      else setS((s) => ({ ...s, siteMsg: "Enregistrement impossible." }));
+    } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
+  }
+
   /** Retire le fond (image/vidéo) du héro : retour aux halos animés. */
   async function clearHeroBg() {
     const hero = { ...(S.site?.hero || {}), bgUrl: null };
@@ -3066,7 +3190,10 @@ export default function Page() {
   /** Enregistre un produit (avec envoi de l'image si un fichier est choisi). */
   async function saveProd(id: string) {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
-    const body: Detail = { name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0 };
+    const body: Detail = {
+      name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0,
+      loyaltyEligible: (document.getElementById("pr-loyalty") as HTMLInputElement | null)?.checked ?? false,
+    };
     if (!body.name) { alert("Le nom du produit est requis."); return; }
     try { const img = await uploadFile("pr-img"); if (img) body.imageUrl = img; } catch { return; }
     if (id === "new") adminAct("products", "POST", body);
@@ -3180,19 +3307,25 @@ export default function Page() {
   async function toggleReg(id: string, register: boolean) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     const fee = S.detail?.entryFeeXof || 0;
-    if (register && fee > 0 && !S.payPick) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
+    const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
+    const maxXof = Math.floor((fee * ly.maxRedeemPercent) / 100);
+    const maxPoints = Math.max(0, Math.min(S.loyaltyBalance, Math.floor(maxXof / ly.pointValueXof)));
+    const pointsToRedeem = Math.min(S.regPointsToRedeem, maxPoints);
+    const netFee = Math.max(0, fee - pointsToRedeem * ly.pointValueXof);
+    if (register && netFee > 0 && !S.payPick) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/register`, {
         method: register ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: register && fee > 0 ? JSON.stringify({ paymentMethod: S.payPick }) : undefined,
+        body: register && fee > 0 ? JSON.stringify({ paymentMethod: S.payPick, pointsToRedeem }) : undefined,
       });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       const data = await r.json();
       if (!r.ok) { alert(data.message || "Action impossible."); return; }
       await loadRegIds();
       await loadTournaments();
-      setS((s) => ({ ...s, me: null, myRegs: null, myResults: null, payPick: "" })); // le profil se rechargera
+      setS((s) => ({ ...s, me: null, myRegs: null, myResults: null, payPick: "", regPointsToRedeem: 0 })); // le profil se rechargera
+      loadLoyaltyMe();
       if (S.openId === id) {
         const st = await fetch(`${API}/api/tournaments/${id}/state`);
         if (st.ok) { const d = await st.json(); setS((s) => ({ ...s, detail: d })); }
@@ -3224,6 +3357,7 @@ export default function Page() {
   // Charge le tableau de bord quand on ouvre l'espace membre.
   useEffect(() => {
     if (S.page === "profil" && S.user && !S.me) loadMe();
+    if (S.page === "profil" && S.user && !S.loyaltyHistory) loadLoyaltyMe();
     if (S.page === "profil" && S.user?.role === "ADMIN" && !S.admin) loadAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
@@ -3280,22 +3414,23 @@ export default function Page() {
     // Chargement initial groupé : une seule mise à jour d'état (pas de rejeu d'animations).
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
-      const [tourns, products, news, site, gallery, leaderboard] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("tournaments/leaderboard")]);
+      const [tourns, products, news, site, gallery, leaderboard, loyaltySettings] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("tournaments/leaderboard"), get("loyalty/settings")]);
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
         products: Array.isArray(products) && products.length
-          ? products.map((p: Detail) => ({ cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, stock: p.stock }))
+          ? products.map((p: Detail) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, stock: p.stock, loyaltyEligible: !!p.loyaltyEligible }))
           : s.products,
         news: Array.isArray(news) && news.length ? news : s.news,
         site: site || s.site,
         gallery: Array.isArray(gallery) ? gallery : s.gallery,
         leaderboard: Array.isArray(leaderboard) ? leaderboard : s.leaderboard,
+        loyaltySettings: loyaltySettings || s.loyaltySettings,
       }));
     })();
     try {
       const u = localStorage.getItem("vlome_user");
-      if (u) { setS((s) => ({ ...s, user: JSON.parse(u) })); loadRegIds(); }
+      if (u) { setS((s) => ({ ...s, user: JSON.parse(u) })); loadRegIds(); loadLoyaltyMe(); }
     } catch { /* ignore */ }
     const h = typeof window !== "undefined" ? window.location.hash : "";
     // Deep-link de développement : #dev=email:motdepasse — connexion auto (jamais en prod).
@@ -3377,6 +3512,7 @@ export default function Page() {
       d.place = val("wz-place").trim();
       d.pointsPerPlayer = Math.max(1, parseInt(val("wz-pts")) || 5);
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
+      d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
     } else if (S.wizStep === 2) {
       d.players = val("wz-players").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     } else if (S.wizStep === 3) {
@@ -3461,7 +3597,7 @@ export default function Page() {
     const body: Detail = {
       name: d.name, game: d.game, format: d.format, place: d.place,
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.players,
-      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof,
+      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus,
     };
@@ -3480,7 +3616,7 @@ export default function Page() {
       await loadTournaments();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -3500,7 +3636,7 @@ export default function Page() {
     setS((s) => ({ ...s, busy: true }));
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
-      entryFeeXof: d.entryFeeXof, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
+      entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
     };
     try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
     catch { setS((s) => ({ ...s, busy: false })); return; }
@@ -3535,7 +3671,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -3614,7 +3750,7 @@ export default function Page() {
             name: t.name || "", game: t.game || "", date: "", place: t.place || "", format: ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL",
             pointsPerPlayer: t.pointsPerPlayer || 5, nbPools: t.nbPools || 2,
             players: roster.map((p) => (p.club ? `${p.name} @${p.club}` : p.name)),
-            entryFeeXof: t.entryFeeXof || 0,
+            entryFeeXof: t.entryFeeXof || 0, givesLoyaltyPoint: t.givesLoyaltyPoint ?? true,
             survWin: t.scoring?.survWin ?? 1, loserWin: t.scoring?.loserWin ?? 0.5, poolFinalWin: t.scoring?.poolFinalWin ?? 1.5,
             finalsWin: t.scoring?.finalsWin ?? 2, championBonus: t.scoring?.championBonus ?? 3,
             imageUrl: t.imageUrl || null,
@@ -3662,8 +3798,10 @@ export default function Page() {
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));
-    else if (d.addName) setS((s) => ({ ...s, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0") }] }));
-    else if (d.cartOpen !== undefined) setS((s) => ({ ...s, cartOpen: true }));
+    else if (d.addName) setS((s) => ({ ...s, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0"), id: d.addId }] }));
+    else if (d.cartOpen !== undefined) { setS((s) => ({ ...s, cartOpen: true })); loadLoyaltyMe(); }
+    else if (d.cartpts) setS((s) => ({ ...s, cartPointsToRedeem: parseInt(d.cartpts!) || 0 }));
+    else if (d.regpts) setS((s) => ({ ...s, regPointsToRedeem: parseInt(d.regpts!) || 0 }));
     else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "" }));
     else if (d.cartVieworders !== undefined) { setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "", page: "profil" })); window.scrollTo({ top: 0 }); }
     else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
@@ -3679,6 +3817,7 @@ export default function Page() {
     else if (d.consolemenu !== undefined) setS((s) => ({ ...s, consoleMenuOpen: d.consolemenu === "1" }));
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
+    else if (d.loyaltysave !== undefined) saveLoyalty();
     else if (d.herobgclear !== undefined) clearHeroBg();
     else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null }] }));
     else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []), confirmBox: { title: "Supprimer le partenaire", message: "Cette ligne sera retirée du bandeau partenaires.", okLabel: "Supprimer", action: `ptdel|${d.ptdel}` } }));
@@ -3737,7 +3876,7 @@ export default function Page() {
     }
     else if (d.prodcat) setS((s) => ({ ...s, prodCat: d.prodcat! }));
     else if (d.prodsort) setS((s) => ({ ...s, prodSort: d.prodsort!, prodSortDir: s.prodSort === d.prodsort && s.prodSortDir === "asc" ? "desc" : "asc" }));
-    else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0 } }));
+    else if (d.prodnew !== undefined) setS((s) => ({ ...s, prodEdit: { name: "", category: "", priceXof: 0, stock: 0, loyaltyEligible: false } }));
     else if (d.prodedit) { const p = S.admin?.products.find((x: Detail) => x.id === d.prodedit); if (p) setS((s) => ({ ...s, prodEdit: p })); }
     else if (d.prodcancel !== undefined) setS((s) => ({ ...s, prodEdit: null }));
     else if (d.prodsave) saveProd(d.prodsave);
@@ -3800,7 +3939,7 @@ export default function Page() {
     else if (d.act === "create-open") {
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
       }));
       loadRoster();
     }

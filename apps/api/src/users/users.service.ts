@@ -14,7 +14,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true, email: true, displayName: true, role: true,
-        bio: true, city: true, favoriteGame: true, createdAt: true,
+        bio: true, city: true, favoriteGame: true, createdAt: true, loyaltyPoints: true,
       },
     });
     if (!u) throw new NotFoundException('Utilisateur introuvable');

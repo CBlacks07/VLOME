@@ -1,4 +1,4 @@
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -11,6 +11,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
+  @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   // Barème de points (facultatif — valeurs par défaut du moteur sinon).
   @IsOptional() @IsNumber() @Min(0.25) survWin?: number;
   @IsOptional() @IsNumber() @Min(0.25) loserWin?: number;
@@ -26,6 +27,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() place?: string;
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
+  @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
@@ -68,6 +70,7 @@ export class ReportDto {
 
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
+  @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;
 }
 
 export class BattleRoyaleReportDto {

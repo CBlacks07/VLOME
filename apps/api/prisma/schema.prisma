@@ -41,33 +41,58 @@ enum TournamentStatus {
   FINISHED
 }
 
+enum LoyaltyReason {
+  PARTICIPATION // +1 point, inscription validée à un tournoi Vlome
+  ORDER_REDEMPTION // -N points, dépensés en boutique
+  REGISTRATION_REDEMPTION // -N points, dépensés sur des frais d'inscription
+  ADMIN_ADJUST // +/- N, ajustement manuel
+  REFUND // +N points, désinscription (rembourse points dépensés / retire le point gagné)
+}
+
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
+  id            String               @id @default(cuid())
+  email         String               @unique
   passwordHash  String
   displayName   String
-  role          Role           @default(PLAYER)
+  role          Role                 @default(PLAYER)
   bio           String?
   city          String?
   favoriteGame  String?
-  createdAt     DateTime       @default(now())
+  loyaltyPoints Int                  @default(0) // solde courant, dénormalisé depuis LoyaltyTransaction
+  createdAt     DateTime             @default(now())
   player        Player?
   registrations Registration[]
   orders        Order[]
+  loyaltyTxs    LoyaltyTransaction[]
+}
+
+// Journal des gains/dépenses de points fidélité — sert à la fois d'historique
+// consultable et de preuve en cas d'écart avec User.loyaltyPoints (dénormalisé).
+model LoyaltyTransaction {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount         Int // signé : +1, -50…
+  reason         LoyaltyReason
+  registrationId String? // participation ayant généré le point, ou frais d'inscription payés en points
+  orderId        String? // commande boutique payée (en partie) en points
+  note           String?
+  createdAt      DateTime      @default(now())
 }
 
 // Inscription d'un utilisateur à un tournoi (avant lancement)
 model Registration {
-  id            String     @id @default(cuid())
-  userId        String
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tournamentId  String
-  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  playerName    String
-  amountXof     Int        @default(0)
-  paymentMethod String? // Flooz, Mixx by Yas, Visa... (null si gratuit)
-  paymentStatus String     @default("paid") // 'paid' (gratuit ou confirmé) | 'pending' (paiement à confirmer)
-  createdAt     DateTime   @default(now())
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournamentId   String
+  tournament     Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  playerName     String
+  amountXof      Int        @default(0)
+  paymentMethod  String? // Flooz, Mixx by Yas, Visa... (null si gratuit)
+  paymentStatus  String     @default("paid") // 'paid' (gratuit ou confirmé) | 'pending' (paiement à confirmer)
+  pointsRedeemed Int        @default(0) // points fidélité utilisés pour réduire amountXof
+  createdAt      DateTime   @default(now())
 
   @@unique([userId, tournamentId])
 }
@@ -95,24 +120,25 @@ model Player {
 }
 
 model Tournament {
-  id              String           @id @default(cuid())
-  name            String
-  game            String?
-  format          TournamentFormat @default(SURVIVAL)
-  status          TournamentStatus @default(DRAFT)
-  date            DateTime?
-  place           String?
-  pointsPerPlayer Int              @default(5)
-  nbPools         Int              @default(2)
-  entryFeeXof     Int              @default(0) // frais d'inscription en FCFA (0 = gratuit)
-  imageUrl        String?
+  id                String           @id @default(cuid())
+  name              String
+  game              String?
+  format            TournamentFormat @default(SURVIVAL)
+  status            TournamentStatus @default(DRAFT)
+  date              DateTime?
+  place             String?
+  pointsPerPlayer   Int              @default(5)
+  nbPools           Int              @default(2)
+  entryFeeXof       Int              @default(0) // frais d'inscription en FCFA (0 = gratuit)
+  givesLoyaltyPoint Boolean          @default(true) // désactivable par l'admin (ex : tournoi organisé par un tiers)
+  imageUrl          String?
   // état complet du moteur @vlome/engine (JSON natif Postgres)
-  engineState     Json?
-  createdById     String?          // propriétaire (organisateur)
-  createdAt       DateTime         @default(now())
-  matches         Match[]
-  registrations   Registration[]
-  galleryItems    GalleryItem[]
+  engineState       Json?
+  createdById       String? // propriétaire (organisateur)
+  createdAt         DateTime         @default(now())
+  matches           Match[]
+  registrations     Registration[]
+  galleryItems      GalleryItem[]
 }
 
 model Match {
@@ -136,13 +162,13 @@ model Setting {
 
 // Galerie : photos/vidéos des événements (LAN, finales, remises de prix…)
 model GalleryItem {
-  id           String     @id @default(cuid())
+  id           String      @id @default(cuid())
   title        String
   mediaUrl     String // image ou vidéo (/uploads/...)
-  mediaType    String     @default("image") // 'image' | 'video'
+  mediaType    String      @default("image") // 'image' | 'video'
   tournamentId String?
   tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now())
+  createdAt    DateTime    @default(now())
 }
 
 model NewsPost {
@@ -157,23 +183,25 @@ model NewsPost {
 }
 
 model Product {
-  id        String   @id @default(cuid())
-  name      String
-  category  String
-  priceXof  Int // prix en FCFA
-  stock     Int      @default(0)
-  imageUrl  String?
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String
+  category        String
+  priceXof        Int // prix en FCFA
+  stock           Int      @default(0)
+  imageUrl        String?
+  loyaltyEligible Boolean  @default(false) // réduction en points possible sur ce produit (choix admin)
+  createdAt       DateTime @default(now())
 }
 
 model Order {
-  id            String   @id @default(cuid())
-  reference     String   @unique
-  totalXof      Int
-  paymentMethod String // Flooz, Mixx by Yas, Visa...
-  status        String   @default("pending")
-  items         Json? // [{ name, price }]
-  userId        String?
-  user          User?    @relation(fields: [userId], references: [id])
-  createdAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  reference      String   @unique
+  totalXof       Int
+  paymentMethod  String // Flooz, Mixx by Yas, Visa...
+  status         String   @default("pending")
+  items          Json? // [{ name, price }]
+  pointsRedeemed Int      @default(0) // points fidélité utilisés pour réduire totalXof
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now())
 }

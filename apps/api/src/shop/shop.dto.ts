@@ -1,9 +1,10 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsInt, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsInt, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
 
 export class OrderItemDto {
   @IsString() @MaxLength(120) name!: string;
   @IsInt() @Min(0) priceXof!: number;
+  @IsOptional() @IsString() productId?: string;
 }
 
 export class CreateOrderDto {
@@ -11,4 +12,6 @@ export class CreateOrderDto {
   items!: OrderItemDto[];
 
   @IsString() @MaxLength(40) paymentMethod!: string;
+
+  @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;
 }

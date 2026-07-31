@@ -78,19 +78,6 @@ const SLIDES = [
   { tag: "Communauté", title: "GAMING ARENA LOMÉ", sub: "LAN mensuelle : viens jouer, streamer et rencontrer la communauté esport togolaise.", cta: "Découvrir" },
 ];
 
-const EVENTS = [
-  { d: "12", mo: "JUL", t: "Survival Cup Lomé", type: "Tournoi LAN", place: "Palais des Congrès" },
-  { d: "19", mo: "JUL", t: "Tekken Kings Cup", type: "Tournoi", place: "Gaming Arena Lomé" },
-  { d: "26", mo: "JUL", t: "Free Fire Togo Series", type: "Battle Royale", place: "Kara" },
-  { d: "03", mo: "AOÛ", t: "Conférence Esport & Emploi", type: "Conférence", place: "Université de Lomé" },
-];
-
-const NEWS = [
-  { cat: "EA FC", ph: "ea-fc-26-patch", t: "EA FC 26 : le patch qui change la méta au Togo", date: "Il y a 2 jours" },
-  { cat: "Esport Togo", ph: "vlome-partenariat", t: "VLOME signe un partenariat avec Gaming Arena Lomé", date: "Il y a 4 jours" },
-  { cat: "Free Fire", ph: "free-fire-series", t: "Free Fire Togo Series : 48 joueurs déjà inscrits", date: "Il y a 6 jours" },
-];
-
 const PARTNERS = ["Gaming Arena Lomé", "Yas Togo", "Moov Africa", "Université de Lomé", "CIC Lomé", "Togocom"];
 
 const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espèces"];
@@ -398,13 +385,23 @@ function pAccueil(S: State) {
   const rankRows = rankSource.length
     ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid #282838"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#5D5E72;width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:11px;font-weight:800;color:#8E8FA6">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:#5D5E72">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:#8E8FA6;font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-family:'JetBrains Mono',monospace">${r.points}</td></tr>`).join("")
     : `<tr><td style="padding:16px 6px;color:#5D5E72;font-size:13px" colspan="4">Aucun résultat pour l'instant.</td></tr>`;
-  const evRows = EVENTS.map((e) => `<div style="display:flex;gap:13px;align-items:center"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${e.d}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700">${e.mo}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px">${e.t}</div><div style="font-size:12px;color:#8E8FA6">${e.type} · ${e.place}</div></div></div>`).join("");
+  // Prochains événements : dérivé des vrais tournois à venir (aucune donnée inventée) — les deux
+  // premiers segments de la date déjà formatée côté API ("12 juil.") alimentent le badge jour/mois.
+  const upcoming = tourns.filter((t) => t.status === "À venir" && t.date).slice(0, 4);
+  const evRows = upcoming.length
+    ? upcoming.map((t) => {
+        const [d, moRaw] = t.date.split(" ");
+        const mo = (moRaw || "").replace(/\.$/, "");
+        return `<div data-open="${t.id}" style="display:flex;gap:13px;align-items:center;cursor:pointer"><div style="flex:none;width:52px;text-align:center;border:1px solid #282838;border-radius:11px;padding:7px 4px;background:#14141D"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${escHtml(d) || "—"}</div><div style="font-size:9px;letter-spacing:1px;color:#8E8FA6;font-weight:700;text-transform:uppercase">${escHtml(mo)}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</div><div style="font-size:12px;color:#8E8FA6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.format)}${t.place ? " · " + escHtml(t.place) : ""}</div></div></div>`;
+      }).join("")
+    : `<div style="color:#5D5E72;font-size:13px">Aucun événement à venir pour l'instant.</div>`;
   const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Prochains événements</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
-  const newsItems: { cat: string; ph: string; t: string; date: string; img?: string | null }[] = S.news
-    ? S.news.slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date, img: n.imageUrl }))
-    : NEWS;
-  const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div><div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${mediaUrl(a.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${a.cat}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${a.t}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${a.date}</div></div></div>`).join("")}</div>`;
+  const newsItems: { cat: string; ph: string; t: string; date: string; img?: string | null }[] =
+    (S.news ?? []).slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date, img: n.imageUrl }));
+  const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div>${newsItems.length
+    ? `<div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a) => `<div class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#14141D,#0E0E16)">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${mediaUrl(a.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${escHtml(a.cat)}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${escHtml(a.t)}</h4><div style="font-size:12px;color:#5D5E72;margin-top:8px">${escHtml(a.date)}</div></div></div>`).join("")}</div>`
+    : `<div class="rise d4" style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:30px 24px;text-align:center;color:#8E8FA6;margin-bottom:44px">Aucune actualité pour l'instant.</div>`}`;
 
   const shopProducts: { name: string; price: number; ph: string; img?: string | null }[] = S.products ?? [];
   const shopSec = shopProducts.length

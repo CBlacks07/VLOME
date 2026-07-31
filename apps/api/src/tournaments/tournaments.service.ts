@@ -497,6 +497,7 @@ export class TournamentsService {
       matchId: mm.id, bye: mm.bye,
       aName: real(mm.a) ? Engine.playerName(t, mm.a) : null, bName: real(mm.b) ? Engine.playerName(t, mm.b) : null,
       aId: real(mm.a), bId: real(mm.b), winnerId: real(mm.winner),
+      sa: mm.sa ?? null, sb: mm.sb ?? null,
       playable: !!(real(mm.a) && real(mm.b) && !mm.winner && !mm.bye),
     };
   }

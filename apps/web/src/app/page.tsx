@@ -1820,14 +1820,16 @@ function poolCard(S: State, p: Detail, manage: boolean): string {
 }
 
 /** Bracket(s) de la phase finale — rendu générique réutilisé pour les formats single/double/roundrobin/swiss, partagé entre pTournoi et la régie. */
-function matchLine(name: string | null, id: string | null, win: boolean, playable: boolean, matchId: string, manage: boolean): string {
+function matchLine(name: string | null, id: string | null, win: boolean, playable: boolean, matchId: string, manage: boolean, score: number | null = null): string {
   if (!name) return `<div style="padding:9px 11px;color:#5D5E72;font-style:italic">à venir</div>`;
-  if (playable && manage) return `<button data-reportf="${matchId}|${id}" style="display:block;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px">${escHtml(name)}</button>`;
-  return `<div style="padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}">${escHtml(name)}${win ? " ✓" : ""}</div>`;
+  const scoreEl = score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:13px;color:${win ? "#22D3EE" : "#5D5E72"};flex:none">${score}</span>` : "";
+  if (playable && manage) return `<button data-reportf="${matchId}|${id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}</span>${scoreEl}</button>`;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${scoreEl}</div>`;
 }
 function matchBox(m: Detail, manage: boolean): string {
   if (m.bye) return `<div style="border:1px solid #282838;border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, true, false, m.matchId, manage)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #22222F">exempt</div></div>`;
-  return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId, manage)}<div style="border-top:1px solid #22222F">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId, manage)}</div></div>`;
+  const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
+  return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid #22222F">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div></div>`;
 }
 function roundCol(label: string, matches: Detail[], manage: boolean): string {
   return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map((m) => matchBox(m, manage)).join("")}</div>`;
@@ -1839,8 +1841,11 @@ function roundRobinMatchRow(m: Detail, manage: boolean): string {
     if (manage && m.playable) return `<button data-reportf="${m.matchId}|${id}" style="background:transparent;border:0;color:#F4F5FB;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:3px 6px;border-radius:6px;text-align:inherit">${escHtml(name)}</button>`;
     return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
   };
+  const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
   const status = m.winnerId
-    ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
+    ? hasScore
+      ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:12.5px;color:#34D399">${m.sa}–${m.sb}</span>`
+      : `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
     : m.playable ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#22D3EE">À JOUER</span>` : `<span style="font-size:10px;color:#5D5E72">—</span>`;
   return `<div style="display:grid;grid-template-columns:1fr 26px 1fr 68px;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #15151f">
     <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
@@ -1977,8 +1982,9 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
       <div style="padding:8px 10px;color:#5D5E72;font-style:italic;font-size:11.5px;border-top:1px solid #1B1B27">exempt</div>
     </div>`;
   }
-  const row = (name: string | null, win: boolean) => name
-    ? `<div style="padding:8px 10px;font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "#F4F5FB"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</div>`
+  const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
+  const row = (name: string | null, win: boolean, score: number | null) => name
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "#F4F5FB"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "#5D5E72"};flex:none">${score}</span>` : ""}</div>`
     : `<div style="padding:8px 10px;color:#5D5E72;font-style:italic;font-size:11.5px">à venir</div>`;
   const isPlayable = !!m.playable && manage;
   const border = active ? "1px solid #22D3EE" : m.winnerId ? "1px solid rgba(52,211,153,.3)" : isPlayable ? "1px solid rgba(34,211,238,.4)" : "1px dashed #2c2c3d";
@@ -1992,8 +1998,8 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   const clickAttr = isPlayable && !active ? `data-activematch="${m.matchId}"` : "";
   return `<div ${clickAttr} style="position:absolute;left:${x}px;top:${y}px;width:${w}px;border:${border};border-radius:10px;overflow:hidden;background:${active ? "rgba(34,211,238,.07)" : "#101019"};${isPlayable && !active ? "cursor:pointer" : ""}">
     <div style="display:flex;align-items:center;padding:6px 10px;background:#0d0d14;border-bottom:1px solid #1B1B27">${statusBadge}</div>
-    ${row(m.aName, m.winnerId === m.aId)}
-    <div style="border-top:1px solid #1B1B27">${row(m.bName, m.winnerId === m.bId)}</div>
+    ${row(m.aName, m.winnerId === m.aId, hasScore ? m.sa : null)}
+    <div style="border-top:1px solid #1B1B27">${row(m.bName, m.winnerId === m.bId, hasScore ? m.sb : null)}</div>
   </div>`;
 }
 

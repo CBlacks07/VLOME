@@ -1820,16 +1820,31 @@ function poolCard(S: State, p: Detail, manage: boolean): string {
 }
 
 /** Bracket(s) de la phase finale — rendu générique réutilisé pour les formats single/double/roundrobin/swiss, partagé entre pTournoi et la régie. */
+/** États visuels d'un match — bordure, badge de statut, fond — partagés entre l'arbre de bracket
+ * (matchTreeBox) et la liste plate (matchBox/roundCol). "active" ne s'applique qu'en régie (match
+ * actuellement sélectionné dans le panneau de contrôle) ; "playable" reste mis en avant même côté
+ * spectateur (on voit quel match est le prochain à se jouer), seul le clic pour le rapporter est
+ * réservé à l'organisateur (géré séparément par l'appelant via `manage`). */
+function matchVisual(m: Detail, active: boolean): { border: string; badgeText: string; badgeColor: string; bg: string } {
+  if (active) return { border: "1px solid #22D3EE", badgeText: "En direct", badgeColor: "#22D3EE", bg: "rgba(34,211,238,.07)" };
+  if (m.winnerId) return { border: "1px solid rgba(52,211,153,.3)", badgeText: "Joué", badgeColor: "#34D399", bg: "#101019" };
+  if (m.playable) return { border: "1px dashed rgba(34,211,238,.4)", badgeText: "À lancer", badgeColor: "#22D3EE", bg: "#101019" };
+  return { border: "1px dashed #2c2c3d", badgeText: "À venir", badgeColor: "#5D5E72", bg: "#101019" };
+}
 function matchLine(name: string | null, id: string | null, win: boolean, playable: boolean, matchId: string, manage: boolean, score: number | null = null): string {
   if (!name) return `<div style="padding:9px 11px;color:#5D5E72;font-style:italic">à venir</div>`;
-  const scoreEl = score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:13px;color:${win ? "#22D3EE" : "#5D5E72"};flex:none">${score}</span>` : "";
+  const scoreEl = score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:13px;color:${win ? "#34D399" : "#5D5E72"};flex:none">${score}</span>` : "";
   if (playable && manage) return `<button data-reportf="${matchId}|${id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:9px 11px;background:transparent;border:0;color:#F4F5FB;cursor:pointer;font-family:inherit;font-size:14px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}</span>${scoreEl}</button>`;
-  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;color:${win ? "#22D3EE" : "#8E8FA6"};font-weight:${win ? 700 : 400}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${scoreEl}</div>`;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;color:${win ? "#34D399" : "#F4F5FB"};font-weight:${win ? 800 : 600}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${scoreEl}</div>`;
 }
 function matchBox(m: Detail, manage: boolean): string {
-  if (m.bye) return `<div style="border:1px solid #282838;border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, true, false, m.matchId, manage)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #22222F">exempt</div></div>`;
+  if (m.bye) return `<div style="border:1px dashed #1B1B27;border-radius:10px;overflow:hidden;background:#101019">${matchLine(m.aName || m.bName, m.aId, true, false, m.matchId, manage)}<div style="padding:9px 11px;color:#5D5E72;font-style:italic;border-top:1px solid #1B1B27">exempt</div></div>`;
   const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
-  return `<div style="border:1px solid ${m.playable ? "rgba(34,211,238,.4)" : "#282838"};border-radius:10px;overflow:hidden;background:#14141D">${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid #22222F">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div></div>`;
+  const v = matchVisual(m, false);
+  return `<div style="border:${v.border};border-radius:10px;overflow:hidden;background:${v.bg}">
+    <div style="display:flex;align-items:center;padding:6px 11px;background:#0d0d14;border-bottom:1px solid #1B1B27"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span></div>
+    ${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid #1B1B27">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div>
+  </div>`;
 }
 function roundCol(label: string, matches: Detail[], manage: boolean): string {
   return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map((m) => matchBox(m, manage)).join("")}</div>`;
@@ -1986,18 +2001,12 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   const row = (name: string | null, win: boolean, score: number | null) => name
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "#F4F5FB"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "#5D5E72"};flex:none">${score}</span>` : ""}</div>`
     : `<div style="padding:8px 10px;color:#5D5E72;font-style:italic;font-size:11.5px">à venir</div>`;
-  const isPlayable = !!m.playable && manage;
-  const border = active ? "1px solid #22D3EE" : m.winnerId ? "1px solid rgba(52,211,153,.3)" : isPlayable ? "1px solid rgba(34,211,238,.4)" : "1px dashed #2c2c3d";
-  const statusBadge = active
-    ? `<span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#22D3EE">En direct</span>`
-    : m.winnerId
-      ? `<span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#34D399">Joué</span>`
-      : isPlayable
-        ? `<span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#22D3EE">À lancer</span>`
-        : `<span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#5D5E72">À jouer</span>`;
-  const clickAttr = isPlayable && !active ? `data-activematch="${m.matchId}"` : "";
-  return `<div ${clickAttr} style="position:absolute;left:${x}px;top:${y}px;width:${w}px;border:${border};border-radius:10px;overflow:hidden;background:${active ? "rgba(34,211,238,.07)" : "#101019"};${isPlayable && !active ? "cursor:pointer" : ""}">
-    <div style="display:flex;align-items:center;padding:6px 10px;background:#0d0d14;border-bottom:1px solid #1B1B27">${statusBadge}</div>
+  // La mise en avant du prochain match jouable reste visible côté spectateur (on voit ce qui arrive) ;
+  // seul le clic pour le rapporter est réservé à l'organisateur.
+  const v = matchVisual(m, active);
+  const clickable = !!m.playable && manage && !active;
+  return `<div ${clickable ? `data-activematch="${m.matchId}"` : ""} style="position:absolute;left:${x}px;top:${y}px;width:${w}px;border:${v.border};border-radius:10px;overflow:hidden;background:${v.bg};${clickable ? "cursor:pointer" : ""}">
+    <div style="display:flex;align-items:center;padding:6px 10px;background:#0d0d14;border-bottom:1px solid #1B1B27"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span></div>
     ${row(m.aName, m.winnerId === m.aId, hasScore ? m.sa : null)}
     <div style="border-top:1px solid #1B1B27">${row(m.bName, m.winnerId === m.bId, hasScore ? m.sb : null)}</div>
   </div>`;
@@ -2464,11 +2473,11 @@ function pTournoi(S: State) {
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
       const gf = t.finals.gf2 ? [t.finals.gf, t.finals.gf2] : [t.finals.gf];
-      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.wb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
+      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(t.finals.wb, null, manage)}
         <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
         <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Grande finale${t.finals.gf2 ? " (2e manche — bracket reset)" : ""}</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${roundCol("", gf, manage)}</div>`;
     } else {
-      body = `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${t.finals.rounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`;
+      body = bracketTree(t.finals.rounds, null, manage);
     }
     const bracketCol = `${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale${fmtLabel}</div>${body}`;
     // Panneau organisateur : premier match jouable extrait du bracket pour l'arbitrer en un clic, + suivi de la cagnotte (données déjà calculées plus haut : dist/total/pct).

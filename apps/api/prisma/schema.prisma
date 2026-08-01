@@ -49,21 +49,61 @@ enum LoyaltyReason {
   REFUND // +N points, désinscription (rembourse points dépensés / retire le point gagné)
 }
 
+enum CreditReason {
+  PURCHASE // +N, achat de crédits confirmé par l'admin
+  TOURNAMENT_HOST // -1, création d'un tournoi au-delà du tournoi gratuit
+  ADMIN_ADJUST // +/- N, ajustement manuel
+  REFUND // +1, tournoi supprimé avant d'avoir été lancé
+}
+
 model User {
-  id            String               @id @default(cuid())
-  email         String               @unique
-  passwordHash  String
-  displayName   String
-  role          Role                 @default(PLAYER)
-  bio           String?
-  city          String?
-  favoriteGame  String?
-  loyaltyPoints Int                  @default(0) // solde courant, dénormalisé depuis LoyaltyTransaction
-  createdAt     DateTime             @default(now())
-  player        Player?
-  registrations Registration[]
-  orders        Order[]
-  loyaltyTxs    LoyaltyTransaction[]
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  passwordHash        String
+  displayName         String
+  role                Role                 @default(PLAYER)
+  bio                 String?
+  city                String?
+  favoriteGame        String?
+  phone               String? // téléphone/WhatsApp — requis pour un organisateur (suivi des crédits)
+  loyaltyPoints       Int                  @default(0) // solde courant, dénormalisé depuis LoyaltyTransaction
+  organizerCredits    Int                  @default(0) // solde de crédits organisateur (1 crédit = 1 tournoi hébergé), dénormalisé depuis CreditTransaction
+  freeTournamentsUsed Int                  @default(0) // nombre de tournois gratuits déjà consommés (comparé au quota réglable admin)
+  createdAt           DateTime             @default(now())
+  player              Player?
+  registrations       Registration[]
+  orders              Order[]
+  loyaltyTxs          LoyaltyTransaction[]
+  creditTxs           CreditTransaction[]
+  creditPurchases     CreditPurchase[]
+}
+
+// Journal des gains/dépenses de crédits organisateur — même rôle que LoyaltyTransaction
+// (historique + preuve en cas d'écart avec User.organizerCredits dénormalisé).
+model CreditTransaction {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Int // signé : +5 (achat), -1 (hébergement d'un tournoi)…
+  reason       CreditReason
+  tournamentId String? // tournoi hébergé (consommation) ou supprimé (remboursement)
+  purchaseId   String? // achat de crédits ayant généré ce crédit
+  note         String?
+  createdAt    DateTime     @default(now())
+}
+
+// Demande d'achat de crédits organisateur — même flux de confirmation manuelle que Order/Registration
+// (pas de passerelle de paiement : l'organisateur choisit un moyen de paiement, un admin confirme
+// à réception avant que les crédits ne soient effectivement crédités).
+model CreditPurchase {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credits       Int
+  amountXof     Int
+  paymentMethod String
+  status        String   @default("pending") // 'pending' | 'paid'
+  createdAt     DateTime @default(now())
 }
 
 // Journal des gains/dépenses de points fidélité — sert à la fois d'historique

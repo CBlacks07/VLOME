@@ -24,10 +24,12 @@ type State = {
   regPointsToRedeem: number; // idem, pour réduire les frais d'inscription à un tournoi
   loyaltySettings: { pointValueXof: number; maxRedeemPercent: number } | null;
   loyaltyHistory: Detail[] | null; loyaltyBalance: number;
+  creditsMe: { balance: number; freeTournamentsUsed: number; freeTournaments: number; priceXof: number; history: Detail[]; purchases: Detail[] } | null;
+  creditBuyQty: number; creditBuyPay: string; creditBuyBusy: boolean;
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[] } | null;
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
@@ -1056,6 +1058,61 @@ function loyaltyCard(S: State) {
   </div>${scrollBox(rows, 320)}`);
 }
 
+/** Onglet Crédits de l'espace organisateur : quota gratuit, solde, achat, historique. */
+function organizerCredits(S: State) {
+  const c = S.creditsMe;
+  if (!c) return card(`<div style="color:#8E8FA6;text-align:center;padding:30px 0">Chargement…</div>`);
+  const freeLeft = Math.max(0, c.freeTournaments - c.freeTournamentsUsed);
+  const canHostFree = freeLeft > 0;
+  const summary = card(`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle("Crédits organisateur")}
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:#22D3EE">${c.balance} crédit${c.balance > 1 ? "s" : ""}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      ${canHostFree
+        ? `<span style="display:inline-flex;align-items:center;gap:7px;color:#34D399;font-weight:700;font-size:13px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:6px 13px">${ic(I.crown, 14)}${freeLeft} tournoi${freeLeft > 1 ? "s" : ""} gratuit${freeLeft > 1 ? "s" : ""} restant${freeLeft > 1 ? "s" : ""}</span>`
+        : c.balance > 0
+          ? `<span style="display:inline-flex;align-items:center;gap:7px;color:#22D3EE;font-weight:700;font-size:13px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:6px 13px">${ic(I.bolt, 14)}Tu peux créer ${c.balance} tournoi${c.balance > 1 ? "s" : ""} de plus</span>`
+          : `<span style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 13px">${ic(I.warn, 14)}Quota gratuit épuisé — achète du crédit pour héberger un nouveau tournoi</span>`}
+    </div>
+    <p style="color:#5D5E72;font-size:12.5px;line-height:1.6;margin:12px 0 0">1 crédit = 1 tournoi hébergé, au tarif de ${money(c.priceXof)}. Si tu supprimes un tournoi jamais lancé, le crédit dépensé t'est automatiquement rendu.</p>
+  `);
+  const qty = Math.max(1, S.creditBuyQty || 1);
+  const total = qty * c.priceXof;
+  const payChips = PAYMENTS.map((m) => `<button data-creditbuypay="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.creditBuyPay === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.creditBuyPay === m ? "#22D3EE" : "#282838"};color:${S.creditBuyPay === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
+  const canBuy = !!S.creditBuyPay && !S.creditBuyBusy;
+  const buyCard = card(`
+    ${secTitle("Acheter des crédits")}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button data-creditbuyqty="${Math.max(1, qty - 1)}" style="width:36px;height:36px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer;font-size:16px">−</button>
+      <span style="min-width:60px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px">${qty}</span>
+      <button data-creditbuyqty="${qty + 1}" style="width:36px;height:36px;border-radius:9px;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;cursor:pointer;font-size:16px">+</button>
+      <span style="flex:1;text-align:right;color:#8E8FA6;font-size:13px">Total : <b style="color:#22D3EE;font-family:'JetBrains Mono',monospace">${money(total)}</b></span>
+    </div>
+    <div style="color:#8E8FA6;font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">${payChips}</div>
+    <button data-creditbuy="1" ${canBuy ? "" : "disabled"} style="background:${canBuy ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canBuy ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:${canBuy ? "pointer" : "default"}">${S.creditBuyBusy ? "Envoi…" : "Demander"}</button>
+    <p style="color:#5D5E72;font-size:12px;margin:12px 0 0">Pas de paiement en ligne : l'équipe VLOME te contacte pour confirmer, puis crédite ton compte.</p>
+  `);
+  const pendingPurchases = (c.purchases ?? []).filter((p: Detail) => p.status === "pending");
+  const pendingCard = pendingPurchases.length ? card(`${secTitle("Demandes en attente")}${pendingPurchases.map((p: Detail) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid #22222F">
+      <div><div style="font-size:13.5px;font-weight:600">${p.credits} crédit${p.credits > 1 ? "s" : ""} · ${escHtml(p.paymentMethod)}</div><div style="font-size:11.5px;color:#5D5E72">${money(p.amountXof)} · en attente de confirmation</div></div>
+      <button data-creditcancel="${p.id}" style="font-size:11.5px;font-weight:700;color:#8E8FA6;background:transparent;border:1px solid #282838;border-radius:8px;padding:6px 11px;cursor:pointer">Annuler</button>
+    </div>`).join("")}`) : "";
+  const reasonLabel: Record<string, string> = {
+    PURCHASE: "Achat de crédits", TOURNAMENT_HOST: "Tournoi hébergé", ADMIN_ADJUST: "Ajustement", REFUND: "Remboursement",
+  };
+  const history: Detail[] = c.history ?? [];
+  const histRows = history.length ? history.map((h) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid #22222F">
+      <div><div style="font-size:13.5px;font-weight:600">${reasonLabel[h.reason] || h.reason}${h.note ? ` · ${escHtml(h.note)}` : ""}</div><div style="font-size:11.5px;color:#5D5E72">${new Date(h.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</div></div>
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:14px;color:${h.amount > 0 ? "#34D399" : "#FB7185"};flex:none">${h.amount > 0 ? "+" : ""}${h.amount}</span>
+    </div>`).join("") : `<div style="color:#5D5E72;font-size:13.5px;text-align:center;padding:20px 0">Aucun mouvement pour l'instant.</div>`;
+  const historyCard = card(`${secTitle("Historique")}${scrollBox(histRows, 320)}`);
+  return summary + `<div style="margin-top:16px">${grid2(buyCard, pendingCard || historyCard)}</div>${pendingCard ? historyCard : ""}`;
+}
+
 const grid2 = (a: string, b: string) => `<div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">${a}${b}</div>`;
 
 const secTitle = (t: string) => `<h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${t}</h3>`;
@@ -1099,6 +1156,7 @@ function profileEditor(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="p-city" value="${esc(me.city)}" placeholder="Lomé" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu favori<input id="p-game" value="${esc(me.favoriteGame)}" placeholder="EA FC 26" style="${inp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Téléphone / WhatsApp<input id="p-phone" type="tel" value="${esc(me.phone)}" placeholder="+228 90 00 00 00" style="${inp}" /></label>
     </div>
     <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Bio<textarea id="p-bio" rows="2" placeholder="Quelques mots sur toi…" style="${inp};resize:vertical">${(me.bio || "").replace(/</g, "&lt;")}</textarea></label>
     ${S.profileMsg ? `<div style="color:#FB7185;font-size:12.5px;margin-top:10px">${S.profileMsg}</div>` : ""}
@@ -1164,7 +1222,7 @@ function profileSecurity(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -1188,11 +1246,11 @@ function adminSearchBar(S: State, placeholder: string) {
 const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px;overflow-y:auto;padding-right:4px">${inner}</div>`;
 
 /** Jeu d'onglets réduit pour ORGANIZER (pas d'accès aux réglages site/utilisateurs/joueurs/actus/galerie/produits — réservés à ADMIN). */
-const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["compte", "Mon compte"]];
+const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["credits", "Crédits"], ["compte", "Mon compte"]];
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
   apercu: I.bolt, site: I.edit, users: I.user, joueurs: I.crown, news: I.flame, galerie: I.image,
-  produits: I.cart, fidelite: I.medal, paiements: I.warn, commandes: I.cart, compte: I.user,
+  produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, compte: I.user,
 };
 
 /** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
@@ -1308,12 +1366,14 @@ function consolePage(S: State): string {
       S.adminTab === "galerie" ? adminGallery(S) :
       S.adminTab === "produits" ? adminProducts(S) :
       S.adminTab === "fidelite" ? adminLoyalty(S) :
+      S.adminTab === "credits" ? adminCredits(S) :
       S.adminTab === "paiements" ? adminPayments(S) :
       S.adminTab === "commandes" ? adminOrders(a) :
       consoleOverview(S);
   } else {
     body = S.adminTab === "compte"
       ? grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S)
+      : S.adminTab === "credits" ? organizerCredits(S)
       : consoleOverview(S);
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
@@ -1601,6 +1661,38 @@ function adminLoyalty(S: State) {
     <div style="margin-top:16px"><button data-loyaltysave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button></div>
     <p style="color:#5D5E72;font-size:12px;margin:14px 0 0">L'éligibilité produit se règle depuis l'onglet Produits, et le gain de point par tournoi depuis l'assistant de création (étape 1).</p>
   `);
+}
+
+/** Onglet Crédits organisateur : tarif + quota gratuit, et confirmation des demandes d'achat en attente. */
+function adminCredits(S: State) {
+  const cr = S.site?.credits || { priceXof: 750, freeTournaments: 1 };
+  const ok = S.siteMsg === "Réglages enregistrés.";
+  const settingsCard = card(`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle("Crédits organisateur")}
+      ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
+    </div>
+    <p style="color:#8E8FA6;font-size:13.5px;line-height:1.7;margin:0 0 18px">Un organisateur peut héberger ses premiers tournois gratuitement (quota ci-dessous), puis doit avoir du crédit pour en créer d'autres — 1 crédit = 1 tournoi hébergé. Pas de passerelle de paiement : l'organisateur choisit un moyen de paiement, tu confirmes ici à réception.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Prix d'un crédit (FCFA)<input id="cr-price" type="number" min="1" value="${cr.priceXof}" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Tournois gratuits offerts<input id="cr-free" type="number" min="0" value="${cr.freeTournaments}" style="${adminInp}" /></label>
+    </div>
+    <div style="margin-top:16px"><button data-creditssave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button></div>
+  `);
+  const purchases: Detail[] = S.admin?.creditPurchases ?? [];
+  const rows = purchases.length ? purchases.map((p: Detail) => {
+    const isPending = p.status === "pending";
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(p.user?.displayName)} <span style="color:#5D5E72;font-weight:400;font-size:12px">· ${p.credits} crédit${p.credits > 1 ? "s" : ""}</span></div><div style="font-size:12px;color:#5D5E72">${escHtml(p.user?.email)}${p.user?.phone ? " · " + escHtml(p.user.phone) : ""} · ${escHtml(p.paymentMethod)}</div></div>
+      <span style="font-weight:800;color:#22D3EE;white-space:nowrap">${money(p.amountXof)}</span>
+      ${isPending
+        ? `<button data-confirmcredit="${p.id}" style="font-size:12px;font-weight:750;border-radius:9px;padding:8px 14px;cursor:pointer;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399">Confirmer</button>`
+        : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#34D399;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:4px 10px">Payé</span>`}
+      </div>`;
+  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucune demande d'achat de crédits pour l'instant.</div>`;
+  const pendingCount = purchases.filter((p: Detail) => p.status === "pending").length;
+  const purchasesCard = card(`${secTitle(`Demandes d'achat (${purchases.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`)}${scrollBox(rows)}`, "20px");
+  return settingsCard + `<div style="margin-top:16px">${purchasesCard}</div>`;
 }
 
 function adminPayments(S: State) {
@@ -2546,7 +2638,8 @@ function pAuth(S: State) {
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
       <label style="${lbl}">Ville <span style="color:#5D5E72">(optionnel)</span><input id="a-city" placeholder="Lomé" style="${inp}" /></label>
       <label style="${lbl}">Jeu favori <span style="color:#5D5E72">(optionnel)</span><input id="a-game" placeholder="EA FC 26, Tekken 8…" style="${inp}" /></label>
-    </div>`;
+    </div>
+    <label style="${lbl};margin-top:14px">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>`;
 
   const perks = [
     [I.crown, "Inscris-toi aux tournois", "Survival, brackets, Battle Royale — suis tes matchs en direct."],
@@ -2826,6 +2919,7 @@ export default function Page() {
     tourns: null, creating: false, busy: false, leaderboard: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
+    creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false,
     user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -2950,7 +3044,7 @@ export default function Page() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isLogin
           ? { email, password }
-          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim() }),
+          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim(), phone: val("a-phone").trim() }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
@@ -3060,6 +3154,35 @@ export default function Page() {
       if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, loyaltyHistory: v.history, loyaltyBalance: v.balance })); }
     } catch { /* ignore */ }
   }
+  async function loadCreditsMe() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/credits/me`, { headers: authHeaders() });
+      if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, creditsMe: v })); }
+    } catch { /* ignore */ }
+  }
+  async function buyCredits() {
+    if (S.creditBuyQty < 1 || !S.creditBuyPay) return;
+    setS((s) => ({ ...s, creditBuyBusy: true }));
+    try {
+      const r = await fetch(`${API}/api/credits/purchase`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ credits: S.creditBuyQty, paymentMethod: S.creditBuyPay }),
+      });
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null, creditBuyBusy: false })); return; }
+      const data = await r.json();
+      if (!r.ok) { alert(data.message || "Demande impossible."); setS((s) => ({ ...s, creditBuyBusy: false })); return; }
+      await loadCreditsMe();
+      setS((s) => ({ ...s, creditBuyBusy: false, creditBuyQty: 1, creditBuyPay: "" }));
+      alert(`Demande enregistrée · ${money(data.amountXof)} via ${data.paymentMethod}.\nTes crédits seront ajoutés dès confirmation par l'équipe VLOME.`);
+    } catch { setS((s) => ({ ...s, creditBuyBusy: false })); }
+  }
+  async function cancelCreditPurchase(id: string) {
+    try {
+      const r = await fetch(`${API}/api/credits/purchase/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (r.ok) await loadCreditsMe();
+    } catch { /* ignore */ }
+  }
   async function checkout() {
     if (!S.cartItems.length || !S.cartPayPick) return;
     if (!token()) { setS((s) => ({ ...s, cartOpen: false, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -3083,13 +3206,13 @@ export default function Page() {
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
-      const [ovR, usR, nwR, prR, orR, payR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments")]);
+      const [ovR, usR, nwR, prR, orR, payR, crR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases")]);
       if (ovR.ok && usR.ok) {
-        const [overview, users, news, products, orders, payments] = await Promise.all([
+        const [overview, users, news, products, orders, payments, creditPurchases] = await Promise.all([
           ovR.json(), usR.json(),
-          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [],
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [],
         ]);
-        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments } }));
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases } }));
       }
     } catch { /* ignore */ }
   }
@@ -3299,7 +3422,7 @@ export default function Page() {
     try {
       const r = await fetch(`${API}/api/users/me`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ displayName: val("p-name"), city: val("p-city"), favoriteGame: val("p-game"), bio: val("p-bio") }),
+        body: JSON.stringify({ displayName: val("p-name"), city: val("p-city"), favoriteGame: val("p-game"), phone: val("p-phone"), bio: val("p-bio") }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, profileMsg: data.message || "Erreur d'enregistrement." })); return; }
@@ -3359,6 +3482,26 @@ export default function Page() {
       if (r.ok) { const rows = await r.json(); setS((s) => ({ ...s, regsPanel: rows })); }
     } catch { /* ignore */ }
   }
+  async function confirmCreditPurchaseAdmin(id: string) {
+    try {
+      const r = await fetch(`${API}/api/admin/credit-purchases/${id}/confirm`, { method: "POST", headers: authHeaders() });
+      const data = await r.json();
+      if (!r.ok) { alert(data.message || "Confirmation impossible."); return; }
+      await loadAdmin();
+    } catch { /* ignore */ }
+  }
+  /** Enregistre le tarif des crédits organisateur (Setting générique, clé "credits"). */
+  async function saveCreditsSettings() {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const value = { priceXof: Math.max(1, parseInt(val("cr-price")) || 750), freeTournaments: Math.max(0, parseInt(val("cr-free")) || 0) };
+    try {
+      const r = await fetch(`${API}/api/admin/settings/credits`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
+      });
+      if (r.ok) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés." })); }
+      else setS((s) => ({ ...s, siteMsg: "Enregistrement impossible." }));
+    } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
+  }
   async function confirmRegPayment(tid: string, regId: string) {
     try {
       const r = await fetch(`${API}/api/tournaments/${tid}/registrations/${regId}/confirm`, { method: "POST", headers: authHeaders() });
@@ -3376,6 +3519,7 @@ export default function Page() {
   useEffect(() => {
     if (S.page === "profil" && S.user && !S.me) loadMe();
     if (S.page === "profil" && S.user && !S.loyaltyHistory) loadLoyaltyMe();
+    if (S.page === "profil" && S.user?.role === "ORGANIZER" && !S.creditsMe) loadCreditsMe();
     if (S.page === "profil" && S.user?.role === "ADMIN" && !S.admin) loadAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
@@ -3448,7 +3592,12 @@ export default function Page() {
     })();
     try {
       const u = localStorage.getItem("vlome_user");
-      if (u) { setS((s) => ({ ...s, user: JSON.parse(u) })); loadRegIds(); loadLoyaltyMe(); }
+      if (u) {
+        const parsed = JSON.parse(u);
+        setS((s) => ({ ...s, user: parsed }));
+        loadRegIds(); loadLoyaltyMe();
+        if (parsed?.role === "ORGANIZER") loadCreditsMe();
+      }
     } catch { /* ignore */ }
     const h = typeof window !== "undefined" ? window.location.hash : "";
     // Deep-link de développement : #dev=email:motdepasse — connexion auto (jamais en prod).
@@ -3629,9 +3778,23 @@ export default function Page() {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
       });
       if (r.status === 401) { setS((s) => ({ ...s, busy: false, page: "auth", user: null })); return; }
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({} as Detail));
+        setS((s) => ({ ...s, busy: false }));
+        if (r.status === 409 && /crédit/i.test(err.message || "")) {
+          if (confirm(`${err.message}\n\nOuvrir l'onglet Crédits pour en acheter ?`)) {
+            setS((s) => ({ ...s, creating: false, page: "profil", adminTab: "credits" }));
+            window.scrollTo({ top: 0 });
+            loadCreditsMe();
+          }
+        } else {
+          alert(err.message || "Création impossible.");
+        }
+        return;
+      }
       const created = await r.json();
       await loadTournaments();
+      if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
         wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
@@ -3689,7 +3852,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -3836,6 +3999,12 @@ export default function Page() {
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.loyaltysave !== undefined) saveLoyalty();
+    else if (d.creditssave !== undefined) saveCreditsSettings();
+    else if (d.confirmcredit) confirmCreditPurchaseAdmin(d.confirmcredit);
+    else if (d.creditbuyqty) setS((s) => ({ ...s, creditBuyQty: Math.max(1, parseInt(d.creditbuyqty!) || 1) }));
+    else if (d.creditbuypay) setS((s) => ({ ...s, creditBuyPay: d.creditbuypay! }));
+    else if (d.creditbuy !== undefined) buyCredits();
+    else if (d.creditcancel) cancelCreditPurchase(d.creditcancel);
     else if (d.herobgclear !== undefined) clearHeroBg();
     else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null }] }));
     else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []), confirmBox: { title: "Supprimer le partenaire", message: "Cette ligne sera retirée du bandeau partenaires.", okLabel: "Supprimer", action: `ptdel|${d.ptdel}` } }));

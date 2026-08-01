@@ -66,7 +66,7 @@ export class TournamentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
   create(@Body() dto: CreateTournamentDto, @CurrentUser() user: JwtUser) {
-    return this.service.create(dto, user.sub);
+    return this.service.create(dto, user);
   }
 
   @Patch(':id')

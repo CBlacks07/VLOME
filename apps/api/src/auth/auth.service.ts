@@ -31,7 +31,7 @@ export class AuthService implements OnModuleInit {
     return { id: u.id, email: u.email, displayName: u.displayName, role: u.role };
   }
 
-  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string }) {
+  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string }) {
     const email = (dto.email || '').trim().toLowerCase();
     if (!email || !dto.password || dto.password.length < 6) {
       throw new BadRequestException('Email et mot de passe (au moins 6 caractères) requis.');
@@ -45,6 +45,7 @@ export class AuthService implements OnModuleInit {
         email, passwordHash, displayName: (dto.displayName || '').trim() || email.split('@')[0], role,
         city: (dto.city || '').trim() || null,
         favoriteGame: (dto.favoriteGame || '').trim() || null,
+        phone: (dto.phone || '').trim() || null,
       },
     });
     return { token: this.sign(u), user: this.safe(u) };

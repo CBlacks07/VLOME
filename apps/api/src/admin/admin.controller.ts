@@ -102,4 +102,16 @@ export class AdminController {
   setOrderStatus(@Param('id') id: string, @Body() dto: OrderStatusDto) {
     return this.admin.setOrderStatus(id, dto.status);
   }
+
+  /* ---------- Crédits organisateur ---------- */
+
+  @Get('credit-purchases')
+  pendingCreditPurchases() {
+    return this.admin.pendingCreditPurchases();
+  }
+
+  @Post('credit-purchases/:id/confirm')
+  confirmCreditPurchase(@Param('id') id: string) {
+    return this.admin.confirmCreditPurchase(id);
+  }
 }

@@ -14,7 +14,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true, email: true, displayName: true, role: true,
-        bio: true, city: true, favoriteGame: true, createdAt: true, loyaltyPoints: true,
+        bio: true, city: true, favoriteGame: true, phone: true, createdAt: true, loyaltyPoints: true,
       },
     });
     if (!u) throw new NotFoundException('Utilisateur introuvable');
@@ -73,6 +73,7 @@ export class UsersService {
     if (dto.bio !== undefined) data.bio = dto.bio.trim() || null;
     if (dto.city !== undefined) data.city = dto.city.trim() || null;
     if (dto.favoriteGame !== undefined) data.favoriteGame = dto.favoriteGame.trim() || null;
+    if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
     await this.prisma.user.update({ where: { id: userId }, data });
     return this.me(userId);
   }

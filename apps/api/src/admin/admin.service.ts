@@ -2,12 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
 import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
+import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.service';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
-export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty'] as const;
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits'] as const;
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'VLOME', name2: 'ESPORT', logoUrl: null },
   loyalty: DEFAULT_LOYALTY_SETTINGS,
+  credits: DEFAULT_CREDITS_SETTINGS,
   hero: {
     kicker: 'VLOME Esport · Togo',
     title: "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN",
@@ -30,7 +32,17 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private credits: CreditsService) {}
+
+  /* ---------- Crédits organisateur ---------- */
+
+  pendingCreditPurchases() {
+    return this.credits.pendingPurchases();
+  }
+
+  confirmCreditPurchase(id: string) {
+    return this.credits.confirmPurchase(id);
+  }
 
   /* ---------- Utilisateurs ---------- */
 

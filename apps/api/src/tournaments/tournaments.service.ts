@@ -4,6 +4,7 @@ import * as Engine from '@vlome/engine';
 import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtUser } from '../common/jwt-auth.guard';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { CreditsService } from '../credits/credits.service';
 import { LoyaltyReason } from '../../generated/prisma';
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -23,7 +24,7 @@ function engineFormatFor(dbFormat: string | null | undefined): Engine.Tournament
 
 @Injectable()
 export class TournamentsService {
-  constructor(private prisma: PrismaService, private loyalty: LoyaltyService) {}
+  constructor(private prisma: PrismaService, private loyalty: LoyaltyService, private credits: CreditsService) {}
 
   // Seul le propriétaire (ou un ADMIN) peut piloter/éditer. Les tournois sans
   // propriétaire (démo) sont pilotables par tout utilisateur authentifié.
@@ -71,7 +72,14 @@ export class TournamentsService {
     return { ...this.toCard(r), engine: r.engineState ?? null };
   }
 
-  async create(dto: CreateTournamentDto, userId?: string) {
+  async create(dto: CreateTournamentDto, user?: JwtUser) {
+    const userId = user?.sub;
+    // Seul un ORGANIZER (pas un ADMIN, qui n'est pas un client de la plateforme) est soumis au
+    // crédit : tournoi gratuit à la création du compte, puis 1 crédit par tournoi hébergé ensuite.
+    if (user && user.role === 'ORGANIZER') {
+      const can = await this.credits.canHost(user.sub);
+      if (!can.ok) throw new ConflictException("Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.");
+    }
     const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus].some((v) => v !== undefined);
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
@@ -95,6 +103,7 @@ export class TournamentsService {
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
+    if (user && user.role === 'ORGANIZER') await this.credits.consumeForHosting(user.sub, r.id);
     return this.toCard(r);
   }
 
@@ -377,6 +386,9 @@ export class TournamentsService {
     this.assertCanManage(r, user);
     await this.prisma.match.deleteMany({ where: { tournamentId: id } });
     await this.prisma.tournament.delete({ where: { id } });
+    // Remboursement du crédit uniquement si le tournoi n'a jamais été lancé (sinon l'organisateur
+    // a déjà tiré une vraie valeur du crédit dépensé) — pas de remboursement pour le tournoi gratuit.
+    if (r.status === 'DRAFT' && r.createdById) await this.credits.refundHostingIfApplicable(r.createdById, id);
     return { deleted: true };
   }
 

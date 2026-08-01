@@ -37,4 +37,9 @@ export class RegisterDto {
   @IsString()
   @MaxLength(60)
   favoriteGame?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
 }

@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "postinstall": "prisma migrate deploy && prisma generate && pnpm --filter @vlome/engine build",
+    "postinstall": "node scripts/db-postinstall.js && pnpm --filter @vlome/engine build",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

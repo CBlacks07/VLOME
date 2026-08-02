@@ -14,7 +14,7 @@ type TournCard = { id?: string; name: string; format: string; game: string; play
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
-type AuthUser = { displayName: string; role: string; email: string };
+type AuthUser = { displayName: string; role: string; email: string; organizerStatus?: string };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
@@ -29,7 +29,7 @@ type State = {
   user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[] } | null;
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
@@ -1241,7 +1241,7 @@ function profileSecurity(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -1268,12 +1268,24 @@ const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px
 const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["credits", "Crédits"], ["compte", "Mon compte"]];
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
-  apercu: I.bolt, site: I.edit, users: I.user, joueurs: I.crown, news: I.flame, galerie: I.image,
+  apercu: I.bolt, site: I.edit, users: I.user, organisateurs: I.crown, joueurs: I.crown, news: I.flame, galerie: I.image,
   produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, compte: I.user,
 };
 
 /** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
  * Pas de métrique inventée : uniquement ce que S.admin.overview / S.tourns / S.myTourns fournissent réellement. */
+/** Bandeau de statut de validation organisateur — affiché tant que le compte n'est pas APPROVED. */
+function organizerStatusBanner(S: State): string {
+  if (S.user?.role !== "ORGANIZER") return "";
+  const st = S.user.organizerStatus;
+  if (st === "APPROVED" || !st) return "";
+  const pending = st === "PENDING";
+  return `<div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;margin-bottom:18px;background:${pending ? "rgba(251,191,36,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${pending ? "rgba(251,191,36,.35)" : "rgba(251,113,133,.35)"}">
+    <span style="color:${pending ? "#FBBF24" : "#FB7185"};flex:none">${ic(I.warn, 18)}</span>
+    <div><div style="font-weight:700;font-size:13.5px;color:${pending ? "#FBBF24" : "#FB7185"}">${pending ? "Compte en attente de validation" : "Demande refusée"}</div>
+    <div style="font-size:12.5px;color:#8E8FA6;margin-top:2px">${pending ? "L'équipe VLOME examine ta demande — tu pourras créer des tournois une fois approuvé." : "Contacte l'équipe VLOME si tu penses qu'il s'agit d'une erreur."}</div></div>
+  </div>`;
+}
 function consoleOverview(S: State) {
   const isAdmin = S.user?.role === "ADMIN";
   const tourns: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
@@ -1308,7 +1320,7 @@ function consoleOverview(S: State) {
       <span style="border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:6px 11px;font-size:11.5px;font-weight:700;color:#FBBF24">Voir</span>
     </div></div>` : "";
 
-  return kpis + table + todo;
+  return organizerStatusBanner(S) + kpis + table + todo;
 }
 
 /** Tournoi en direct épinglé en haut de la sidebar (organisateur : ses tournois seulement ; admin : tous). */
@@ -1380,6 +1392,7 @@ function consolePage(S: State): string {
     body = !a ? `<div style="color:#8E8FA6;text-align:center;padding:40px 0">Chargement…</div>` :
       S.adminTab === "site" ? adminSite(S) :
       S.adminTab === "users" ? adminUsers(S) :
+      S.adminTab === "organisateurs" ? adminOrganizers(S) :
       S.adminTab === "joueurs" ? adminRoster(S) :
       S.adminTab === "news" ? adminNews(S) :
       S.adminTab === "galerie" ? adminGallery(S) :
@@ -1712,6 +1725,39 @@ function adminCredits(S: State) {
   const pendingCount = purchases.filter((p: Detail) => p.status === "pending").length;
   const purchasesCard = card(`${secTitle(`Demandes d'achat (${purchases.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`)}${scrollBox(rows)}`, "20px");
   return settingsCard + `<div style="margin-top:16px">${purchasesCard}</div>`;
+}
+
+const ORG_STATUS_LABEL: Record<string, [string, string]> = {
+  PENDING: ["En attente", "#FBBF24"], APPROVED: ["Approuvé", "#34D399"], REJECTED: ["Refusé", "#FB7185"],
+};
+/** Onglet admin « Organisateurs » : validation des demandes + plafonds (nb de tournois, joueurs max) par compte. */
+function adminOrganizers(S: State) {
+  const orgs: Detail[] = S.admin?.organizers ?? [];
+  const q = S.adminSearch.trim().toLowerCase();
+  const filtered = q ? orgs.filter((o: Detail) => `${o.displayName} ${o.email}`.toLowerCase().includes(q)) : orgs;
+  const capField = (id: string, label: string, key: string, value: number | null, min: number) =>
+    `<label style="font-size:11px;color:#8E8FA6;font-weight:600">${label}<input id="org-${key}-${id}" type="number" min="${min}" placeholder="Illimité" value="${value ?? ""}" style="${adminInp};margin-top:4px" /></label>`;
+  const rows = filtered.length ? filtered.map((o: Detail) => {
+    const [label, color] = ORG_STATUS_LABEL[o.organizerStatus as string] || ["—", "#8E8FA6"];
+    return `<div style="border-top:1px solid #22222F;padding:14px 0">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:650;font-size:14px">${escHtml(o.displayName)} <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${color};background:${color}18;border:1px solid ${color}55;border-radius:99px;padding:3px 9px;margin-left:6px">${label}</span></div>
+          <div style="font-size:12px;color:#5D5E72;margin-top:2px">${escHtml(o.email)}${o.phone ? " · " + escHtml(o.phone) : ""} · ${o.tournamentCount} tournoi${o.tournamentCount > 1 ? "s" : ""} créé${o.tournamentCount > 1 ? "s" : ""}</div>
+          ${o.organizerNote ? `<div style="font-size:12.5px;color:#8E8FA6;margin-top:8px;padding:10px 12px;background:#0d0d14;border-radius:9px;border:1px solid #1B1B27">${escHtml(o.organizerNote)}</div>` : ""}
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px">
+        ${capField(o.id, "Tournois max", "maxt", o.organizerMaxTournaments, 0)}
+        ${capField(o.id, "Joueurs max / tournoi", "maxp", o.organizerMaxPlayers, 1)}
+        <span style="flex:1"></span>
+        ${o.organizerStatus !== "REJECTED" ? `<button data-orgreject="${o.id}" style="font-size:12px;font-weight:700;border-radius:9px;padding:9px 14px;cursor:pointer;background:transparent;border:1px solid rgba(251,113,133,.4);color:#FB7185">Refuser</button>` : ""}
+        <button data-orgapprove="${o.id}" style="font-size:12px;font-weight:750;border-radius:9px;padding:9px 16px;cursor:pointer;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399">${o.organizerStatus === "APPROVED" ? "Enregistrer les plafonds" : "Approuver"}</button>
+      </div>
+    </div>`;
+  }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun organisateur trouvé." : "Aucun compte organisateur pour l'instant."}</div>`;
+  const pendingCount = orgs.filter((o: Detail) => o.organizerStatus === "PENDING").length;
+  return card(`${secTitle(`Organisateurs (${orgs.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`)}${adminSearchBar(S, "Nom ou email…")}${scrollBox(rows)}`);
 }
 
 function adminPayments(S: State) {
@@ -2661,7 +2707,9 @@ function pAuth(S: State) {
       <label style="${lbl}">Ville <span style="color:#5D5E72">(optionnel)</span><input id="a-city" placeholder="Lomé" style="${inp}" /></label>
       <label style="${lbl}">Jeu favori <span style="color:#5D5E72">(optionnel)</span><input id="a-game" placeholder="EA FC 26, Tekken 8…" style="${inp}" /></label>
     </div>
-    <label style="${lbl};margin-top:14px">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>`;
+    <label style="${lbl};margin-top:14px">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
+    ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe VLOME)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
+    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe VLOME avant de pouvoir créer un tournoi.</p>` : ""}`;
 
   const perks = [
     [I.crown, "Inscris-toi aux tournois", "Survival, brackets, Battle Royale — suis tes matchs en direct."],
@@ -3069,7 +3117,7 @@ export default function Page() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isLogin
           ? { email, password }
-          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim(), phone: val("a-phone").trim() }),
+          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim(), phone: val("a-phone").trim(), organizerNote: val("a-orgnote").trim() }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
@@ -3231,13 +3279,13 @@ export default function Page() {
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
-      const [ovR, usR, nwR, prR, orR, payR, crR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases")]);
+      const [ovR, usR, nwR, prR, orR, payR, crR, orgR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases"), get("organizers")]);
       if (ovR.ok && usR.ok) {
-        const [overview, users, news, products, orders, payments, creditPurchases] = await Promise.all([
+        const [overview, users, news, products, orders, payments, creditPurchases, organizers] = await Promise.all([
           ovR.json(), usR.json(),
-          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [],
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [], orgR.ok ? orgR.json() : [],
         ]);
-        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases } }));
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases, organizers } }));
       }
     } catch { /* ignore */ }
   }
@@ -3512,6 +3560,23 @@ export default function Page() {
       const r = await fetch(`${API}/api/admin/credit-purchases/${id}/confirm`, { method: "POST", headers: authHeaders() });
       const data = await r.json();
       if (!r.ok) { alert(data.message || "Confirmation impossible."); return; }
+      await loadAdmin();
+    } catch { /* ignore */ }
+  }
+  /** Approuve/refuse une demande organisateur et fixe ses plafonds (nb de tournois, joueurs max). */
+  async function reviewOrganizer(id: string, status: "APPROVED" | "REJECTED") {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value.trim() ?? "";
+    const maxTRaw = val(`org-maxt-${id}`), maxPRaw = val(`org-maxp-${id}`);
+    const body: Detail = {
+      status,
+      maxTournaments: maxTRaw === "" ? null : Math.max(0, parseInt(maxTRaw) || 0),
+      maxPlayers: maxPRaw === "" ? null : Math.max(1, parseInt(maxPRaw) || 1),
+    };
+    try {
+      const r = await fetch(`${API}/api/admin/organizers/${id}/review`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
       await loadAdmin();
     } catch { /* ignore */ }
   }
@@ -3878,7 +3943,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizfinalsfmt],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizfinalsfmt],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4029,6 +4094,8 @@ export default function Page() {
     else if (d.loyaltysave !== undefined) saveLoyalty();
     else if (d.creditssave !== undefined) saveCreditsSettings();
     else if (d.confirmcredit) confirmCreditPurchaseAdmin(d.confirmcredit);
+    else if (d.orgapprove) reviewOrganizer(d.orgapprove, "APPROVED");
+    else if (d.orgreject) reviewOrganizer(d.orgreject, "REJECTED");
     else if (d.creditbuyqty) setS((s) => ({ ...s, creditBuyQty: Math.max(1, parseInt(d.creditbuyqty!) || 1) }));
     else if (d.creditbuypay) setS((s) => ({ ...s, creditBuyPay: d.creditbuypay! }));
     else if (d.creditbuy !== undefined) buyCredits();
@@ -4152,6 +4219,12 @@ export default function Page() {
     }
     else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
     else if (d.act === "create-open") {
+      if (S.user?.role === "ORGANIZER" && S.user.organizerStatus !== "APPROVED") {
+        alert(S.user.organizerStatus === "REJECTED"
+          ? "Ta demande d'organisateur a été refusée par l'équipe VLOME."
+          : "Ton compte organisateur est en attente de validation par l'équipe VLOME — tu pourras créer des tournois une fois approuvé.");
+        return;
+      }
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null,
         wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, finalsFormat: "single", imageUrl: null },

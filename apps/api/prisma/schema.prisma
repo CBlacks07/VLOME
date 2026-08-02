@@ -56,6 +56,13 @@ enum CreditReason {
   REFUND // +1, tournoi supprimé avant d'avoir été lancé
 }
 
+enum OrganizerStatus {
+  NONE // pas organisateur (PLAYER/ADMIN), ou pas encore concerné
+  PENDING // demande soumise à l'inscription, en attente de validation admin
+  APPROVED // validé par l'admin — peut créer des tournois (sous réserve des crédits et des plafonds ci-dessous)
+  REJECTED // demande refusée par l'admin
+}
+
 model User {
   id                  String               @id @default(cuid())
   email               String               @unique
@@ -69,6 +76,14 @@ model User {
   loyaltyPoints       Int                  @default(0) // solde courant, dénormalisé depuis LoyaltyTransaction
   organizerCredits    Int                  @default(0) // solde de crédits organisateur (1 crédit = 1 tournoi hébergé), dénormalisé depuis CreditTransaction
   freeTournamentsUsed Int                  @default(0) // nombre de tournois gratuits déjà consommés (comparé au quota réglable admin)
+  // Validation manuelle du statut organisateur — un compte ORGANIZER ne peut créer de tournoi
+  // qu'une fois APPROVED. Les crédits ci-dessus restent le mécanisme de paiement ; ces champs
+  // ajoutent un plafond/portée fixé par l'admin à l'approbation (indépendant du solde de crédits).
+  organizerStatus          OrganizerStatus @default(NONE)
+  organizerNote            String? // motivation présentée par le candidat à l'inscription
+  organizerMaxTournaments  Int? // plafond total de tournois créables, fixé par l'admin (null = pas de plafond)
+  organizerMaxPlayers      Int? // nb max de participants par tournoi qu'il crée, fixé par l'admin (null = pas de plafond)
+  organizerReviewedAt      DateTime?
   createdAt           DateTime             @default(now())
   player              Player?
   registrations       Registration[]

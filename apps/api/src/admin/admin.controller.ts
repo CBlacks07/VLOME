@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, SetRoleDto } from './admin.dto';
+import { NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, ReviewOrganizerDto, SetRoleDto } from './admin.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -26,6 +26,18 @@ export class AdminController {
   @Patch('users/:id/role')
   setRole(@Param('id') id: string, @Body() dto: SetRoleDto) {
     return this.admin.setRole(id, dto.role);
+  }
+
+  /* ---------- Organisateurs (validation, plafonds) ---------- */
+
+  @Get('organizers')
+  organizers() {
+    return this.admin.listOrganizers();
+  }
+
+  @Patch('organizers/:id/review')
+  reviewOrganizer(@Param('id') id: string, @Body() dto: ReviewOrganizerDto) {
+    return this.admin.reviewOrganizer(id, dto.status, dto.maxTournaments, dto.maxPlayers);
   }
 
   /* ---------- Actualités ---------- */

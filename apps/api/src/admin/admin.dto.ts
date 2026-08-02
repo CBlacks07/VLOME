@@ -5,6 +5,22 @@ export class SetRoleDto {
   role!: string;
 }
 
+export class ReviewOrganizerDto {
+  @IsIn(['APPROVED', 'REJECTED'])
+  status!: 'APPROVED' | 'REJECTED';
+
+  // Plafonds fixés à l'approbation — null = pas de plafond. Omis = ne pas modifier la valeur existante.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxTournaments?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxPlayers?: number | null;
+}
+
 export class NewsDto {
   @IsString()
   @MinLength(3)

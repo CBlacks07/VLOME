@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 
-interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; }
+interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; }
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@vlome.tg';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
@@ -28,10 +28,10 @@ export class AuthService implements OnModuleInit {
     return this.jwt.sign({ sub: u.id, email: u.email, role: u.role });
   }
   private safe(u: UserRow) {
-    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role };
+    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus };
   }
 
-  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string }) {
+  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; organizerNote?: string }) {
     const email = (dto.email || '').trim().toLowerCase();
     if (!email || !dto.password || dto.password.length < 6) {
       throw new BadRequestException('Email et mot de passe (au moins 6 caractères) requis.');
@@ -46,6 +46,9 @@ export class AuthService implements OnModuleInit {
         city: (dto.city || '').trim() || null,
         favoriteGame: (dto.favoriteGame || '').trim() || null,
         phone: (dto.phone || '').trim() || null,
+        // Un compte ORGANIZER doit être validé par l'admin avant de pouvoir créer un tournoi
+        // (voir TournamentsService.create) — la demande peut être accompagnée d'une note.
+        ...(role === 'ORGANIZER' ? { organizerStatus: 'PENDING', organizerNote: (dto.organizerNote || '').trim() || null } : {}),
       },
     });
     return { token: this.sign(u), user: this.safe(u) };

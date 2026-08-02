@@ -15,6 +15,7 @@ export class UsersService {
       select: {
         id: true, email: true, displayName: true, role: true,
         bio: true, city: true, favoriteGame: true, phone: true, createdAt: true, loyaltyPoints: true,
+        organizerStatus: true, organizerNote: true, organizerMaxTournaments: true, organizerMaxPlayers: true,
       },
     });
     if (!u) throw new NotFoundException('Utilisateur introuvable');

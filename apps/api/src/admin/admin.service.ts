@@ -61,6 +61,37 @@ export class AdminService {
     });
   }
 
+  /* ---------- Organisateurs (validation, plafonds) ---------- */
+
+  async listOrganizers() {
+    const rows = await this.prisma.user.findMany({
+      where: { role: 'ORGANIZER' },
+      orderBy: [{ organizerStatus: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true, email: true, displayName: true, phone: true, createdAt: true,
+        organizerStatus: true, organizerNote: true, organizerMaxTournaments: true, organizerMaxPlayers: true, organizerReviewedAt: true,
+      },
+    });
+    const counts = await this.prisma.tournament.groupBy({ by: ['createdById'], _count: true, where: { createdById: { in: rows.map((r) => r.id) } } });
+    const byOwner = new Map(counts.map((c) => [c.createdById, c._count]));
+    return rows.map((r) => ({ ...r, tournamentCount: byOwner.get(r.id) ?? 0 }));
+  }
+
+  async reviewOrganizer(id: string, status: 'APPROVED' | 'REJECTED', maxTournaments?: number | null, maxPlayers?: number | null) {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u || u.role !== 'ORGANIZER') throw new NotFoundException('Organisateur introuvable.');
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        organizerStatus: status,
+        organizerReviewedAt: new Date(),
+        ...(maxTournaments !== undefined ? { organizerMaxTournaments: maxTournaments } : {}),
+        ...(maxPlayers !== undefined ? { organizerMaxPlayers: maxPlayers } : {}),
+      },
+      select: { id: true, organizerStatus: true, organizerMaxTournaments: true, organizerMaxPlayers: true },
+    });
+  }
+
   async overview() {
     const [users, tournaments, orders, products, admins, organizers, news, pendingPayments, gallery] = await Promise.all([
       this.prisma.user.count(),

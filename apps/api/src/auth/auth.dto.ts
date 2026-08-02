@@ -42,4 +42,10 @@ export class RegisterDto {
   @IsString()
   @MaxLength(30)
   phone?: string;
+
+  // Motivation présentée par un candidat organisateur — lue par l'admin lors de la validation.
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  organizerNote?: string;
 }

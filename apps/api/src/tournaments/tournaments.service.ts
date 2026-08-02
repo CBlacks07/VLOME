@@ -74,9 +74,30 @@ export class TournamentsService {
 
   async create(dto: CreateTournamentDto, user?: JwtUser) {
     const userId = user?.sub;
-    // Seul un ORGANIZER (pas un ADMIN, qui n'est pas un client de la plateforme) est soumis au
-    // crédit : tournoi gratuit à la création du compte, puis 1 crédit par tournoi hébergé ensuite.
+    // Seul un ORGANIZER (pas un ADMIN, qui n'est pas un client de la plateforme) est soumis à la
+    // validation admin, aux plafonds fixés par l'admin, puis au crédit (tournoi gratuit à la
+    // création du compte, puis 1 crédit par tournoi hébergé ensuite).
     if (user && user.role === 'ORGANIZER') {
+      const u = await this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: { organizerStatus: true, organizerMaxTournaments: true, organizerMaxPlayers: true },
+      });
+      if (!u || u.organizerStatus !== 'APPROVED') {
+        throw new ForbiddenException(
+          u?.organizerStatus === 'REJECTED'
+            ? "Ta demande d'organisateur a été refusée par l'équipe VLOME."
+            : "Ton compte organisateur est en attente de validation par l'équipe VLOME.",
+        );
+      }
+      if (u.organizerMaxTournaments != null) {
+        const count = await this.prisma.tournament.count({ where: { createdById: user.sub } });
+        if (count >= u.organizerMaxTournaments) {
+          throw new ConflictException(`Plafond de tournois atteint pour ton compte (${u.organizerMaxTournaments} maximum).`);
+        }
+      }
+      if (u.organizerMaxPlayers != null && (dto.players?.length ?? 0) > u.organizerMaxPlayers) {
+        throw new BadRequestException(`Ce tournoi dépasse le nombre maximum de participants autorisé pour ton compte (${u.organizerMaxPlayers}).`);
+      }
       const can = await this.credits.canHost(user.sub);
       if (!can.ok) throw new ConflictException("Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.");
     }
@@ -679,6 +700,12 @@ export class TournamentsService {
     if (!l) return null;
     this.assertCanManage(l.record, user);
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible d\'ajouter un joueur.');
+    if (l.record.createdById) {
+      const owner = await this.prisma.user.findUnique({ where: { id: l.record.createdById }, select: { organizerMaxPlayers: true } });
+      if (owner?.organizerMaxPlayers != null && l.t.players.length >= owner.organizerMaxPlayers) {
+        throw new ConflictException(`Ce tournoi a atteint le nombre maximum de participants autorisé pour ce compte (${owner.organizerMaxPlayers}).`);
+      }
+    }
     const p = Engine.addPlayer(l.t, name);
     if (!p) throw new BadRequestException('Nom invalide ou déjà utilisé dans ce tournoi.');
     await this.persist(id, l.t);

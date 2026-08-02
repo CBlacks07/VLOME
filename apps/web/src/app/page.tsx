@@ -60,6 +60,7 @@ type State = {
     name: string; game: string; date: string; place: string; format: string;
     pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number;
+    finalsFormat: string; // mode de phase finale (Survival) : fixé dès l'assistant, sinon le budget de cagnotte peut être calculé pour le mauvais format
     imageUrl: string | null;
   };
   wizRosterSearch: string;
@@ -131,13 +132,24 @@ function balancedSizesPreview(nPlayers: number, nbPools: number): number[] {
 }
 /** Aperçu (pur, non autoritaire) de la cagnotte programmée — même formule que Engine.cagnotte, pour prévisualiser dans l'assistant avant la création réelle côté serveur.
  * Expose aussi le détail par catégorie (nb de matchs prévus + points qu'elle programme) pour l'affichage du barème et la barre de répartition de la jauge. */
-function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number }) {
+/** Nombre de matchs de phase finale (hors bye) pour `q` qualifiés, selon le format choisi — même
+ * intention que Engine.finalsMatchCount côté serveur. 'double' utilise une borne sûre (majorant,
+ * y compris la 2e petite finale en cas de bracket reset) plutôt qu'une simulation complète de
+ * bracket ici : ne sous-estime jamais, donc n'autorise jamais un barème qui dépasserait vraiment
+ * la cagnotte une fois envoyé au serveur (qui, lui, simule le bracket exactement). */
+function finalsMatchesPreview(q: number, finalsFormat: string): number {
+  if (q < 2) return 0;
+  if (finalsFormat === "roundrobin") return (q * (q - 1)) / 2;
+  if (finalsFormat === "double") return 2 * q - 1; // majorant sûr (avec reset)
+  return q - 1;
+}
+function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number }, finalsFormat = "single") {
   const total = nPlayers * pointsPerPlayer;
   const sizes = balancedSizesPreview(nPlayers, nbPools);
   let surv = 0, los = 0, pf = 0;
   sizes.forEach((n) => { if (n >= 2) { surv += n - 1; los += Math.max(0, n - 2); pf += 1; } });
   const q = sizes.filter((n) => n >= 2).length * 2 + sizes.filter((n) => n === 1).length;
-  const finalsMatches = Math.max(0, q - 1);
+  const finalsMatches = finalsMatchesPreview(q, finalsFormat);
   const breakdown = {
     survWin: { matches: surv, pts: Math.round(surv * scoring.survWin * 100) / 100 },
     loserWin: { matches: los, pts: Math.round(los * scoring.loserWin * 100) / 100 },
@@ -597,7 +609,7 @@ const WIZ_SCORING_FIELDS: [string, string, string][] = [
 
 function wizScoringStep(S: State) {
   const d = S.wizData;
-  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat);
   const rows = WIZ_SCORING_FIELDS.map(([id, label, key], i) => {
     const b = c.breakdown[key as keyof typeof c.breakdown];
     const sub = key === "championBonus" ? "une seule fois" : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
@@ -608,10 +620,16 @@ function wizScoringStep(S: State) {
       <span id="wiz-sc-pts-${key}" style="width:70px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6;flex:none">${b.pts} pts</span>
     </div>`;
   }).join("");
+  const finalsFmtPicker = `<div style="margin-bottom:16px">
+    <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode de la phase finale</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${FINALS_FORMATS.map(([v, l]) => `<button data-wizfinalsfmt="${v}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.finalsFormat === v ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.finalsFormat === v ? "#22D3EE" : "#282838"};color:${d.finalsFormat === v ? "#22D3EE" : "#8E8FA6"}">${l}</button>`).join("")}</div>
+    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Fixé maintenant pour que le barème ci-dessous soit calculé pour le bon nombre de matchs — évite un dépassement de cagnotte découvert en cours de tournoi.</p>
+  </div>`;
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     <div>
       <h3 style="margin:0 0 6px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${S.wizEditId ? "Barème des points" : "Étape 4 — Barème des points"}</h3>
       <p style="color:#8E8FA6;font-size:13.5px;margin:6px 0 16px;max-width:520px">Chaque valeur est librement réglable à partir de 0,25 point. Le total programmé doit tenir dans la cagnotte disponible.</p>
+      ${finalsFmtPicker}
       <div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden">${rows}</div>
     </div>
     ${wizGaugeCard(c)}
@@ -623,7 +641,7 @@ function wizValidateStep(S: State) {
   const editing = !!S.wizEditId;
   const isSurvival = d.format === "SURVIVAL";
   const isBR = d.format === "BATTLE_ROYALE";
-  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d);
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat);
   // Le barème détaillé (et sa jauge de validité) ne concerne que Survival — les autres formats n'ont rien à dépasser.
   const canSubmit = (isSurvival ? c.valid : true) && d.name.trim().length > 0 && (editing || d.players.length >= 2);
   const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:#8E8FA6;font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
@@ -632,7 +650,8 @@ function wizValidateStep(S: State) {
   const structureRow = isSurvival
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
-  const participantsRows = editing ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}`;
+  const finalsFmtLabel = (FINALS_FORMATS.find(([v]) => v === d.finalsFormat) || FINALS_FORMATS[0])[1];
+  const participantsRows = editing ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", finalsFmtLabel) : ""}`;
   const backTarget = editing ? 4 : (isSurvival ? 4 : isBR ? 3 : 2);
   const bareme = isSurvival ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
@@ -1974,7 +1993,10 @@ const FINALS_FORMATS: [string, string][] = [["single", "Élimination simple"], [
 /** Sélecteur de format + bouton "Lancer la phase finale", une fois toutes les poules Survival terminées. Partagé entre pTournoi et la régie. */
 function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
   if (!manage || !t.allPoolsDone || t.finals) return "";
+  const changed = !!t.finalsFormat && S.finalsFormatPick !== t.finalsFormat;
+  const warn = changed ? `<p style="color:#FBBF24;font-size:11.5px;margin:0 0 12px">${ic(I.warn, 12)} Le barème a été calculé pour « ${(FINALS_FORMATS.find(([v]) => v === t.finalsFormat) || FINALS_FORMATS[0])[1]} » à la création — ce changement peut dépasser la cagnotte programmée.</p>` : "";
   return `<div style="text-align:center;margin:24px 0">
+      ${warn}
       <div style="display:inline-flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;justify-content:center">${FINALS_FORMATS.map(([v, l]) => `<button data-finalsfmt="${v}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${S.finalsFormatPick === v ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.finalsFormatPick === v ? "#22D3EE" : "#282838"};color:${S.finalsFormatPick === v ? "#22D3EE" : "#8E8FA6"}">${l}</button>`).join("")}</div>
       <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale</button></div>
     </div>`;
@@ -2933,7 +2955,7 @@ export default function Page() {
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, finalsFormat: "single", imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
   });
@@ -2951,7 +2973,10 @@ export default function Page() {
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
-      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); }
+      // Le picker de phase finale démarre sur le mode fixé à la création (voir wizScoringStep) —
+      // l'organisateur peut toujours le changer avant de lancer, mais le budget de cagnotte a été
+      // calculé pour ce mode-là par défaut.
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d, finalsFormatPick: d.finalsFormat || "single" })); }
     } catch { /* API hors ligne */ }
     if (token() && (S.user?.role === "ORGANIZER" || S.user?.role === "ADMIN")) loadRegsPanel(id);
   }
@@ -3766,7 +3791,7 @@ export default function Page() {
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.players,
       nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
-      finalsWin: d.finalsWin, championBonus: d.championBonus,
+      finalsWin: d.finalsWin, championBonus: d.championBonus, finalsFormat: d.finalsFormat,
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
@@ -3797,7 +3822,7 @@ export default function Page() {
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, finalsFormat: "single", imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -3818,6 +3843,7 @@ export default function Page() {
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
       entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
+      ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat } : {}),
     };
     try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
     catch { setS((s) => ({ ...s, busy: false })); return; }
@@ -3852,7 +3878,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizfinalsfmt],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -3934,6 +3960,7 @@ export default function Page() {
             entryFeeXof: t.entryFeeXof || 0, givesLoyaltyPoint: t.givesLoyaltyPoint ?? true,
             survWin: t.scoring?.survWin ?? 1, loserWin: t.scoring?.loserWin ?? 0.5, poolFinalWin: t.scoring?.poolFinalWin ?? 1.5,
             finalsWin: t.scoring?.finalsWin ?? 2, championBonus: t.scoring?.championBonus ?? 3,
+            finalsFormat: t.finalsFormat || "single",
             imageUrl: t.imageUrl || null,
           },
         }));
@@ -3971,6 +3998,7 @@ export default function Page() {
     else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => ({ ...s, wizData: { ...s.wizData, format: d.wizformat! } }));
+    else if (d.wizfinalsfmt) setS((s) => ({ ...s, wizData: { ...s.wizData, finalsFormat: d.wizfinalsfmt! } }));
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
@@ -4126,7 +4154,7 @@ export default function Page() {
     else if (d.act === "create-open") {
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, finalsFormat: "single", imageUrl: null },
       }));
       loadRoster();
     }

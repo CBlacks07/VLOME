@@ -18,6 +18,9 @@ export class CreateTournamentDto {
   @IsOptional() @IsNumber() @Min(0.25) poolFinalWin?: number;
   @IsOptional() @IsNumber() @Min(0.25) finalsWin?: number;
   @IsOptional() @IsNumber() @Min(0) championBonus?: number;
+  // Mode de la phase finale (Survival uniquement) — fixé dès la création pour que le budget de
+  // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
 }
 
 export class UpdateTournamentDto {
@@ -31,6 +34,7 @@ export class UpdateTournamentDto {
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
 }
 
 export class AddPlayerDto {

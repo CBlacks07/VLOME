@@ -85,6 +85,7 @@ export class TournamentsService {
       name: dto.name, game: dto.game, place: dto.place,
       nbPools: dto.nbPools ?? 2, pointsPerPlayer: dto.pointsPerPlayer ?? 5,
       format: engineFormatFor(dto.format),
+      finalsFormat: dto.finalsFormat,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -93,6 +94,12 @@ export class TournamentsService {
       } : {}),
     });
     Engine.setPlayers(t, dto.players ?? []);
+    // Le barème doit tenir dans la cagnotte (participants × points/joueur) — calculé pour le
+    // format de phase finale réellement choisi, sinon un double élim sous-budgété comme un
+    // bracket simple peut distribuer largement plus de points que la cagnotte annoncée.
+    if (t.format === 'survival' && !Engine.cagnotte(t).valid) {
+      throw new ConflictException('Le barème de points dépasse la cagnotte disponible (participants × points/joueur) pour ce mode de phase finale.');
+    }
     const r = await this.prisma.tournament.create({
       data: {
         name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
@@ -123,13 +130,14 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined) {
-      if (r.status !== 'DRAFT') throw new ConflictException('Les poules et les points par joueur ne sont modifiables qu\'avant le lancement du tournoi.');
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined) {
+      if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et le mode de phase finale ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
       const t = r.engineState as unknown as Engine.Tournament;
       if (dto.nbPools !== undefined) t.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) t.pointsPerPlayer = dto.pointsPerPlayer;
+      if (dto.finalsFormat !== undefined) t.finalsFormat = dto.finalsFormat;
       data.engineState = JSON.parse(JSON.stringify(t));
     }
 

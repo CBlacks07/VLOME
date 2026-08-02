@@ -845,6 +845,23 @@ export function disqualifyPlayer(t: Tournament, playerId: string): { ok: boolean
 
 /* ---------- Cagnotte ---------- */
 
+/** Nombre de rencontres réelles (hors bye) qui distribuent un `finalsWin`, pour `q` qualifiés selon le
+ * format de phase finale — utilisé par cagnotte() pour un budget qui ne se trompe pas de format.
+ * 'double' est compté via une vraie simulation de bracket (buildDoubleElim), + la 2e petite finale
+ * possible (bracket reset) : jamais de sous-estimation, même si elle ne se joue pas toujours en pratique.
+ * 'single' reste `q - 1`, un invariant mathématique vrai quel que soit le nombre de byes. */
+function finalsMatchCount(q: number, format: FinalsFormat): number {
+  if (q < 2) return 0;
+  if (format === 'roundrobin') return (q * (q - 1)) / 2;
+  if (format === 'double') {
+    const ids = Array.from({ length: q }, (_, i) => 'q' + i);
+    const f = buildDoubleElim(ids);
+    const real = ([] as BracketMatch[]).concat(f.wb.flat(), f.lb.flat()).filter(m => !m.bye).length;
+    return real + (f.gf.bye ? 0 : 2); // grande finale + 2e petite finale (reset) possible
+  }
+  return q - 1;
+}
+
 export function cagnotte(t: Tournament): { total: number; programmed: number; gap: number; valid: boolean } {
   const total = t.players.length * t.pointsPerPlayer;
   const s = t.scoring;
@@ -852,7 +869,7 @@ export function cagnotte(t: Tournament): { total: number; programmed: number; ga
   const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(t.players.length, t.nbPools);
   sizes.forEach(n => { if (n >= 2) { surv += n - 1; los += Math.max(0, n - 2); pf += 1; } });
   const q = sizes.filter(n => n >= 2).length * 2 + sizes.filter(n => n === 1).length;
-  const finalsMatches = Math.max(0, q - 1);
+  const finalsMatches = finalsMatchCount(q, t.finalsFormat);
   const programmed = Math.round((surv * s.survWin + los * s.loserWin + pf * s.poolFinalWin + finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
   return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
 }

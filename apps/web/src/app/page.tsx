@@ -313,7 +313,7 @@ function filePicker(id: string, label = "Choisir une image", accept = "image/*",
     ${preview}
     <input id="${id}" type="file" accept="${accept}" style="display:none" />
     <button data-filepick="${id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;flex:none">${ic(I.image, 16)}${label}</button>
-    <span id="${id}-name" style="font-size:12.5px;color:#5D5E72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Aucun fichier</span>
+    <span id="${id}-name" style="font-size:12.5px;color:${existingUrl ? "#34D399" : "#5D5E72"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${existingUrl ? "Image enregistrée" : "Aucun fichier"}</span>
   </div>`;
 }
 
@@ -3733,6 +3733,24 @@ export default function Page() {
     if (window.location.hash !== hash) history.replaceState(null, "", hash);
   }, [S.page, S.openId]);
 
+  // Champs fichier (affiche de tournoi, logos, images produits/actus…) : écouteur natif au niveau du
+  // document, en capture. Le onChange délégué de React ne se déclenche JAMAIS ici : tout le HTML est
+  // injecté via dangerouslySetInnerHTML, donc React résout l'élément « source » du change sur le div
+  // racine (une div, ni <select> ni <input type=file>) et n'émet pas l'événement. C'est ce qui figeait
+  // l'aperçu sur « Aucun fichier » et empêchait l'envoi de l'affiche.
+  // La ref est réassignée à chaque rendu : l'écouteur, lui, n'est posé qu'une fois mais appelle
+  // toujours la version courante du handler (qui lit S.wizStep/S.wizData via wizCapture).
+  const fileChangeRef = useRef<(t: HTMLInputElement) => void>(() => {});
+  useEffect(() => { fileChangeRef.current = handleFileChange; });
+  useEffect(() => {
+    const onNativeChange = (e: Event) => {
+      const t = e.target as HTMLInputElement | null;
+      if (t && t.tagName === "INPUT" && t.type === "file") fileChangeRef.current(t);
+    };
+    document.addEventListener("change", onNativeChange, true);
+    return () => document.removeEventListener("change", onNativeChange, true);
+  }, []);
+
   // Jauge de cagnotte en direct (étape Barème) : écouteurs natifs posés directement sur les champs,
   // plutôt que de compter sur la délégation d'événements React — le contenu de l'assistant est injecté
   // via dangerouslySetInnerHTML (jamais géré par la réconciliation React), et le onChange délégué s'est
@@ -4238,8 +4256,7 @@ export default function Page() {
 
   // Affiche le nom du fichier choisi à côté du bouton d'envoi d'image.
   // (mise à jour DOM directe : pas de re-rendu, l'input garde son fichier)
-  function onChange(e: React.ChangeEvent<HTMLDivElement>) {
-    const t = e.target as HTMLInputElement;
+  function handleFileChange(t: HTMLInputElement) {
     if (t.type === "file" && t.id) {
       const file = t.files?.[0];
       const span = document.getElementById(t.id + "-name");
@@ -4263,7 +4280,14 @@ export default function Page() {
       // wizData, qui lui survit à la navigation entre étapes.
       if (t.id === "wz-img" && file) {
         uploadFile("wz-img")
-          .then((url2) => { if (url2) setS((s) => ({ ...s, wizData: { ...s.wizData, imageUrl: url2 } })); })
+          .then((url2) => {
+            if (!url2) return;
+            // wizCapture() relit d'abord les champs de l'étape affichée : le re-rendu déclenché
+            // ici régénère tout le HTML de l'assistant, et sans cette capture les valeurs saisies
+            // mais pas encore validées (nom, jeu, date, lieu…) seraient effacées à l'écran.
+            const captured = wizCapture();
+            setS((s) => ({ ...s, wizData: { ...captured, imageUrl: url2 } }));
+          })
           .catch(() => { /* uploadFile affiche déjà une alerte en cas d'échec */ });
       }
     }
@@ -4297,7 +4321,6 @@ export default function Page() {
       }}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      onChange={onChange}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

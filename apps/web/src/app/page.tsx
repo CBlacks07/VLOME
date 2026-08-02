@@ -3857,12 +3857,11 @@ export default function Page() {
       nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, finalsFormat: d.finalsFormat,
+      // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
+      ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
-    // Affiche du tournoi (optionnelle)
-    try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
-    catch { setS((s) => ({ ...s, busy: false })); return; }
     try {
       const r = await fetch(`${API}/api/tournaments`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
@@ -3909,9 +3908,9 @@ export default function Page() {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
       entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
       ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat } : {}),
+      // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
+      ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
-    try { const img = await uploadFile("wz-img"); if (img) body.imageUrl = img; }
-    catch { setS((s) => ({ ...s, busy: false })); return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
@@ -4256,6 +4255,16 @@ export default function Page() {
           pv.style.background = `url('${url}') center/cover`;
           pv.innerHTML = "";
         }
+      }
+      // L'assistant de création régénère tout le DOM à chaque étape franchie : l'input
+      // file de l'étape 1 (affiche du tournoi) n'existe plus au moment de l'envoi final,
+      // donc un upload différé au clic "Créer/Enregistrer" échoue silencieusement. On
+      // envoie l'affiche tout de suite au choix du fichier et on garde l'URL dans
+      // wizData, qui lui survit à la navigation entre étapes.
+      if (t.id === "wz-img" && file) {
+        uploadFile("wz-img")
+          .then((url2) => { if (url2) setS((s) => ({ ...s, wizData: { ...s.wizData, imageUrl: url2 } })); })
+          .catch(() => { /* uploadFile affiche déjà une alerte en cas d'échec */ });
       }
     }
   }

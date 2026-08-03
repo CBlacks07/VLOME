@@ -19,7 +19,10 @@ const USE_CLOUDINARY = !!process.env.CLOUDINARY_URL;
 
 const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.webm'];
 const VIDEO_EXT = ['.mp4', '.webm'];
-const MAX_SIZE = 20 * 1024 * 1024; // 20 Mo (vidéos de fond incluses)
+// 4 Mo : en production l'API tourne en fonction serverless (Vercel), dont le corps de requête est
+// refusé au-delà d'environ 4,5 Mo par la plateforme elle-même (413 FUNCTION_PAYLOAD_TOO_LARGE),
+// avant même d'arriver ici. Annoncer plus haut ne servirait qu'à produire des échecs incompréhensibles.
+const MAX_SIZE = 4 * 1024 * 1024;
 
 function randomFilename(originalname: string): string {
   const ext = extname(originalname).toLowerCase();

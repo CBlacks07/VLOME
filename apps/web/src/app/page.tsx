@@ -6,6 +6,12 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
  * l'ancien stockage disque local renvoyait un chemin relatif "/uploads/..." à préfixer par l'API. */
 function mediaUrl(path?: string | null): string { return !path ? "" : /^https?:\/\//.test(path) ? path : `${API}${path}`; }
 
+/** Taille maximale d'un envoi. Contrainte par la plateforme, pas par l'application : l'API tourne en
+ * fonction serverless (Vercel), qui refuse tout corps de requête au-delà d'environ 4,5 Mo avec un 413
+ * « FUNCTION_PAYLOAD_TOO_LARGE » — avant même d'atteindre notre code. On reste donc sous ce plafond. */
+const MAX_UPLOAD_MB = 4;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
 function token(): string | null { return typeof window !== "undefined" ? localStorage.getItem("vlome_token") : null; }
 function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
 
@@ -1441,7 +1447,7 @@ function adminSite(S: State) {
       ${[0, 1, 2].map((i) => `<div style="border:1px solid #22222F;border-radius:12px;padding:12px"><div style="${lbl};margin-bottom:4px">Statistique ${i + 1}</div><input id="h-s${i}v" value="${escAttr(stats[i]?.v)}" placeholder="2 400+" style="${adminInp}" /><input id="h-s${i}k" value="${escAttr(stats[i]?.k)}" placeholder="Joueurs" style="${adminInp}" /></div>`).join("")}
     </div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, 20 Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm", hz.bgUrl)}</div>
+      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, ${MAX_UPLOAD_MB} Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm", hz.bgUrl)}</div>
       ${hz.bgUrl ? `<button data-herobgclear="1" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:transparent;border:1px solid #33334A;color:#8E8FA6">Retirer le fond</button>` : ""}
     </div>`);
 
@@ -1590,7 +1596,7 @@ function adminNews(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="n-cat" value="${escAttr(e.category)}" placeholder="Esport Togo, EA FC…" style="${adminInp}" /></label>
     </div>
     <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="n-body" rows="4" placeholder="Texte de l'article…" style="${adminInp};resize:vertical">${escHtml(e.body)}</textarea></label>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — 3 Mo max)</div>${filePicker("n-img", "Choisir une image", "image/*", e.imageUrl)}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("n-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-newssave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Publier l'article"}</button><button data-newscancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
@@ -1615,7 +1621,7 @@ function adminGallery(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre<input id="ga-title" placeholder="Finale Survival Cup — remise des prix" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Tournoi lié (optionnel)<select id="ga-tourn" style="${adminInp}"><option value="">—</option>${tourns.map((t) => `<option value="${t.id}">${escAttr(t.name)}</option>`).join("")}</select></label>
     </div>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — 20 Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-gallerysave="1" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Ajouter</button><button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
@@ -1643,7 +1649,7 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer"><input id="pr-loyalty" type="checkbox" ${e.loyaltyEligible ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Éligible à la réduction en points fidélité</span></label>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — 3 Mo max)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
@@ -3041,7 +3047,7 @@ export default function Page() {
   }
   async function editSave(id: string, body: Record<string, string | number>) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
-    try { const img = await uploadFile("e-img"); if (img) body.imageUrl = img; } catch { return; }
+    try { const img = await uploadOrNotify("e-img"); if (img) body.imageUrl = img; } catch { return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
       if (r.status === 403) { alert("Seul l'organisateur peut modifier ce tournoi."); return; }
@@ -3171,7 +3177,7 @@ export default function Page() {
     const title = val("ga-title").trim();
     if (!title) { alert("Le titre est requis."); return; }
     let mediaUrl: string | null = null;
-    try { mediaUrl = await uploadFile("ga-file"); } catch { return; }
+    try { mediaUrl = await uploadOrNotify("ga-file"); } catch { return; }
     if (!mediaUrl) { alert("Choisis une photo ou une vidéo."); return; }
     try {
       const r = await fetch(`${API}/api/gallery`, {
@@ -3294,15 +3300,30 @@ export default function Page() {
     const el = document.getElementById(inputId) as HTMLInputElement | null;
     const f = el?.files?.[0];
     if (!f) return null;
+    // Contrôle de taille AVANT l'envoi : l'API tourne en fonction serverless, dont le corps de
+    // requête est plafonné (~4,5 Mo) bien avant la limite applicative. Sans ce garde-fou, un
+    // fichier trop lourd part quand même et revient en 413 avec un corps texte (pas du JSON),
+    // ce qui donnait un message d'erreur générique et incompréhensible.
+    if (f.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`« ${f.name} » fait ${(f.size / 1024 / 1024).toFixed(1)} Mo : la taille maximale est de ${MAX_UPLOAD_MB} Mo. Compresse le fichier ou choisis-en un plus léger.`);
+    }
     const fd = new FormData();
     fd.append("file", f);
     const r = await fetch(`${API}/api/uploads`, { method: "POST", headers: authHeaders(), body: fd });
     if (!r.ok) {
-      const d = await r.json().catch(() => ({} as Detail));
-      alert(d.message || "Échec de l'envoi de l'image.");
-      throw new Error("upload");
+      const raw = await r.text().catch(() => "");
+      let msg = "";
+      try { msg = (JSON.parse(raw) as Detail).message || ""; } catch { /* corps non-JSON (413 de la plateforme) */ }
+      if (!msg) msg = r.status === 413 ? `« ${f.name} » est trop lourd (${MAX_UPLOAD_MB} Mo maximum).` : `Échec de l'envoi de « ${f.name} ».`;
+      throw new Error(msg);
     }
     return (await r.json()).url as string;
+  }
+  /** uploadFile + message à l'utilisateur, pour les enregistrements qui s'interrompent en cas d'échec
+   * (uploadFile lui-même reste silencieux : saveSite, lui, préfère collecter les erreurs et continuer). */
+  async function uploadOrNotify(inputId: string): Promise<string | null> {
+    try { return await uploadFile(inputId); }
+    catch (e) { alert(e instanceof Error ? e.message : "Échec de l'envoi du fichier."); throw e; }
   }
 
   /** Enregistre les réglages du site (identité, héro, slider, partenaires). */
@@ -3337,13 +3358,19 @@ export default function Page() {
     const slideRows = syncSlidesFromDom(S.slidesEdit ?? []);
     const partnerRows = syncPartnersFromDom(S.partnersEdit ?? []);
     const adRows = syncAdsFromDom(S.adsEdit ?? []);
-    try {
-      const up = await uploadFile("b-logo"); if (up) logoUrl = up;
-      const bg = await uploadFile("h-bg"); if (bg) heroBg = bg;
-      for (const sl of slideRows) { const im = await uploadFile(`sl-${sl.key}-img`); if (im) sl.imageUrl = im; }
-      for (const p of partnerRows) { const im = await uploadFile(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
-      for (const a of adRows) { const im = await uploadFile(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
-    } catch { return; }
+    // Un envoi d'image raté (fichier trop lourd, réseau…) ne doit PAS faire perdre tout le reste :
+    // auparavant un seul échec interrompait la fonction, et aucun réglage — pas même les textes
+    // déjà saisis — n'était enregistré. On collecte les erreurs et on enregistre quand même.
+    const imgErrors: string[] = [];
+    const tryUpload = async (inputId: string): Promise<string | null> => {
+      try { return await uploadFile(inputId); }
+      catch (e) { imgErrors.push(e instanceof Error ? e.message : "Envoi d'image impossible."); return null; }
+    };
+    const up = await tryUpload("b-logo"); if (up) logoUrl = up;
+    const bg = await tryUpload("h-bg"); if (bg) heroBg = bg;
+    for (const sl of slideRows) { const im = await tryUpload(`sl-${sl.key}-img`); if (im) sl.imageUrl = im; }
+    for (const p of partnerRows) { const im = await tryUpload(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
+    for (const a of adRows) { const im = await tryUpload(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
     const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
     const hero = {
       kicker: val("h-kicker").trim(), title: val("h-title"), subtitle: val("h-sub").trim(),
@@ -3362,7 +3389,11 @@ export default function Page() {
       const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads)]);
       if (rs.every((r) => r.ok)) {
         await loadSettings();
-        setS((s) => ({ ...s, siteMsg: "Réglages enregistrés.", slide: 0, slidesEdit: null, partnersEdit: null, adsEdit: null }));
+        setS((s) => ({
+          ...s,
+          siteMsg: imgErrors.length ? `Textes enregistrés, mais image non envoyée — ${imgErrors[0]}` : "Réglages enregistrés.",
+          slide: 0, slidesEdit: null, partnersEdit: null, adsEdit: null,
+        }));
       } else setS((s) => ({ ...s, siteMsg: "Certains réglages n'ont pas pu être enregistrés." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
@@ -3396,7 +3427,7 @@ export default function Page() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
     const body: Detail = { title: val("n-title").trim(), category: val("n-cat").trim() || "Actualité", body: val("n-body").trim() };
     if (!body.title) { alert("Le titre est requis."); return; }
-    try { const img = await uploadFile("n-img"); if (img) body.imageUrl = img; } catch { return; }
+    try { const img = await uploadOrNotify("n-img"); if (img) body.imageUrl = img; } catch { return; }
     if (id === "new") adminAct("news", "POST", { ...body, published: true });
     else adminAct(`news/${id}`, "PATCH", body);
   }
@@ -3409,7 +3440,7 @@ export default function Page() {
       loyaltyEligible: (document.getElementById("pr-loyalty") as HTMLInputElement | null)?.checked ?? false,
     };
     if (!body.name) { alert("Le nom du produit est requis."); return; }
-    try { const img = await uploadFile("pr-img"); if (img) body.imageUrl = img; } catch { return; }
+    try { const img = await uploadOrNotify("pr-img"); if (img) body.imageUrl = img; } catch { return; }
     if (id === "new") adminAct("products", "POST", body);
     else adminAct(`products/${id}`, "PATCH", body);
   }
@@ -3437,7 +3468,7 @@ export default function Page() {
     const name = val("cl-name").trim();
     if (!name) { alert("Le nom du club est requis."); return; }
     const body: Detail = { name, city: val("cl-city").trim() };
-    try { const logo = await uploadFile("cl-logo"); if (logo) body.logoUrl = logo; } catch { return; }
+    try { const logo = await uploadOrNotify("cl-logo"); if (logo) body.logoUrl = logo; } catch { return; }
     if (id === "new") rosterAct(`${API}/api/clubs`, "POST", body);
     else rosterAct(`${API}/api/clubs/${id}`, "PATCH", body);
   }
@@ -4279,7 +4310,7 @@ export default function Page() {
       // envoie l'affiche tout de suite au choix du fichier et on garde l'URL dans
       // wizData, qui lui survit à la navigation entre étapes.
       if (t.id === "wz-img" && file) {
-        uploadFile("wz-img")
+        uploadOrNotify("wz-img")
           .then((url2) => {
             if (!url2) return;
             // wizCapture() relit d'abord les champs de l'étape affichée : le re-rendu déclenché
@@ -4288,7 +4319,12 @@ export default function Page() {
             const captured = wizCapture();
             setS((s) => ({ ...s, wizData: { ...captured, imageUrl: url2 } }));
           })
-          .catch(() => { /* uploadFile affiche déjà une alerte en cas d'échec */ });
+          .catch(() => {
+            // Message déjà affiché par uploadOrNotify ; on remet le sélecteur à zéro pour que
+            // l'organisateur voie clairement qu'aucune affiche n'est associée.
+            const span = document.getElementById("wz-img-name");
+            if (span) span.textContent = "Aucun fichier";
+          });
       }
     }
   }

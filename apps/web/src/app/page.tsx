@@ -3938,6 +3938,34 @@ export default function Page() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  /* ===== Bouton « retour » du téléphone =====
+   * Un panneau ouvert (panier, assistant, visionneuse, confirmation, menu console) n'existe que
+   * dans l'état React : sans entrée d'historique dédiée, le retour Android quittait carrément le
+   * site au lieu de simplement refermer le panneau. On empile donc une entrée à l'ouverture, et
+   * le retour la dépile pour fermer. La navigation entre pages, elle, passe par le hash (plus bas). */
+  const overlayOpen = !!(S.cartOpen || S.creating || S.galleryOpen || S.confirmBox || S.consoleMenuOpen);
+  const overlayRef = useRef(false);
+  const overlayPushed = useRef(false);
+  useEffect(() => {
+    overlayRef.current = overlayOpen;
+    if (overlayOpen && !overlayPushed.current) {
+      overlayPushed.current = true;
+      history.pushState({ vlomeOverlay: true }, "");
+    } else if (!overlayOpen) {
+      overlayPushed.current = false;
+    }
+  }, [overlayOpen]);
+  useEffect(() => {
+    const onPop = () => {
+      if (!overlayRef.current) return; // navigation normale : hashchange s'en charge
+      overlayRef.current = false;
+      overlayPushed.current = false;
+      setS((s) => ({ ...s, cartOpen: false, creating: false, wizEditId: null, galleryOpen: null, confirmBox: null, consoleMenuOpen: false }));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // Garde l'URL synchronisée avec la page affichée (quelle que soit l'action qui l'a changée :
   // clic, redirection après connexion, retour au cockpit…) — un rafraîchissement rouvre donc
   // toujours la bonne section au lieu de retomber sur l'accueil. Le tout premier rendu est ignoré :
@@ -3952,7 +3980,9 @@ export default function Page() {
     else if (S.page === "auth") hash = "#connexion";
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
     else return;
-    if (window.location.hash !== hash) history.replaceState(null, "", hash);
+    // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
+    // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
+    if (window.location.hash !== hash) history.pushState(null, "", hash);
   }, [S.page, S.openId]);
 
   // Champs fichier (affiche de tournoi, logos, images produits/actus…) : écouteur natif au niveau du
@@ -4535,22 +4565,71 @@ export default function Page() {
     }
   }
 
+  /** Bouton d'action principal correspondant au champ saisi : valider par Entrée revient à cliquer
+   * ce bouton, ce qui réutilise toute la logique déjà branchée sur le dispatcher (aucun doublon). */
+  function enterTargetSelector(id: string): string | null {
+    if (id.startsWith("a-")) return "[data-auth-submit]";
+    if (id.startsWith("pw-")) return "[data-passsave]";
+    if (id.startsWith("p-")) return "[data-profilesave]";
+    if (id.startsWith("n-")) return "[data-newssave]";
+    if (id.startsWith("pr-")) return "[data-prodsave]";
+    if (id.startsWith("ro-")) return "[data-rostersave]";
+    if (id.startsWith("cl-")) return "[data-clubsave]";
+    if (id.startsWith("ga-")) return "[data-gallerysave]";
+    if (id.startsWith("al-")) return "[data-albumsave]";
+    if (id.startsWith("ly-")) return "[data-loyaltysave]";
+    if (id.startsWith("cr-")) return "[data-creditssave]";
+    if (id.startsWith("e-")) return "[data-editsave]";
+    if (id === "pl-add-name") return "[data-pladd]";
+    if (id.startsWith("pl-edit-")) return "[data-pledit-save]";
+    // Réglages du site : identité, héro, diapos, partenaires, publicités — un seul bouton d'enregistrement.
+    if (/^(b-name|h-|sl-|pt-|ad-)/.test(id)) return "[data-sitesave]";
+    return null;
+  }
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const t = e.target as HTMLElement;
-    if (e.key === "Enter" && t.id === "hsearch") {
+    if (e.key === "Escape") {
+      // Échap ferme les panneaux légers. Volontairement PAS l'assistant de création : cinq étapes
+      // de saisie ne doivent pas partir sur une touche pressée par mégarde (le bouton « retour »
+      // du téléphone, lui, le ferme — c'est un geste explicite).
+      if (S.galleryOpen || S.confirmBox || S.cartOpen || S.consoleMenuOpen) {
+        setS((s) => ({ ...s, galleryOpen: s.galleryOpen ? null : s.galleryOpen, confirmBox: null, cartOpen: false, consoleMenuOpen: false }));
+      }
+      return;
+    }
+    if (e.key !== "Enter") return;
+    if (t.id === "hsearch") {
       const q = (t as HTMLInputElement).value.trim();
       setS((s) => ({ ...s, q, page: "tournois", creating: false }));
       window.scrollTo({ top: 0 });
+      return;
     }
-    if (e.key === "Enter" && t.id === "adm-search") {
-      setS((s) => ({ ...s, adminSearch: (t as HTMLInputElement).value.trim() }));
+    if (t.id === "adm-search") { setS((s) => ({ ...s, adminSearch: (t as HTMLInputElement).value.trim() })); return; }
+    if (t.id === "wiz-roster-search") { setS((s) => ({ ...s, wizRosterSearch: (t as HTMLInputElement).value.trim() })); return; }
+    if (t.id === "regie-roster-search") { setS((s) => ({ ...s, rosterQ: (t as HTMLInputElement).value.trim() })); return; }
+
+    // Entrée ne valide que depuis un champ de saisie sur une seule ligne : dans un <textarea>
+    // (description, texte d'article…) elle doit rester un simple retour à la ligne.
+    const input = t as HTMLInputElement;
+    if (t.tagName !== "INPUT" || ["file", "checkbox", "radio", "button", "submit"].includes(input.type)) return;
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Assistant de création : Entrée passe à l'étape suivante (ou crée le tournoi à la dernière).
+    if (input.id.startsWith("wz-") && S.creating) {
+      e.preventDefault();
+      const btn = S.wizStep >= 5
+        ? document.querySelector<HTMLElement>(`[data-act="${S.wizEditId ? "wiz-update" : "wiz-submit"}"]`)
+        : document.querySelector<HTMLElement>(`[data-wizgoto="${S.wizStep + 1}"]`);
+      if (btn && !(btn as HTMLButtonElement).disabled) btn.click();
+      return;
     }
-    if (e.key === "Enter" && t.id === "wiz-roster-search") {
-      setS((s) => ({ ...s, wizRosterSearch: (t as HTMLInputElement).value.trim() }));
-    }
-    if (e.key === "Enter" && t.id === "regie-roster-search") {
-      setS((s) => ({ ...s, rosterQ: (t as HTMLInputElement).value.trim() }));
-    }
+    const sel = enterTargetSelector(input.id);
+    if (!sel) return;
+    // On cherche d'abord dans la carte/formulaire courant, pour ne pas déclencher le bouton
+    // d'un autre bloc quand plusieurs formulaires du même type sont affichés.
+    const scope = input.closest<HTMLElement>("form, [data-formscope]") ?? document;
+    const btn = scope.querySelector<HTMLElement>(sel) ?? document.querySelector<HTMLElement>(sel);
+    if (btn && !(btn as HTMLButtonElement).disabled) { e.preventDefault(); btn.click(); }
   }
 
   return (

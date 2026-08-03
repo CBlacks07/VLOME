@@ -17,4 +17,21 @@ export class GalleryItemDto {
   @IsOptional()
   @IsString()
   tournamentId?: string;
+
+  // Catalogue (album) auquel rattacher le média — vide = hors catalogue.
+  @IsOptional()
+  @IsString()
+  albumId?: string;
+}
+
+export class AlbumDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  description?: string;
 }

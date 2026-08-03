@@ -215,15 +215,27 @@ model Setting {
   value Json
 }
 
+// Catalogue (album) de la galerie : regroupe des médias sous un même titre — ex. « Survival Cup 2026 ».
+// Supprimer un album ne supprime pas ses médias : ils repassent simplement « hors catalogue ».
+model GalleryAlbum {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  createdAt   DateTime      @default(now())
+  items       GalleryItem[]
+}
+
 // Galerie : photos/vidéos des événements (LAN, finales, remises de prix…)
 model GalleryItem {
-  id           String      @id @default(cuid())
+  id           String        @id @default(cuid())
   title        String
   mediaUrl     String // image ou vidéo (/uploads/...)
-  mediaType    String      @default("image") // 'image' | 'video'
+  mediaType    String        @default("image") // 'image' | 'video'
   tournamentId String?
-  tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
-  createdAt    DateTime    @default(now())
+  tournament   Tournament?   @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  albumId      String?
+  album        GalleryAlbum? @relation(fields: [albumId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
 }
 
 model NewsPost {

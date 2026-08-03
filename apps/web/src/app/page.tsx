@@ -45,6 +45,10 @@ type State = {
   regIds: { id: string; status: string; amountXof: number }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
   payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
   gallery: Detail[] | null; galleryEdit: Detail | null; galleryFilter: string; galleryOpen: string | null; galleryType: "" | "video" | "image";
+  galleryBusy: string | null; // progression de l'ajout en masse ("3/12"), null hors envoi
+  albums: Detail[] | null; // catalogues de la galerie
+  albumEdit: Detail | null; // catalogue en cours de création/renommage (admin)
+  albumOpen: string | null; // catalogue ouvert sur la galerie publique (null = vue des catalogues)
   partnersEdit: { key: string; name: string; logoUrl: string | null }[] | null;
   slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; imageUrl: string | null }[] | null;
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
@@ -312,12 +316,12 @@ function tournCard(t: TournCard, big: boolean) {
         <span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}<span style="font-family:'JetBrains Mono',monospace">${t.cagnotte}</span> pts</span></div></div></div>`;
 }
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
-function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null) {
+function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null, multiple = false) {
   const isVideo = !!existingUrl && /\.(mp4|webm)$/i.test(existingUrl);
   const preview = `<div id="pv-${id}" style="width:50px;height:50px;border-radius:11px;border:1px solid #282838;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;color:#5D5E72;background:${existingUrl && !isVideo ? `url('${mediaUrl(existingUrl)}') center/cover` : "#1B1B27"}">${isVideo ? ic(I.tv, 18) : !existingUrl ? ic(I.image, 18) : ""}</div>`;
   return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0;flex-wrap:wrap">
     ${preview}
-    <input id="${id}" type="file" accept="${accept}" style="display:none" />
+    <input id="${id}" type="file" accept="${accept}" ${multiple ? "multiple" : ""} style="display:none" />
     <button data-filepick="${id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;flex:none">${ic(I.image, 16)}${label}</button>
     <span id="${id}-name" style="font-size:12.5px;color:${existingUrl ? "#34D399" : "#5D5E72"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${existingUrl ? "Image enregistrée" : "Aucun fichier"}</span>
   </div>`;
@@ -903,7 +907,12 @@ function pGalerie(S: State) {
       <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:#F4F5FB;margin-bottom:6px">Galerie vide pour l'instant</div>
       Reviens après le prochain événement pour revivre les meilleurs moments !</div>`;
   }
-  let items = S.galleryFilter ? all.filter((it) => it.tournament?.id === S.galleryFilter) : all;
+  const albums: Detail[] = S.albums ?? [];
+  const openAlbum = S.albumOpen ? albums.find((a: Detail) => a.id === S.albumOpen) : null;
+  // Catalogue ouvert : on ne montre que ses médias. Sinon, toute la galerie (les catalogues
+  // restent accessibles en tête de page).
+  let items = openAlbum ? all.filter((it) => it.albumId === openAlbum.id) : all;
+  if (S.galleryFilter) items = items.filter((it) => it.tournament?.id === S.galleryFilter);
   if (S.galleryType === "video") items = items.filter((it) => it.mediaType === "video");
   else if (S.galleryType === "image") items = items.filter((it) => it.mediaType !== "video");
 
@@ -934,13 +943,35 @@ function pGalerie(S: State) {
       <div style="position:absolute;inset:0">${media}</div>
       <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 50%,rgba(11,11,17,.9));pointer-events:none"></div>
       ${it.mediaType === "video" ? `<span style="position:absolute;top:10px;right:10px;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:rgba(11,11,17,.7);border:1px solid rgba(255,255,255,.2);color:#fff">${ic(I.tv, 13)}</span>` : ""}
-      <div style="position:absolute;left:12px;right:12px;bottom:11px"><div style="font-weight:700;font-size:13.5px;color:#fff;line-height:1.3">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#22D3EE;font-weight:700;margin-top:3px">${escHtml(it.tournament.name)}</div>` : ""}</div></div>`;
+      <div style="position:absolute;left:12px;right:12px;bottom:11px"><div style="font-weight:700;font-size:13.5px;color:#fff;line-height:1.3">${escHtml(it.title)}</div>${it.album && !openAlbum ? `<div style="font-size:11.5px;color:#7C82FF;font-weight:700;margin-top:3px">${escHtml(it.album.title)}</div>` : ""}${it.tournament ? `<div style="font-size:11.5px;color:#22D3EE;font-weight:700;margin-top:3px">${escHtml(it.tournament.name)}</div>` : ""}</div></div>`;
   };
   const grid = items.length
     ? `<div class="rise d2 gallery-grid" style="padding:0 40px 40px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:150px;gap:12px">${items.map(card).join("")}</div>`
     : `<div class="rise d2" style="margin:0 40px 40px;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">Aucun média ne correspond à ce filtre.</div>`;
+  // Bandeau des catalogues (masqué quand on est déjà à l'intérieur de l'un d'eux).
+  const albumStrip = !openAlbum && albums.length ? `<div class="rise d1" style="padding:0 40px 24px">
+    <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:12px">Catalogues</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">${albums.map((a: Detail) => `
+      <div data-albumopen="${a.id}" class="hcard" style="cursor:pointer;border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">
+        <div class="zoom" style="height:118px;background:${a.coverUrl ? `url('${mediaUrl(a.coverUrl)}') center/cover` : "#1B1B27"};position:relative">
+          ${!a.coverUrl ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#33334A">${ic(I.image, 26)}</span>` : ""}
+        </div>
+        <div style="padding:11px 12px">
+          <div style="font-size:13.5px;font-weight:700;line-height:1.3">${escHtml(a.title)}</div>
+          <div style="font-size:11.5px;color:#7C82FF;font-weight:700;margin-top:3px">${a.count} média${a.count > 1 ? "s" : ""}</div>
+        </div>
+      </div>`).join("")}</div>
+  </div>` : "";
+  const header = openAlbum
+    ? `<div class="rise d1" style="padding:32px 40px 22px">
+        <button data-albumback="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:14px">${icBack(15)}Tous les catalogues</button>
+        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(34px,4vw,50px);letter-spacing:1.5px;margin:0;line-height:.92">${escHtml(openAlbum.title)}</h1>
+        <p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${openAlbum.description ? escHtml(openAlbum.description) + " · " : ""}${openAlbum.count} média${openAlbum.count > 1 ? "s" : ""}</p>
+      </div>`
+    : `<div class="rise d1" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix VLOME</p></div></div>`;
   const content = `<div style="flex:1;min-width:0">
-    <div class="rise d1" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix VLOME</p></div></div>
+    ${header}
+    ${albumStrip}
     ${grid}
   </div>`;
   return `<div style="display:flex;flex-wrap:wrap">${rail}${content}</div>${galleryLightbox(S, items)}`;
@@ -1614,27 +1645,68 @@ function adminNews(S: State) {
 function adminGallery(S: State) {
   const items = S.gallery ?? [];
   const tourns = S.tourns ?? [];
+  const albums: Detail[] = S.albums ?? [];
   const editing = S.galleryEdit;
+  const ae = S.albumEdit;
+  const albumForm = ae ? `<div style="border:1px solid rgba(34,211,238,.3);border-radius:14px;background:#0d0d14;padding:16px;margin-bottom:14px">
+    <div style="font-size:13.5px;font-weight:700;margin-bottom:10px">${ae.id ? "Renommer le catalogue" : "Nouveau catalogue"}</div>
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px" class="grid2b">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre<input id="al-title" value="${escAttr(ae.title)}" placeholder="Survival Cup 2026" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Description (optionnelle)<input id="al-desc" value="${escAttr(ae.description)}" placeholder="Photos de la finale et de la remise des prix" style="${adminInp}" /></label>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button data-albumsave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ae.id ? "Enregistrer" : "Créer le catalogue"}</button>
+      <button data-albumcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">Annuler</button>
+    </div>
+  </div>` : "";
+  const albumCards = albums.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">${albums.map((a: Detail) => `
+    <div style="border:1px solid #282838;border-radius:13px;overflow:hidden;background:#0E0E16">
+      <div style="height:96px;background:${a.coverUrl ? `url('${mediaUrl(a.coverUrl)}') center/cover` : "#14141D"};position:relative">
+        ${!a.coverUrl ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#33334A">${ic(I.image, 24)}</span>` : ""}
+        <span style="position:absolute;bottom:6px;right:6px;font-size:10.5px;font-weight:800;color:#F4F5FB;background:rgba(11,11,17,.8);border-radius:99px;padding:3px 9px">${a.count} média${a.count > 1 ? "s" : ""}</span>
+      </div>
+      <div style="padding:10px 11px">
+        <div style="font-size:13px;font-weight:700;line-height:1.3">${escHtml(a.title)}</div>
+        ${a.description ? `<div style="font-size:11px;color:#5D5E72;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.description)}</div>` : ""}
+        <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+          ${btnSm(`data-galleryadd="${a.id}"`, "+ Ajouter", "#7C82FF", "#7C82FF55")}
+          ${btnSm(`data-albumedit="${a.id}"`, "Renommer", "#22D3EE", "#22D3EE55")}
+          ${btnSm(`data-albumdel="${a.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}
+        </div>
+      </div>
+    </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13px;padding:10px 0">Aucun catalogue. Crée-en un pour regrouper les photos d'un même événement.</div>`;
+  const albumsSection = `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle(`Catalogues (${albums.length})`)}
+      <button data-albumnew="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 15)}Nouveau catalogue</button>
+    </div>
+    ${albumForm}${albumCards}
+  </div>`;
   const editor = editing ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Ajouter à la galerie</div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px" class="grid2b">
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre<input id="ga-title" placeholder="Finale Survival Cup — remise des prix" style="${adminInp}" /></label>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:4px">Ajouter à la galerie</div>
+    <p style="color:#8E8FA6;font-size:12.5px;margin:0 0 14px">Tu peux sélectionner <b style="color:#F4F5FB">plusieurs fichiers d'un coup</b> (Ctrl/Cmd ou Maj pour une série). Sans titre, chaque média reprend le nom de son fichier.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px">
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Titre <span style="color:#5D5E72">(optionnel)</span><input id="ga-title" placeholder="Finale Survival Cup — remise des prix" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catalogue (optionnel)<select id="ga-album" style="${adminInp}"><option value="">— Hors catalogue —</option>${albums.map((a: Detail) => `<option value="${a.id}" ${editing?.albumId === a.id ? "selected" : ""}>${escAttr(a.title)}</option>`).join("")}</select></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Tournoi lié (optionnel)<select id="ga-tourn" style="${adminInp}"><option value="">—</option>${tourns.map((t) => `<option value="${t.id}">${escAttr(t.name)}</option>`).join("")}</select></label>
     </div>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photo ou vidéo (jpg, png, webp, mp4, webm — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("ga-file", "Choisir le fichier", "image/*,video/mp4,video/webm")}</div>
-    <div style="display:flex;gap:10px;margin-top:14px"><button data-gallerysave="1" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Ajouter</button><button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photos ou vidéos (jpg, png, webp, mp4, webm — ${MAX_UPLOAD_MB} Mo par fichier)</div>${filePicker("ga-file", "Choisir les fichiers", "image/*,video/mp4,video/webm", null, true)}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button data-gallerysave="1" ${S.galleryBusy ? "disabled" : ""} style="background:${S.galleryBusy ? "#22222F" : "linear-gradient(135deg,#7C82FF,#5a60e0)"};color:${S.galleryBusy ? "#5D5E72" : "#fff"};border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:${S.galleryBusy ? "default" : "pointer"}">${S.galleryBusy ? `Envoi… ${S.galleryBusy}` : "Ajouter"}</button>
+      <button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
+    </div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
-  const filtered = q ? items.filter((it: Detail) => `${it.title} ${it.tournament?.name ?? ""}`.toLowerCase().includes(q)) : items;
+  const filtered = q ? items.filter((it: Detail) => `${it.title} ${it.tournament?.name ?? ""} ${it.album?.title ?? ""}`.toLowerCase().includes(q)) : items;
   const grid = filtered.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${filtered.map((it: Detail) => `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E0E16;position:relative">
       <div style="height:150px;position:relative;background:${it.mediaType === "video" ? "#14141D" : `url('${mediaUrl(it.mediaUrl)}')`};background-size:cover;background-position:center">
         ${it.mediaType === "video" ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#7C82FF">${ic(I.tv, 30)}</span>` : ""}
         <button data-gallerydel="${it.id}" style="position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);color:#FB7185;cursor:pointer">${ic(I.trash, 13)}</button>
       </div>
-      <div style="padding:11px 12px"><div style="font-size:13px;font-weight:650;line-height:1.35">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11px;color:#7C82FF;font-weight:700;margin-top:4px">${escHtml(it.tournament.name)}</div>` : ""}</div>
+      <div style="padding:11px 12px"><div style="font-size:13px;font-weight:650;line-height:1.35">${escHtml(it.title)}</div>${it.album ? `<div style="font-size:11px;color:#22D3EE;font-weight:700;margin-top:4px">${escHtml(it.album.title)}</div>` : ""}${it.tournament ? `<div style="font-size:11px;color:#7C82FF;font-weight:700;margin-top:4px">${escHtml(it.tournament.name)}</div>` : ""}</div>
     </div>`).join("")}</div>` : `<div style="color:#5D5E72;font-size:13.5px;padding:24px 0;text-align:center">${q ? "Aucun média trouvé." : "Galerie vide. Ajoute la première photo ou vidéo !"}</div>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">${secTitle(`Galerie (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un media</button></div>`;
-  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Titre ou tournoi…")}${scrollBox(grid)}</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">${secTitle(`Tous les médias (${items.length})`)}<button data-gallerynew="1" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter des médias</button></div>`;
+  return albumsSection + editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Titre, catalogue ou tournoi…")}${scrollBox(grid)}</div>`;
 }
 
 function adminProducts(S: State) {
@@ -3004,7 +3076,8 @@ export default function Page() {
     site: null, siteMsg: "",
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
-    payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", boutiqueInStock: false, regsPanel: null,
+    payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", galleryBusy: null,
+    albums: null, albumEdit: null, albumOpen: null, boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, finalsFormatPick: "single", brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
@@ -3168,27 +3241,82 @@ export default function Page() {
 
   async function loadGallery() {
     try {
-      const r = await fetch(`${API}/api/gallery`);
-      if (r.ok) { const rows = await r.json(); setS((s) => ({ ...s, gallery: rows })); }
+      const [gR, aR] = await Promise.all([fetch(`${API}/api/gallery`), fetch(`${API}/api/gallery/albums`)]);
+      const rows = gR.ok ? await gR.json() : null;
+      const albums = aR.ok ? await aR.json() : null;
+      setS((s) => ({ ...s, gallery: rows ?? s.gallery, albums: albums ?? s.albums }));
     } catch { /* ignore */ }
   }
+  /** Crée ou renomme un catalogue de la galerie. */
+  async function saveAlbum() {
+    const e = S.albumEdit;
+    if (!e) return;
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const title = val("al-title").trim();
+    if (!title) { alert("Le titre du catalogue est requis."); return; }
+    const body = { title, description: val("al-desc").trim() || undefined };
+    try {
+      const r = await fetch(`${API}/api/gallery/albums${e.id ? "/" + e.id : ""}`, {
+        method: e.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Enregistrement impossible."); return; }
+      setS((s) => ({ ...s, albumEdit: null }));
+      await loadGallery();
+    } catch { /* ignore */ }
+  }
+  /** Supprime un catalogue — ses médias sont conservés et repassent « hors catalogue ». */
+  async function deleteAlbum(id: string) {
+    try {
+      const r = await fetch(`${API}/api/gallery/albums/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (r.ok) await loadGallery();
+    } catch { /* ignore */ }
+  }
+  /** Titre par défaut déduit du nom de fichier ("finale-survival_01.jpg" -> "Finale survival 01"),
+   * pour que l'ajout en masse ne demande pas de saisir un titre par photo. */
+  function titleFromFilename(name: string): string {
+    const base = name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!base) return "Photo";
+    return base.charAt(0).toUpperCase() + base.slice(1);
+  }
+  /** Ajout à la galerie : accepte une sélection multiple et envoie les fichiers un par un
+   * (l'API reçoit un média par requête, et chaque envoi doit rester sous la limite serverless). */
   async function saveGalleryItem() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLSelectElement | null)?.value ?? "";
-    const title = val("ga-title").trim();
-    if (!title) { alert("Le titre est requis."); return; }
-    let mediaUrl: string | null = null;
-    try { mediaUrl = await uploadOrNotify("ga-file"); } catch { return; }
-    if (!mediaUrl) { alert("Choisis une photo ou une vidéo."); return; }
-    try {
-      const r = await fetch(`${API}/api/gallery`, {
-        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ title, mediaUrl, tournamentId: val("ga-tourn") || undefined }),
-      });
-      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Ajout impossible."); return; }
-      setS((s) => ({ ...s, galleryEdit: null }));
-      await loadGallery();
-      if (S.admin) loadAdmin();
-    } catch { /* ignore */ }
+    const input = document.getElementById("ga-file") as HTMLInputElement | null;
+    const files = Array.from(input?.files ?? []);
+    if (!files.length) { alert("Choisis au moins une photo ou une vidéo."); return; }
+    const baseTitle = val("ga-title").trim();
+    const tournamentId = val("ga-tourn") || undefined;
+    const albumId = val("ga-album") || undefined;
+    setS((s) => ({ ...s, galleryBusy: `0/${files.length}` }));
+    const errors: string[] = [];
+    let added = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setS((s) => ({ ...s, galleryBusy: `${i}/${files.length}` }));
+      try {
+        const url = await uploadOne(f);
+        // Un titre saisi sert de base commune (numérotée s'il y a plusieurs fichiers) ; sinon on
+        // reprend le nom du fichier, pour ne rien avoir à saisir lors d'un import en masse.
+        const title = baseTitle
+          ? (files.length > 1 ? `${baseTitle} ${i + 1}` : baseTitle)
+          : titleFromFilename(f.name);
+        const r = await fetch(`${API}/api/gallery`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ title: title.slice(0, 140), mediaUrl: url, tournamentId, albumId }),
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); throw new Error(d.message || `Ajout impossible pour « ${f.name} ».`); }
+        added++;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : `Échec pour « ${f.name} ».`);
+      }
+    }
+    setS((s) => ({ ...s, galleryBusy: null, galleryEdit: errors.length ? s.galleryEdit : null }));
+    await loadGallery();
+    if (S.admin) loadAdmin();
+    if (errors.length) alert(`${added} média(s) ajouté(s), ${errors.length} en échec :\n\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? "\n…" : ""}`);
   }
   async function deleteGalleryItem(id: string) {
     try {
@@ -3296,10 +3424,9 @@ export default function Page() {
     } catch { /* ignore */ }
   }
   /** Envoie le fichier choisi dans <input type=file> et renvoie son URL (/uploads/…). */
-  async function uploadFile(inputId: string): Promise<string | null> {
-    const el = document.getElementById(inputId) as HTMLInputElement | null;
-    const f = el?.files?.[0];
-    if (!f) return null;
+  /** Envoie UN fichier déjà obtenu (utile pour les sélections multiples, où l'on ne peut pas se
+   * contenter du premier fichier du champ). Lève une erreur explicite, sans alerte. */
+  async function uploadOne(f: File): Promise<string> {
     // Contrôle de taille AVANT l'envoi : l'API tourne en fonction serverless, dont le corps de
     // requête est plafonné (~4,5 Mo) bien avant la limite applicative. Sans ce garde-fou, un
     // fichier trop lourd part quand même et revient en 413 avec un corps texte (pas du JSON),
@@ -3318,6 +3445,12 @@ export default function Page() {
       throw new Error(msg);
     }
     return (await r.json()).url as string;
+  }
+  async function uploadFile(inputId: string): Promise<string | null> {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
+    const f = el?.files?.[0];
+    if (!f) return null;
+    return uploadOne(f);
   }
   /** uploadFile + message à l'utilisateur, pour les enregistrements qui s'interrompent en cas d'échec
    * (uploadFile lui-même reste silencieux : saveSite, lui, préfère collecter les erreurs et continuer). */
@@ -3697,7 +3830,7 @@ export default function Page() {
     // Chargement initial groupé : une seule mise à jour d'état (pas de rejeu d'animations).
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
-      const [tourns, products, news, site, gallery, leaderboard, loyaltySettings] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("tournaments/leaderboard"), get("loyalty/settings")]);
+      const [tourns, products, news, site, gallery, albums, leaderboard, loyaltySettings] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("gallery/albums"), get("tournaments/leaderboard"), get("loyalty/settings")]);
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
@@ -3707,6 +3840,7 @@ export default function Page() {
         news: Array.isArray(news) && news.length ? news : s.news,
         site: site || s.site,
         gallery: Array.isArray(gallery) ? gallery : s.gallery,
+        albums: Array.isArray(albums) ? albums : s.albums,
         leaderboard: Array.isArray(leaderboard) ? leaderboard : s.leaderboard,
         loyaltySettings: loyaltySettings || s.loyaltySettings,
       }));
@@ -3991,7 +4125,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizfinalsfmt],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-finalsfmt],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizfinalsfmt],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4185,8 +4319,20 @@ export default function Page() {
       const c = S.clubs?.find((x: Detail) => x.id === d.clubdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le club", message: `« ${c?.name || "Ce club"} » sera supprimé — ses joueurs resteront dans la base, simplement sans club.`, okLabel: "Supprimer", action: `clubdel|${d.clubdel}` } }));
     }
-    else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "" } }));
+    else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "", albumId: "" } }));
+    // « + Ajouter » sur une carte de catalogue : ouvre le formulaire d'import pré-rattaché à ce catalogue.
+    else if (d.galleryadd) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "", albumId: d.galleryadd } }));
     else if (d.gallerycancel !== undefined) setS((s) => ({ ...s, galleryEdit: null }));
+    else if (d.albumnew !== undefined) setS((s) => ({ ...s, albumEdit: { title: "", description: "" } }));
+    else if (d.albumedit) { const a = S.albums?.find((x: Detail) => x.id === d.albumedit); if (a) setS((s) => ({ ...s, albumEdit: { id: a.id, title: a.title, description: a.description || "" } })); }
+    else if (d.albumcancel !== undefined) setS((s) => ({ ...s, albumEdit: null }));
+    else if (d.albumsave !== undefined) saveAlbum();
+    else if (d.albumdel) {
+      const a = S.albums?.find((x: Detail) => x.id === d.albumdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le catalogue", message: `« ${a?.title || "Ce catalogue"} » sera supprimé. Ses ${a?.count ?? 0} média(s) sont conservés et repassent hors catalogue.`, okLabel: "Supprimer", action: `albumdel|${d.albumdel}` } }));
+    }
+    else if (d.albumopen) setS((s) => ({ ...s, albumOpen: d.albumopen!, galleryFilter: "", galleryType: "" }));
+    else if (d.albumback !== undefined) setS((s) => ({ ...s, albumOpen: null }));
     else if (d.gallerysave !== undefined) saveGalleryItem();
     else if (d.gallerydel) {
       const it = S.gallery?.find((x: Detail) => x.id === d.gallerydel);
@@ -4228,6 +4374,7 @@ export default function Page() {
         else if (kind === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (kind === "gallerydel") deleteGalleryItem(arg);
+        else if (kind === "albumdel") deleteAlbum(arg);
         else if (kind === "ptdel") setS((s) => ({ ...s, partnersEdit: (s.partnersEdit ?? []).filter((p) => p.key !== arg) }));
         else if (kind === "addel") setS((s) => ({ ...s, adsEdit: (s.adsEdit ?? []).filter((a) => a.key !== arg) }));
         else if (kind === "sldel") setS((s) => ({ ...s, slidesEdit: (s.slidesEdit ?? []).filter((sl) => sl.key !== arg) }));
@@ -4290,8 +4437,10 @@ export default function Page() {
   function handleFileChange(t: HTMLInputElement) {
     if (t.type === "file" && t.id) {
       const file = t.files?.[0];
+      const count = t.files?.length ?? 0;
       const span = document.getElementById(t.id + "-name");
-      if (span) span.textContent = file?.name || "Aucun fichier";
+      // Sélection multiple (galerie) : on annonce le nombre plutôt que le seul premier nom.
+      if (span) span.textContent = count > 1 ? `${count} fichiers sélectionnés` : file?.name || "Aucun fichier";
       // Aperçu instantané (avant tout envoi/enregistrement) depuis le fichier local choisi.
       const pv = document.getElementById("pv-" + t.id);
       if (pv && file) {

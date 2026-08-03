@@ -12,6 +12,59 @@ function mediaUrl(path?: string | null): string { return !path ? "" : /^https?:\
 const MAX_UPLOAD_MB = 4;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
+/* ===== Optimisation des images avant envoi =====
+ * Une photo de téléphone dépasse facilement la limite ci-dessus (et alourdit inutilement le site).
+ * On la redimensionne et la ré-encode dans le navigateur avant l'envoi : l'utilisateur n'a plus à
+ * compresser quoi que ce soit à la main. Ne concerne QUE les images matricielles réencodables —
+ * les vidéos et les GIF (animation perdue au réencodage) sont laissés intacts. */
+const IMG_MAX_DIM = 1920; // suffisant pour un affichage plein écran, y compris en écran dense
+const IMG_COMPRESS_ABOVE = 1.2 * 1024 * 1024; // en dessous, l'image part telle quelle
+const COMPRESSIBLE = ["image/jpeg", "image/png", "image/webp"];
+
+/** Dessine le bitmap redimensionné et renvoie le meilleur encodage tenant sous la limite. */
+async function encodeBelowLimit(bitmap: ImageBitmap, hasAlpha: boolean): Promise<{ blob: Blob; ext: string } | null> {
+  // WebP conserve la transparence et compresse mieux ; JPEG sert de repli (navigateurs anciens).
+  const type = hasAlpha ? "image/webp" : "image/jpeg";
+  const ext = hasAlpha ? ".webp" : ".jpg";
+  for (const maxDim of [IMG_MAX_DIM, 1440, 1080]) {
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    if (!hasAlpha) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); } // évite un fond noir sur les PNG transparents aplatis
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    for (const quality of [0.85, 0.75, 0.65]) {
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, type, quality));
+      if (!blob) return null;
+      if (blob.size <= MAX_UPLOAD_BYTES) return { blob, ext };
+    }
+  }
+  return null;
+}
+
+/** Renvoie une version allégée du fichier si c'est utile et possible ; sinon le fichier d'origine. */
+async function optimizeImage(file: File): Promise<File> {
+  if (!COMPRESSIBLE.includes(file.type)) return file;
+  if (typeof createImageBitmap !== "function") return file;
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(file); } catch { return file; }
+  try {
+    const tooBig = file.size > IMG_COMPRESS_ABOVE;
+    const tooWide = Math.max(bitmap.width, bitmap.height) > IMG_MAX_DIM;
+    if (!tooBig && !tooWide) return file;
+    const out = await encodeBelowLimit(bitmap, file.type === "image/png" || file.type === "image/webp");
+    // Si le réencodage ne fait pas mieux que l'original, on garde l'original.
+    if (!out || out.blob.size >= file.size) return file;
+    const name = file.name.replace(/\.[^.]+$/, "") + out.ext;
+    return new File([out.blob], name, { type: out.blob.type });
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 function token(): string | null { return typeof window !== "undefined" ? localStorage.getItem("vlome_token") : null; }
 function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
 
@@ -1478,7 +1531,7 @@ function adminSite(S: State) {
       ${[0, 1, 2].map((i) => `<div style="border:1px solid #22222F;border-radius:12px;padding:12px"><div style="${lbl};margin-bottom:4px">Statistique ${i + 1}</div><input id="h-s${i}v" value="${escAttr(stats[i]?.v)}" placeholder="2 400+" style="${adminInp}" /><input id="h-s${i}k" value="${escAttr(stats[i]?.k)}" placeholder="Joueurs" style="${adminInp}" /></div>`).join("")}
     </div>
     <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image ou vidéo (mp4/webm, ${MAX_UPLOAD_MB} Mo max) — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm", hz.bgUrl)}</div>
+      <div style="flex:1;min-width:240px"><div style="${lbl}">Fond du héro : image (optimisée automatiquement) ou vidéo mp4/webm de ${MAX_UPLOAD_MB} Mo max — halos animés par défaut</div>${filePicker("h-bg", "Choisir le fond", "image/*,video/mp4,video/webm", hz.bgUrl)}</div>
       ${hz.bgUrl ? `<button data-herobgclear="1" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:transparent;border:1px solid #33334A;color:#8E8FA6">Retirer le fond</button>` : ""}
     </div>`);
 
@@ -1627,7 +1680,7 @@ function adminNews(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catégorie<input id="n-cat" value="${escAttr(e.category)}" placeholder="Esport Togo, EA FC…" style="${adminInp}" /></label>
     </div>
     <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="n-body" rows="4" placeholder="Texte de l'article…" style="${adminInp};resize:vertical">${escHtml(e.body)}</textarea></label>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("n-img", "Choisir une image", "image/*", e.imageUrl)}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image de l'article (jpg, png, webp — redimensionnée automatiquement)</div>${filePicker("n-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-newssave="${e.id || "new"}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Publier l'article"}</button><button data-newscancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
@@ -1690,7 +1743,7 @@ function adminGallery(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Catalogue (optionnel)<select id="ga-album" style="${adminInp}"><option value="">— Hors catalogue —</option>${albums.map((a: Detail) => `<option value="${a.id}" ${editing?.albumId === a.id ? "selected" : ""}>${escAttr(a.title)}</option>`).join("")}</select></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Tournoi lié (optionnel)<select id="ga-tourn" style="${adminInp}"><option value="">—</option>${tourns.map((t) => `<option value="${t.id}">${escAttr(t.name)}</option>`).join("")}</select></label>
     </div>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photos ou vidéos (jpg, png, webp, mp4, webm — ${MAX_UPLOAD_MB} Mo par fichier)</div>${filePicker("ga-file", "Choisir les fichiers", "image/*,video/mp4,video/webm", null, true)}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Photos ou vidéos — les photos sont optimisées automatiquement, les vidéos restent limitées à ${MAX_UPLOAD_MB} Mo</div>${filePicker("ga-file", "Choisir les fichiers", "image/*,video/mp4,video/webm", null, true)}</div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap">
       <button data-gallerysave="1" ${S.galleryBusy ? "disabled" : ""} style="background:${S.galleryBusy ? "#22222F" : "linear-gradient(135deg,#7C82FF,#5a60e0)"};color:${S.galleryBusy ? "#5D5E72" : "#fff"};border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:${S.galleryBusy ? "default" : "pointer"}">${S.galleryBusy ? `Envoi… ${S.galleryBusy}` : "Ajouter"}</button>
       <button data-gallerycancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button>
@@ -1721,7 +1774,7 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer"><input id="pr-loyalty" type="checkbox" ${e.loyaltyEligible ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Éligible à la réduction en points fidélité</span></label>
-    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — ${MAX_UPLOAD_MB} Mo max)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
+    <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600">Image du produit (jpg, png, webp — redimensionnée automatiquement)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-prodsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter le produit"}</button><button data-prodcancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
@@ -3426,13 +3479,17 @@ export default function Page() {
   /** Envoie le fichier choisi dans <input type=file> et renvoie son URL (/uploads/…). */
   /** Envoie UN fichier déjà obtenu (utile pour les sélections multiples, où l'on ne peut pas se
    * contenter du premier fichier du champ). Lève une erreur explicite, sans alerte. */
-  async function uploadOne(f: File): Promise<string> {
+  async function uploadOne(file: File): Promise<string> {
+    // Les photos sont redimensionnées/ré-encodées ici : plus rien à compresser à la main, et le
+    // site reste léger. Les vidéos et GIF passent tels quels (non réencodables côté navigateur).
+    const f = await optimizeImage(file);
     // Contrôle de taille AVANT l'envoi : l'API tourne en fonction serverless, dont le corps de
     // requête est plafonné (~4,5 Mo) bien avant la limite applicative. Sans ce garde-fou, un
     // fichier trop lourd part quand même et revient en 413 avec un corps texte (pas du JSON),
     // ce qui donnait un message d'erreur générique et incompréhensible.
     if (f.size > MAX_UPLOAD_BYTES) {
-      throw new Error(`« ${f.name} » fait ${(f.size / 1024 / 1024).toFixed(1)} Mo : la taille maximale est de ${MAX_UPLOAD_MB} Mo. Compresse le fichier ou choisis-en un plus léger.`);
+      const isVideo = f.type.startsWith("video/");
+      throw new Error(`« ${file.name} » fait ${(f.size / 1024 / 1024).toFixed(1)} Mo : la taille maximale est de ${MAX_UPLOAD_MB} Mo.${isVideo ? " Les vidéos ne peuvent pas être compressées automatiquement — réduis sa durée ou sa définition." : " Même optimisée, l'image reste trop lourde."}`);
     }
     const fd = new FormData();
     fd.append("file", f);

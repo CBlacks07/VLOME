@@ -76,7 +76,7 @@ function newTournament(cfg = {}) {
         format: cfg.format || 'survival',
         players: [],
         disqualified: [],
-        scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1 },
+        scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0 },
         pools: [],
         poolFormat: cfg.poolFormat || 'survival',
         streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,

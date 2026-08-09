@@ -722,7 +722,7 @@ function wizScoringStep(S: State) {
       <button data-wizstreaklen="3" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.streakLength === 3 ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.streakLength === 3 ? "#22D3EE" : "#282838"};color:${d.streakLength === 3 ? "#22D3EE" : "#8E8FA6"}">3 victoires d'affilée</button>
       <button data-wizstreaklen="5" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.streakLength === 5 ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.streakLength === 5 ? "#22D3EE" : "#282838"};color:${d.streakLength === 5 ? "#22D3EE" : "#8E8FA6"}">5 victoires d'affilée</button>
     </div>
-    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Un seul palier actif par tournoi — pas les deux en même temps. Sans effet tant que le point "Bonus striker" ci-dessous reste à 0 (désactivé par défaut).</p>
+    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Un seul palier actif par tournoi.</p>
   </div>`;
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     <div>

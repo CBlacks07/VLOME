@@ -51,7 +51,21 @@ export class AuthService implements OnModuleInit {
         ...(role === 'ORGANIZER' ? { organizerStatus: 'PENDING', organizerNote: (dto.organizerNote || '').trim() || null } : {}),
       },
     });
+    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city);
     return { token: this.sign(u), user: this.safe(u) };
+  }
+
+  /** Relie (ou crée) l'entrée « base de joueurs » d'un compte Joueur, pour qu'il apparaisse
+   * directement en Admin → Joueurs et dans les suggestions de l'assistant de création — sans
+   * ressaisie manuelle. Best-effort : ne doit jamais faire échouer l'inscription/connexion. */
+  private async linkRosterPlayer(userId: string, name: string, city: string | null) {
+    try {
+      const existing = await this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, userId: null } });
+      if (existing) await this.prisma.player.update({ where: { id: existing.id }, data: { userId, city: existing.city ?? city } });
+      else await this.prisma.player.create({ data: { name, city, userId } });
+    } catch (e) {
+      console.error('[VLOME] Liaison base de joueurs impossible (inscription non bloquée) :', e);
+    }
   }
 
   async login(dto: { email?: string; password?: string }) {

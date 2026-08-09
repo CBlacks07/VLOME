@@ -76,6 +76,16 @@ export class UsersService {
     if (dto.favoriteGame !== undefined) data.favoriteGame = dto.favoriteGame.trim() || null;
     if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
     await this.prisma.user.update({ where: { id: userId }, data });
+    // Garde la base de joueurs (Admin → Joueurs) synchro si ce compte y est relié.
+    if (data.displayName !== undefined || data.city !== undefined) {
+      await this.prisma.player.updateMany({
+        where: { userId },
+        data: {
+          ...(data.displayName !== undefined ? { name: data.displayName as string } : {}),
+          ...(data.city !== undefined ? { city: data.city as string | null } : {}),
+        },
+      }).catch(() => { /* best-effort */ });
+    }
     return this.me(userId);
   }
 

@@ -5,7 +5,7 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_BR_POINTS = exports.BYE = void 0;
+exports.DEFAULT_BR_POINTS = exports.STREAK_LENGTH = exports.BYE = void 0;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.swissRoundCount = swissRoundCount;
@@ -51,6 +51,8 @@ exports.distributed = distributed;
 exports.overallRanking = overallRanking;
 exports.ratings = ratings;
 exports.BYE = '__bye__';
+/** Longueur de série requise pour déclencher le bonus striker — fixe, pas réglable par l'organisateur. */
+exports.STREAK_LENGTH = 5;
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
 const MAX_UNDO = 25;
 function uid() {
@@ -75,8 +77,10 @@ function newTournament(cfg = {}) {
         format: cfg.format || 'survival',
         players: [],
         disqualified: [],
-        scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3 },
-        pools: [], status: 'setup', log: [], points: {}, finals: null,
+        scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1 },
+        pools: [],
+        poolFormat: cfg.poolFormat || 'survival',
+        status: 'setup', log: [], points: {}, finals: null,
         finalsFormat: cfg.finalsFormat || 'single',
         champion: null, _undo: [],
     };
@@ -186,7 +190,7 @@ function resetTournament(t) {
 }
 /* ---------- Barème (déplafonné) ---------- */
 function scoringBounds(key) {
-    return key === 'championBonus' ? { min: 0, max: 999 } : { min: 0.25, max: 999 };
+    return key === 'championBonus' || key === 'streakBonus' ? { min: 0, max: 999 } : { min: 0.25, max: 999 };
 }
 /** Resynchronise tous les points déjà attribués avec le barème courant (après setScoring, ou pour rattraper une correction). */
 function recomputePoints(t) {
@@ -197,6 +201,10 @@ function recomputePoints(t) {
             p = l.pts;
         else if (l.stage === 'championBonus') {
             p = t.scoring.championBonus;
+            l.pts = p;
+        }
+        else if (l.stage === 'streakBonus') {
+            p = t.scoring.streakBonus;
             l.pts = p;
         }
         else {
@@ -246,6 +254,7 @@ function distributePools(t) {
             id: uid(), name: 'Poule ' + POOL_NAMES[i], playerIds: [], order: [], phase: 'pending',
             wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
             lBracket: null, lChampion: null, top1: null, top2: null,
+            dbracket: null, streaks: {}, streakAwarded: {},
         });
     }
     mixed.forEach((pid, i) => pools[i % nb].playerIds.push(pid));
@@ -267,10 +276,42 @@ function launch(t) {
     t.pools.forEach(p => {
         if (!p.order.length)
             p.order = shuffle(p.playerIds);
-        initSurvival(p);
+        if (t.poolFormat === 'double')
+            initPoolDouble(p);
+        else
+            initSurvival(p);
     });
     t.players.forEach(p => { t.points[p.id] = t.points[p.id] || 0; });
     t.status = 'live';
+}
+/** Lance une poule en mini-bracket double élimination (poolFormat 'double') — mêmes primitives que la phase finale. */
+function initPoolDouble(pool) {
+    if (pool.order.length < 2) {
+        pool.top1 = pool.order[0] || null;
+        pool.phase = 'done';
+        return;
+    }
+    pool.dbracket = buildDoubleElim(pool.order);
+    pool.phase = 'double';
+    checkPoolDoubleChampion(pool); // couronne immédiatement les cas triviaux (2 joueurs : grande finale déjà en bye)
+}
+/** Détecte la fin du mini-bracket double élim d'une poule (avec reset éventuel) et pose top1/top2. */
+function checkPoolDoubleChampion(pool) {
+    const f = pool.dbracket;
+    if (!f || pool.phase !== 'double' || !f.gf.winner)
+        return;
+    if (f.gf.winner === f.gf.a) {
+        pool.top1 = f.gf.a;
+        pool.top2 = f.gf.b;
+        pool.phase = 'done';
+    }
+    else if (f.gf2 && f.gf2.winner) {
+        pool.top1 = f.gf2.winner;
+        pool.top2 = f.gf2.winner === f.gf2.a ? f.gf2.b : f.gf2.a;
+        pool.phase = 'done';
+    }
+    else if (!f.gf2)
+        f.gf2 = { id: uid(), a: f.gf.a, b: f.gf.b, winner: null, bye: false };
 }
 function initSurvival(pool) {
     if (pool.order.length < 2) {
@@ -386,6 +427,24 @@ function currentMatch(pool) {
     }
     if (pool.phase === 'poolFinal')
         return { a: pool.wChampion, b: pool.lChampion, stage: 'poolFinal', streak: 0 };
+    if (pool.phase === 'double') {
+        const f = pool.dbracket;
+        if (!f)
+            return null;
+        const playable = (arr) => arr.find(x => x.a && x.b && !x.winner && !x.bye && x.a !== exports.BYE && x.b !== exports.BYE);
+        // Bracket vainqueurs → survWin, bracket perdants → loserWin, grande finale (+ reset) → poolFinalWin : mêmes catégories que le mode Survival classique.
+        let m = playable(f.wb.flat());
+        let stage = 'survival';
+        if (!m) {
+            m = playable(f.lb.flat());
+            stage = 'losers';
+        }
+        if (!m) {
+            m = playable(f.gf2 ? [f.gf, f.gf2] : [f.gf]);
+            stage = 'poolFinal';
+        }
+        return m ? { a: m.a, b: m.b, stage, streak: pool.streaks[m.a] || 0, matchId: m.id } : null;
+    }
     return null;
 }
 function stagePoints(t, stage) {
@@ -413,7 +472,31 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
     const pts = stagePoints(t, m.stage);
     award(t, winnerId, pts);
     t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    // Bonus striker : série de STREAK_LENGTH victoires d'affilée sur le "bracket vainqueurs" de la poule (stage
+    // 'survival', que la poule soit en mode classique ou double élim) — une seule fois par joueur dans la poule.
     if (m.stage === 'survival') {
+        pool.streaks[winnerId] = (pool.streaks[winnerId] || 0) + 1;
+        pool.streaks[loserId] = 0;
+        if (pool.streaks[winnerId] >= exports.STREAK_LENGTH && t.scoring.streakBonus > 0 && !pool.streakAwarded[winnerId]) {
+            pool.streakAwarded[winnerId] = true;
+            award(t, winnerId, t.scoring.streakBonus);
+            t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${exports.STREAK_LENGTH} victoires` });
+        }
+    }
+    if (pool.phase === 'double') {
+        const f = pool.dbracket;
+        const match = [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []).find(x => x.id === m.matchId);
+        if (match) {
+            match.winner = winnerId;
+            if (sa || sb) {
+                match.sa = sa;
+                match.sb = sb;
+            }
+            propagateDouble(f);
+        }
+        checkPoolDoubleChampion(pool);
+    }
+    else if (m.stage === 'survival') {
         pool.wLosers.push(loserId);
         if (winnerId === pool.wSurvivor)
             pool.wStreak++;
@@ -971,27 +1054,52 @@ function finalsMatchCount(q, format) {
     }
     return q - 1;
 }
+/** Nombre de rencontres réelles (hors bye) d'un mini-bracket double élim de n joueurs, par catégorie —
+ * simulé pour de vrai (comme finalsMatchCount) : jamais de sous-estimation, reset de grande finale inclus. */
+function doublePoolMatchCounts(n) {
+    if (n < 2)
+        return { wb: 0, lb: 0, gf: 0 };
+    const ids = Array.from({ length: n }, (_, i) => 'p' + i);
+    const f = buildDoubleElim(ids);
+    return {
+        wb: f.wb.flat().filter(m => !m.bye).length,
+        lb: f.lb.flat().filter(m => !m.bye).length,
+        gf: f.gf.bye ? 0 : 2, // grande finale + 2e petite finale possible (reset)
+    };
+}
 function cagnotte(t) {
     const total = t.players.length * t.pointsPerPlayer;
     const s = t.scoring;
-    let surv = 0, los = 0, pf = 0;
+    let surv = 0, los = 0, pf = 0, nRealPools = 0;
     const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(t.players.length, t.nbPools);
-    sizes.forEach(n => { if (n >= 2) {
-        surv += n - 1;
-        los += Math.max(0, n - 2);
-        pf += 1;
-    } });
+    sizes.forEach(n => {
+        if (n < 2)
+            return;
+        nRealPools++;
+        if (t.poolFormat === 'double') {
+            const c = doublePoolMatchCounts(n);
+            surv += c.wb;
+            los += c.lb;
+            pf += c.gf;
+        }
+        else {
+            surv += n - 1;
+            los += Math.max(0, n - 2);
+            pf += 1;
+        }
+    });
     const q = sizes.filter(n => n >= 2).length * 2 + sizes.filter(n => n === 1).length;
     const finalsMatches = finalsMatchCount(q, t.finalsFormat);
-    const programmed = Math.round((surv * s.survWin + los * s.loserWin + pf * s.poolFinalWin + finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
+    // Bonus striker : jamais garanti (dépend des performances), mais on budgète le pire cas réaliste —
+    // au plus un joueur strikeur par poule — pour ne jamais sous-estimer la cagnotte nécessaire.
+    const programmed = Math.round((surv * s.survWin + los * s.loserWin + pf * s.poolFinalWin + finalsMatches * s.finalsWin + s.championBonus + nRealPools * s.streakBonus) * 100) / 100;
     return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
 }
-/** Ajuste proportionnellement le barème pour tenir dans la cagnotte (pas de 0.25). */
-function autoFitScoring(t) {
+/** Un passage de réduction proportionnelle (pas de 0.25, plancher à 0.25) — voir autoFitScoring. */
+function autoFitScoringOnce(t) {
     const c = cagnotte(t);
     if (c.programmed <= 0)
         return;
-    snapshot(t);
     const scale = c.total / c.programmed;
     const clamp = (v) => Math.min(999, Math.max(0.25, Math.floor(v * scale * 4) / 4));
     const s = t.scoring;
@@ -1000,6 +1108,21 @@ function autoFitScoring(t) {
     s.poolFinalWin = clamp(s.poolFinalWin);
     s.finalsWin = clamp(s.finalsWin);
     // le bonus champion n'est pas rogné automatiquement (choix de l'organisateur)
+}
+/** Ajuste proportionnellement le barème pour tenir dans la cagnotte. Un seul passage peut laisser
+ * un léger dépassement résiduel (chaque catégorie a un plancher de 0.25, donc l'arrondi au pas
+ * de 0.25 après mise à l'échelle ne garantit pas individuellement le budget) — on répète jusqu'à
+ * rentrer dans la cagnotte ou jusqu'à ce qu'un passage supplémentaire ne change plus rien (toutes
+ * les catégories réductibles sont au plancher : le dépassement restant vient alors du bonus champion
+ * seul, volontairement non rogné). */
+function autoFitScoring(t) {
+    snapshot(t);
+    for (let i = 0; i < 8; i++) {
+        const before = JSON.stringify(t.scoring);
+        autoFitScoringOnce(t);
+        if (cagnotte(t).valid || JSON.stringify(t.scoring) === before)
+            break;
+    }
     recomputePoints(t);
 }
 function distributed(t) {

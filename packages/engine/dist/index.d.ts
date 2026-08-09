@@ -9,8 +9,11 @@ export interface Scoring {
     poolFinalWin: number;
     finalsWin: number;
     championBonus: number;
+    streakBonus: number;
 }
 export declare const BYE = "__bye__";
+/** Longueur de série requise pour déclencher le bonus striker — fixe, pas réglable par l'organisateur. */
+export declare const STREAK_LENGTH = 5;
 export interface BracketMatch {
     id: string;
     a: string | null;
@@ -23,7 +26,17 @@ export interface BracketMatch {
 export interface Bracket {
     rounds: BracketMatch[][];
 }
-export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'done';
+export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'done';
+/**
+ * Mode de déroulement de chaque poule (phase 1 du format Survival) :
+ * - survival (par défaut, historique) : le vainqueur reste sur le terrain et enchaîne les challengers,
+ *   perdants repêchés dans un mini-bracket, finale de poule entre le survivant et le rescapé du repêchage.
+ * - double : la poule est jouée comme un mini-bracket à double élimination (mêmes primitives que la
+ *   phase finale). Les rencontres du bracket vainqueurs comptent comme `survWin`, celles du bracket
+ *   perdants comme `loserWin`, la grande finale de poule (+ reset éventuel) comme `poolFinalWin` —
+ *   réutilise le barème existant sans nouveau champ.
+ */
+export type PoolFormat = 'survival' | 'double';
 export interface Pool {
     id: string;
     name: string;
@@ -40,8 +53,15 @@ export interface Pool {
     lChampion: string | null;
     top1: string | null;
     top2: string | null;
+    /** Bracket double élimination de la poule — seulement si le tournoi utilise poolFormat 'double'. */
+    dbracket: DoubleFinals | null;
+    /** Série de victoires en cours par joueur dans cette poule (matchs de stage 'survival' uniquement,
+     *  remise à 0 dès une défaite) — sert au bonus striker, pour les deux modes de poule. */
+    streaks: Record<string, number>;
+    /** Joueurs ayant déjà touché le bonus striker dans cette poule (une seule fois chacun). */
+    streakAwarded: Record<string, boolean>;
 }
-export type Stage = 'survival' | 'losers' | 'poolFinal' | 'finals' | 'championBonus' | 'adjust';
+export type Stage = 'survival' | 'losers' | 'poolFinal' | 'finals' | 'championBonus' | 'streakBonus' | 'adjust';
 export interface LogEntry {
     id: string;
     poolId: string;
@@ -118,6 +138,8 @@ export interface Tournament {
     disqualified: string[];
     scoring: Scoring;
     pools: Pool[];
+    /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
+    poolFormat: PoolFormat;
     status: Status;
     log: LogEntry[];
     points: Record<string, number>;
@@ -241,7 +263,12 @@ export declare function cagnotte(t: Tournament): {
     gap: number;
     valid: boolean;
 };
-/** Ajuste proportionnellement le barème pour tenir dans la cagnotte (pas de 0.25). */
+/** Ajuste proportionnellement le barème pour tenir dans la cagnotte. Un seul passage peut laisser
+ * un léger dépassement résiduel (chaque catégorie a un plancher de 0.25, donc l'arrondi au pas
+ * de 0.25 après mise à l'échelle ne garantit pas individuellement le budget) — on répète jusqu'à
+ * rentrer dans la cagnotte ou jusqu'à ce qu'un passage supplémentaire ne change plus rien (toutes
+ * les catégories réductibles sont au plancher : le dépassement restant vient alors du bonus champion
+ * seul, volontairement non rogné). */
 export declare function autoFitScoring(t: Tournament): void;
 export declare function distributed(t: Tournament): number;
 export interface RankRow {

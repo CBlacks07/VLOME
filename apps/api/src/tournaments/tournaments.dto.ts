@@ -18,9 +18,13 @@ export class CreateTournamentDto {
   @IsOptional() @IsNumber() @Min(0.25) poolFinalWin?: number;
   @IsOptional() @IsNumber() @Min(0.25) finalsWin?: number;
   @IsOptional() @IsNumber() @Min(0) championBonus?: number;
+  // Bonus "striker" — série de 5 victoires d'affilée dans une poule (0 pour désactiver).
+  @IsOptional() @IsNumber() @Min(0) streakBonus?: number;
   // Mode de la phase finale (Survival uniquement) — fixé dès la création pour que le budget de
   // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
+  // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
+  @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
 }
 
 export class UpdateTournamentDto {
@@ -35,6 +39,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
+  @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
 }
 
 export class AddPlayerDto {
@@ -51,7 +56,7 @@ export class AdjustDto {
 }
 
 export class ScoringDto {
-  @IsIn(['survWin', 'loserWin', 'poolFinalWin', 'finalsWin', 'championBonus']) key!: string;
+  @IsIn(['survWin', 'loserWin', 'poolFinalWin', 'finalsWin', 'championBonus', 'streakBonus']) key!: string;
   @IsNumber() value!: number;
 }
 

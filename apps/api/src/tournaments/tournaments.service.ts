@@ -101,16 +101,17 @@ export class TournamentsService {
       const can = await this.credits.canHost(user.sub);
       if (!can.ok) throw new ConflictException("Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.");
     }
-    const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus].some((v) => v !== undefined);
+    const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus, dto.streakBonus].some((v) => v !== undefined);
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
       nbPools: dto.nbPools ?? 2, pointsPerPlayer: dto.pointsPerPlayer ?? 5,
       format: engineFormatFor(dto.format),
       finalsFormat: dto.finalsFormat,
+      poolFormat: dto.poolFormat,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
-          finalsWin: dto.finalsWin ?? 2, championBonus: dto.championBonus ?? 3,
+          finalsWin: dto.finalsWin ?? 2, championBonus: dto.championBonus ?? 3, streakBonus: dto.streakBonus ?? 1,
         },
       } : {}),
     });
@@ -151,14 +152,17 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined) {
-      if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et le mode de phase finale ne sont modifiables qu\'avant le lancement du tournoi.');
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined) {
+      if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
       const t = r.engineState as unknown as Engine.Tournament;
       if (dto.nbPools !== undefined) t.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) t.pointsPerPlayer = dto.pointsPerPlayer;
       if (dto.finalsFormat !== undefined) t.finalsFormat = dto.finalsFormat;
+      if (dto.poolFormat !== undefined) t.poolFormat = dto.poolFormat;
+      // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
+      if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       data.engineState = JSON.parse(JSON.stringify(t));
     }
 
@@ -510,6 +514,14 @@ export class TournamentsService {
     if (!t.finalsFormat) t.finalsFormat = 'single';
     if (t.finals && !(t.finals as { format?: string }).format) (t.finals as unknown as { format: string }).format = 'single';
     if (!t.format) t.format = 'survival';
+    // Compat : tournois créés avant l'ajout du mode de poule (double élim) et du bonus striker.
+    if (!t.poolFormat) t.poolFormat = 'survival';
+    if (t.scoring && t.scoring.streakBonus === undefined) t.scoring.streakBonus = 0;
+    t.pools?.forEach((p) => {
+      if (!p.dbracket) p.dbracket = null;
+      if (!p.streaks) p.streaks = {};
+      if (!p.streakAwarded) p.streakAwarded = {};
+    });
     return { record: r, t };
   }
 
@@ -620,6 +632,7 @@ export class TournamentsService {
       pointsPerPlayer: t.pointsPerPlayer,
       scoring: t.scoring,
       finalsFormat: t.finalsFormat,
+      poolFormat: t.poolFormat,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
       givesLoyaltyPoint,
@@ -790,12 +803,14 @@ export class TournamentsService {
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
-  /** Modifie une valeur du barème (à tout moment) — resynchronise automatiquement les points déjà distribués. */
+  /** Modifie une valeur du barème (à tout moment) — resynchronise automatiquement les points déjà distribués,
+   * puis réajuste proportionnellement le barème si la modification fait dépasser la cagnotte programmée. */
   async setScoring(id: string, key: string, value: number, user: JwtUser) {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
     if (!Engine.setScoring(l.t, key as keyof Engine.Scoring, value)) throw new BadRequestException('Clé de barème invalide.');
+    if (l.t.format === 'survival' && !Engine.cagnotte(l.t).valid) Engine.autoFitScoring(l.t);
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }

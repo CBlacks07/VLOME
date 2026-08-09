@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VLOME Esport — Le hub de l'esport togolais",
+  title: "Miabe Esport — Le hub de l'esport togolais",
   description:
     "Compétitions, classements, communauté et boutique — la plateforme de référence de l'esport au Togo et en Afrique de l'Ouest.",
 };

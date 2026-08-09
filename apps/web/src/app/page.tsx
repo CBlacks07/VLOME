@@ -706,7 +706,7 @@ function wizScoringStep(S: State) {
   const rows = WIZ_SCORING_FIELDS.map(([id, label, key], i) => {
     const b = c.breakdown[key as keyof typeof c.breakdown];
     const sub = key === "championBonus" ? "une seule fois"
-      : key === "streakBonus" ? `budget max. ${b.matches} joueur${b.matches > 1 ? "s" : ""} (1/poule, série de ${d.streakLength}, si atteint) — pas garanti`
+      : key === "streakBonus" ? ""
       : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
     const last = i === WIZ_SCORING_FIELDS.length - 1;
     return `<div style="display:flex;align-items:center;gap:16px;padding:14px 18px;${last ? "" : "border-bottom:1px solid #1B1B27;"}">

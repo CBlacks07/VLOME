@@ -158,7 +158,7 @@ const FORMATS = ["Tous", "Survival", "Bracket simple", "Double élim", "Swiss", 
 
 /** Formats sélectionnables à la création : [étiquette DB envoyée à l'API, libellé, explication courte du déroulé]. */
 const WIZ_FORMATS: [string, string, string][] = [
-  ["SURVIVAL", "Survival", "Poules avec repêchage, puis phase finale — le format historique VLOME, barème détaillé réglable."],
+  ["SURVIVAL", "Survival", "Poules avec repêchage, puis phase finale — le format historique Miabe, barème détaillé réglable."],
   ["SINGLE_ELIM", "Bracket simple", "Élimination directe : une défaite et c'est terminé. Rapide, un seul vainqueur possible par match."],
   ["DOUBLE_ELIM", "Double élim", "Deux brackets (vainqueurs/perdants) : il faut deux défaites pour être éliminé."],
   ["ROUND_ROBIN", "Round Robin", "Tout le monde affronte tout le monde. Classement final aux victoires."],
@@ -266,7 +266,7 @@ function header(S: State) {
   return `<header style="position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:13px 22px;border-bottom:1px solid #282838;background:rgba(11,11,17,.82);backdrop-filter:blur(12px)">
     <div data-go="accueil" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
       ${brandLogo(S, 34, 20)}
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:25px;letter-spacing:1.6px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:25px;letter-spacing:1.6px">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
     <nav style="display:flex;gap:2px;flex-wrap:wrap">${nav}</nav>
     <div style="flex:1;min-width:12px"></div>
     <div style="position:relative;min-width:170px">
@@ -328,7 +328,7 @@ function railNav(S: State, activeKey: string): string {
  * (les 5 destinations de RAIL_NAV). Toujours émis, masqué en CSS au-dessus de 1024px (voir globals.css). */
 function railMobileBars(S: State, activeKey: string): string {
   const top = `<div class="rail-mobile-top" style="position:sticky;top:0;z-index:45;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid #1B1B27;background:rgba(11,11,17,.92);backdrop-filter:blur(10px)">
-    <div data-go="accueil" style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0">${brandLogo(S, 28, 16)}<span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
+    <div data-go="accueil" style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0">${brandLogo(S, 28, 16)}<span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
     <button data-cart-open="1" title="Panier" style="position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer;flex:none">${ic(I.cart, 16)}
       ${S.cartItems.length ? `<span style="position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:9.5px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
     ${S.user
@@ -414,7 +414,7 @@ function pAccueil(S: State) {
   const s = slides[S.slide] || slides[0];
   const hero0 = S.site?.hero;
   const heroTitle = escHtml(hero0?.title ?? "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN").replace(/\r?\n/g, "<br>");
-  const heroKicker = escHtml(hero0?.kicker ?? "VLOME Esport · Togo");
+  const heroKicker = escHtml(hero0?.kicker ?? "Miabe Esport · Togo");
   const heroSub = escHtml(hero0?.subtitle ?? "Compétitions, classements, communauté et boutique — une seule plateforme pour fédérer les gamers du Togo et professionnaliser l'esport de la région.");
   const heroStats: { v: string; k: string }[] = hero0?.stats?.length ? hero0.stats : [{ v: "2 400+", k: "Joueurs" }, { v: "18", k: "Tournois / an" }, { v: "24", k: "Clubs" }];
   const tourns = S.tourns ?? [];
@@ -508,7 +508,7 @@ function pAccueil(S: State) {
   const shopFeatured = (shopHome.length ? shopHome : shopProducts).slice(0, 14);
   const shopCard = (p: Detail) => `<div class="hcard" style="flex:none;width:190px;border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${escHtml(p.name)}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`;
   const shopSec = shopProducts.length
-    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
+    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "Miabe")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
     : "";
 
   const partnerList = normPartners(S);
@@ -996,7 +996,7 @@ function pGalerie(S: State) {
   );
   const count = all.length;
   if (!count) {
-    const head = railPageHead("Galerie", "Photos et vidéos des tournois, LAN et remises de prix VLOME");
+    const head = railPageHead("Galerie", "Photos et vidéos des tournois, LAN et remises de prix Miabe");
     return `${head}<div class="rise d1" style="margin:0 44px 40px;border:1px solid #282838;border-radius:18px;background:#14141D;padding:64px 24px;text-align:center;color:#8E8FA6">
       <div style="display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#1B1B27;border:1px solid #33334A;color:#7C82FF;margin:0 auto 16px">${ic(I.image, 28)}</div>
       <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:#F4F5FB;margin-bottom:6px">Galerie vide pour l'instant</div>
@@ -1075,7 +1075,7 @@ function pGalerie(S: State) {
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(34px,4vw,50px);letter-spacing:1.5px;margin:0;line-height:.92">${escHtml(openAlbum.title)}</h1>
         <p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${openAlbum.description ? escHtml(openAlbum.description) + " · " : ""}${openAlbum.count} média${openAlbum.count > 1 ? "s" : ""}</p>
       </div>`
-    : `<div class="rise d1" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix VLOME</p></div></div>`;
+    : `<div class="rise d1" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px"><div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Galerie</h1><p style="color:#8E8FA6;font-size:14px;margin:8px 0 0">${count} photo${count > 1 ? "s" : ""} et vidéo${count > 1 ? "s" : ""} des tournois, LAN et remises de prix Miabe</p></div></div>`;
   const content = `<div style="flex:1;min-width:0">
     ${header}
     ${albumStrip}
@@ -1272,7 +1272,7 @@ function organizerCredits(S: State) {
     <div style="color:#8E8FA6;font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">${payChips}</div>
     <button data-creditbuy="1" ${canBuy ? "" : "disabled"} style="background:${canBuy ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canBuy ? "#04222a" : "#5D5E72"};border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:${canBuy ? "pointer" : "default"}">${S.creditBuyBusy ? "Envoi…" : "Demander"}</button>
-    <p style="color:#5D5E72;font-size:12px;margin:12px 0 0">Pas de paiement en ligne : l'équipe VLOME te contacte pour confirmer, puis crédite ton compte.</p>
+    <p style="color:#5D5E72;font-size:12px;margin:12px 0 0">Pas de paiement en ligne : l'équipe Miabe te contacte pour confirmer, puis crédite ton compte.</p>
   `);
   const pendingPurchases = (c.purchases ?? []).filter((p: Detail) => p.status === "pending");
   const pendingCard = pendingPurchases.length ? card(`${secTitle("Demandes en attente")}${pendingPurchases.map((p: Detail) => `
@@ -1448,7 +1448,7 @@ function organizerStatusBanner(S: State): string {
   return `<div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;margin-bottom:18px;background:${pending ? "rgba(251,191,36,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${pending ? "rgba(251,191,36,.35)" : "rgba(251,113,133,.35)"}">
     <span style="color:${pending ? "#FBBF24" : "#FB7185"};flex:none">${ic(I.warn, 18)}</span>
     <div><div style="font-weight:700;font-size:13.5px;color:${pending ? "#FBBF24" : "#FB7185"}">${pending ? "Compte en attente de validation" : "Demande refusée"}</div>
-    <div style="font-size:12.5px;color:#8E8FA6;margin-top:2px">${pending ? "L'équipe VLOME examine ta demande — tu pourras créer des tournois une fois approuvé." : "Contacte l'équipe VLOME si tu penses qu'il s'agit d'une erreur."}</div></div>
+    <div style="font-size:12.5px;color:#8E8FA6;margin-top:2px">${pending ? "L'équipe Miabe examine ta demande — tu pourras créer des tournois une fois approuvé." : "Contacte l'équipe Miabe si tu penses qu'il s'agit d'une erreur."}</div></div>
   </div>`;
 }
 function consoleOverview(S: State) {
@@ -1515,7 +1515,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
     <div class="console-sidebar${S.consoleMenuOpen ? " console-sidebar-open" : ""}" style="width:250px;flex:none;border-right:1px solid #1B1B27;background:#0E0E16;display:flex;flex-direction:column;padding:16px 0">
       <div data-go="accueil" style="display:flex;align-items:center;gap:10px;padding:0 16px 18px;border-bottom:1px solid #1B1B27;cursor:pointer">
         ${brandLogo(S, 34, 19)}
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1.4px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1.4px">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span>
       </div>
       ${consolePinnedLive(S)}
       <div style="padding:8px 12px 6px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#3d3d55;font-weight:800">Console</div>
@@ -1594,7 +1594,7 @@ function adminSite(S: State) {
   const identite = sec("Identité · logo & nom du site", `
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (image carrée conseillée)</div>${filePicker("b-logo", "Choisir le logo", "image/*", b.logoUrl)}</div>
-      <label style="${lbl}">Nom (partie 1)<input id="b-name1" value="${escAttr(b.name1 ?? "VLOME")}" style="${adminInp}" /></label>
+      <label style="${lbl}">Nom (partie 1)<input id="b-name1" value="${escAttr(b.name1 ?? "Miabe")}" style="${adminInp}" /></label>
       <label style="${lbl}">Nom (partie 2, en couleur)<input id="b-name2" value="${escAttr(b.name2 ?? "ESPORT")}" style="${adminInp}" /></label>
     </div>`);
 
@@ -2136,13 +2136,13 @@ function buildPoster(t: Detail): string {
   }
   const now = new Date().toLocaleString("fr-FR");
   return `<div class="pa">
-    <div class="pa-head"><div class="pa-brand">VLOME ESPORT</div><div class="pa-title">${escHtml(t.name)}</div>${meta ? `<div class="pa-meta">${meta}</div>` : ""}</div>
+    <div class="pa-head"><div class="pa-brand">MIABE ESPORT</div><div class="pa-title">${escHtml(t.name)}</div>${meta ? `<div class="pa-meta">${meta}</div>` : ""}</div>
     ${champHtml}
     <div class="pa-cols">
       <div class="pa-col"><div class="pa-h">Classement général</div>${standings}</div>
       <div class="pa-col">${pools ? `<div class="pa-h">Qualifiés par poule</div>${pools}` : ""}${bracket ? `<div class="pa-h" style="margin-top:14px">Phase finale</div>${bracket}` : ""}</div>
     </div>
-    <div class="pa-foot">Édité le ${now} · VLOME Esport</div>
+    <div class="pa-foot">Édité le ${now} · Miabe Esport</div>
   </div>`;
 }
 
@@ -2951,8 +2951,8 @@ function pAuth(S: State) {
       <label style="${lbl}">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
       <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel)</span><input id="a-club" list="a-club-list" placeholder="Team Mawu" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
     </div>
-    ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe VLOME)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
-    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe VLOME avant de pouvoir créer un tournoi.</p>` : ""}`;
+    ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe Miabe)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
+    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe Miabe avant de pouvoir créer un tournoi.</p>` : ""}`;
 
   const perks = [
     [I.crown, "Inscris-toi aux tournois", "Survival, brackets, Battle Royale — suis tes matchs en direct."],
@@ -2964,7 +2964,7 @@ function pAuth(S: State) {
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">
     <div class="grid2" style="display:grid;grid-template-columns:1fr 1.1fr;gap:28px;max-width:1180px;margin:0 auto;align-items:center;min-height:70vh">
       <div class="rise d1" style="padding:10px 6px">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">${brandLogo(S, 44, 24)}<span style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1.6px">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px">${brandLogo(S, 44, 24)}<span style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1.6px">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,3.6vw,50px);letter-spacing:1.2px;line-height:.95;margin:0 0 12px">Rejoins la communauté<br>esport du Togo</h1>
         <p style="color:#8E8FA6;font-size:14.5px;line-height:1.6;max-width:460px;margin:0 0 26px">Un seul compte pour t'inscrire aux tournois, suivre tes résultats, commander à la boutique et vibrer avec la scène.</p>
         <div style="display:flex;flex-direction:column;gap:18px">${perks}</div>
@@ -3058,7 +3058,7 @@ function cartDrawer(S: State) {
         <div class="rise" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px">
           <div style="display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);color:#34D399;margin-bottom:10px">${ic(I.crown, 26)}</div>
           <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Commande enregistrée</div>
-          <div style="color:#8E8FA6;font-size:13.5px;max-width:280px;margin-top:4px">Réf. <b style="color:#F4F5FB">${escHtml(o.reference)}</b> · ${money(o.totalXof)} · paiement ${escHtml(o.paymentMethod)}. Elle sera confirmée par l'équipe VLOME à réception du paiement.</div>
+          <div style="color:#8E8FA6;font-size:13.5px;max-width:280px;margin-top:4px">Réf. <b style="color:#F4F5FB">${escHtml(o.reference)}</b> · ${money(o.totalXof)} · paiement ${escHtml(o.paymentMethod)}. Elle sera confirmée par l'équipe Miabe à réception du paiement.</div>
         </div>
         <div style="border-top:1px solid #282838;padding-top:16px;margin-top:8px;display:flex;flex-direction:column;gap:8px">
           <button data-cart-vieworders="1" style="width:100%;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:pointer">Voir mes commandes</button>
@@ -3153,7 +3153,7 @@ function showBRSlide(f: Detail): string {
 function pShow(S: State) {
   const t = S.detail;
   const close = `<button data-showclose="1" style="position:absolute;top:16px;right:18px;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;z-index:5">Fermer</button>`;
-  const brand = `<div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:2vh">${brandLogo(S, 38, 20)}<span style="font-family:'Bebas Neue',sans-serif;font-size:3vh;letter-spacing:2.5px;color:#8E8FA6">${escHtml(S.site?.brand?.name1 ?? "VLOME")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>`;
+  const brand = `<div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:2vh">${brandLogo(S, 38, 20)}<span style="font-family:'Bebas Neue',sans-serif;font-size:3vh;letter-spacing:2.5px;color:#8E8FA6">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>`;
   if (!t) return `<div style="min-height:100vh;display:grid;place-items:center;color:#8E8FA6">${close}Chargement de l'affichage…</div>`;
   if (t.status === "finished" && t.champion) {
     return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
@@ -3234,8 +3234,8 @@ function adCarousel(S: State, pageKey: string) {
       <img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
     </div>
     <div style="flex:1;min-width:200px">
-      <div style="font-weight:750;font-size:16px">${ad.label ? escHtml(ad.label) : "Un partenaire VLOME Esport"}</div>
-      <div style="font-size:12.5px;color:#5D5E72;margin-top:4px">Cet emplacement soutient l'organisation des tournois VLOME.</div>
+      <div style="font-weight:750;font-size:16px">${ad.label ? escHtml(ad.label) : "Un partenaire Miabe Esport"}</div>
+      <div style="font-size:12.5px;color:#5D5E72;margin-top:4px">Cet emplacement soutient l'organisation des tournois Miabe.</div>
     </div>
     ${ad.linkUrl ? `<span style="flex:none;display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px">Découvrir ${ic(I.arrow, 15)}</span>` : ""}
   </div>`;
@@ -3599,7 +3599,7 @@ export default function Page() {
       if (!r.ok) { alert(data.message || "Demande impossible."); setS((s) => ({ ...s, creditBuyBusy: false })); return; }
       await loadCreditsMe();
       setS((s) => ({ ...s, creditBuyBusy: false, creditBuyQty: 1, creditBuyPay: "" }));
-      alert(`Demande enregistrée · ${money(data.amountXof)} via ${data.paymentMethod}.\nTes crédits seront ajoutés dès confirmation par l'équipe VLOME.`);
+      alert(`Demande enregistrée · ${money(data.amountXof)} via ${data.paymentMethod}.\nTes crédits seront ajoutés dès confirmation par l'équipe Miabe.`);
     } catch { setS((s) => ({ ...s, creditBuyBusy: false })); }
   }
   async function cancelCreditPurchase(id: string) {
@@ -3730,7 +3730,7 @@ export default function Page() {
     for (const sl of slideRows) { const im = await tryUpload(`sl-${sl.key}-img`); if (im) sl.imageUrl = im; }
     for (const p of partnerRows) { const im = await tryUpload(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
     for (const a of adRows) { const im = await tryUpload(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
-    const brand = { name1: val("b-name1").trim() || "VLOME", name2: val("b-name2").trim(), logoUrl };
+    const brand = { name1: val("b-name1").trim() || "Miabe", name2: val("b-name2").trim(), logoUrl };
     const hero = {
       kicker: val("h-kicker").trim(), title: val("h-title"), subtitle: val("h-sub").trim(),
       bgUrl: heroBg,
@@ -4219,7 +4219,7 @@ export default function Page() {
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     if (h === "#connexion") { setS((s) => ({ ...s, page: "auth", authTab: "login" })); return; }
     if (h === "#inscription") { setS((s) => ({ ...s, page: "auth", authTab: "register" })); return; }
-    if (h === "#panier") { setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel VLOME", price: 15000 }, { name: "Casquette VLOME", price: 8000 }] })); return; }
+    if (h === "#panier") { setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel Miabe", price: 15000 }, { name: "Casquette Miabe", price: 8000 }] })); return; }
     const key = h.replace(/^#/, "");
     if (SIMPLE_PAGES.includes(key)) setS((s) => ({ ...s, page: key }));
   }
@@ -4406,7 +4406,7 @@ export default function Page() {
     const target = e.target as HTMLElement;
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) {
-      setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
+      setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
     const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
@@ -4716,8 +4716,8 @@ export default function Page() {
     else if (d.act === "create-open") {
       if (S.user?.role === "ORGANIZER" && S.user.organizerStatus !== "APPROVED") {
         alert(S.user.organizerStatus === "REJECTED"
-          ? "Ta demande d'organisateur a été refusée par l'équipe VLOME."
-          : "Ton compte organisateur est en attente de validation par l'équipe VLOME — tu pourras créer des tournois une fois approuvé.");
+          ? "Ta demande d'organisateur a été refusée par l'équipe Miabe."
+          : "Ton compte organisateur est en attente de validation par l'équipe Miabe — tu pourras créer des tournois une fois approuvé.");
         return;
       }
       setS((s) => ({

@@ -5,9 +5,9 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { LoyaltyReason } from '../../generated/prisma';
 
 const DEMO_PRODUCTS = [
-  { name: 'Maillot officiel VLOME', category: 'Vêtements', priceXof: 15000, stock: 50 },
+  { name: 'Maillot officiel Miabe', category: 'Vêtements', priceXof: 15000, stock: 50 },
   { name: 'Hoodie Team Mawu', category: 'Vêtements', priceXof: 25000, stock: 30 },
-  { name: 'Casquette VLOME', category: 'Goodies', priceXof: 8000, stock: 80 },
+  { name: 'Casquette Miabe', category: 'Goodies', priceXof: 8000, stock: 80 },
   { name: 'Mug gamer édition Lomé', category: 'Goodies', priceXof: 5000, stock: 120 },
   { name: 'Tapis de souris XL', category: 'Goodies', priceXof: 12000, stock: 60 },
   { name: 'Billet Survival Cup', category: 'Billets', priceXof: 3000, stock: 200 },

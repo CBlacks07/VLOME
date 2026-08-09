@@ -85,8 +85,8 @@ export class TournamentsService {
       if (!u || u.organizerStatus !== 'APPROVED') {
         throw new ForbiddenException(
           u?.organizerStatus === 'REJECTED'
-            ? "Ta demande d'organisateur a été refusée par l'équipe VLOME."
-            : "Ton compte organisateur est en attente de validation par l'équipe VLOME.",
+            ? "Ta demande d'organisateur a été refusée par l'équipe Miabe."
+            : "Ton compte organisateur est en attente de validation par l'équipe Miabe.",
         );
       }
       if (u.organizerMaxTournaments != null) {

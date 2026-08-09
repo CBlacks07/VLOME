@@ -7,11 +7,11 @@ import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.ser
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
 export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits'] as const;
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
-  brand: { name1: 'VLOME', name2: 'ESPORT', logoUrl: null },
+  brand: { name1: 'Miabe', name2: 'ESPORT', logoUrl: null },
   loyalty: DEFAULT_LOYALTY_SETTINGS,
   credits: DEFAULT_CREDITS_SETTINGS,
   hero: {
-    kicker: 'VLOME Esport · Togo',
+    kicker: 'Miabe Esport · Togo',
     title: "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN",
     subtitle: 'Compétitions, classements, communauté et boutique — une seule plateforme pour fédérer les gamers du Togo et professionnaliser l\'esport de la région.',
     stats: [

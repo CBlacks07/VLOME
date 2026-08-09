@@ -5,12 +5,12 @@ const DEMO_NEWS = [
   {
     title: 'EA FC 26 : le patch qui change la méta au Togo',
     category: 'EA FC',
-    body: 'Le dernier patch d\'EA FC 26 rebat les cartes de la méta compétitive. Les joueurs togolais adaptent déjà leurs compositions avant les prochaines qualifications VLOME.',
+    body: 'Le dernier patch d\'EA FC 26 rebat les cartes de la méta compétitive. Les joueurs togolais adaptent déjà leurs compositions avant les prochaines qualifications Miabe.',
   },
   {
-    title: 'VLOME signe un partenariat avec Gaming Arena Lomé',
+    title: 'Miabe signe un partenariat avec Gaming Arena Lomé',
     category: 'Esport Togo',
-    body: 'La plateforme VLOME et la Gaming Arena de Lomé s\'associent pour accueillir les phases finales des tournois majeurs, avec du matériel compétitif et une scène dédiée.',
+    body: 'La plateforme Miabe et la Gaming Arena de Lomé s\'associent pour accueillir les phases finales des tournois majeurs, avec du matériel compétitif et une scène dédiée.',
   },
   {
     title: 'Free Fire Togo Series : 48 joueurs déjà inscrits',

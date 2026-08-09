@@ -20,7 +20,7 @@ export class AuthService implements OnModuleInit {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) return;
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-    await this.prisma.user.create({ data: { email, passwordHash, displayName: 'Admin VLOME', role: 'ADMIN' } });
+    await this.prisma.user.create({ data: { email, passwordHash, displayName: 'Admin Miabe', role: 'ADMIN' } });
     console.log(`[VLOME] Compte ADMIN créé -> ${email} / ${ADMIN_PASSWORD} (à changer)`);
   }
 

@@ -1028,13 +1028,9 @@ function pGalerie(S: State) {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">${albums.map((a: Detail) => `
       <div data-albumopen="${a.id}" class="hcard" style="cursor:pointer;border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">
         <div style="height:118px;position:relative;overflow:hidden">
-          <div class="zoom" style="position:absolute;inset:-14px;background:${a.coverUrl ? `url('${mediaUrl(a.coverUrl)}') center/cover` : "#1B1B27"};filter:blur(22px) brightness(.55);transform:scale(1.15)"></div>
-          <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.2),rgba(11,11,17,.75))"></div>
-          ${!a.coverUrl ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:rgba(255,255,255,.2)">${ic(I.image, 26)}</span>` : ""}
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:10px">
-            <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);color:#fff">${ic(I.image, 16)}</span>
-            <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.8)">Entrer dans le catalogue</span>
-          </div>
+          <div class="zoom" style="position:absolute;inset:0;background:${a.coverUrl ? `url('${mediaUrl(a.coverUrl)}') center/cover` : "#1B1B27"}"></div>
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(11,11,17,.85))"></div>
+          ${!a.coverUrl ? `<span style="position:absolute;inset:0;display:grid;place-items:center;color:#33334A">${ic(I.image, 26)}</span>` : ""}
         </div>
         <div style="padding:11px 12px">
           <div style="font-size:13.5px;font-weight:700;line-height:1.3">${escHtml(a.title)}</div>

@@ -98,6 +98,11 @@ export class ProductDto {
   @IsOptional()
   @IsBoolean()
   loyaltyEligible?: boolean;
+
+  // Affiché dans le carrousel boutique de l'accueil (choix admin, à l'ajout ou après coup).
+  @IsOptional()
+  @IsBoolean()
+  showOnHome?: boolean;
 }
 
 export class ProductUpdateDto {
@@ -130,6 +135,11 @@ export class ProductUpdateDto {
   @IsOptional()
   @IsBoolean()
   loyaltyEligible?: boolean;
+
+  // Affiché dans le carrousel boutique de l'accueil (choix admin, à l'ajout ou après coup).
+  @IsOptional()
+  @IsBoolean()
+  showOnHome?: boolean;
 }
 
 export class OrderStatusDto {

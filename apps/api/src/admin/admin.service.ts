@@ -175,6 +175,7 @@ export class AdminService {
         name: dto.name.trim(), category: dto.category.trim() || 'Goodies',
         priceXof: dto.priceXof, stock: dto.stock, imageUrl: dto.imageUrl || null,
         loyaltyEligible: dto.loyaltyEligible ?? false,
+        showOnHome: dto.showOnHome ?? false,
       },
     });
   }
@@ -189,6 +190,7 @@ export class AdminService {
     if (dto.stock !== undefined) data.stock = dto.stock;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.loyaltyEligible !== undefined) data.loyaltyEligible = dto.loyaltyEligible;
+    if (dto.showOnHome !== undefined) data.showOnHome = dto.showOnHome;
     return this.prisma.product.update({ where: { id }, data });
   }
 

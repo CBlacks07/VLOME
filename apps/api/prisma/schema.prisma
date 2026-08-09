@@ -68,6 +68,7 @@ model User {
   email               String               @unique
   passwordHash        String
   displayName         String
+  displayNameChangedAt DateTime? // dernier renommage — le pseudo n'est modifiable qu'1x/30 jours (voir UsersService.updateMe)
   role                Role                 @default(PLAYER)
   bio                 String?
   city                String?

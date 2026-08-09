@@ -31,7 +31,7 @@ export class AuthService implements OnModuleInit {
     return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus };
   }
 
-  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; organizerNote?: string }) {
+  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; club?: string; organizerNote?: string }) {
     const email = (dto.email || '').trim().toLowerCase();
     if (!email || !dto.password || dto.password.length < 6) {
       throw new BadRequestException('Email et mot de passe (au moins 6 caractères) requis.');
@@ -51,18 +51,27 @@ export class AuthService implements OnModuleInit {
         ...(role === 'ORGANIZER' ? { organizerStatus: 'PENDING', organizerNote: (dto.organizerNote || '').trim() || null } : {}),
       },
     });
-    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city);
+    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city, dto.club);
     return { token: this.sign(u), user: this.safe(u) };
+  }
+
+  /** Retrouve (insensible à la casse) ou crée le club du catalogue portant ce nom. */
+  private async resolveClubId(club?: string): Promise<string | null | undefined> {
+    const name = club?.trim();
+    if (!name) return club === undefined ? undefined : null; // undefined = ne pas toucher, "" = retirer le club
+    const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+    return existing ? existing.id : (await this.prisma.club.create({ data: { name } })).id;
   }
 
   /** Relie (ou crée) l'entrée « base de joueurs » d'un compte Joueur, pour qu'il apparaisse
    * directement en Admin → Joueurs et dans les suggestions de l'assistant de création — sans
    * ressaisie manuelle. Best-effort : ne doit jamais faire échouer l'inscription/connexion. */
-  private async linkRosterPlayer(userId: string, name: string, city: string | null) {
+  private async linkRosterPlayer(userId: string, name: string, city: string | null, club?: string) {
     try {
+      const clubId = await this.resolveClubId(club);
       const existing = await this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, userId: null } });
-      if (existing) await this.prisma.player.update({ where: { id: existing.id }, data: { userId, city: existing.city ?? city } });
-      else await this.prisma.player.create({ data: { name, city, userId } });
+      if (existing) await this.prisma.player.update({ where: { id: existing.id }, data: { userId, city: existing.city ?? city, clubId: existing.clubId ?? clubId ?? undefined } });
+      else await this.prisma.player.create({ data: { name, city, userId, clubId: clubId || null } });
     } catch (e) {
       console.error('[VLOME] Liaison base de joueurs impossible (inscription non bloquée) :', e);
     }

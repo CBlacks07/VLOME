@@ -18,9 +18,17 @@ export class RosterController {
     return this.roster.listPlayers();
   }
 
-  @Get('clubs')
+  /** Fiche complète d'un joueur de la base — stats, commandes, inscriptions (si un compte est relié). */
+  @Get('roster/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ADMIN')
+  playerDetail(@Param('id') id: string) {
+    return this.roster.playerDetail(id);
+  }
+
+  // Lecture publique (comme le catalogue de jeux) : sert aussi de suggestions à l'inscription
+  // et dans le profil joueur, pas seulement à la création d'un tournoi.
+  @Get('clubs')
   listClubs() {
     return this.roster.listClubs();
   }

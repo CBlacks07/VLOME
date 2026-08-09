@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
 import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 
 /**
@@ -11,7 +12,7 @@ import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
  */
 @Injectable()
 export class RosterService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private users: UsersService) {}
 
   private toPlayerDto(p: { id: string; name: string; city: string | null; elo: number; points: number; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }) {
     return {
@@ -56,6 +57,17 @@ export class RosterService {
     if (!p) throw new NotFoundException('Joueur introuvable.');
     await this.prisma.player.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /** Vue complète d'un joueur de la base pour l'admin : fiche roster + (si un compte y est relié)
+   * tout ce à quoi il est rattaché sur le site — stats globales et par jeu, commandes, inscriptions. */
+  async playerDetail(id: string) {
+    const p = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } } } });
+    if (!p) throw new NotFoundException('Joueur introuvable.');
+    const base = this.toPlayerDto(p);
+    if (!p.userId) return { ...base, linked: false };
+    const profile = await this.users.profileForAdmin(p.userId);
+    return { ...base, linked: true, account: profile };
   }
 
   async listClubs() {

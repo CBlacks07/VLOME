@@ -135,6 +135,8 @@ type State = {
   // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
   // d'un tournoi pour éviter les doublons de casse/orthographe qui fausseraient classements/stats.
   games: Detail[] | null; gameEdit: Detail | null;
+  // Fiche complète d'un joueur de la base, ouverte depuis Admin → Joueurs (stats, commandes, inscriptions).
+  playerDetail: Detail | null; playerDetailBusy: boolean;
 };
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
@@ -1155,6 +1157,7 @@ function pDashboard(S: State) {
   const rc = ROLE_COLOR[u.role] || "#22D3EE";
   const sub: string[] = [];
   if (me?.city) sub.push(me.city);
+  if (me?.clubName) sub.push(`@${me.clubName}`);
   if (me?.favoriteGame) sub.push(me.favoriteGame);
   const header = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:24px">
     <div style="display:grid;place-items:center;width:78px;height:78px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:36px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
@@ -1171,7 +1174,22 @@ function pDashboard(S: State) {
   const editor = S.profileEdit ? profileEditor(S) : "";
   // ADMIN/ORGANIZER passent par la console (sidebar) — voir renderPage(). Cette page ne sert plus qu'aux PLAYER.
   const body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
-  return wrap(header + editor + statTiles + body + loyaltyCard(S));
+  return wrap(header + editor + statTiles + statsByGameCard(me) + body + loyaltyCard(S));
+}
+
+/** Répartition des points/victoires par jeu — tout ce à quoi le joueur est rattaché sur le
+ * site, jeu par jeu, pas seulement un total global. Partagée avec la fiche admin d'un joueur. */
+function statsByGameCard(me: Detail) {
+  const byGame: Detail[] = me?.stats?.byGame ?? [];
+  if (!byGame.length) return "";
+  const rows = byGame.map((g: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F">
+      <div style="min-width:0;flex:1;font-weight:650;font-size:14px">${escHtml(g.game)}</div>
+      <span style="font-size:12px;color:#8E8FA6">${g.tournamentsPlayed} tournoi${g.tournamentsPlayed > 1 ? "s" : ""}</span>
+      <span style="font-size:12px;color:#8E8FA6">${g.wins} V</span>
+      ${g.championships ? `<span style="font-size:11px;font-weight:800;color:#FBBF24">${ic(I.crown, 11)} ${g.championships}</span>` : ""}
+      <span style="font-weight:800;color:#22D3EE;font-size:14px;font-family:'JetBrains Mono',monospace">${g.points} pts</span>
+    </div>`).join("");
+  return `<div style="margin-bottom:16px">${card(secTitle(`Stats par jeu (${byGame.length})`) + rows)}</div>`;
 }
 
 /** Solde + historique des points fidélité (gagnés par participation, dépensés en boutique ou sur des frais d'inscription). */
@@ -1284,10 +1302,15 @@ function profileEditor(S: State) {
   const me = S.me!;
   const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
   const esc = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
+  const nameLocked = !!me.nextNameChangeAt;
+  const nameHelp = nameLocked
+    ? `<span style="display:block;font-size:11px;color:#FBBF24;margin-top:5px">${ic(I.warn, 11)} Modifiable à nouveau le ${new Date(me.nextNameChangeAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</span>`
+    : `<span style="display:block;font-size:11px;color:#5D5E72;margin-top:5px">Une fois par mois maximum</span>`;
   return `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Mon profil</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" style="${inp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" ${nameLocked ? "disabled" : ""} style="${inp};${nameLocked ? "opacity:.55;cursor:not-allowed" : ""}" />${nameHelp}</label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Club <span style="color:#5D5E72">(optionnel, modifiable librement)</span><input id="p-club" list="p-club-list" value="${esc(me.clubName)}" placeholder="Team Mawu" style="${inp}" /><datalist id="p-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="p-city" value="${esc(me.city)}" placeholder="Lomé" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu favori<input id="p-game" value="${esc(me.favoriteGame)}" placeholder="EA FC 26" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Téléphone / WhatsApp<input id="p-phone" type="tel" value="${esc(me.phone)}" placeholder="+228 90 00 00 00" style="${inp}" /></label>
@@ -1525,7 +1548,7 @@ function consolePage(S: State): string {
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
   const shell = consoleShell(S, tabs, activeLabel, editor + body);
-  return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S);
+  return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S) + playerDetailModal(S);
 }
 
 /** Onglet Site : identité (logo/nom), héro, slider « À la une », partenaires. */
@@ -1667,7 +1690,7 @@ function adminRosterPlayers(S: State) {
       <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:13px;font-weight:800;color:#8E8FA6;flex:none">${(p.name || "?").charAt(0).toUpperCase()}</span>
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(p.name)}</div><div style="font-size:11.5px;color:#5D5E72">${[p.city, p.clubName].filter(Boolean).map(escHtml).join(" · ") || "—"}</div></div>
       <span style="font-size:11px;color:#22D3EE;font-weight:700">${ic(I.bolt, 11)} ${p.elo}</span>
-      <div style="display:inline-flex;gap:6px">${btnSm(`data-rosteredit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-rosterdel="${p.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-playerview="${p.id}"`, "Voir le profil", "#7C82FF", "#7C82FF55")}${btnSm(`data-rosteredit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-rosterdel="${p.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
     : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun joueur trouvé." : "Base vide. Ajoute des joueurs ici, ou crée un tournoi — pense à les y ajouter aussi."}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Base de joueurs (${roster.length})`)}<button data-rosteredit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un joueur</button></div>`;
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom, ville ou club…")}${scrollBox(rows)}<p style="color:#5D5E72;font-size:11.5px;margin-top:12px">Ces joueurs sont proposés à la création d'un tournoi (« Depuis la base de joueurs »).</p></div>`;
@@ -2894,7 +2917,10 @@ function pAuth(S: State) {
       <label style="${lbl}">Ville <span style="color:#5D5E72">(optionnel)</span><input id="a-city" placeholder="Lomé" style="${inp}" /></label>
       <label style="${lbl}">Jeu favori <span style="color:#5D5E72">(optionnel)</span><input id="a-game" placeholder="EA FC 26, Tekken 8…" style="${inp}" /></label>
     </div>
-    <label style="${lbl};margin-top:14px">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
+    <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <label style="${lbl}">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
+      <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel)</span><input id="a-club" list="a-club-list" placeholder="Team Mawu" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
+    </div>
     ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe VLOME)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
     <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe VLOME avant de pouvoir créer un tournoi.</p>` : ""}`;
 
@@ -2922,6 +2948,54 @@ function pAuth(S: State) {
         <p style="color:#5D5E72;font-size:12px;text-align:center;margin:14px 0 0">${isLogin ? `Pas encore de compte ? <button data-auth-tab="register" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Inscris-toi</button>` : `Déjà membre ? <button data-auth-tab="login" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Connecte-toi</button>`}</p>
       </div>
     </div></main>`;
+}
+
+/** Fiche complète d'un joueur de la base, ouverte depuis Admin → Joueurs (« Voir le profil ») —
+ * tout ce à quoi il est rattaché sur le site : stats globales + par jeu, commandes, inscriptions,
+ * si un compte y est relié (sinon juste sa fiche roster : nom, club, ville, elo). */
+function playerDetailModal(S: State) {
+  const p = S.playerDetail;
+  if (!p && !S.playerDetailBusy) return "";
+  const body = !p ? `<div style="color:#8E8FA6;text-align:center;padding:30px 0">Chargement…</div>` : (() => {
+    const acc = p.account;
+    const infoRow = (label: string, value: string) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #22222F"><span style="color:#8E8FA6;font-size:12.5px">${label}</span><span style="font-weight:650;font-size:13px">${value}</span></div>`;
+    const roster = `<div style="border:1px solid #282838;border-radius:14px;padding:14px;margin-bottom:16px">
+      ${infoRow("Club", p.clubName ? escHtml(p.clubName) : "—")}
+      ${infoRow("Ville", p.city ? escHtml(p.city) : "—")}
+      ${infoRow("ELO", String(p.elo))}
+      ${infoRow("Membre de la base depuis", new Date(p.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }))}
+    </div>`;
+    if (!p.linked || !acc) {
+      return roster + `<div style="color:#5D5E72;font-size:13px;text-align:center;padding:10px 0">${ic(I.warn, 13)} Pas de compte relié — ajouté manuellement, ou pas encore inscrit sur le site.</div>`;
+    }
+    const rc = ROLE_COLOR[acc.role] || "#22D3EE";
+    const accountCard = `<div style="border:1px solid #282838;border-radius:14px;padding:14px;margin-bottom:16px">
+      ${infoRow("Email", escHtml(acc.email))}
+      ${infoRow("Rôle", `<span style="color:${rc};font-weight:800">${ROLE_LABEL[acc.role] || acc.role}</span>`)}
+      ${infoRow("Points fidélité", String(acc.loyaltyPoints ?? 0))}
+      ${infoRow("Membre du site depuis", new Date(acc.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }))}
+    </div>`;
+    const regs: Detail[] = acc.registrations ?? [];
+    const regsList = regs.length ? `<div style="border:1px solid #282838;border-radius:14px;padding:14px;margin-bottom:16px">
+      ${secTitle(`Inscriptions (${regs.length})`)}
+      ${regs.map((r: Detail) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #22222F"><span style="font-size:13px">${escHtml(r.tournament.name)}</span><span style="font-size:11.5px;color:#8E8FA6">${escHtml(r.tournament.status)}</span></div>`).join("")}
+    </div>` : "";
+    const orders: Detail[] = acc.orders ?? [];
+    const ordersList = orders.length ? `<div style="border:1px solid #282838;border-radius:14px;padding:14px;margin-bottom:16px">
+      ${secTitle(`Commandes (${orders.length})`)}
+      ${orders.map((o: Detail) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #22222F"><span style="font-size:13px">${escHtml(o.reference)}</span><span style="font-size:11.5px;color:#8E8FA6">${money(o.totalXof)} · ${escHtml(o.status)}</span></div>`).join("")}
+    </div>` : "";
+    return roster + accountCard + statsByGameCard(acc) + regsList + ordersList;
+  })();
+  return `<div data-playerviewclose="1" style="position:fixed;inset:0;z-index:300;display:flex;align-items:flex-start;justify-content:center;padding:min(6vh,60px) 18px;background:rgba(6,6,10,.75);backdrop-filter:blur(6px);overflow-y:auto">
+    <div data-stop="1" style="width:100%;max-width:520px;background:linear-gradient(180deg,#14141D,#0E0E16);border:1px solid #33334A;border-radius:20px;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:fadeUp .18s ease both">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+        <span style="display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:22px;color:#04222a;flex:none">${(p?.name || "?").charAt(0).toUpperCase()}</span>
+        <div style="min-width:0;flex:1"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;line-height:1">${escHtml(p?.name || "")}</div></div>
+        <button data-playerviewclose="1" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:transparent;border:1px solid #33334A;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.x, 15)}</button>
+      </div>
+      ${body}
+    </div></div>`;
 }
 
 /** Modale de confirmation (suppression, déconnexion…). */
@@ -3199,7 +3273,7 @@ export default function Page() {
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
-    games: null, gameEdit: null,
+    games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -3308,7 +3382,7 @@ export default function Page() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isLogin
           ? { email, password }
-          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim(), phone: val("a-phone").trim(), organizerNote: val("a-orgnote").trim() }),
+          : { email, password, displayName, role: S.authRole, city: val("a-city").trim(), favoriteGame: val("a-game").trim(), phone: val("a-phone").trim(), club: val("a-club").trim(), organizerNote: val("a-orgnote").trim() }),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Échec de la connexion." })); return; }
@@ -3733,6 +3807,15 @@ export default function Page() {
     if (id === "new") rosterAct(`${API}/api/games`, "POST", { name });
     else rosterAct(`${API}/api/games/${id}`, "PATCH", { name });
   }
+  /** Fiche complète d'un joueur de la base (Admin → Joueurs → Voir le profil). */
+  async function loadPlayerDetail(id: string) {
+    setS((s) => ({ ...s, playerDetailBusy: true }));
+    try {
+      const r = await fetch(`${API}/api/roster/${id}`, { headers: authHeaders() });
+      const data = r.ok ? await r.json() : null;
+      setS((s) => ({ ...s, playerDetail: data, playerDetailBusy: false }));
+    } catch { setS((s) => ({ ...s, playerDetailBusy: false })); }
+  }
   async function adminAct(path: string, method: string, body?: unknown) {
     try {
       const r = await fetch(`${API}/api/admin/${path}`, {
@@ -3784,10 +3867,18 @@ export default function Page() {
   }
   async function saveProfile() {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    const me = S.me!;
+    const displayName = val("p-name").trim();
+    const club = val("p-club").trim();
+    // Le pseudo n'est envoyé que s'il a vraiment changé — l'API le plafonne à 1x/mois, pas
+    // question de déclencher ce contrôle à chaque sauvegarde d'un autre champ du profil.
+    const body: Record<string, unknown> = { city: val("p-city"), favoriteGame: val("p-game"), phone: val("p-phone"), bio: val("p-bio") };
+    if (displayName && displayName !== me.displayName) body.displayName = displayName;
+    if (club !== (me.clubName || "")) body.club = club;
     try {
       const r = await fetch(`${API}/api/users/me`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ displayName: val("p-name"), city: val("p-city"), favoriteGame: val("p-game"), phone: val("p-phone"), bio: val("p-bio") }),
+        body: JSON.stringify(body),
       });
       const data = await r.json();
       if (!r.ok) { setS((s) => ({ ...s, profileMsg: data.message || "Erreur d'enregistrement." })); return; }
@@ -3958,7 +4049,7 @@ export default function Page() {
     // Chargement initial groupé : une seule mise à jour d'état (pas de rejeu d'animations).
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
-      const [tourns, products, news, site, gallery, albums, leaderboard, loyaltySettings] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("gallery/albums"), get("tournaments/leaderboard"), get("loyalty/settings")]);
+      const [tourns, products, news, site, gallery, albums, leaderboard, loyaltySettings, games, clubs] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("gallery/albums"), get("tournaments/leaderboard"), get("loyalty/settings"), get("games"), get("clubs")]);
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
@@ -3971,6 +4062,9 @@ export default function Page() {
         albums: Array.isArray(albums) ? albums : s.albums,
         leaderboard: Array.isArray(leaderboard) ? leaderboard : s.leaderboard,
         loyaltySettings: loyaltySettings || s.loyaltySettings,
+        // Catalogues jeux/clubs : publics, utiles dès l'inscription (suggestions), pas seulement après connexion.
+        games: Array.isArray(games) ? games : s.games,
+        clubs: Array.isArray(clubs) ? clubs : s.clubs,
       }));
     })();
     try {
@@ -4284,7 +4378,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4489,6 +4583,8 @@ export default function Page() {
       const g = S.games?.find((x: Detail) => x.id === d.gamedel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le jeu", message: `« ${g?.name || "Ce jeu"} » sera retiré du catalogue — les tournois déjà créés ne sont pas affectés.`, okLabel: "Supprimer", action: `gamedel|${d.gamedel}` } }));
     }
+    else if (d.playerview) loadPlayerDetail(d.playerview);
+    else if (d.playerviewclose !== undefined) setS((s) => ({ ...s, playerDetail: null }));
     else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "", albumId: "" } }));
     // « + Ajouter » sur une carte de catalogue : ouvre le formulaire d'import pré-rattaché à ce catalogue.
     else if (d.galleryadd) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "", albumId: d.galleryadd } }));

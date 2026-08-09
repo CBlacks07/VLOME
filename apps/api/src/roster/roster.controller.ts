@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { RosterService } from './roster.service';
-import { ClubDto, RosterPlayerDto } from './roster.dto';
+import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
@@ -67,5 +67,34 @@ export class RosterController {
   @Roles('ADMIN')
   removeClub(@Param('id') id: string) {
     return this.roster.removeClub(id);
+  }
+
+  /* Catalogue des jeux — lecture publique (sert aussi aux filtres de classements),
+   * écriture réservée à l'admin. */
+
+  @Get('games')
+  listGames() {
+    return this.roster.listGames();
+  }
+
+  @Post('games')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  createGame(@Body() dto: GameDto) {
+    return this.roster.createGame(dto);
+  }
+
+  @Patch('games/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  updateGame(@Param('id') id: string, @Body() dto: GameDto) {
+    return this.roster.updateGame(id, dto);
+  }
+
+  @Delete('games/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  removeGame(@Param('id') id: string) {
+    return this.roster.removeGame(id);
   }
 }

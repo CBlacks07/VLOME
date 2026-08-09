@@ -160,6 +160,16 @@ model Club {
   players Player[]
 }
 
+// Catalogue des jeux (site-wide, géré depuis l'admin) — propose des noms canoniques à la création
+// d'un tournoi pour éviter les doublons de casse/orthographe ("Valorant" vs "valorant") qui
+// fausseraient les classements et stats par jeu. Le champ Tournament.game reste une simple chaîne
+// (pas de clé étrangère) : plus simple, pas de migration à faire sur les données déjà existantes.
+model Game {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
 model Player {
   id        String   @id @default(cuid())
   name      String

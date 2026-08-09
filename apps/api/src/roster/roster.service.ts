@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ClubDto, RosterPlayerDto } from './roster.dto';
+import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 
 /**
  * Base de joueurs (« roster ») et clubs — site-wide, gérée depuis l'admin.
@@ -93,6 +93,39 @@ export class RosterService {
       this.prisma.player.updateMany({ where: { clubId: id }, data: { clubId: null } }),
       this.prisma.club.delete({ where: { id } }),
     ]);
+    return { deleted: true };
+  }
+
+  /* ---------- Catalogue des jeux ---------- */
+
+  async listGames() {
+    const rows = await this.prisma.game.findMany({ orderBy: { name: 'asc' } });
+    return rows.map((g) => ({ id: g.id, name: g.name }));
+  }
+
+  async createGame(dto: GameDto) {
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Nom requis.');
+    const existing = await this.prisma.game.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+    if (existing) throw new BadRequestException('Ce jeu est déjà dans le catalogue.');
+    const g = await this.prisma.game.create({ data: { name } });
+    return { id: g.id, name: g.name };
+  }
+
+  async updateGame(id: string, dto: GameDto) {
+    const g = await this.prisma.game.findUnique({ where: { id } });
+    if (!g) throw new NotFoundException('Jeu introuvable.');
+    const name = dto.name.trim() || g.name;
+    const existing = await this.prisma.game.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, NOT: { id } } });
+    if (existing) throw new BadRequestException('Ce jeu est déjà dans le catalogue.');
+    const upd = await this.prisma.game.update({ where: { id }, data: { name } });
+    return { id: upd.id, name: upd.name };
+  }
+
+  async removeGame(id: string) {
+    const g = await this.prisma.game.findUnique({ where: { id } });
+    if (!g) throw new NotFoundException('Jeu introuvable.');
+    await this.prisma.game.delete({ where: { id } });
     return { deleted: true };
   }
 }

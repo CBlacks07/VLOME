@@ -102,7 +102,7 @@ type State = {
   albums: Detail[] | null; // catalogues de la galerie
   albumEdit: Detail | null; // catalogue en cours de création/renommage (admin)
   albumOpen: string | null; // catalogue ouvert sur la galerie publique (null = vue des catalogues)
-  partnersEdit: { key: string; name: string; logoUrl: string | null }[] | null;
+  partnersEdit: { key: string; name: string; logoUrl: string | null; display: "both" | "logo" | "name" }[] | null;
   slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; imageUrl: string | null }[] | null;
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
   adSlide: number;
@@ -130,8 +130,11 @@ type State = {
   wizEditId: string | null; // id du tournoi en cours de modification via l'assistant (null = création)
   // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
   roster: Detail[] | null; clubs: Detail[] | null;
-  rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs";
+  rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
   classementView: "joueurs" | "clubs"; // bascule joueurs / clubs sur la page Classements
+  // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
+  // d'un tournoi pour éviter les doublons de casse/orthographe qui fausseraient classements/stats.
+  games: Detail[] | null; gameEdit: Detail | null;
 };
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
@@ -233,10 +236,10 @@ function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: num
   return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total, sizes, breakdown };
 }
 
-/** Partenaires normalisés (compat : d'anciens réglages stockaient de simples chaînes). */
-function normPartners(S: State): { name: string; logoUrl: string | null }[] {
+/** Partenaires normalisés (compat : d'anciens réglages stockaient de simples chaînes, ou pas de mode d'affichage). */
+function normPartners(S: State): { name: string; logoUrl: string | null; display: "both" | "logo" | "name" }[] {
   const raw: Detail[] = S.site?.partners?.length ? S.site.partners : PARTNERS;
-  return raw.map((p: Detail) => (typeof p === "string" ? { name: p, logoUrl: null } : { name: p.name, logoUrl: p.logoUrl ?? null }));
+  return raw.map((p: Detail) => (typeof p === "string" ? { name: p, logoUrl: null, display: "both" } : { name: p.name, logoUrl: p.logoUrl ?? null, display: p.display || "both" }));
 }
 
 /** Logo du site : image envoyée depuis l'admin, sinon l'éclair par défaut. */
@@ -495,7 +498,7 @@ function pAccueil(S: State) {
     : "";
 
   const partnerList = normPartners(S);
-  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px">${p.logoUrl ? `<img src="${mediaUrl(p.logoUrl)}" alt="" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${escHtml(p.name)}</span>`).join("")}</div></div>`;
+  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:14px">Partenaires &amp; sponsors</div><div style="display:flex;gap:12px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 18px;border:1px solid #282838;border-radius:11px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:13px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="width:22px;height:22px;object-fit:contain;border-radius:5px" />` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
 
   return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
@@ -587,7 +590,7 @@ function wizInfosStep(S: State) {
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${editing ? "Informations générales" : "Étape 1 — Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
         ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
-        ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />`)}
+        ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />${(S.games ?? []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${(S.games ?? []).map((g: Detail) => `<button data-wizgame="${escAttr(g.name)}" style="font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 11px;cursor:pointer;background:${d.game === g.name ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.game === g.name ? "#22D3EE" : "#282838"};color:${d.game === g.name ? "#22D3EE" : "#8E8FA6"}">${escHtml(g.name)}</button>`).join("")}</div>` : ""}`, "Depuis le catalogue si possible — garde les noms identiques d'un tournoi à l'autre pour des classements fiables.")}
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
         ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
@@ -694,7 +697,9 @@ function wizScoringStep(S: State) {
   const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat, d.poolFormat);
   const rows = WIZ_SCORING_FIELDS.map(([id, label, key], i) => {
     const b = c.breakdown[key as keyof typeof c.breakdown];
-    const sub = key === "championBonus" ? "une seule fois" : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
+    const sub = key === "championBonus" ? "une seule fois"
+      : key === "streakBonus" ? `budget max. ${b.matches} joueur${b.matches > 1 ? "s" : ""} (1/poule, si atteint) — pas garanti`
+      : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
     const last = i === WIZ_SCORING_FIELDS.length - 1;
     return `<div style="display:flex;align-items:center;gap:16px;padding:14px 18px;${last ? "" : "border-bottom:1px solid #1B1B27;"}">
       <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:650">${label}</div><div id="wiz-sc-sub-${key}" style="font-size:11.5px;color:#5D5E72;margin-top:2px">${sub}</div></div>
@@ -1580,6 +1585,11 @@ function adminSite(S: State) {
     <div style="border:1px solid #22222F;border-radius:12px;padding:12px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <label style="${lbl};flex:1;min-width:180px">Nom du partenaire<input id="pt-${p.key}-name" value="${escAttr(p.name)}" placeholder="Nom du sponsor" style="${adminInp}" /></label>
       <div style="flex:1;min-width:220px"><div style="${lbl}">Logo (optionnel)</div>${filePicker(`pt-${p.key}-logo`, "Choisir le logo", "image/*", p.logoUrl)}</div>
+      <label style="${lbl};min-width:150px">Affichage<select id="pt-${p.key}-display" style="${adminInp}">
+        <option value="both" ${(p.display || "both") === "both" ? "selected" : ""}>Logo + nom</option>
+        <option value="logo" ${p.display === "logo" ? "selected" : ""}>Logo seul</option>
+        <option value="name" ${p.display === "name" ? "selected" : ""}>Nom seul</option>
+      </select></label>
       <button data-ptdel="${p.key}" style="align-self:flex-end;display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;cursor:pointer;flex:none">${ic(I.trash, 15)}</button>
     </div>`).join("")}
     ${partners.length ? "" : `<div style="color:#5D5E72;font-size:13px;padding:8px 0 14px">Aucun partenaire pour l'instant.</div>`}
@@ -1633,9 +1643,9 @@ function adminUsers(S: State) {
 
 /** Onglet Joueurs : base de joueurs (roster) + clubs, gérée depuis l'admin — sert aussi à pré-remplir les participants à la création d'un tournoi. */
 function adminRoster(S: State) {
-  const tabBtn = (k: "joueurs" | "clubs", label: string) => `<button data-rostertab="${k}" style="font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "#282838"};color:${S.rosterTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
-  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px">${tabBtn("joueurs", `${ic(I.user, 14)} Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)} Clubs`)}</div>`;
-  return tabs + (S.rosterTab === "clubs" ? adminClubsView(S) : adminRosterPlayers(S));
+  const tabBtn = (k: "joueurs" | "clubs" | "jeux", label: string) => `<button data-rostertab="${k}" style="font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "#282838"};color:${S.rosterTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px">${tabBtn("joueurs", `${ic(I.user, 14)} Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)} Clubs`)}${tabBtn("jeux", `${ic(I.bolt, 14)} Jeux`)}</div>`;
+  return tabs + (S.rosterTab === "clubs" ? adminClubsView(S) : S.rosterTab === "jeux" ? adminGamesView(S) : adminRosterPlayers(S));
 }
 
 function adminRosterPlayers(S: State) {
@@ -1688,6 +1698,27 @@ function adminClubsView(S: State) {
     : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun club trouvé." : "Aucun club. Crée le premier !"}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Clubs (${clubs.length})`)}<button data-clubedit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau club</button></div>`;
   return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom ou ville…")}${scrollBox(rows)}</div>`;
+}
+
+/** Catalogue des jeux — noms canoniques proposés à la création d'un tournoi (évite les doublons
+ * de casse/orthographe qui fausseraient les classements et stats par jeu). */
+function adminGamesView(S: State) {
+  const games: Detail[] = S.games ?? [];
+  const e = S.gameEdit;
+  const editor = e ? `<div style="border:1px solid rgba(52,211,153,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Renommer le jeu" : "Nouveau jeu"}</div>
+    <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="gm-name" value="${escAttr(e.name)}" placeholder="Valorant" style="${adminInp}" /></label>
+    <div style="display:flex;gap:10px;margin-top:14px"><button data-gamesave="${e.id || "new"}" style="background:linear-gradient(135deg,#34D399,#1fae7d);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter au catalogue"}</button><button data-gamecancel="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+  </div>` : "";
+  const q = S.adminSearch.trim().toLowerCase();
+  const filtered = q ? games.filter((g: Detail) => g.name.toLowerCase().includes(q)) : games;
+  const rows = filtered.length ? filtered.map((g: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F">
+      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#22222F;border:1px solid #282838;color:#34D399;flex:none">${ic(I.bolt, 16)}</span>
+      <div style="min-width:0;flex:1;font-weight:650;font-size:14px">${escHtml(g.name)}</div>
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-gameedit="${g.id}"`, "Renommer", "#34D399", "#34D39955")}${btnSm(`data-gamedel="${g.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+    : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun jeu trouvé." : "Catalogue vide. Ajoute les jeux au fur et à mesure — ils seront proposés à la création d'un tournoi."}</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Jeux (${games.length})`)}<button data-gameedit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#34D399,#1fae7d);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau jeu</button></div>`;
+  return editor + `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px">${head}${adminSearchBar(S, "Nom du jeu…")}${scrollBox(rows)}<p style="color:#5D5E72;font-size:11.5px;margin-top:12px">Ces noms sont proposés (chips cliquables) à l'étape 1 de la création d'un tournoi — cliquer dessus au lieu de ressaisir le nom évite les doublons dans les classements.</p></div>`;
 }
 
 function adminNews(S: State) {
@@ -2704,10 +2735,18 @@ function pTournoi(S: State) {
     const feeBadge = fee > 0 ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#FBBF24;font-weight:700;font-size:13px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px;margin-right:10px">${ic(I.cart, 14)}Frais d'inscription : ${money(fee)}</div>` : "";
     const pointBadge = !manage && t.givesLoyaltyPoint !== false ? `<div style="display:inline-flex;align-items:center;gap:7px;color:#22D3EE;font-weight:700;font-size:13px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:6px 14px;margin-bottom:18px">${ic(I.medal, 14)}+1 point fidélité</div>` : "";
     const roster: { id: string; name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
+    // Pastille en édition (renommer/club) : même mécanisme (editingPlayerId, data-pledit-*) que le
+    // panneau Joueurs en régie — fonctionne aussi avant lancement, l'API n'impose aucune restriction.
+    const plEditRow = (p: { id: string; name: string; club?: string }) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:#14141D;border:1px solid #22D3EE55;border-radius:10px;padding:8px">
+      <input id="pl-edit-name" value="${escAttr(p.name)}" placeholder="Nom" style="flex:1;min-width:110px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 9px" />
+      <input id="pl-edit-club" value="${escAttr(p.club || "")}" placeholder="Club" style="flex:1;min-width:90px;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:12.5px;padding:6px 9px" />
+      <button data-pledit-save="${t.id}|${p.id}" style="background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;cursor:pointer">OK</button>
+      <button data-pledit-cancel="1" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;font-size:12px">Annuler</button>
+    </div>`;
     const participants = roster.length || manage
       ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
           <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${roster.length})</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${roster.map((p) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px"><span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${roster.map((p) => S.editingPlayerId === p.id ? plEditRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px">${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-pledit-open="${p.id}" title="Renommer / club" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button><button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
           ${roster.length ? "" : `<div style="color:#5D5E72;font-size:13px;margin-bottom:${manage ? "12px" : "0"}">Aucun participant pour l'instant.</div>`}
           ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
         </div>`
@@ -3108,7 +3147,12 @@ function adCarousel(S: State, pageKey: string) {
 function partnersMarquee(S: State) {
   const partners = normPartners(S);
   if (!partners.length) return "";
-  const items = partners.map((p) => `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px">${p.logoUrl ? `<img src="${mediaUrl(p.logoUrl)}" alt="" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : ic(I.crown, 12)}${escHtml(p.name)}</span>`).join("");
+  const items = partners.map((p) => {
+    const showLogo = !!p.logoUrl && p.display !== "name";
+    const showName = p.display !== "logo" || !p.logoUrl;
+    const icon = showLogo ? `<img src="${mediaUrl(p.logoUrl)}" alt="${showName ? "" : escAttr(p.name)}" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : p.display === "name" ? "" : ic(I.crown, 12);
+    return `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px" title="${escAttr(p.name)}">${icon}${showName ? escHtml(p.name) : ""}</span>`;
+  }).join("");
   return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:7px 0"><div class="marquee-track">${items}${items}</div></div>`;
 }
 
@@ -3155,6 +3199,7 @@ export default function Page() {
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    games: null, gameEdit: null,
   });
   const html = useMemo(() => renderPage(S), [S]);
 
@@ -3396,13 +3441,15 @@ export default function Page() {
   async function loadRoster() {
     if (!token()) return;
     try {
-      const [rR, cR] = await Promise.all([
+      const [rR, cR, gR] = await Promise.all([
         fetch(`${API}/api/roster`, { headers: authHeaders() }),
         fetch(`${API}/api/clubs`, { headers: authHeaders() }),
+        fetch(`${API}/api/games`),
       ]);
       const roster = rR.ok ? await rR.json() : [];
       const clubs = cR.ok ? await cR.json() : [];
-      setS((s) => ({ ...s, roster, clubs }));
+      const games = gR.ok ? await gR.json() : [];
+      setS((s) => ({ ...s, roster, clubs, games }));
     } catch { /* ignore */ }
   }
   async function loadProducts() {
@@ -3533,7 +3580,11 @@ export default function Page() {
   /** Enregistre les réglages du site (identité, héro, slider, partenaires). */
   /** Relit les champs texte des lignes partenaires/pubs depuis le DOM, sans perdre les logos déjà choisis. */
   function syncPartnersFromDom(list: NonNullable<State["partnersEdit"]>) {
-    return list.map((p) => ({ ...p, name: (document.getElementById(`pt-${p.key}-name`) as HTMLInputElement | null)?.value ?? p.name }));
+    return list.map((p) => ({
+      ...p,
+      name: (document.getElementById(`pt-${p.key}-name`) as HTMLInputElement | null)?.value ?? p.name,
+      display: ((document.getElementById(`pt-${p.key}-display`) as HTMLSelectElement | null)?.value as "both" | "logo" | "name" | undefined) ?? p.display,
+    }));
   }
   function syncAdsFromDom(list: NonNullable<State["adsEdit"]>) {
     return list.map((a) => ({
@@ -3584,7 +3635,7 @@ export default function Page() {
     const slides = slideRows
       .filter((sl) => sl.title.trim())
       .map((sl) => ({ tag: sl.tag.trim(), title: sl.title.trim(), sub: sl.sub.trim(), cta: sl.cta.trim(), imageUrl: sl.imageUrl }));
-    const partners = partnerRows.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), logoUrl: p.logoUrl }));
+    const partners = partnerRows.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), logoUrl: p.logoUrl, display: p.display || "both" }));
     const ads = adRows.filter((a) => a.imageUrl).map((a) => ({ label: a.label.trim(), linkUrl: a.linkUrl.trim(), imageUrl: a.imageUrl, page: a.page || "accueil" }));
     try {
       const save = (key: string, value: unknown) => fetch(`${API}/api/admin/settings/${key}`, {
@@ -3655,7 +3706,7 @@ export default function Page() {
     try {
       const r = await fetch(url, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
       if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
-      setS((s) => ({ ...s, rosterEdit: null, clubEdit: null }));
+      setS((s) => ({ ...s, rosterEdit: null, clubEdit: null, gameEdit: null }));
       await loadRoster();
     } catch { /* ignore */ }
   }
@@ -3675,6 +3726,12 @@ export default function Page() {
     try { const logo = await uploadOrNotify("cl-logo"); if (logo) body.logoUrl = logo; } catch { return; }
     if (id === "new") rosterAct(`${API}/api/clubs`, "POST", body);
     else rosterAct(`${API}/api/clubs/${id}`, "PATCH", body);
+  }
+  function saveGame(id: string) {
+    const name = (document.getElementById("gm-name") as HTMLInputElement | null)?.value.trim() ?? "";
+    if (!name) { alert("Le nom du jeu est requis."); return; }
+    if (id === "new") rosterAct(`${API}/api/games`, "POST", { name });
+    else rosterAct(`${API}/api/games/${id}`, "PATCH", { name });
   }
   async function adminAct(path: string, method: string, body?: unknown) {
     try {
@@ -3854,7 +3911,7 @@ export default function Page() {
     if (S.adminTab !== "site" || !S.site) return;
     setS((s) => ({
       ...s,
-      partnersEdit: s.partnersEdit ?? normPartners(s).map((p) => ({ key: newKey(), name: p.name, logoUrl: p.logoUrl })),
+      partnersEdit: s.partnersEdit ?? normPartners(s).map((p) => ({ key: newKey(), name: p.name, logoUrl: p.logoUrl, display: p.display })),
       adsEdit: s.adsEdit ?? (s.site?.ads ?? []).map((a: Detail) => ({ key: newKey(), label: a.label || "", linkUrl: a.linkUrl || "", imageUrl: a.imageUrl ?? null, page: a.page || "accueil" })),
       slidesEdit: s.slidesEdit ?? (s.site?.slides?.length ? s.site.slides : SLIDES).map((sl: Detail) => ({ key: newKey(), tag: sl.tag || "", title: sl.title || "", sub: sl.sub || "", cta: sl.cta || "", imageUrl: sl.imageUrl ?? null })),
     }));
@@ -4227,7 +4284,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4348,6 +4405,7 @@ export default function Page() {
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => ({ ...s, wizData: { ...s.wizData, format: d.wizformat! } }));
     else if (d.wizpoolformat) setS((s) => ({ ...s, wizData: { ...s.wizData, poolFormat: d.wizpoolformat as "survival" | "double" } }));
+    else if (d.wizgame) setS((s) => ({ ...s, wizData: { ...s.wizData, game: d.wizgame! } }));
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
@@ -4385,7 +4443,7 @@ export default function Page() {
     else if (d.creditbuy !== undefined) buyCredits();
     else if (d.creditcancel) cancelCreditPurchase(d.creditcancel);
     else if (d.herobgclear !== undefined) clearHeroBg();
-    else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null }] }));
+    else if (d.ptadd !== undefined) setS((s) => ({ ...s, partnersEdit: [...syncPartnersFromDom(s.partnersEdit ?? []), { key: newKey(), name: "", logoUrl: null, display: "both" }] }));
     else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []), confirmBox: { title: "Supprimer le partenaire", message: "Cette ligne sera retirée du bandeau partenaires.", okLabel: "Supprimer", action: `ptdel|${d.ptdel}` } }));
     else if (d.adnew !== undefined) setS((s) => ({ ...s, adsEdit: [...syncAdsFromDom(s.adsEdit ?? []), { key: newKey(), label: "", linkUrl: "", imageUrl: null, page: "accueil" }] }));
     else if (d.addel) setS((s) => ({ ...s, adsEdit: syncAdsFromDom(s.adsEdit ?? []), confirmBox: { title: "Supprimer la publicité", message: "Cette annonce sera retirée de la liste.", okLabel: "Supprimer", action: `addel|${d.addel}` } }));
@@ -4420,6 +4478,16 @@ export default function Page() {
     else if (d.clubdel) {
       const c = S.clubs?.find((x: Detail) => x.id === d.clubdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le club", message: `« ${c?.name || "Ce club"} » sera supprimé — ses joueurs resteront dans la base, simplement sans club.`, okLabel: "Supprimer", action: `clubdel|${d.clubdel}` } }));
+    }
+    else if (d.gameedit) {
+      if (d.gameedit === "new") setS((s) => ({ ...s, gameEdit: { name: "" } }));
+      else { const g = S.games?.find((x: Detail) => x.id === d.gameedit); if (g) setS((s) => ({ ...s, gameEdit: g })); }
+    }
+    else if (d.gamecancel !== undefined) setS((s) => ({ ...s, gameEdit: null }));
+    else if (d.gamesave) saveGame(d.gamesave);
+    else if (d.gamedel) {
+      const g = S.games?.find((x: Detail) => x.id === d.gamedel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le jeu", message: `« ${g?.name || "Ce jeu"} » sera retiré du catalogue — les tournois déjà créés ne sont pas affectés.`, okLabel: "Supprimer", action: `gamedel|${d.gamedel}` } }));
     }
     else if (d.gallerynew !== undefined) setS((s) => ({ ...s, galleryEdit: { title: "", tournamentId: "", albumId: "" } }));
     // « + Ajouter » sur une carte de catalogue : ouvre le formulaire d'import pré-rattaché à ce catalogue.
@@ -4485,6 +4553,7 @@ export default function Page() {
         else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); }
         else if (kind === "rosterdel") rosterAct(`${API}/api/roster/${arg}`, "DELETE");
         else if (kind === "clubdel") rosterAct(`${API}/api/clubs/${arg}`, "DELETE");
+        else if (kind === "gamedel") rosterAct(`${API}/api/games/${arg}`, "DELETE");
       }
     }
     else if (d.profileedit !== undefined) setS((s) => ({ ...s, profileEdit: true, profileMsg: "", page: "profil" }));
@@ -4590,6 +4659,7 @@ export default function Page() {
     if (id.startsWith("pr-")) return "[data-prodsave]";
     if (id.startsWith("ro-")) return "[data-rostersave]";
     if (id.startsWith("cl-")) return "[data-clubsave]";
+    if (id.startsWith("gm-")) return "[data-gamesave]";
     if (id.startsWith("ga-")) return "[data-gallerysave]";
     if (id.startsWith("al-")) return "[data-albumsave]";
     if (id.startsWith("ly-")) return "[data-loyaltysave]";

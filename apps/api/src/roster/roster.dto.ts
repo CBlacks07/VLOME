@@ -11,3 +11,7 @@ export class ClubDto {
   @IsOptional() @IsString() @MaxLength(80) city?: string;
   @IsOptional() @IsString() logoUrl?: string;
 }
+
+export class GameDto {
+  @IsString() @MaxLength(80) name!: string;
+}

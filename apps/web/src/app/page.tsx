@@ -1034,9 +1034,19 @@ function pGalerie(S: State) {
       ${it.mediaType === "video" ? `<span style="position:absolute;top:10px;right:10px;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:rgba(11,11,17,.7);border:1px solid rgba(255,255,255,.2);color:#fff">${ic(I.tv, 13)}</span>` : ""}
       <div style="position:absolute;left:12px;right:12px;bottom:11px"><div style="font-weight:700;font-size:13.5px;color:#fff;line-height:1.3">${escHtml(it.title)}</div>${it.tournament ? `<div style="font-size:11.5px;color:#22D3EE;font-weight:700;margin-top:3px">${escHtml(it.tournament.name)}</div>` : ""}</div></div>`;
   };
+  // Message contextuel : "aucun média ne correspond à ce filtre" n'a de sens que si un filtre
+  // (événement/type) est vraiment actif — sinon (ex. tout est rangé dans des catalogues) le message
+  // générique induit en erreur puisqu'il n'y a pas de champ de recherche à l'origine du filtre.
+  const emptyMsg = openAlbum
+    ? "Ce catalogue est vide."
+    : S.galleryFilter || S.galleryType
+      ? "Aucun média ne correspond à ce filtre."
+      : albums.length
+        ? "Tous les médias sont rangés dans un catalogue — ouvre-en un ci-dessus pour les voir."
+        : "Aucun média pour l'instant.";
   const grid = items.length
     ? `<div class="rise d2 gallery-grid" style="padding:0 40px 40px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:150px;gap:12px">${items.map(card).join("")}</div>`
-    : `<div class="rise d2" style="margin:0 40px 40px;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">Aucun média ne correspond à ce filtre.</div>`;
+    : `<div class="rise d2" style="margin:0 40px 40px;border:1px solid #282838;border-radius:16px;background:#14141D;padding:48px 24px;text-align:center;color:#8E8FA6">${emptyMsg}</div>`;
   // Bandeau des catalogues (masqué quand on est déjà à l'intérieur de l'un d'eux).
   const albumStrip = !openAlbum && albums.length ? `<div class="rise d1" style="padding:0 40px 24px">
     <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:12px">Catalogues</div>

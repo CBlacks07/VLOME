@@ -404,6 +404,12 @@ function chips(list: string[], active: string, attr: string, color = "#22D3EE") 
 
 /* ================= Pages ================= */
 function pAccueil(S: State) {
+  // Tant que les réglages du site n'ont pas encore été chargés depuis l'API, on affiche un état de
+  // chargement plutôt que le contenu de secours (titre/stats/slide par défaut) — sinon ce contenu
+  // fictif s'affiche brièvement avant d'être remplacé par le vrai, à chaque ouverture de la page.
+  if (!S.site) {
+    return `<main style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><div style="border-radius:20px;border:1px solid #282838;background:#14141D;min-height:340px;display:grid;place-items:center;color:#5D5E72">Chargement…</div></main>`;
+  }
   const slides: Detail[] = (S.site?.slides && S.site.slides.length ? S.site.slides : SLIDES) as Detail[];
   const s = slides[S.slide] || slides[0];
   const hero0 = S.site?.hero;

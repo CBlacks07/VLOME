@@ -18,8 +18,11 @@ export class CreateTournamentDto {
   @IsOptional() @IsNumber() @Min(0.25) poolFinalWin?: number;
   @IsOptional() @IsNumber() @Min(0.25) finalsWin?: number;
   @IsOptional() @IsNumber() @Min(0) championBonus?: number;
-  // Bonus "striker" — série de 5 victoires d'affilée dans une poule (0 pour désactiver).
+  // Bonus "striker" — série de streakLength victoires d'affilée dans une poule (0 pour désactiver).
   @IsOptional() @IsNumber() @Min(0) streakBonus?: number;
+  // Longueur de la série qui déclenche le bonus striker — 3 OU 5 victoires d'affilée, un seul palier
+  // actif par tournoi (pas les deux en même temps).
+  @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
   // Mode de la phase finale (Survival uniquement) — fixé dès la création pour que le budget de
   // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
@@ -40,6 +43,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
   @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
+  @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
 }
 
 export class AddPlayerDto {

@@ -108,6 +108,7 @@ export class TournamentsService {
       format: engineFormatFor(dto.format),
       finalsFormat: dto.finalsFormat,
       poolFormat: dto.poolFormat,
+      streakLength: dto.streakLength,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -152,8 +153,8 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined) {
-      if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale ne sont modifiables qu\'avant le lancement du tournoi.');
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined) {
+      if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
       const t = r.engineState as unknown as Engine.Tournament;
@@ -161,6 +162,7 @@ export class TournamentsService {
       if (dto.pointsPerPlayer !== undefined) t.pointsPerPlayer = dto.pointsPerPlayer;
       if (dto.finalsFormat !== undefined) t.finalsFormat = dto.finalsFormat;
       if (dto.poolFormat !== undefined) t.poolFormat = dto.poolFormat;
+      if (dto.streakLength !== undefined) t.streakLength = dto.streakLength;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       data.engineState = JSON.parse(JSON.stringify(t));
@@ -517,6 +519,7 @@ export class TournamentsService {
     // Compat : tournois créés avant l'ajout du mode de poule (double élim) et du bonus striker.
     if (!t.poolFormat) t.poolFormat = 'survival';
     if (t.scoring && t.scoring.streakBonus === undefined) t.scoring.streakBonus = 0;
+    if (!t.streakLength) t.streakLength = Engine.DEFAULT_STREAK_LENGTH;
     t.pools?.forEach((p) => {
       if (!p.dbracket) p.dbracket = null;
       if (!p.streaks) p.streaks = {};
@@ -633,6 +636,7 @@ export class TournamentsService {
       scoring: t.scoring,
       finalsFormat: t.finalsFormat,
       poolFormat: t.poolFormat,
+      streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
       givesLoyaltyPoint,

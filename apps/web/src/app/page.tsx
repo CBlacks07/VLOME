@@ -124,6 +124,7 @@ type State = {
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
     finalsFormat: string; // mode de phase finale (Survival) : toujours "double" (double élimination), non modifiable
     poolFormat: "survival" | "double"; // mode des poules (Survival) : classique ou mini-bracket double élim
+    streakLength: 3 | 5; // longueur de série pour le bonus striker — un seul palier actif par tournoi
     imageUrl: string | null;
   };
   wizRosterSearch: string;
@@ -501,7 +502,7 @@ function pAccueil(S: State) {
   const shopFeatured = (shopHome.length ? shopHome : shopProducts).slice(0, 14);
   const shopCard = (p: Detail) => `<div class="hcard" style="flex:none;width:190px;border:1px solid #282838;border-radius:14px;overflow:hidden;background:#14141D">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,#191922,#191922 12px,#14141D 12px,#14141D 24px);display:grid;place-items:center;color:#5D5E72;font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${escHtml(p.name)}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`;
   const shopSec = shopProducts.length
-    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
+    ? `<section class="rise d5" style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "VLOME")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
     : "";
 
   const partnerList = normPartners(S);
@@ -696,7 +697,7 @@ const WIZ_SCORING_FIELDS: [string, string, string][] = [
   ["wz-sc-poolfinal", "Victoire en finale de poule", "poolFinalWin"],
   ["wz-sc-finals", "Victoire en phase finale", "finalsWin"],
   ["wz-sc-champion", "Bonus champion du tournoi", "championBonus"],
-  ["wz-sc-streak", "Bonus striker (5 victoires d'affilée)", "streakBonus"], // 5 = Engine.STREAK_LENGTH, fixe
+  ["wz-sc-streak", "Bonus striker", "streakBonus"],
 ];
 
 function wizScoringStep(S: State) {
@@ -705,7 +706,7 @@ function wizScoringStep(S: State) {
   const rows = WIZ_SCORING_FIELDS.map(([id, label, key], i) => {
     const b = c.breakdown[key as keyof typeof c.breakdown];
     const sub = key === "championBonus" ? "une seule fois"
-      : key === "streakBonus" ? `budget max. ${b.matches} joueur${b.matches > 1 ? "s" : ""} (1/poule, si atteint) — pas garanti`
+      : key === "streakBonus" ? `budget max. ${b.matches} joueur${b.matches > 1 ? "s" : ""} (1/poule, série de ${d.streakLength}, si atteint) — pas garanti`
       : `× ${b.matches} match${b.matches > 1 ? "s" : ""} prévu${b.matches > 1 ? "s" : ""}`;
     const last = i === WIZ_SCORING_FIELDS.length - 1;
     return `<div style="display:flex;align-items:center;gap:16px;padding:14px 18px;${last ? "" : "border-bottom:1px solid #1B1B27;"}">
@@ -715,11 +716,20 @@ function wizScoringStep(S: State) {
     </div>`;
   }).join("");
   const finalsFmtNote = `<p style="color:#5D5E72;font-size:11.5px;margin:0 0 16px">Phase finale : <b style="color:#22D3EE">double élimination</b> — fixe pour le format Survival, le barème ci-dessous est calculé en conséquence.</p>`;
+  const streakLenPicker = `<div style="margin-bottom:16px">
+    <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Bonus striker — série de</div>
+    <div style="display:flex;gap:8px">
+      <button data-wizstreaklen="3" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.streakLength === 3 ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.streakLength === 3 ? "#22D3EE" : "#282838"};color:${d.streakLength === 3 ? "#22D3EE" : "#8E8FA6"}">3 victoires d'affilée</button>
+      <button data-wizstreaklen="5" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.streakLength === 5 ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.streakLength === 5 ? "#22D3EE" : "#282838"};color:${d.streakLength === 5 ? "#22D3EE" : "#8E8FA6"}">5 victoires d'affilée</button>
+    </div>
+    <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Un seul palier actif par tournoi — pas les deux en même temps.</p>
+  </div>`;
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     <div>
       <h3 style="margin:0 0 6px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${S.wizEditId ? "Barème des points" : "Étape 4 — Barème des points"}</h3>
       <p style="color:#8E8FA6;font-size:13.5px;margin:6px 0 16px;max-width:520px">Chaque valeur est librement réglable à partir de 0,25 point. Le total programmé doit tenir dans la cagnotte disponible.</p>
       ${finalsFmtNote}
+      ${streakLenPicker}
       <div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden">${rows}</div>
     </div>
     ${wizGaugeCard(c)}
@@ -740,7 +750,7 @@ function wizValidateStep(S: State) {
   const structureRow = isSurvival
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
-  const participantsRows = editing ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
+  const participantsRows = editing ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
   const backTarget = editing ? 4 : (isSurvival ? 4 : isBR ? 3 : 2);
   const bareme = isSurvival ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
@@ -2609,11 +2619,13 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
   </div>`;
 }
 
-const WIZ_SCORING_FIELDS_REF: [string, string][] = [["Victoire en poule Survival", "survWin"], ["Victoire en poule des perdants", "loserWin"], ["Victoire en finale de poule", "poolFinalWin"], ["Victoire en phase finale", "finalsWin"], ["Bonus champion du tournoi", "championBonus"], ["Bonus striker (5 victoires d'affilée)", "streakBonus"]];
-/** Barème modifiable en direct (le tournoi est déjà lancé — l'assistant de création ne s'applique plus). */
+const WIZ_SCORING_FIELDS_REF: [string, string][] = [["Victoire en poule Survival", "survWin"], ["Victoire en poule des perdants", "loserWin"], ["Victoire en finale de poule", "poolFinalWin"], ["Victoire en phase finale", "finalsWin"], ["Bonus champion du tournoi", "championBonus"], ["Bonus striker", "streakBonus"]];
+/** Barème modifiable en direct (le tournoi est déjà lancé — l'assistant de création ne s'applique plus).
+ * La longueur de série du bonus striker (3 ou 5, fixée à la création) n'est plus modifiable une fois
+ * le tournoi lancé — seul le point alloué l'est encore, comme les autres lignes du barème. */
 function regieScoringForm(t: Detail): string {
   const rows = WIZ_SCORING_FIELDS_REF.map(([label, key]) => `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #1B1B27">
-    <span style="flex:1;font-size:13px">${label}</span>
+    <span style="flex:1;font-size:13px">${label}${key === "streakBonus" ? ` (${t.streakLength || 5} victoires d'affilée)` : ""}</span>
     <input id="ls-${key}" type="number" min="0" step="0.25" value="${(t.scoring as Record<string, number>)[key]}" style="width:80px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:13px;padding:7px" />
   </div>`).join("");
   return `<div>${rows}</div><button data-livescoresave="${t.id}" style="width:100%;margin-top:14px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:11px;font-weight:750;font-size:13.5px;cursor:pointer">Enregistrer le barème</button>`;
@@ -3272,7 +3284,7 @@ export default function Page() {
     editingPlayerId: null, brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
     wizRosterSearch: "", wizEditId: null,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -4295,7 +4307,7 @@ export default function Page() {
       nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
-      finalsFormat: d.finalsFormat, poolFormat: d.poolFormat,
+      finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
@@ -4325,7 +4337,7 @@ export default function Page() {
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -4346,7 +4358,7 @@ export default function Page() {
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
       entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
-      ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, poolFormat: d.poolFormat } : {}),
+      ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength } : {}),
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
@@ -4381,7 +4393,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte VLOME.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4464,6 +4476,7 @@ export default function Page() {
             finalsWin: t.scoring?.finalsWin ?? 2, championBonus: t.scoring?.championBonus ?? 3, streakBonus: t.scoring?.streakBonus ?? 1,
             finalsFormat: t.finalsFormat || "single",
             poolFormat: t.poolFormat || "survival",
+            streakLength: t.streakLength === 3 ? 3 : 5,
             imageUrl: t.imageUrl || null,
           },
         }));
@@ -4502,6 +4515,7 @@ export default function Page() {
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => ({ ...s, wizData: { ...s.wizData, format: d.wizformat! } }));
     else if (d.wizpoolformat) setS((s) => ({ ...s, wizData: { ...s.wizData, poolFormat: d.wizpoolformat as "survival" | "double" } }));
+    else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));
     else if (d.wizgame) setS((s) => ({ ...s, wizData: { ...s.wizData, game: d.wizgame! } }));
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
@@ -4692,7 +4706,7 @@ export default function Page() {
       }
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
       }));
       loadRoster();
     }

@@ -12,12 +12,14 @@ export interface Scoring {
   poolFinalWin: number; // victoire en finale de poule
   finalsWin: number;    // victoire en phase finale
   championBonus: number;// bonus champion du tournoi
-  streakBonus: number;  // bonus "striker" — 5 victoires d'affilée dans une poule (voir STREAK_LENGTH)
+  streakBonus: number;  // bonus "striker" — série de streakLength victoires d'affilée dans une poule
 }
 
 export const BYE = '__bye__';
-/** Longueur de série requise pour déclencher le bonus striker — fixe, pas réglable par l'organisateur. */
-export const STREAK_LENGTH = 5;
+/** Longueur de série qui déclenche le bonus striker : 3 OU 5 victoires d'affilée, au choix de
+ * l'organisateur à la création (pas les deux en même temps sur un même tournoi) — voir Tournament.streakLength. */
+export type StreakLength = 3 | 5;
+export const DEFAULT_STREAK_LENGTH: StreakLength = 5;
 
 export interface BracketMatch { id: string; a: string | null; b: string | null; winner: string | null; bye: boolean; sa?: number; sb?: number; }
 export interface Bracket { rounds: BracketMatch[][]; }
@@ -102,6 +104,9 @@ export interface Tournament {
   pools: Pool[];
   /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
   poolFormat: PoolFormat;
+  /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
+   * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
+  streakLength: StreakLength;
   status: Status;
   log: LogEntry[];
   points: Record<string, number>;
@@ -143,6 +148,7 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1 },
     pools: [],
     poolFormat: cfg.poolFormat || 'survival',
+    streakLength: cfg.streakLength || DEFAULT_STREAK_LENGTH,
     status: 'setup', log: [], points: {}, finals: null,
     finalsFormat: cfg.finalsFormat || 'single',
     champion: null, _undo: [],
@@ -499,15 +505,18 @@ export function reportResult(t: Tournament, poolId: string, winnerId: string, sa
   award(t, winnerId, pts);
   t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
 
-  // Bonus striker : série de STREAK_LENGTH victoires d'affilée sur le "bracket vainqueurs" de la poule (stage
-  // 'survival', que la poule soit en mode classique ou double élim) — une seule fois par joueur dans la poule.
+  // Bonus striker : série de t.streakLength (3 OU 5, un seul palier actif par tournoi) victoires
+  // d'affilée sur le "bracket vainqueurs" de la poule (stage 'survival', que la poule soit en mode
+  // classique ou double élim) — une seule fois par joueur dans la poule.
   if (m.stage === 'survival') {
     pool.streaks[winnerId] = (pool.streaks[winnerId] || 0) + 1;
     pool.streaks[loserId] = 0;
-    if (pool.streaks[winnerId] >= STREAK_LENGTH && t.scoring.streakBonus > 0 && !pool.streakAwarded[winnerId]) {
+    const streak = pool.streaks[winnerId];
+    const streakLength = t.streakLength || DEFAULT_STREAK_LENGTH;
+    if (streak >= streakLength && t.scoring.streakBonus > 0 && !pool.streakAwarded[winnerId]) {
       pool.streakAwarded[winnerId] = true;
       award(t, winnerId, t.scoring.streakBonus);
-      t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${STREAK_LENGTH} victoires` });
+      t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${streakLength} victoires` });
     }
   }
 

@@ -12,8 +12,10 @@ export interface Scoring {
     streakBonus: number;
 }
 export declare const BYE = "__bye__";
-/** Longueur de série requise pour déclencher le bonus striker — fixe, pas réglable par l'organisateur. */
-export declare const STREAK_LENGTH = 5;
+/** Longueur de série qui déclenche le bonus striker : 3 OU 5 victoires d'affilée, au choix de
+ * l'organisateur à la création (pas les deux en même temps sur un même tournoi) — voir Tournament.streakLength. */
+export type StreakLength = 3 | 5;
+export declare const DEFAULT_STREAK_LENGTH: StreakLength;
 export interface BracketMatch {
     id: string;
     a: string | null;
@@ -140,6 +142,9 @@ export interface Tournament {
     pools: Pool[];
     /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
     poolFormat: PoolFormat;
+    /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
+     * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
+    streakLength: StreakLength;
     status: Status;
     log: LogEntry[];
     points: Record<string, number>;

@@ -5,7 +5,7 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_BR_POINTS = exports.STREAK_LENGTH = exports.BYE = void 0;
+exports.DEFAULT_BR_POINTS = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.swissRoundCount = swissRoundCount;
@@ -51,8 +51,7 @@ exports.distributed = distributed;
 exports.overallRanking = overallRanking;
 exports.ratings = ratings;
 exports.BYE = '__bye__';
-/** Longueur de série requise pour déclencher le bonus striker — fixe, pas réglable par l'organisateur. */
-exports.STREAK_LENGTH = 5;
+exports.DEFAULT_STREAK_LENGTH = 5;
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
 const MAX_UNDO = 25;
 function uid() {
@@ -80,6 +79,7 @@ function newTournament(cfg = {}) {
         scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 1 },
         pools: [],
         poolFormat: cfg.poolFormat || 'survival',
+        streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,
         status: 'setup', log: [], points: {}, finals: null,
         finalsFormat: cfg.finalsFormat || 'single',
         champion: null, _undo: [],
@@ -472,15 +472,18 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
     const pts = stagePoints(t, m.stage);
     award(t, winnerId, pts);
     t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
-    // Bonus striker : série de STREAK_LENGTH victoires d'affilée sur le "bracket vainqueurs" de la poule (stage
-    // 'survival', que la poule soit en mode classique ou double élim) — une seule fois par joueur dans la poule.
+    // Bonus striker : série de t.streakLength (3 OU 5, un seul palier actif par tournoi) victoires
+    // d'affilée sur le "bracket vainqueurs" de la poule (stage 'survival', que la poule soit en mode
+    // classique ou double élim) — une seule fois par joueur dans la poule.
     if (m.stage === 'survival') {
         pool.streaks[winnerId] = (pool.streaks[winnerId] || 0) + 1;
         pool.streaks[loserId] = 0;
-        if (pool.streaks[winnerId] >= exports.STREAK_LENGTH && t.scoring.streakBonus > 0 && !pool.streakAwarded[winnerId]) {
+        const streak = pool.streaks[winnerId];
+        const streakLength = t.streakLength || exports.DEFAULT_STREAK_LENGTH;
+        if (streak >= streakLength && t.scoring.streakBonus > 0 && !pool.streakAwarded[winnerId]) {
             pool.streakAwarded[winnerId] = true;
             award(t, winnerId, t.scoring.streakBonus);
-            t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${exports.STREAK_LENGTH} victoires` });
+            t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${streakLength} victoires` });
         }
     }
     if (pool.phase === 'double') {

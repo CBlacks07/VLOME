@@ -2,8 +2,10 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@n
 import { AdminService } from './admin.service';
 import { NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, ReviewOrganizerDto, SetRoleDto } from './admin.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import type { JwtUser } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
+import { CurrentUser } from '../common/current-user.decorator';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,6 +28,11 @@ export class AdminController {
   @Patch('users/:id/role')
   setRole(@Param('id') id: string, @Body() dto: SetRoleDto) {
     return this.admin.setRole(id, dto.role);
+  }
+
+  @Delete('users/:id')
+  removeUser(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.admin.removeUser(id, user.sub);
   }
 
   /* ---------- Organisateurs (validation, plafonds) ---------- */

@@ -61,6 +61,24 @@ export class AdminService {
     });
   }
 
+  /**
+   * Supprime définitivement un compte (inscriptions et transactions liées suivent en cascade).
+   * Deux garde-fous : on ne peut pas supprimer son propre compte (on se couperait l'accès en
+   * pleine action), ni le dernier administrateur restant (plus personne ne pourrait administrer).
+   * Les tournois créés par ce compte sont conservés — seuls les administrateurs pourront les gérer.
+   */
+  async removeUser(id: string, requesterId: string) {
+    if (id === requesterId) throw new BadRequestException('Tu ne peux pas supprimer ton propre compte.');
+    const u = await this.prisma.user.findUnique({ where: { id }, select: { id: true, email: true, role: true } });
+    if (!u) throw new NotFoundException('Utilisateur introuvable.');
+    if (u.role === 'ADMIN') {
+      const admins = await this.prisma.user.count({ where: { role: 'ADMIN' } });
+      if (admins <= 1) throw new BadRequestException('Impossible de supprimer le dernier administrateur.');
+    }
+    await this.prisma.user.delete({ where: { id } });
+    return { deleted: true, email: u.email };
+  }
+
   /* ---------- Organisateurs (validation, plafonds) ---------- */
 
   async listOrganizers() {

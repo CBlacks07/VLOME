@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { randomBytes } from 'crypto';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -16,11 +17,16 @@ function jwtSecret(): string {
   const fromEnv = process.env.JWT_SECRET?.trim();
   if (fromEnv && fromEnv !== DEV_ONLY_SECRET) return fromEnv;
   if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      "JWT_SECRET manquant : définis une valeur secrète et unique dans les variables d'environnement " +
-      "(ex. `node -e \"console.log(require('crypto').randomBytes(48).toString('base64url'))\"`). " +
-      'Sans elle, les jetons de session seraient signés avec une valeur publique.',
+    // Secret manquant en production : on NE démarre PAS avec la valeur publique (n'importe qui
+    // forgerait un jeton d'administrateur), mais on ne fait pas non plus tomber le site. Repli sur
+    // un secret aléatoire propre à cette instance : le service reste en ligne et les jetons forgés
+    // sont refusés — au prix de sessions qui ne survivent pas au redémarrage de l'instance, d'où
+    // l'alerte ci-dessous. Définir JWT_SECRET rétablit des sessions stables.
+    console.error(
+      '[Miabe] JWT_SECRET absent en production : repli sur un secret aléatoire temporaire. ' +
+      'Les utilisateurs seront déconnectés à chaque redémarrage tant que la variable ne sera pas définie.',
     );
+    return randomBytes(48).toString('base64url');
   }
   return DEV_ONLY_SECRET;
 }

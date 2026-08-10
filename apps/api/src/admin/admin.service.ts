@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
 import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
 import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.service';
+import { SESSION_SECRET_CONFIGURED } from '../auth/auth.module';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
 export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits'] as const;
@@ -122,7 +123,12 @@ export class AdminService {
       this.prisma.registration.count({ where: { paymentStatus: 'pending' } }),
       this.prisma.galleryItem.count(),
     ]);
-    return { users, admins, organizers, tournaments, orders, products, news, pendingPayments, gallery };
+    return {
+      users, admins, organizers, tournaments, orders, products, news, pendingPayments, gallery,
+      // Diagnostic d'exploitation : sans JWT_SECRET, les sessions sautent à chaque redémarrage
+      // d'instance. Booléen uniquement — la valeur du secret n'est évidemment jamais exposée.
+      sessionSecretConfigured: SESSION_SECRET_CONFIGURED,
+    };
   }
 
   /* ---------- Paiements d'inscription (vue d'ensemble) ---------- */

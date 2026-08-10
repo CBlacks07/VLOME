@@ -1485,7 +1485,14 @@ function consoleOverview(S: State) {
       <span style="border:1px solid rgba(251,191,36,.4);border-radius:7px;padding:6px 11px;font-size:11.5px;font-weight:700;color:#FBBF24">Voir</span>
     </div></div>` : "";
 
-  return organizerStatusBanner(S) + kpis + table + todo;
+  // Alerte d'exploitation : sans secret de session fixe, l'API en tire un au hasard à chaque
+  // démarrage d'instance — les membres se retrouvent déconnectés sans raison apparente.
+  const secretWarn = isAdmin && ov && ov.sessionSecretConfigured === false ? `<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-radius:12px;margin-bottom:18px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35)">
+    <span style="color:#FBBF24;flex:none;margin-top:1px">${ic(I.warn, 18)}</span>
+    <div><div style="font-weight:700;font-size:13.5px;color:#FBBF24">Sessions instables : secret de session non configuré</div>
+    <div style="font-size:12.5px;color:#8E8FA6;margin-top:3px;line-height:1.6">L'API n'a pas de variable <b style="color:#F4F5FB">JWT_SECRET</b> et en génère une au hasard à chaque redémarrage : les membres sont déconnectés sans raison. À définir sur le projet d'hébergement de l'API (environnement Production), puis redéployer.</div></div>
+  </div>` : "";
+  return organizerStatusBanner(S) + secretWarn + kpis + table + todo;
 }
 
 /** Tournoi en direct épinglé en haut de la sidebar (organisateur : ses tournois seulement ; admin : tous). */

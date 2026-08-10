@@ -5,7 +5,7 @@ import * as Engine from '@vlome/engine';
 export class HealthController {
   @Get('health')
   health() {
-    return { status: 'ok', service: 'vlome-api', ts: Date.now() };
+    return { status: 'ok', service: 'miabe-esport-api', ts: Date.now() };
   }
 
   // Démo : le moteur de tournoi (@vlome/engine) tourne côté serveur.

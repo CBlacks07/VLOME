@@ -1918,7 +1918,7 @@ function adminLoyalty(S: State) {
       ${secTitle("Points fidélité")}
       ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
     </div>
-    <p style="color:#8E8FA6;font-size:13.5px;line-height:1.7;margin:0 0 18px">Chaque participation validée à un tournoi Vlome rapporte 1 point (désactivable par tournoi). Les membres peuvent ensuite dépenser leurs points sur les produits marqués « éligibles » en boutique, ou sur les frais d'inscription d'un futur tournoi.</p>
+    <p style="color:#8E8FA6;font-size:13.5px;line-height:1.7;margin:0 0 18px">Chaque participation validée à un tournoi Miabe rapporte 1 point (désactivable par tournoi). Les membres peuvent ensuite dépenser leurs points sur les produits marqués « éligibles » en boutique, ou sur les frais d'inscription d'un futur tournoi.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Valeur d'un point (FCFA)<input id="ly-value" type="number" min="1" value="${ly.pointValueXof}" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Plafond de réduction (% du montant)<input id="ly-percent" type="number" min="0" max="100" value="${ly.maxRedeemPercent}" style="${adminInp}" /></label>
@@ -2829,7 +2829,7 @@ function pTournoi(S: State) {
       ${statTile("Frais", fee > 0 ? money(fee) : "Gratuit")}
       ${statTile("Format", escHtml(t.format) || "—")}
     </div>`;
-    // Explication générique du format Survival (identique pour tous les tournois — VLOME ne stocke pas de description par tournoi).
+    // Explication générique du format Survival (identique pour tous les tournois — la plateforme ne stocke pas de description par tournoi).
     const formatInfo = `<div style="border:1px solid #282838;border-radius:11px;background:#14141D;padding:16px;margin-bottom:30px">
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);color:#22D3EE">${ic(I.bolt, 14)}</span><b style="font-size:13.5px">Comment ça se joue</b></div>
       <div style="font-size:12.5px;color:#8E8FA6;line-height:1.7">Format Survival : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs de chaque poule se rejoignent en phase finale.</div>
@@ -2932,13 +2932,13 @@ function pAuth(S: State) {
   }).join("");
 
   const loginForm = `
-    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inp}" /></label>
+    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@exemple.com" style="${inp}" /></label>
     <label style="${lbl};margin-top:14px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>`;
 
   const registerForm = `
     <label style="${lbl};margin-top:14px">Nom affiché (pseudo)<input id="a-name" placeholder="Kossi K9" style="${inp}" /></label>
     <div style="margin-top:14px"><div style="${lbl};margin-bottom:6px">Je m'inscris en tant que</div><div style="display:flex;gap:10px">${roleBtns}</div></div>
-    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@vlome.tg" style="${inp}" /></label>
+    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@exemple.com" style="${inp}" /></label>
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
       <label style="${lbl}">Mot de passe (6 caractères min.)<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>
       <label style="${lbl}">Confirme le mot de passe<input id="a-pass2" type="password" placeholder="••••••" style="${inp}" /></label>
@@ -4146,7 +4146,7 @@ export default function Page() {
     overlayRef.current = overlayOpen;
     if (overlayOpen && !overlayPushed.current) {
       overlayPushed.current = true;
-      history.pushState({ vlomeOverlay: true }, "");
+      history.pushState({ appOverlay: true }, "");
     } else if (!overlayOpen) {
       overlayPushed.current = false;
     }

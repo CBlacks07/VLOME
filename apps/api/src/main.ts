@@ -14,6 +14,6 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));
   const port = process.env.API_PORT ?? 4000;
   await app.listen(port);
-  console.log(`VLOME API prête sur http://localhost:${port}/api`);
+  console.log(`Miabe Esport API prête sur http://localhost:${port}/api`);
 }
 bootstrap();

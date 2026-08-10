@@ -1,12 +1,15 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; }
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@vlome.tg';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'miabeapeto@miabe-esport.community';
+// Sans ADMIN_PASSWORD fourni, mot de passe aléatoire affiché une seule fois au démarrage : un mot
+// de passe par défaut écrit en clair dans le dépôt ouvre l'administration à quiconque le connaît.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomBytes(9).toString('base64url');
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -21,7 +24,7 @@ export class AuthService implements OnModuleInit {
     if (existing) return;
     const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
     await this.prisma.user.create({ data: { email, passwordHash, displayName: 'Admin Miabe', role: 'ADMIN' } });
-    console.log(`[VLOME] Compte ADMIN créé -> ${email} / ${ADMIN_PASSWORD} (à changer)`);
+    console.log(`[Miabe] Compte ADMIN créé -> ${email} / ${ADMIN_PASSWORD} (à changer)`);
   }
 
   private sign(u: UserRow) {
@@ -73,7 +76,7 @@ export class AuthService implements OnModuleInit {
       if (existing) await this.prisma.player.update({ where: { id: existing.id }, data: { userId, city: existing.city ?? city, clubId: existing.clubId ?? clubId ?? undefined } });
       else await this.prisma.player.create({ data: { name, city, userId, clubId: clubId || null } });
     } catch (e) {
-      console.error('[VLOME] Liaison base de joueurs impossible (inscription non bloquée) :', e);
+      console.error('[Miabe] Liaison base de joueurs impossible (inscription non bloquée) :', e);
     }
   }
 

@@ -4188,6 +4188,22 @@ export default function Page() {
     if (window.location.hash !== hash) history.pushState(null, "", hash);
   }, [S.page, S.openId]);
 
+  // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le fichier icon.jpg livré
+  // avec l'application ne sert plus que de repli tant qu'aucun logo n'a été envoyé : sans ça, changer
+  // le logo laissait l'ancienne icône dans l'onglet du navigateur.
+  useEffect(() => {
+    const logo = S.site?.brand?.logoUrl;
+    if (typeof document === "undefined" || !logo) return;
+    const href = mediaUrl(logo);
+    document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((l) => l.remove());
+    for (const rel of ["icon", "apple-touch-icon"]) {
+      const link = document.createElement("link");
+      link.rel = rel;
+      link.href = href;
+      document.head.appendChild(link);
+    }
+  }, [S.site?.brand?.logoUrl]);
+
   // Champs fichier (affiche de tournoi, logos, images produits/actus…) : écouteur natif au niveau du
   // document, en capture. Le onChange délégué de React ne se déclenche JAMAIS ici : tout le HTML est
   // injecté via dangerouslySetInnerHTML, donc React résout l'élément « source » du change sur le div

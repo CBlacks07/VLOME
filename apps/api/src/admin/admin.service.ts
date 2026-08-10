@@ -4,6 +4,7 @@ import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dt
 import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
 import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.service';
 import { SESSION_SECRET_CONFIGURED } from '../auth/auth.module';
+import { MailService, escapeHtml } from '../mail/mail.service';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
 export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits'] as const;
@@ -33,7 +34,7 @@ export const DEFAULT_SETTINGS: Record<string, unknown> = {
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService, private credits: CreditsService) {}
+  constructor(private prisma: PrismaService, private credits: CreditsService, private mail: MailService) {}
 
   /* ---------- Crédits organisateur ---------- */
 
@@ -99,7 +100,8 @@ export class AdminService {
   async reviewOrganizer(id: string, status: 'APPROVED' | 'REJECTED', maxTournaments?: number | null, maxPlayers?: number | null) {
     const u = await this.prisma.user.findUnique({ where: { id } });
     if (!u || u.role !== 'ORGANIZER') throw new NotFoundException('Organisateur introuvable.');
-    return this.prisma.user.update({
+    const alreadyApproved = u.organizerStatus === 'APPROVED';
+    const updated = await this.prisma.user.update({
       where: { id },
       data: {
         organizerStatus: status,
@@ -109,6 +111,45 @@ export class AdminService {
       },
       select: { id: true, organizerStatus: true, organizerMaxTournaments: true, organizerMaxPlayers: true },
     });
+    // Pas d'e-mail quand on ne fait que réajuster les plafonds d'un organisateur déjà approuvé :
+    // il recevrait un « bienvenue » à chaque modification.
+    if (!(alreadyApproved && status === 'APPROVED')) {
+      await this.notifyOrganizerReviewed(u.email, u.displayName, status, updated.organizerMaxTournaments, updated.organizerMaxPlayers);
+    }
+    return updated;
+  }
+
+  /** Prévient le candidat organisateur de la décision. Best-effort : jamais bloquant. */
+  private async notifyOrganizerReviewed(email: string, name: string, status: 'APPROVED' | 'REJECTED', maxT: number | null, maxP: number | null) {
+    if (status === 'REJECTED') {
+      await this.mail.send(
+        email,
+        "Ta demande d'organisateur — Miabe Esport",
+        this.mail.layout(
+          "Demande d'organisateur refusée",
+          `<p>Bonjour ${escapeHtml(name)},</p>
+           <p>Ta demande pour organiser des tournois sur Miabe Esport n'a pas été retenue pour le moment.</p>
+           <p>Tu peux continuer à participer aux tournois avec ton compte. Si tu penses qu'il s'agit d'une erreur, réponds simplement à cet e-mail.</p>`,
+        ),
+      );
+      return;
+    }
+    const limits = [
+      maxT != null ? `<li>Jusqu'à <b>${maxT} tournoi${maxT > 1 ? 's' : ''}</b> au total</li>` : '',
+      maxP != null ? `<li>Jusqu'à <b>${maxP} participant${maxP > 1 ? 's' : ''}</b> par tournoi</li>` : '',
+    ].filter(Boolean).join('');
+    await this.mail.send(
+      email,
+      'Ton compte organisateur est validé — Miabe Esport',
+      this.mail.layout(
+        'Bienvenue parmi les organisateurs',
+        `<p>Bonjour ${escapeHtml(name)},</p>
+         <p>Ton compte organisateur vient d'être validé : tu peux dès maintenant créer et piloter tes tournois.</p>
+         ${limits ? `<p>Conditions fixées pour ton compte :</p><ul>${limits}</ul>` : ''}
+         <p>Ton premier tournoi est offert. Ensuite, chaque tournoi hébergé consomme un crédit, achetable depuis l'onglet « Crédits ».</p>`,
+        { label: 'Créer mon premier tournoi', url: `${this.mail.siteUrl}/#profil` },
+      ),
+    );
   }
 
   async overview() {

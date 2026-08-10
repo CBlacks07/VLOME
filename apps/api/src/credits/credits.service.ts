@@ -1,13 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditReason } from '../../generated/prisma';
+import { MailService, escapeHtml } from '../mail/mail.service';
 
 /** Valeurs par défaut tant que l'admin n'a rien réglé (Setting key "credits"). */
 export const DEFAULT_CREDITS_SETTINGS = { priceXof: 750, freeTournaments: 1 };
 
 @Injectable()
 export class CreditsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private mail: MailService) {}
 
   async getSettings(): Promise<{ priceXof: number; freeTournaments: number }> {
     const row = await this.prisma.setting.findUnique({ where: { key: 'credits' } });
@@ -117,7 +118,25 @@ export class CreditsService {
       this.prisma.user.update({ where: { id: p.userId }, data: { organizerCredits: { increment: p.credits } } }),
       this.prisma.creditTransaction.create({ data: { userId: p.userId, amount: p.credits, reason: CreditReason.PURCHASE, purchaseId: p.id } }),
     ]);
+    await this.notifyPurchaseConfirmed(p.userId, p.credits, p.amountXof);
     return { confirmed: true };
+  }
+
+  /** Prévient l'organisateur que ses crédits sont disponibles. Best-effort : jamais bloquant. */
+  private async notifyPurchaseConfirmed(userId: string, credits: number, amountXof: number) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, displayName: true, organizerCredits: true } });
+    if (!u) return;
+    await this.mail.send(
+      u.email,
+      'Tes crédits organisateur sont disponibles — Miabe Esport',
+      this.mail.layout(
+        'Paiement confirmé',
+        `<p>Bonjour ${escapeHtml(u.displayName)},</p>
+         <p>Nous avons bien reçu ton paiement de <b>${amountXof.toLocaleString('fr-FR')} F</b>. <b>${credits} crédit${credits > 1 ? 's' : ''}</b> ${credits > 1 ? 'ont' : 'a'} été ajouté${credits > 1 ? 's' : ''} à ton compte.</p>
+         <p>Nouveau solde : <b>${u.organizerCredits} crédit${u.organizerCredits > 1 ? 's' : ''}</b> — soit autant de tournois que tu peux héberger.</p>`,
+        { label: 'Créer un tournoi', url: `${this.mail.siteUrl}/#profil` },
+      ),
+    );
   }
 
   async cancelPurchase(id: string, requesterId: string, isAdmin: boolean) {

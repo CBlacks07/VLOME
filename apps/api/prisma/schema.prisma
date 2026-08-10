@@ -92,6 +92,20 @@ model User {
   loyaltyTxs          LoyaltyTransaction[]
   creditTxs           CreditTransaction[]
   creditPurchases     CreditPurchase[]
+  passwordResets      PasswordReset[]
+}
+
+// Demande de réinitialisation de mot de passe. Seul le HACHÉ du jeton est stocké : une fuite de
+// cette table ne permettrait donc pas de prendre la main sur les comptes (même raisonnement que
+// pour les mots de passe). Jeton à usage unique et de courte durée.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }
 
 // Journal des gains/dépenses de crédits organisateur — même rôle que LoyaltyTransaction

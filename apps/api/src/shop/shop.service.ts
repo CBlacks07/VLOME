@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './shop.dto';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { LoyaltyReason } from '../../generated/prisma';
+import { MailService, escapeHtml } from '../mail/mail.service';
 
 const DEMO_PRODUCTS = [
   { name: 'Maillot officiel Miabe', category: 'Vêtements', priceXof: 15000, stock: 50 },
@@ -17,7 +18,7 @@ const DEMO_PRODUCTS = [
 
 @Injectable()
 export class ShopService {
-  constructor(private prisma: PrismaService, private loyalty: LoyaltyService) {}
+  constructor(private prisma: PrismaService, private loyalty: LoyaltyService, private mail: MailService) {}
 
   async listProducts() {
     return this.prisma.product.findMany({ orderBy: [{ category: 'asc' }, { name: 'asc' }] });
@@ -73,9 +74,30 @@ export class ShopService {
         throw e;
       }
     }
+    await this.notifyOrder(userId, order.reference, order.totalXof, order.paymentMethod, dto.items.map((i) => i.name), pointsUsed);
     return {
       id: order.id, reference: order.reference, totalXof: order.totalXof,
       paymentMethod: order.paymentMethod, status: order.status, pointsRedeemed: pointsUsed,
     };
+  }
+
+  /** Reçu de commande. Best-effort : une commande valide ne doit jamais échouer sur un e-mail. */
+  private async notifyOrder(userId: string | undefined, reference: string, totalXof: number, paymentMethod: string, items: string[], pointsUsed: number) {
+    if (!userId) return; // commande sans compte : pas d'adresse connue
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, displayName: true } });
+    if (!u) return;
+    await this.mail.send(
+      u.email,
+      `Commande ${reference} enregistrée — Miabe Esport`,
+      this.mail.layout(
+        'Merci pour ta commande',
+        `<p>Bonjour ${escapeHtml(u.displayName)},</p>
+         <p>Ta commande <b>${escapeHtml(reference)}</b> est bien enregistrée.</p>
+         <ul>${items.map((n) => `<li>${escapeHtml(n)}</li>`).join('')}</ul>
+         <p>Total : <b>${totalXof.toLocaleString('fr-FR')} F</b> · Paiement : <b>${escapeHtml(paymentMethod)}</b>${pointsUsed > 0 ? ` · <b>${pointsUsed} point${pointsUsed > 1 ? 's' : ''}</b> de fidélité utilisé${pointsUsed > 1 ? 's' : ''}` : ''}</p>
+         <p>Elle sera confirmée par l'équipe Miabe Esport à réception du paiement.</p>`,
+        { label: 'Voir mes commandes', url: `${this.mail.siteUrl}/#profil` },
+      ),
+    );
   }
 }

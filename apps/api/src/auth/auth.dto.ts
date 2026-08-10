@@ -9,6 +9,22 @@ export class LoginDto {
   password!: string;
 }
 
+export class ForgotPasswordDto {
+  @IsEmail({}, { message: 'Email invalide.' })
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @IsString()
+  @MinLength(10)
+  token!: string;
+
+  @IsString()
+  @MinLength(6, { message: 'Mot de passe : au moins 6 caractères.' })
+  @MaxLength(72)
+  password!: string;
+}
+
 export class RegisterDto {
   @IsEmail({}, { message: 'Email invalide.' })
   email!: string;

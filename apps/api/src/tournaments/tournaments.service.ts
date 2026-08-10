@@ -6,6 +6,7 @@ import { JwtUser } from '../common/jwt-auth.guard';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreditsService } from '../credits/credits.service';
 import { LoyaltyReason } from '../../generated/prisma';
+import { MailService, escapeHtml } from '../mail/mail.service';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
@@ -24,7 +25,7 @@ function engineFormatFor(dbFormat: string | null | undefined): Engine.Tournament
 
 @Injectable()
 export class TournamentsService {
-  constructor(private prisma: PrismaService, private loyalty: LoyaltyService, private credits: CreditsService) {}
+  constructor(private prisma: PrismaService, private loyalty: LoyaltyService, private credits: CreditsService, private mail: MailService) {}
 
   // Seul le propriétaire (ou un ADMIN) peut piloter/éditer. Les tournois sans
   // propriétaire (démo) sont pilotables par tout utilisateur authentifié.
@@ -313,6 +314,7 @@ export class TournamentsService {
       if (r.givesLoyaltyPoint) {
         await this.loyalty.award(user.sub, 1, LoyaltyReason.PARTICIPATION, { registrationId: reg.id, note: r.name });
       }
+      await this.notifyRegistration(user.sub, r.name, playerName, 0, false, r.date, r.place);
       return { registered: true, pending: false, playerName, amountXof: 0, pointsRedeemed: pointsUsed, players: t.players.length };
     }
 
@@ -331,7 +333,29 @@ export class TournamentsService {
         throw e;
       }
     }
+    await this.notifyRegistration(user.sub, r.name, playerName, netFee, true, r.date, r.place);
     return { registered: true, pending: true, playerName, amountXof: netFee, pointsRedeemed: pointsUsed };
+  }
+
+  /** Confirmation d'inscription. Best-effort : une inscription valide ne doit pas échouer sur un e-mail. */
+  private async notifyRegistration(userId: string, tournamentName: string, playerName: string, amountXof: number, pending: boolean, date: Date | null, place: string | null) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true, displayName: true } });
+    if (!u) return;
+    const when = date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null;
+    await this.mail.send(
+      u.email,
+      `Inscription à « ${tournamentName} » — Miabe Esport`,
+      this.mail.layout(
+        pending ? 'Inscription réservée' : 'Inscription confirmée',
+        `<p>Bonjour ${escapeHtml(u.displayName)},</p>
+         <p>Ton inscription au tournoi <b>${escapeHtml(tournamentName)}</b> est enregistrée sous le pseudo <b>${escapeHtml(playerName)}</b>.</p>
+         ${when || place ? `<p>${when ? `Date : <b>${when}</b>` : ''}${when && place ? ' · ' : ''}${place ? `Lieu : <b>${escapeHtml(place)}</b>` : ''}</p>` : ''}
+         ${pending
+           ? `<p>Montant à régler : <b>${amountXof.toLocaleString('fr-FR')} F</b>. Ta place est réservée et sera définitivement validée dès réception du paiement par l'équipe Miabe Esport.</p>`
+           : `<p>Ta place est confirmée, rien de plus à faire. Bonne chance !</p>`}`,
+        { label: 'Voir le tournoi', url: `${this.mail.siteUrl}/#profil` },
+      ),
+    );
   }
 
   /** Confirme le paiement d'une inscription en attente (organisateur/admin) et ajoute le joueur au moteur. */

@@ -85,7 +85,7 @@ type State = {
   loyaltyHistory: Detail[] | null; loyaltyBalance: number;
   creditsMe: { balance: number; freeTournamentsUsed: number; freeTournaments: number; priceXof: number; history: Detail[]; purchases: Detail[] } | null;
   creditBuyQty: number; creditBuyPay: string; creditBuyBusy: boolean;
-  user: AuthUser | null; authTab: "login" | "register"; authBusy: boolean; authError: string; authRole: string;
+  user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
   admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[] } | null;
@@ -2917,6 +2917,8 @@ function pTournoi(S: State) {
 /** Page d'authentification dédiée : présentation à gauche, formulaire à droite. */
 function pAuth(S: State) {
   const isLogin = S.authTab === "login";
+  const isForgot = S.authTab === "forgot";
+  const isReset = S.authTab === "reset";
   const inp = "width:100%;background:#1B1B27;border:1px solid #282838;border-radius:11px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:12px 13px;margin-top:6px";
   const lbl = "font-size:12px;color:#8E8FA6;font-weight:600;display:block";
 
@@ -2943,7 +2945,17 @@ function pAuth(S: State) {
 
   const loginForm = `
     <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@exemple.com" style="${inp}" /></label>
-    <label style="${lbl};margin-top:14px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>`;
+    <label style="${lbl};margin-top:14px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>
+    <div style="text-align:right;margin-top:8px"><button data-auth-tab="forgot" style="background:none;border:0;color:#8E8FA6;font-weight:600;cursor:pointer;font-size:12px;font-family:inherit;text-decoration:underline">Mot de passe oublié ?</button></div>`;
+
+  const forgotForm = `
+    <p style="color:#8E8FA6;font-size:13px;line-height:1.6;margin:14px 0 0">Indique l'adresse de ton compte : nous t'envoyons un lien pour choisir un nouveau mot de passe. Il est valable une heure.</p>
+    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@exemple.com" style="${inp}" /></label>`;
+
+  const resetForm = `
+    <p style="color:#8E8FA6;font-size:13px;line-height:1.6;margin:14px 0 0">Choisis ton nouveau mot de passe.</p>
+    <label style="${lbl};margin-top:14px">Nouveau mot de passe (6 caractères min.)<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>
+    <label style="${lbl};margin-top:14px">Confirme le mot de passe<input id="a-pass2" type="password" placeholder="••••••" style="${inp}" /></label>`;
 
   const registerForm = `
     <label style="${lbl};margin-top:14px">Nom affiché (pseudo)<input id="a-name" placeholder="Kossi K9" style="${inp}" /></label>
@@ -2980,12 +2992,15 @@ function pAuth(S: State) {
         <div style="display:flex;flex-direction:column;gap:18px">${perks}</div>
       </div>
       <div class="rise d2" style="border:1px solid #33334A;border-radius:22px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:26px 26px 28px;box-shadow:0 24px 70px rgba(0,0,0,.45)">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin-bottom:14px">${isLogin ? "Connexion" : "Créer mon compte"}</div>
-        <div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:4px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>
-        ${isLogin ? loginForm : registerForm}
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin-bottom:14px">${isForgot ? "Mot de passe oublié" : isReset ? "Nouveau mot de passe" : isLogin ? "Connexion" : "Créer mon compte"}</div>
+        ${isForgot || isReset ? "" : `<div style="display:flex;gap:4px;background:#0E0E16;border:1px solid #282838;border-radius:12px;padding:4px;margin-bottom:4px">${tab("login", "Se connecter")}${tab("register", "Créer un compte")}</div>`}
+        ${isForgot ? forgotForm : isReset ? resetForm : isLogin ? loginForm : registerForm}
+        ${S.authNotice ? `<div style="display:flex;align-items:flex-start;gap:8px;color:#34D399;font-size:12.5px;margin-top:14px;background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.3);border-radius:10px;padding:10px 12px">${ic(I.plus, 15)}<span>${escHtml(S.authNotice)}</span></div>` : ""}
         ${S.authError ? `<div style="display:flex;align-items:center;gap:8px;color:#FB7185;font-size:12.5px;margin-top:14px;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:10px 12px">${ic(I.warn, 15)}${escHtml(S.authError)}</div>` : ""}
-        <button data-auth-submit="1" ${S.authBusy ? "disabled" : ""} style="width:100%;margin-top:18px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px;font-weight:750;font-size:15px;cursor:${S.authBusy ? "default" : "pointer"};opacity:${S.authBusy ? ".6" : "1"};box-shadow:0 0 30px rgba(34,211,238,.2)">${S.authBusy ? "…" : isLogin ? "Se connecter" : "Créer mon compte"}</button>
-        <p style="color:#5D5E72;font-size:12px;text-align:center;margin:14px 0 0">${isLogin ? `Pas encore de compte ? <button data-auth-tab="register" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Inscris-toi</button>` : `Déjà membre ? <button data-auth-tab="login" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Connecte-toi</button>`}</p>
+        <button data-auth-submit="1" ${S.authBusy ? "disabled" : ""} style="width:100%;margin-top:18px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px;font-weight:750;font-size:15px;cursor:${S.authBusy ? "default" : "pointer"};opacity:${S.authBusy ? ".6" : "1"};box-shadow:0 0 30px rgba(34,211,238,.2)">${S.authBusy ? "…" : isForgot ? "Envoyer le lien" : isReset ? "Enregistrer le mot de passe" : isLogin ? "Se connecter" : "Créer mon compte"}</button>
+        <p style="color:#5D5E72;font-size:12px;text-align:center;margin:14px 0 0">${isForgot || isReset
+          ? `<button data-auth-tab="login" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Retour à la connexion</button>`
+          : isLogin ? `Pas encore de compte ? <button data-auth-tab="register" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Inscris-toi</button>` : `Déjà membre ? <button data-auth-tab="login" style="background:none;border:0;color:#22D3EE;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit">Connecte-toi</button>`}</p>
       </div>
     </div></main>`;
 }
@@ -3296,7 +3311,7 @@ export default function Page() {
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false,
-    user: null, authTab: "login", authBusy: false, authError: "", authRole: "PLAYER",
+    user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
     adminTab: "apercu", adminSearch: "", newsEdit: null, prodEdit: null, news: null, confirmBox: null,
@@ -3406,10 +3421,42 @@ export default function Page() {
     } catch { /* ignore */ }
   }
 
+  /** Demande de lien de réinitialisation. Le message affiché est le même quelle que soit l'existence
+   * du compte : la page ne doit pas révéler qui est inscrit. */
+  async function submitForgot(email: string) {
+    if (!email) { setS((s) => ({ ...s, authError: "Indique ton adresse e-mail." })); return; }
+    setS((s) => ({ ...s, authBusy: true, authError: "", authNotice: "" }));
+    try {
+      await fetch(`${API}/api/auth/forgot-password`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }),
+      });
+      setS((s) => ({ ...s, authBusy: false, authNotice: `Si un compte existe pour ${email}, un lien de réinitialisation vient d'être envoyé. Pense à vérifier tes indésirables.` }));
+    } catch { setS((s) => ({ ...s, authBusy: false, authError: "API injoignable." })); }
+  }
+  /** Enregistre le nouveau mot de passe à partir du jeton reçu par e-mail, et connecte directement. */
+  async function submitReset(password: string, confirm: string) {
+    if (password.length < 6) { setS((s) => ({ ...s, authError: "Mot de passe : au moins 6 caractères." })); return; }
+    if (password !== confirm) { setS((s) => ({ ...s, authError: "Les deux mots de passe ne correspondent pas." })); return; }
+    setS((s) => ({ ...s, authBusy: true, authError: "" }));
+    try {
+      const r = await fetch(`${API}/api/auth/reset-password`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: S.resetToken, password }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Lien invalide ou expiré." })); return; }
+      localStorage.setItem("vlome_token", data.token);
+      localStorage.setItem("vlome_user", JSON.stringify(data.user));
+      history.replaceState(null, "", window.location.pathname);
+      setS((s) => ({ ...s, authBusy: false, authError: "", authNotice: "", resetToken: "", authTab: "login", user: data.user, page: "profil", me: null }));
+    } catch { setS((s) => ({ ...s, authBusy: false, authError: "API injoignable." })); }
+  }
+
   async function submitAuth() {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
     const email = val("a-email").trim(), password = val("a-pass"), displayName = val("a-name").trim();
     const isLogin = S.authTab === "login";
+    if (S.authTab === "forgot") { await submitForgot(email); return; }
+    if (S.authTab === "reset") { await submitReset(password, val("a-pass2")); return; }
     if (!email || !password) { setS((s) => ({ ...s, authError: "Email et mot de passe requis." })); return; }
     if (!isLogin) {
       if (!displayName) { setS((s) => ({ ...s, authError: "Choisis un nom affiché (pseudo)." })); return; }
@@ -4243,6 +4290,12 @@ export default function Page() {
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
+    // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
+    if (h.startsWith("#reset=")) {
+      const token = decodeURIComponent(h.slice(7));
+      setS((s) => ({ ...s, page: "auth", authTab: "reset", resetToken: token, authError: "", authNotice: "" }));
+      return;
+    }
     if (h === "#connexion") { setS((s) => ({ ...s, page: "auth", authTab: "login" })); return; }
     if (h === "#inscription") { setS((s) => ({ ...s, page: "auth", authTab: "register" })); return; }
     if (h === "#panier") { setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel Miabe", price: 15000 }, { name: "Casquette Miabe", price: 8000 }] })); return; }
@@ -4578,7 +4631,7 @@ export default function Page() {
     else if (d.cartpaypick) setS((s) => ({ ...s, cartPayPick: d.cartpaypick! }));
     else if (d.checkout !== undefined) { checkout(); }
     else if (d.authOpen !== undefined) { setS((s) => ({ ...s, page: "auth", authError: "" })); window.scrollTo({ top: 0 }); }
-    else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as "login" | "register", authError: "" }));
+    else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }

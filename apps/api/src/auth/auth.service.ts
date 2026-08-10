@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService, escapeHtml } from '../mail/mail.service';
 
 interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; }
 
@@ -13,7 +14,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomBytes(9).toString('ba
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private prisma: PrismaService, private jwt: JwtService) {}
+  constructor(private prisma: PrismaService, private jwt: JwtService, private mail: MailService) {}
 
   /** Crée un compte ADMIN par défaut au démarrage s'il n'en existe aucun. */
   async onModuleInit() {
@@ -78,6 +79,66 @@ export class AuthService implements OnModuleInit {
     } catch (e) {
       console.error('[Miabe] Liaison base de joueurs impossible (inscription non bloquée) :', e);
     }
+  }
+
+  /* ---------- Mot de passe oublié ---------- */
+
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Envoie un lien de réinitialisation. Répond TOUJOURS la même chose, que l'adresse existe ou non :
+   * une réponse différenciée permettrait à un tiers de savoir qui est inscrit sur la plateforme.
+   */
+  async forgotPassword(email: string) {
+    const normalized = (email || '').trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
+    if (user) {
+      // Les demandes précédentes encore valides sont invalidées : un seul lien actif à la fois.
+      await this.prisma.passwordReset.updateMany({
+        where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() },
+      });
+      const token = randomBytes(32).toString('base64url');
+      await this.prisma.passwordReset.create({
+        data: {
+          userId: user.id,
+          tokenHash: this.hashToken(token),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 heure
+        },
+      });
+      const url = `${this.mail.siteUrl}/#reset=${token}`;
+      await this.mail.send(
+        user.email,
+        'Réinitialise ton mot de passe — Miabe Esport',
+        this.mail.layout(
+          'Réinitialisation de ton mot de passe',
+          `<p>Bonjour ${escapeHtml(user.displayName)},</p>
+           <p>Tu as demandé à réinitialiser le mot de passe de ton compte Miabe Esport. Ce lien est valable <b>une heure</b> et ne peut servir qu'une fois.</p>
+           <p>Si tu n'es pas à l'origine de cette demande, ignore simplement ce message : ton mot de passe reste inchangé.</p>`,
+          { label: 'Choisir un nouveau mot de passe', url },
+        ),
+      );
+    }
+    return { sent: true };
+  }
+
+  /** Consomme un jeton valide et remplace le mot de passe. */
+  async resetPassword(token: string, password: string) {
+    const row = await this.prisma.passwordReset.findUnique({
+      where: { tokenHash: this.hashToken(token) },
+      include: { user: true },
+    });
+    if (!row || row.usedAt || row.expiresAt < new Date()) {
+      throw new BadRequestException('Ce lien de réinitialisation est invalide ou a expiré. Refais une demande.');
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: row.userId }, data: { passwordHash } }),
+      this.prisma.passwordReset.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
+    ]);
+    // Connexion immédiate : l'utilisateur vient de prouver qu'il contrôle l'adresse e-mail.
+    return { token: this.sign(row.user), user: this.safe(row.user) };
   }
 
   async login(dto: { email?: string; password?: string }) {

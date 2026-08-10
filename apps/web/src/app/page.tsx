@@ -649,7 +649,7 @@ function wizParticipantsStep(S: State) {
     </div>`).join("");
   const rosterPanel = fullRoster.length ? wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Depuis la base de joueurs</h3>
-        <button data-wizaddall="1" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">${ic(I.plus, 13)}Tout sélectionner</button>
+        <button data-wizaddall="1" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">${ic(I.plus, 13)}Tout sélectionner</button>
       </div>
       <div style="position:relative;margin-bottom:12px;max-width:320px">
         <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 14)}</span>
@@ -1700,8 +1700,11 @@ function adminUsers(S: State) {
 
 /** Onglet Joueurs : base de joueurs (roster) + clubs, gérée depuis l'admin — sert aussi à pré-remplir les participants à la création d'un tournoi. */
 function adminRoster(S: State) {
-  const tabBtn = (k: "joueurs" | "clubs" | "jeux", label: string) => `<button data-rostertab="${k}" style="font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "#282838"};color:${S.rosterTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
-  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px">${tabBtn("joueurs", `${ic(I.user, 14)} Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)} Clubs`)}${tabBtn("jeux", `${ic(I.bolt, 14)} Jeux`)}</div>`;
+  // inline-flex + nowrap + flex:none : sans ça, dès que la ligne manque de place, le bouton se
+  // rétrécit et son contenu se replie — l'icône se retrouvait au-dessus du libellé au lieu d'être
+  // à côté. C'est la rangée d'onglets qui passe à la ligne (flex-wrap), pas l'intérieur des boutons.
+  const tabBtn = (k: "joueurs" | "clubs" | "jeux", label: string) => `<button data-rostertab="${k}" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex:none;font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "#14141D"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "#282838"};color:${S.rosterTab === k ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${tabBtn("joueurs", `${ic(I.user, 14)}Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)}Clubs`)}${tabBtn("jeux", `${ic(I.bolt, 14)}Jeux`)}</div>`;
   return tabs + (S.rosterTab === "clubs" ? adminClubsView(S) : S.rosterTab === "jeux" ? adminGamesView(S) : adminRosterPlayers(S));
 }
 

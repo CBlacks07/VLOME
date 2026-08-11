@@ -4,10 +4,12 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { UPLOADS_DIR } from './uploads/uploads.controller';
+import { noStore } from './common/no-store.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableCors({ origin: true, credentials: true });
+  app.use(noStore);
   app.setGlobalPrefix('api');
   // Images envoyées (produits, tournois) — hors préfixe /api.
   app.useStaticAssets(UPLOADS_DIR, { prefix: '/uploads/' });

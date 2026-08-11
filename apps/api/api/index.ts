@@ -8,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
+import { noStore } from '../src/common/no-store.middleware';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedHandler: any;
@@ -16,6 +17,7 @@ async function getHandler() {
   if (!cachedHandler) {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ['error', 'warn'] });
     app.enableCors({ origin: true, credentials: true });
+    app.use(noStore);
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));
     await app.init();

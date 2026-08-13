@@ -1692,7 +1692,7 @@ function adminUsers(S: State) {
   const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "#282838"};color:${on ? ROLE_COLOR[role] : "#8E8FA6"}">${ROLE_LABEL[role]}</button>`; };
   const rows = users.length ? users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
     <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(usr.displayName)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(usr.email)}</div></div></div></td>
-    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}${usr.id === S.me?.id ? "" : btnSm(`data-userdel="${usr.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
+    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}${btnSm(`data-userpwd="${usr.id}"`, "Réinit. mot de passe", "#FBBF24", "rgba(251,191,36,.35)")}${usr.id === S.me?.id ? "" : btnSm(`data-userdel="${usr.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
     : `<tr><td colspan="2" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun utilisateur trouvé.</td></tr>`;
   return card(`${secTitle(`Utilisateurs · rôles (${a.users.length})`)}${adminSearchBar(S, "Nom ou email…")}
     ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}`);
@@ -3904,6 +3904,21 @@ export default function Page() {
       setS((s) => ({ ...s, playerDetail: data, playerDetailBusy: false }));
     } catch { setS((s) => ({ ...s, playerDetailBusy: false })); }
   }
+  /** Génère un mot de passe temporaire pour un membre bloqué et l'affiche une seule fois. */
+  async function resetUserPassword(id: string) {
+    try {
+      const r = await fetch(`${API}/api/admin/users/${id}/reset-password`, { method: "POST", headers: authHeaders() });
+      const d = await r.json();
+      if (!r.ok) { alert(d.message || "Réinitialisation impossible."); return; }
+      alert(
+        `Mot de passe temporaire pour ${d.email} :\n\n${d.password}\n\n` +
+        (d.emailed
+          ? "Il vient aussi de lui être envoyé par e-mail."
+          : "La messagerie n'étant pas configurée, transmets-le-lui toi-même.") +
+        "\n\nIl doit le changer depuis « Mon compte » après connexion.",
+      );
+    } catch { alert("API injoignable."); }
+  }
   async function adminAct(path: string, method: string, body?: unknown) {
     try {
       const r = await fetch(`${API}/api/admin/${path}`, {
@@ -4488,7 +4503,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4635,6 +4650,10 @@ export default function Page() {
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
+    else if (d.userpwd) {
+      const u = S.admin?.users.find((x: Detail) => x.id === d.userpwd);
+      setS((s) => ({ ...s, confirmBox: { title: "Réinitialiser le mot de passe", message: `Un mot de passe temporaire sera généré pour « ${u?.displayName || "ce compte"} » (${u?.email || ""}). Son ancien mot de passe cessera immédiatement de fonctionner.`, okLabel: "Réinitialiser", action: `userpwd|${d.userpwd}` } }));
+    }
     else if (d.userdel) {
       const u = S.admin?.users.find((x: Detail) => x.id === d.userdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le compte", message: `« ${u?.displayName || "Ce compte"} » (${u?.email || ""}) sera définitivement supprimé, avec ses inscriptions et commandes. Les tournois créés depuis ce compte sont conservés.`, okLabel: "Supprimer", action: `userdel|${d.userdel}` } }));
@@ -4757,6 +4776,7 @@ export default function Page() {
         else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (kind === "gallerydel") deleteGalleryItem(arg);
         else if (kind === "userdel") adminAct(`users/${arg}`, "DELETE");
+        else if (kind === "userpwd") resetUserPassword(arg);
         else if (kind === "albumdel") deleteAlbum(arg);
         else if (kind === "ptdel") setS((s) => ({ ...s, partnersEdit: (s.partnersEdit ?? []).filter((p) => p.key !== arg) }));
         else if (kind === "addel") setS((s) => ({ ...s, adsEdit: (s.adsEdit ?? []).filter((a) => a.key !== arg) }));

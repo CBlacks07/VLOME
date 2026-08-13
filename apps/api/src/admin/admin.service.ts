@@ -1,4 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { NewsDto, NewsUpdateDto, ProductDto, ProductUpdateDto } from './admin.dto';
 import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
@@ -79,6 +81,39 @@ export class AdminService {
     }
     await this.prisma.user.delete({ where: { id } });
     return { deleted: true, email: u.email };
+  }
+
+  /**
+   * Attribue un mot de passe temporaire à un membre qui ne parvient plus à se connecter.
+   * Évite d'avoir à supprimer puis recréer le compte, ce qui ferait perdre son historique
+   * (inscriptions, commandes, points de fidélité) et son rôle.
+   *
+   * Le mot de passe est renvoyé UNE seule fois à l'administrateur, et envoyé à l'intéressé par
+   * e-mail si la messagerie est configurée. Il reste temporaire : à changer depuis « Mon compte ».
+   */
+  async resetUserPassword(id: string) {
+    const u = await this.prisma.user.findUnique({ where: { id }, select: { id: true, email: true, displayName: true } });
+    if (!u) throw new NotFoundException('Utilisateur introuvable.');
+    // Lisible et dictable au téléphone (pas de caractères ambigus), tout en restant imprévisible.
+    const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
+    const bytes = randomBytes(12);
+    const password = 'Miabe-' + Array.from(bytes).map((b) => alphabet[b % alphabet.length]).join('');
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
+    // Toute demande de réinitialisation en cours devient caduque : le mot de passe vient de changer.
+    await this.prisma.passwordReset.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: new Date() } });
+    const emailed = await this.mail.send(
+      u.email,
+      'Ton mot de passe a été réinitialisé — Miabe Esport',
+      this.mail.layout(
+        'Nouveau mot de passe temporaire',
+        `<p>Bonjour ${escapeHtml(u.displayName)},</p>
+         <p>L'équipe Miabe Esport vient de réinitialiser ton mot de passe. Utilise celui-ci pour te connecter :</p>
+         <p style="font-family:monospace;font-size:18px;letter-spacing:1px;background:#0B0B11;border:1px solid #282838;border-radius:10px;padding:14px;text-align:center">${escapeHtml(password)}</p>
+         <p>Change-le dès ta connexion depuis « Mon compte ».</p>`,
+        { label: 'Me connecter', url: `${this.mail.siteUrl}/#connexion` },
+      ),
+    );
+    return { password, email: u.email, emailed };
   }
 
   /* ---------- Organisateurs (validation, plafonds) ---------- */

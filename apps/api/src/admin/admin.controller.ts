@@ -30,6 +30,11 @@ export class AdminController {
     return this.admin.setRole(id, dto.role);
   }
 
+  @Post('users/:id/reset-password')
+  resetUserPassword(@Param('id') id: string) {
+    return this.admin.resetUserPassword(id);
+  }
+
   @Delete('users/:id')
   removeUser(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.admin.removeUser(id, user.sub);

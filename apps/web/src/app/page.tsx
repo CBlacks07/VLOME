@@ -1405,8 +1405,29 @@ function profileSecurity(S: State) {
     ${S.passMsg ? `<div style="color:${ok ? "#34D399" : "#FB7185"};font-size:12.5px;margin-top:10px">${S.passMsg}</div>` : ""}`);
 }
 
+/** En-tête de l'onglet « Mon compte » de la console : identité + accès à l'édition du profil.
+ * La page profil des joueurs a son propre en-tête ; la console n'en avait aucun, si bien qu'un
+ * administrateur ou un organisateur ne pouvait pas modifier son profil depuis son espace. */
+function consoleAccountHeader(S: State) {
+  const u = S.user;
+  if (!u) return "";
+  const rc = ROLE_COLOR[u.role] || "#8E8FA6";
+  return card(`<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:26px;color:#04222a;flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
+    <div style="min-width:0;flex:1">
+      <div style="font-weight:750;font-size:16px">${escHtml(u.displayName)}</div>
+      <div style="color:#8E8FA6;font-size:12.5px;margin-top:3px">${escHtml(u.email)}</div>
+      <span style="display:inline-block;margin-top:8px;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${rc};background:${rc}18;border:1px solid ${rc}66;border-radius:999px;padding:4px 10px">${ROLE_LABEL[u.role] || u.role}</span>
+    </div>
+    <button data-profileedit="1" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer;flex:none;white-space:nowrap">${ic(I.edit, 15)}Modifier le profil</button>
+  </div>`);
+}
+
 const ADMIN_TABS: [string, string][] = [
   ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
+  // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
+  ["compte", "Mon compte"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -1559,9 +1580,13 @@ function consolePage(S: State): string {
   const tabs = isAdmin ? ADMIN_TABS : ORG_TABS;
   const activeLabel = tabs.find(([k]) => k === S.adminTab)?.[1] || tabs[0][1];
   let body: string;
+  // « Mon compte » ne dépend que du compte connecté : à traiter AVANT l'attente des données
+  // d'administration, sinon une panne du tableau de bord empêcherait de changer son mot de passe.
+  const accountBody = () => consoleAccountHeader(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S);
   if (isAdmin) {
     const a = S.admin;
-    body = !a ? `<div style="color:#8E8FA6;text-align:center;padding:40px 0">Chargement…</div>` :
+    body = S.adminTab === "compte" ? accountBody() :
+      !a ? `<div style="color:#8E8FA6;text-align:center;padding:40px 0">Chargement…</div>` :
       S.adminTab === "site" ? adminSite(S) :
       S.adminTab === "users" ? adminUsers(S) :
       S.adminTab === "organisateurs" ? adminOrganizers(S) :
@@ -1575,8 +1600,7 @@ function consolePage(S: State): string {
       S.adminTab === "commandes" ? adminOrders(a) :
       consoleOverview(S);
   } else {
-    body = S.adminTab === "compte"
-      ? grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S)
+    body = S.adminTab === "compte" ? accountBody()
       : S.adminTab === "credits" ? organizerCredits(S)
       : consoleOverview(S);
   }

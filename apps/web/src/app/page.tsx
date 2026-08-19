@@ -142,7 +142,7 @@ type State = {
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
 // Pages simples (sans paramètre) dont le hash d'URL correspond directement à la clé de page.
-const SIMPLE_PAGES = ["accueil", "tournois", "classements", "galerie", "boutique", "profil"];
+const SIMPLE_PAGES = ["accueil", "tournois", "classements", "galerie", "boutique", "profil", "mentions-legales", "confidentialite"];
 
 const SLIDES = [
   { tag: "Grand tournoi", title: "SURVIVAL CUP LOMÉ 2026", sub: "32 joueurs, mode Survival — le vainqueur reste sur le terrain. Cagnotte 160 points.", cta: "S'inscrire" },
@@ -1427,7 +1427,7 @@ const ADMIN_TABS: [string, string][] = [
   ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
   // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
   // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
-  ["compte", "Mon compte"],
+  ["legal", "Pages légales"], ["compte", "Mon compte"],
 ];
 const escAttr = (v: string | null | undefined) => (v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const escHtml = (v: string | null | undefined) => (v || "").replace(/</g, "&lt;");
@@ -1455,7 +1455,7 @@ const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["credits",
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
   apercu: I.bolt, site: I.edit, users: I.user, organisateurs: I.crown, joueurs: I.crown, news: I.flame, galerie: I.image,
-  produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, compte: I.user,
+  produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, legal: I.edit, compte: I.user,
 };
 
 /** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
@@ -1598,6 +1598,7 @@ function consolePage(S: State): string {
       S.adminTab === "credits" ? adminCredits(S) :
       S.adminTab === "paiements" ? adminPayments(S) :
       S.adminTab === "commandes" ? adminOrders(a) :
+      S.adminTab === "legal" ? adminLegal(S) :
       consoleOverview(S);
   } else {
     body = S.adminTab === "compte" ? accountBody()
@@ -2025,6 +2026,36 @@ function adminOrganizers(S: State) {
   }).join("") : `<div style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun organisateur trouvé." : "Aucun compte organisateur pour l'instant."}</div>`;
   const pendingCount = orgs.filter((o: Detail) => o.organizerStatus === "PENDING").length;
   return card(`${secTitle(`Organisateurs (${orgs.length})${pendingCount ? ` · ${pendingCount} en attente` : ""}`)}${adminSearchBar(S, "Nom ou email…")}${scrollBox(rows)}`);
+}
+
+
+/** Onglet « Pages légales » : édition des mentions légales et de la politique de confidentialité.
+ * Texte libre volontairement simple (« ## » pour un titre, « - » pour une puce) : ces pages doivent
+ * pouvoir être corrigées après une relecture juridique sans intervention technique. */
+function adminLegal(S: State) {
+  const l = (S.site?.legal ?? {}) as { title?: string; body?: string };
+  const pv = (S.site?.privacy ?? {}) as { title?: string; body?: string };
+  const ok = S.siteMsg === "Réglages enregistrés.";
+  const todo = [l.body, pv.body].filter(Boolean).join("\n").split("À COMPLÉTER").length - 1;
+  const warn = todo > 0
+    ? `<div style="display:flex;align-items:flex-start;gap:10px;padding:13px 16px;border-radius:12px;margin-bottom:16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35)">
+        <span style="color:#FBBF24;flex:none;margin-top:1px">${ic(I.warn, 17)}</span>
+        <div style="font-size:13px;color:#8E8FA6;line-height:1.6"><b style="color:#FBBF24">${todo} mention${todo > 1 ? "s" : ""} à compléter</b> — cherche « À COMPLÉTER » dans les textes ci-dessous. Ces pages sont publiques : les renseigner est une obligation légale.</div>
+      </div>`
+    : "";
+  const editor = (key: "lg" | "pv", label: string, doc: { title?: string; body?: string }, hint: string) => card(`
+    ${secTitle(label)}
+    <p style="color:#8E8FA6;font-size:12.5px;margin:0 0 14px">${hint}</p>
+    <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block">Titre de la page<input id="${key}-title" value="${escAttr(doc.title)}" style="${adminInp}" /></label>
+    <label style="font-size:12px;color:#8E8FA6;font-weight:600;display:block;margin-top:14px">Contenu<textarea id="${key}-body" rows="18" style="${adminInp};resize:vertical;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7">${escHtml(doc.body)}</textarea></label>`, "20px");
+  return `${warn}
+    <p style="color:#8E8FA6;font-size:13px;line-height:1.7;margin:0 0 16px">Mise en forme : une ligne commençant par <b style="color:#F4F5FB">##</b> devient un titre, une ligne commençant par <b style="color:#F4F5FB">-</b> devient une puce, une ligne vide sépare les paragraphes.</p>
+    ${editor("lg", "Mentions légales", l, "Identité de l'éditeur, hébergeur, responsabilité. Page publique, accessible depuis le pied de page.")}
+    <div style="margin-top:16px">${editor("pv", "Politique de confidentialité", pv, "Données collectées, finalités, durées de conservation et droits des membres.")}</div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px">
+      <button data-legalsave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:13px 24px;font-weight:750;font-size:15px;cursor:pointer">Enregistrer les pages</button>
+      ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
+    </div>`;
 }
 
 function adminPayments(S: State) {
@@ -2938,6 +2969,49 @@ function pTournoi(S: State) {
   return `<main class="rise" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${finalsHtml || poolsHtml + finalsBtn}</main>${wizModal}`;
 }
 
+
+/** Rend le texte d'une page légale saisi depuis l'admin. Format volontairement minimal — une
+ * ligne « ## » fait un titre, une ligne « - » un élément de liste, le reste des paragraphes —
+ * pour que le contenu reste modifiable dans une simple zone de texte, sans éditeur riche. */
+function renderLegalBody(body: string): string {
+  const blocks: string[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (!list.length) return;
+    blocks.push(`<ul style="margin:0 0 16px;padding-left:20px;color:#C9CBD8;font-size:14.5px;line-height:1.8">${list.map((li) => `<li style="margin-bottom:6px">${li}</li>`).join("")}</ul>`);
+    list = [];
+  };
+  for (const raw of (body || "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { flush(); continue; }
+    if (line.startsWith("## ")) {
+      flush();
+      blocks.push(`<h2 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.8px;margin:28px 0 12px;color:#F4F5FB">${escHtml(line.slice(3))}</h2>`);
+    } else if (line.startsWith("- ")) {
+      list.push(escHtml(line.slice(2)));
+    } else {
+      flush();
+      blocks.push(`<p style="margin:0 0 14px;color:#C9CBD8;font-size:14.5px;line-height:1.8">${escHtml(line)}</p>`);
+    }
+  }
+  flush();
+  return blocks.join("");
+}
+
+/** Page légale publique (mentions légales / politique de confidentialité). */
+function pLegal(S: State, key: "legal" | "privacy"): string {
+  const doc = (S.site?.[key] ?? {}) as { title?: string; body?: string };
+  const title = doc.title || (key === "legal" ? "Mentions légales" : "Politique de confidentialité");
+  const body = doc.body ? renderLegalBody(doc.body) : `<p style="color:#8E8FA6">Cette page n'a pas encore été rédigée.</p>`;
+  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">
+    <div style="max-width:760px;margin:0 auto">
+      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(34px,4.5vw,52px);letter-spacing:1.5px;margin:0 0 8px;line-height:.95">${escHtml(title)}</h1>
+      <p style="color:#5D5E72;font-size:12.5px;margin:0 0 28px">Dernière mise à jour : ${new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</p>
+      <div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:28px 26px">${body}</div>
+      <div style="margin-top:20px"><button data-go="accueil" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px;cursor:pointer">Retour à l'accueil</button></div>
+    </div></main>`;
+}
+
 /** Page d'authentification dédiée : présentation à gauche, formulaire à droite. */
 function pAuth(S: State) {
   const isLogin = S.authTab === "login";
@@ -3322,8 +3396,11 @@ function renderPage(S: State) {
     const activeKey = S.page === "tournoi" ? "tournois" : S.page;
     return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S);
   }
-  const body = S.page === "auth" ? pAuth(S) : pAccueil(S);
-  const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain</footer>`;
+  const body = S.page === "auth" ? pAuth(S)
+    : S.page === "mentions-legales" ? pLegal(S, "legal")
+    : S.page === "confidentialite" ? pLegal(S, "privacy")
+    : pAccueil(S);
+  const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain<div style="margin-top:10px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap"><button data-go="mentions-legales" style="background:none;border:0;color:#8E8FA6;font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline">Mentions légales</button><button data-go="confidentialite" style="background:none;border:0;color:#8E8FA6;font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline">Politique de confidentialité</button></div></footer>`;
   return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }
 
@@ -3838,6 +3915,21 @@ export default function Page() {
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
 
+  /** Enregistre les deux pages légales (Setting générique, clés "legal" et "privacy"). */
+  async function saveLegalPages() {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    const save = (key: string, value: unknown) => fetch(`${API}/api/admin/settings/${key}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
+    });
+    try {
+      const rs = await Promise.all([
+        save("legal", { title: val("lg-title").trim() || "Mentions légales", body: val("lg-body") }),
+        save("privacy", { title: val("pv-title").trim() || "Politique de confidentialité", body: val("pv-body") }),
+      ]);
+      if (rs.every((r) => r.ok)) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés." })); }
+      else setS((s) => ({ ...s, siteMsg: "Enregistrement impossible." }));
+    } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
+  }
   /** Enregistre le taux de conversion des points fidélité (Setting générique, clé "loyalty"). */
   async function saveLoyalty() {
     const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
@@ -4527,7 +4619,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4687,6 +4779,7 @@ export default function Page() {
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.loyaltysave !== undefined) saveLoyalty();
+    else if (d.legalsave !== undefined) saveLegalPages();
     else if (d.creditssave !== undefined) saveCreditsSettings();
     else if (d.confirmcredit) confirmCreditPurchaseAdmin(d.confirmcredit);
     else if (d.orgapprove) reviewOrganizer(d.orgapprove, "APPROVED");
@@ -4919,7 +5012,7 @@ export default function Page() {
     if (id.startsWith("gm-")) return "[data-gamesave]";
     if (id.startsWith("ga-")) return "[data-gallerysave]";
     if (id.startsWith("al-")) return "[data-albumsave]";
-    if (id.startsWith("ly-")) return "[data-loyaltysave]";
+    if (id.startsWith("ly-")) return "[data-loyaltysave],[data-legalsave]";
     if (id.startsWith("cr-")) return "[data-creditssave]";
     if (id.startsWith("e-")) return "[data-editsave]";
     if (id === "pl-add-name") return "[data-pladd]";

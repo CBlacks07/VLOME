@@ -353,7 +353,21 @@ function railShell(S: State, activeKey: string, body: string): string {
   <div class="rail-content" style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
     ${railLiveBar(S)}
     <div style="flex:1;min-width:0">${body}</div>
+    ${siteFooter()}
   </div>`;
+}
+
+
+/** Pied de page du site : mentions légales obligatoires. Partagé entre le shell rail (accueil,
+ * tournois, galerie, boutique, classements) et la page d'accueil de repli — il était auparavant
+ * cantonné à cette dernière, donc invisible sur toutes les pages réellement visitées. */
+function siteFooter(): string {
+  const link = (page: string, label: string) =>
+    `<button data-go="${page}" style="background:none;border:0;color:#8E8FA6;font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline;padding:0">${label}</button>`;
+  return `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">
+    © ${new Date().getFullYear()} MIABE ESPORT · Le hub de l'esport togolais &amp; ouest-africain
+    <div style="margin-top:10px;display:flex;gap:18px;justify-content:center;flex-wrap:wrap">${link("mentions-legales", "Mentions légales")}${link("confidentialite", "Politique de confidentialité")}</div>
+  </footer>`;
 }
 
 /** En-tête de page réutilisé par les pages du shell rail : titre + sous-titre + zone d'actions (recherche, boutons…). */
@@ -3400,7 +3414,7 @@ function renderPage(S: State) {
     : S.page === "mentions-legales" ? pLegal(S, "legal")
     : S.page === "confidentialite" ? pLegal(S, "privacy")
     : pAccueil(S);
-  const footer = `<footer style="border-top:1px solid #282838;padding:26px 22px;text-align:center;color:#5D5E72;font-size:12.5px">© ${new Date().getFullYear()} MIABE-ESPORT · Le hub de l'esport togolais &amp; ouest-africain<div style="margin-top:10px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap"><button data-go="mentions-legales" style="background:none;border:0;color:#8E8FA6;font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline">Mentions légales</button><button data-go="confidentialite" style="background:none;border:0;color:#8E8FA6;font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline">Politique de confidentialité</button></div></footer>`;
+  const footer = siteFooter();
   return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S);
 }
 
@@ -4385,6 +4399,30 @@ export default function Page() {
     }
   }, [S.site?.brand?.logoUrl]);
 
+  // Jeton refusé par l'API (session expirée, secret de session changé) : plutôt que de laisser
+  // une cascade de 401 silencieux afficher un espace vide, on referme proprement la session et
+  // on renvoie vers la connexion avec un message. Les appels sans jeton (connexion, inscription)
+  // ne sont pas concernés : un 401 y signifie simplement « identifiants incorrects ».
+  useEffect(() => {
+    const original = window.fetch;
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const res = await original(input, init);
+      if (res.status === 401 && token()) {
+        const headers = new Headers(init?.headers as HeadersInit | undefined);
+        if (headers.has("Authorization")) {
+          localStorage.removeItem("vlome_token");
+          localStorage.removeItem("vlome_user");
+          setS((s) => (s.user ? {
+            ...s, user: null, me: null, admin: null, myRegs: null, myOrders: null, myTourns: null,
+            myResults: null, creditsMe: null, page: "auth", authTab: "login",
+            authError: "Ta session a expiré. Reconnecte-toi.",
+          } : s));
+        }
+      }
+      return res;
+    };
+    return () => { window.fetch = original; };
+  }, []);
   // Champs fichier (affiche de tournoi, logos, images produits/actus…) : écouteur natif au niveau du
   // document, en capture. Le onChange délégué de React ne se déclenche JAMAIS ici : tout le HTML est
   // injecté via dangerouslySetInnerHTML, donc React résout l'élément « source » du change sur le div

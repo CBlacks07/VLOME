@@ -44,6 +44,16 @@ export class UpdateTournamentDto {
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
   @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
+  // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
+  // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
+  @IsOptional() @IsIn(['SURVIVAL', 'SINGLE_ELIM', 'DOUBLE_ELIM', 'SWISS', 'ROUND_ROBIN', 'BATTLE_ROYALE']) format?: string;
+  // Barème (facultatif, repris tel quel si applicable au nouveau format — voir TournamentsService.update).
+  @IsOptional() @IsNumber() @Min(0.25) survWin?: number;
+  @IsOptional() @IsNumber() @Min(0.25) loserWin?: number;
+  @IsOptional() @IsNumber() @Min(0.25) poolFinalWin?: number;
+  @IsOptional() @IsNumber() @Min(0.25) finalsWin?: number;
+  @IsOptional() @IsNumber() @Min(0) championBonus?: number;
+  @IsOptional() @IsNumber() @Min(0) streakBonus?: number;
 }
 
 export class AddPlayerDto {
@@ -66,6 +76,11 @@ export class ScoringDto {
 
 export class MoveOrderDto {
   @IsInt() @Min(0) index!: number;
+  @IsIn([-1, 1]) dir!: number;
+}
+
+export class RosterMoveDto {
+  @IsString() playerId!: string;
   @IsIn([-1, 1]) dir!: number;
 }
 

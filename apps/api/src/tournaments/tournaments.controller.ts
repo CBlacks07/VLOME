@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, U
 import { TournamentsService } from './tournaments.service';
 import {
   AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, RegisterDto, ReportDto,
-  ScoringDto, StartFinalsDto, UpdateTournamentDto,
+  RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
@@ -258,6 +258,26 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async movePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: MoveOrderDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.movePoolOrder(id, poolId, dto.index, dto.dir, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  // Ordre du roster (formats sans poules : single/double/roundrobin/swiss) — détermine les
+  // oppositions du 1er tour, prévisualisées avant lancement (voir TournamentsService.moveRosterOrder).
+  @Post(':id/roster/move')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async moveRosterOrder(@Param('id') id: string, @Body() dto: RosterMoveDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.moveRosterOrder(id, dto.playerId, dto.dir, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/roster/shuffle')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async shuffleRosterOrder(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.shuffleRosterOrder(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

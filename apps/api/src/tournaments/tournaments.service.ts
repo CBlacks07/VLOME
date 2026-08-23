@@ -151,6 +151,40 @@ export class TournamentsService {
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
     if (dto.givesLoyaltyPoint !== undefined) data.givesLoyaltyPoint = dto.givesLoyaltyPoint;
 
+    // Changement de format : un format différent = une structure de jeu différente (poules ou non,
+    // barème ou non…), donc le moteur est reconstruit à neuf plutôt que rafistolé champ par champ.
+    // Seulement tant qu'aucun match n'a été joué (DRAFT) — les participants déjà saisis, dans le
+    // même ordre, sont repris tels quels (l'ordre détermine les oppositions du 1er tour).
+    if (dto.format !== undefined && dto.format !== r.format) {
+      if (r.status !== 'DRAFT') throw new ConflictException('Le format n\'est modifiable qu\'avant le lancement du tournoi.');
+      const prev = r.engineState as unknown as Engine.Tournament;
+      const nbPools = dto.nbPools ?? r.nbPools;
+      const pointsPerPlayer = dto.pointsPerPlayer ?? r.pointsPerPlayer;
+      const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus, dto.streakBonus].some((v) => v !== undefined);
+      const nt = Engine.newTournament({
+        name: r.name, game: r.game || undefined, place: r.place || undefined,
+        nbPools, pointsPerPlayer,
+        format: engineFormatFor(dto.format),
+        finalsFormat: dto.finalsFormat,
+        poolFormat: dto.poolFormat,
+        streakLength: dto.streakLength,
+        ...(hasScoring ? {
+          scoring: {
+            survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
+            finalsWin: dto.finalsWin ?? 2, championBonus: dto.championBonus ?? 3, streakBonus: dto.streakBonus ?? 0,
+          },
+        } : {}),
+      });
+      Engine.setPlayers(nt, (prev?.players || []).map((p) => (p.club ? `${p.name} @${p.club}` : p.name)));
+      if (nt.format === 'survival' && !Engine.cagnotte(nt).valid) Engine.autoFitScoring(nt);
+      data.format = dto.format as unknown;
+      data.nbPools = nbPools;
+      data.pointsPerPlayer = pointsPerPlayer;
+      data.engineState = JSON.parse(JSON.stringify(nt));
+      const upd = await this.prisma.tournament.update({ where: { id }, data });
+      return this.toCard(upd);
+    }
+
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
@@ -878,6 +912,29 @@ export class TournamentsService {
     const pool = l.t.pools.find((p) => p.id === poolId);
     if (!pool) throw new NotFoundException('Poule introuvable.');
     Engine.moveInOrder(pool, index, dir);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+  }
+
+  /** Déplace un joueur dans l'ordre du roster (formats sans poules : single/double/roundrobin/swiss) —
+   * avant lancement, cet ordre détermine directement les oppositions du 1er tour (voir Engine.movePlayerOrder). */
+  async moveRosterOrder(id: string, playerId: string, dir: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    if (!Engine.movePlayerOrder(l.t, playerId, dir === -1 ? -1 : 1)) throw new BadRequestException('Déplacement impossible.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+  }
+
+  /** Rebrasse aléatoirement l'ordre du roster (formats sans poules, avant lancement). */
+  async shuffleRosterOrder(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    Engine.shufflePlayerOrder(l.t);
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }

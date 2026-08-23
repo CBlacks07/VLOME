@@ -201,6 +201,26 @@ export function removePlayer(t: Tournament, playerId: string): boolean {
   return t.players.length < before;
 }
 
+/** Déplace un joueur dans l'ordre du roster — uniquement avant le lancement. Pour les formats
+ * sans poules (single/double/roundrobin/swiss), cet ordre EST le tirage au sort : buildBracket et
+ * buildDoubleElim apparient sur t.players tel quel (1er vs dernier, 2e vs avant-dernier…), donc
+ * réordonner ici change réellement les oppositions du 1er tour. */
+export function movePlayerOrder(t: Tournament, playerId: string, dir: -1 | 1): boolean {
+  if (t.status !== 'setup') return false;
+  const i = t.players.findIndex(p => p.id === playerId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= t.players.length) return false;
+  [t.players[i], t.players[j]] = [t.players[j], t.players[i]];
+  return true;
+}
+
+/** Rebrasse aléatoirement l'ordre du roster — uniquement avant le lancement (voir movePlayerOrder). */
+export function shufflePlayerOrder(t: Tournament): boolean {
+  if (t.status !== 'setup') return false;
+  t.players = shuffle(t.players);
+  return true;
+}
+
 /** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi). */
 export function renamePlayer(t: Tournament, id: string, newName: string): boolean {
   const p = t.players.find(x => x.id === id);

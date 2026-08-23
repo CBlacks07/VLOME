@@ -175,8 +175,14 @@ export declare function removePlayer(t: Tournament, playerId: string): boolean;
 export declare function movePlayerOrder(t: Tournament, playerId: string, dir: -1 | 1): boolean;
 /** Rebrasse aléatoirement l'ordre du roster — uniquement avant le lancement (voir movePlayerOrder). */
 export declare function shufflePlayerOrder(t: Tournament): boolean;
-/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi). */
-export declare function renamePlayer(t: Tournament, id: string, newName: string): boolean;
+/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi).
+ * Refuse un nom déjà porté par un autre participant : setPlayers/addPlayer interdisent déjà les
+ * homonymes à la saisie, et les classements agrégés le sont par nom (voir leaderboard côté API) —
+ * deux « Alice » dans le même tournoi cumuleraient leurs points sur une seule ligne. */
+export declare function renamePlayer(t: Tournament, id: string, newName: string): {
+    ok: boolean;
+    reason?: 'not-found' | 'empty' | 'duplicate';
+};
 /** Modifie le club affiché d'un joueur — à tout moment. */
 export declare function setPlayerClub(t: Tournament, id: string, club: string): boolean;
 export declare function playerName(t: Tournament, id: string | null): string;

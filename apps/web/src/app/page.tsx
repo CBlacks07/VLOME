@@ -677,13 +677,21 @@ const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
  * casse sur la partie avant « @club », qui fusionne silencieusement les doublons à la création) —
  * pour prévenir plutôt que laisser l'utilisateur découvrir après coup que des lignes ont disparu. */
 function findDuplicateNames(lines: string[]): string[] {
+  // Même découpage que Engine.parseEntry : le club est ce qui suit le DERNIER « @ », et seulement
+  // s'il n'est pas en tête (« @Lomé » est un nom, pas un club sans nom).
+  const entryName = (raw: string) => {
+    const s = raw.trim();
+    const at = s.lastIndexOf("@");
+    return (at > 0 ? s.slice(0, at) : s).trim();
+  };
   const seen = new Map<string, string>();
   const dupes = new Set<string>();
   for (const raw of lines) {
-    const key = raw.split("@")[0].trim().toLowerCase();
-    if (!key) continue;
+    const name = entryName(raw);
+    if (!name) continue;
+    const key = name.toLowerCase();
     if (seen.has(key)) dupes.add(seen.get(key)!);
-    else seen.set(key, raw.split("@")[0].trim());
+    else seen.set(key, name);
   }
   return Array.from(dupes);
 }

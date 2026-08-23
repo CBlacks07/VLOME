@@ -157,12 +157,16 @@ export class TournamentsService {
     // même ordre, sont repris tels quels (l'ordre détermine les oppositions du 1er tour).
     if (dto.format !== undefined && dto.format !== r.format) {
       if (r.status !== 'DRAFT') throw new ConflictException('Le format n\'est modifiable qu\'avant le lancement du tournoi.');
-      const prev = r.engineState as unknown as Engine.Tournament;
+      const prev = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
       const nbPools = dto.nbPools ?? r.nbPools;
       const pointsPerPlayer = dto.pointsPerPlayer ?? r.pointsPerPlayer;
       const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus, dto.streakBonus].some((v) => v !== undefined);
+      // Le renommage éventuel arrive dans le même PATCH que le changement de format : le nouvel état
+      // moteur doit porter les valeurs soumises, pas celles encore en base.
       const nt = Engine.newTournament({
-        name: r.name, game: r.game || undefined, place: r.place || undefined,
+        name: (data.name as string) ?? r.name,
+        game: ((data.game as string | null) ?? r.game) || undefined,
+        place: ((data.place as string | null) ?? r.place) || undefined,
         nbPools, pointsPerPlayer,
         format: engineFormatFor(dto.format),
         finalsFormat: dto.finalsFormat,
@@ -192,7 +196,7 @@ export class TournamentsService {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
-      const t = r.engineState as unknown as Engine.Tournament;
+      const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
       if (dto.nbPools !== undefined) t.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) t.pointsPerPlayer = dto.pointsPerPlayer;
       if (dto.finalsFormat !== undefined) t.finalsFormat = dto.finalsFormat;
@@ -568,7 +572,14 @@ export class TournamentsService {
   private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
-    const t = r.engineState as unknown as Engine.Tournament;
+    return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
+  }
+
+  /** Complète un état moteur persisté avant l'ajout de certains champs, pour qu'il soit exploitable
+   * par la version actuelle du moteur. À appliquer AVANT tout appel au moteur : sans ça, un champ
+   * absent se propage en NaN (ex. `nRealPools * scoring.streakBonus` dans cagnotte(), qui rendrait
+   * le barème invalide puis le ferait rogner à NaN par autoFitScoring — corruption définitive). */
+  private applyEngineCompat(t: Engine.Tournament): Engine.Tournament {
     // Compat : tournois créés avant l'ajout de la disqualification / des formats de finale / du format principal.
     if (!t.disqualified) t.disqualified = [];
     if (!t.finalsFormat) t.finalsFormat = 'single';
@@ -583,7 +594,7 @@ export class TournamentsService {
       if (!p.streaks) p.streaks = {};
       if (!p.streakAwarded) p.streakAwarded = {};
     });
-    return { record: r, t };
+    return t;
   }
 
   private dbStatus(t: Engine.Tournament): 'DRAFT' | 'LIVE' | 'FINISHED' {
@@ -840,7 +851,12 @@ export class TournamentsService {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
-    if (!Engine.renamePlayer(l.t, playerId, name)) throw new BadRequestException('Nom invalide ou joueur introuvable.');
+    const res = Engine.renamePlayer(l.t, playerId, name);
+    if (!res.ok) {
+      if (res.reason === 'duplicate') throw new ConflictException('Un autre participant porte déjà ce nom dans ce tournoi.');
+      if (res.reason === 'not-found') throw new NotFoundException('Joueur introuvable.');
+      throw new BadRequestException('Le nom ne peut pas être vide.');
+    }
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }

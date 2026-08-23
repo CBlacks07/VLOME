@@ -157,16 +157,21 @@ function shufflePlayerOrder(t) {
     t.players = shuffle(t.players);
     return true;
 }
-/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi). */
+/** Renomme un joueur — à tout moment (y compris en direct : coquille repérée pendant le tournoi).
+ * Refuse un nom déjà porté par un autre participant : setPlayers/addPlayer interdisent déjà les
+ * homonymes à la saisie, et les classements agrégés le sont par nom (voir leaderboard côté API) —
+ * deux « Alice » dans le même tournoi cumuleraient leurs points sur une seule ligne. */
 function renamePlayer(t, id, newName) {
     const p = t.players.find(x => x.id === id);
     if (!p)
-        return false;
+        return { ok: false, reason: 'not-found' };
     const nm = String(newName).trim();
     if (!nm)
-        return false;
+        return { ok: false, reason: 'empty' };
+    if (t.players.some(x => x.id !== id && x.name.toLowerCase() === nm.toLowerCase()))
+        return { ok: false, reason: 'duplicate' };
     p.name = nm;
-    return true;
+    return { ok: true };
 }
 /** Modifie le club affiché d'un joueur — à tout moment. */
 function setPlayerClub(t, id, club) {

@@ -195,6 +195,13 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .wiz-body { padding: 18px 16px !important; }
 }
 
+/* ---- Régie : le rail et le panneau de contrôle défilent (overflow-y:auto), mais ce sont des
+   conteneurs flex en colonne : sans cette règle leurs blocs héritent de flex-shrink:1 et se font
+   écraser dès que le contenu dépasse la hauteur de la colonne. Comme les cartes portent
+   overflow:hidden, le contenu était alors rogné (file d'attente coupée en plein milieu d'une
+   ligne, bas du match en cours invisible) au lieu de déclencher le défilement. ---- */
+.regie-rail > *, .regie-control > * { flex-shrink: 0; }
+
 /* ---- Régie live : grille fixe 3 colonnes (rail·centre·contrôle) → empilée sous 1024px,
    contrôle du score en premier (action prioritaire tactile), rail en dernier. ---- */
 @media (max-width: 1024px) {

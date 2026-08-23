@@ -123,7 +123,8 @@ type State = {
     pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
     finalsFormat: string; // mode de phase finale (Survival) : toujours "double" (double élimination), non modifiable
-    poolFormat: "survival" | "double"; // mode des poules (Survival) : classique ou mini-bracket double élim
+    poolFormat: "survival" | "double" | "roundrobin"; // mode des poules (Survival) : classique ou mini-bracket double élim
+    qualifyPerPool: number; // qualifiés par poule (1 à 4) envoyés en phase finale
     streakLength: 3 | 5; // longueur de série pour le bonus striker — un seul palier actif par tournoi
     imageUrl: string | null;
   };
@@ -215,7 +216,7 @@ function finalsMatchesPreview(q: number, finalsFormat: string): number {
   if (finalsFormat === "double") return 2 * q - 1; // majorant sûr (avec reset)
   return q - 1;
 }
-function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus?: number }, finalsFormat = "double", poolFormat: "survival" | "double" = "survival") {
+function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus?: number }, finalsFormat = "double", poolFormat: "survival" | "double" | "roundrobin" = "survival", qualifyPerPool = 2) {
   const total = nPlayers * pointsPerPlayer;
   const sizes = balancedSizesPreview(nPlayers, nbPools);
   let surv = 0, los = 0, pf = 0, nRealPools = 0;
@@ -224,10 +225,16 @@ function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: num
     nRealPools++;
     // Poule en double élim : même borne sûre que la phase finale (2n-1 rencontres, reset inclus) —
     // répartie sur les 3 mêmes catégories que le mode Survival classique (bracket vainqueurs/perdants/finale).
-    if (poolFormat === "double") { surv += n - 1; los += Math.max(0, n - 2); pf += 2; }
+    // Round robin de poule : chacun affronte tous les autres, toutes les rencontres au tarif survWin.
+    if (poolFormat === "roundrobin") { surv += (n * (n - 1)) / 2; }
+    else if (poolFormat === "double") { surv += n - 1; los += Math.max(0, n - 2); pf += 2; }
     else { surv += n - 1; los += Math.max(0, n - 2); pf += 1; }
   });
-  const q = sizes.filter((n) => n >= 2).length * 2 + sizes.filter((n) => n === 1).length;
+  // Qualifiés : N par poule, borné par ce que le mode sait départager et par l effectif de la poule
+  // (miroir de Engine.cagnotte) — auparavant figé à 2, ce qui sous-estimait la phase finale.
+  const perPool = Math.min(qualifyPerPool || 2, poolFormat === "roundrobin" ? 4 : 2);
+  const q = sizes.filter((n) => n >= 2).reduce((acc, n) => acc + Math.min(perPool, n), 0)
+    + sizes.filter((n) => n === 1).length;
   const finalsMatches = finalsMatchesPreview(q, finalsFormat);
   const streakBonus = scoring.streakBonus ?? 0;
   const breakdown = {
@@ -550,6 +557,22 @@ const wizCard = (inner: string) => `<div style="border:1px solid #282838;border-
 function wizFullFlow(S: State): boolean {
   return !S.wizEditId || S.wizFullEdit;
 }
+/** Formats qui proposent une étape « Poules ». Survival en a toujours ; Bracket simple, Double
+ *  élim et Round Robin peuvent commencer par une phase de groupes (voir Engine.usesPools). Swiss
+ *  n'en a pas (ses rondes appariées jouent déjà ce rôle) et Battle Royale utilise cette étape pour
+ *  son nombre de parties. */
+const WIZ_POOLED_FORMATS = ["SURVIVAL", "SINGLE_ELIM", "DOUBLE_ELIM", "ROUND_ROBIN"];
+function wizHasPools(format: string): boolean { return WIZ_POOLED_FORMATS.indexOf(format) >= 0; }
+/** Modes de poule proposés, et ce que chacun sait départager. */
+const WIZ_POOL_MODES: [string, string, string][] = [
+  ["roundrobin", "Round Robin", "Chacun affronte tous les autres de sa poule ; classement aux victoires."],
+  ["survival", "Survival classique", "Le vainqueur reste sur le terrain et enchaîne les challengers ; les perdants sont repêchés."],
+  ["double", "Double élimination", "Chaque poule est jouée en mini-bracket double élimination."],
+];
+/** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
+ *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool). */
+function wizMaxQualify(poolFormat: string): number { return poolFormat === "roundrobin" ? 4 : 2; }
+
 function wizSteps(S: State) {
   const d = S.wizData;
   const isSurvival = d.format === "SURVIVAL";
@@ -568,9 +591,10 @@ function wizSteps(S: State) {
   // choisi pilote quelles étapes Poules/Barème apparaissent, comme en création (moins Participants).
   // Création pure : seul Survival utilise poules + barème détaillé ; Battle Royale garde "Parties"
   // (poules réutilisées) mais saute le barème ; les autres sautent les deux.
+  const pooled = wizHasPools(d.format);
   const defs = editing
-    ? (!S.wizFullEdit ? [full[0], full[3], full[4]] : isSurvival ? [full[0], full[2], full[3], full[4]] : isBR ? [full[0], full[2], full[4]] : [full[0], full[4]])
-    : isSurvival ? full : isBR ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
+    ? (!S.wizFullEdit ? [full[0], full[3], full[4]] : isSurvival ? [full[0], full[2], full[3], full[4]] : (isBR || pooled) ? [full[0], full[2], full[4]] : [full[0], full[4]])
+    : isSurvival ? full : (isBR || pooled) ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
   return `<div style="padding:14px 0">${defs.map(([label, n]) => {
     const active = n === S.wizStep, done = n < S.wizStep;
     const sub = done ? subtitle(n) : active ? "En cours" : "";
@@ -645,7 +669,7 @@ function wizInfosStep(S: State) {
     ${editing ? `<p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Les participants déjà inscrits sont conservés. Le lancement répartit tout selon le nouveau format.</p>` : ""}
   </div>`;
   const chosen = WIZ_FORMATS.find(([key]) => key === d.format) || WIZ_FORMATS[0];
-  const nextStep = !editing ? 2 : !S.wizFullEdit ? 4 : (isSurvival || isBR ? 3 : 5);
+  const nextStep = !editing ? 2 : !S.wizFullEdit ? 4 : (isSurvival || isBR || wizHasPools(d.format) ? 3 : 5);
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${full ? "Étape 1 — Informations générales" : "Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
@@ -742,7 +766,7 @@ function wizParticipantsStep(S: State) {
       <hr style="border:0;border-top:1px solid #282838;margin:12px 0" />
       <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b id="wiz-cagnotte-total" style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`)}
   </div>
-  ${rosterPanel}${wizFoot("Retour", 1, d.format === "SURVIVAL" || d.format === "BATTLE_ROYALE" ? 3 : 5)}`;
+  ${rosterPanel}${wizFoot("Retour", 1, wizHasPools(d.format) || d.format === "BATTLE_ROYALE" ? 3 : 5)}`;
 }
 
 /** Grille des tailles de poule (Bebas Neue + lettre) — factorisée pour être régénérée en direct
@@ -758,6 +782,14 @@ function wizPoolsStep(S: State) {
       <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Après chaque partie, l'organisateur saisit le classement complet (du 1er au dernier). Les points par palier de classement se cumulent sur l'ensemble des <b id="wiz-pools-count" style="color:#F4F5FB">${d.nbPools}</b> partie<span id="wiz-pools-count-s">${d.nbPools > 1 ? "s" : ""}</span> — le plus haut total à la fin remporte le tournoi.</p>`)}
     ${wizFoot("Retour", S.wizEditId ? 1 : 2, 5, "Validation")}`;
   }
+  const isSurvival = d.format === "SURVIVAL";
+  const formatLabel = (WIZ_FORMATS.find(([k]) => k === d.format) || WIZ_FORMATS[0])[1];
+  // Le nombre de qualifiés est borné par ce que le mode de poule sait départager (2 hors Round Robin).
+  const maxQ = wizMaxQualify(d.poolFormat);
+  const qualif = Math.min(d.qualifyPerPool || 2, maxQ);
+  const qualifNote = maxQ === 2
+    ? "Ce mode ne départage qu'un vainqueur et un finaliste : 2 qualifiés au maximum. Passe en Round Robin pour en qualifier davantage."
+    : `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale.`;
   const sizes = balancedSizesPreview(d.players.length, d.nbPools);
   return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
@@ -765,15 +797,28 @@ function wizPoolsStep(S: State) {
     </div>
     <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Répartition automatique équilibrée : <b id="wiz-pools-sizes" style="color:#F4F5FB">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}. L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
     <div id="wiz-pools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${poolSizeBoxesHtml(sizes)}</div>
+    ${!isSurvival && d.nbPools === 1 ? `<p style="color:#FBBF24;font-size:11.5px;margin-top:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${ic(I.warn, 12)} Avec une seule poule il n'y a pas de phase de groupes : tous les participants vont directement en ${escHtml(formatLabel)}.</p>` : ""}
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode des poules</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button data-wizpoolformat="survival" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.poolFormat === "survival" ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.poolFormat === "survival" ? "#22D3EE" : "#282838"};color:${d.poolFormat === "survival" ? "#22D3EE" : "#8E8FA6"}">Survival classique</button>
-        <button data-wizpoolformat="double" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.poolFormat === "double" ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.poolFormat === "double" ? "#22D3EE" : "#282838"};color:${d.poolFormat === "double" ? "#22D3EE" : "#8E8FA6"}">Double élimination</button>
+        ${WIZ_POOL_MODES.map(([key, label]) => {
+          const on = d.poolFormat === key;
+          return `<button data-wizpoolformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+        }).join("")}
       </div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${d.poolFormat === "double" ? "Chaque poule est jouée en mini-bracket double élimination (mêmes règles que la phase finale)." : "Le vainqueur reste sur le terrain et enchaîne les challengers ; les perdants sont repêchés — format historique."}</p>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[2]}</p>
+    </div>
+    <div style="margin-top:18px">
+      <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${[1, 2, 3, 4].filter((q) => q <= maxQ).map((q) => {
+          const on = qualif === q;
+          return `<button data-wizqualify="${q}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${q === 1 ? "Le 1er" : "Les " + q + " premiers"}</button>`;
+        }).join("")}
+      </div>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>`)}
-  ${wizFoot("Retour", S.wizEditId ? 1 : 2, 4)}`;
+  ${wizFoot("Retour", S.wizEditId ? 1 : 2, isSurvival ? 4 : 5, isSurvival ? "Continuer" : "Validation")}`;
 }
 
 const WIZ_SCORING_FIELDS: [string, string, string][] = [
@@ -804,7 +849,7 @@ function wizScoringStep(S: State) {
   // à élimination/rondes — le reste (poules, repêchage, striker) est spécifique à Survival (voir
   // Engine.reportFinals/finishFinals) : pas la peine de le proposer pour un Bracket simple, par ex.
   const fields = isSurvival ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
-  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat, d.poolFormat);
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat, d.poolFormat, d.qualifyPerPool);
   const rows = fields.map(([id, label, key], i) => {
     const b = c.breakdown[key as keyof typeof c.breakdown];
     const sub = key === "championBonus" ? "une seule fois"
@@ -846,7 +891,7 @@ function wizValidateStep(S: State) {
   const editing = !!S.wizEditId;
   const isSurvival = d.format === "SURVIVAL";
   const isBR = d.format === "BATTLE_ROYALE";
-  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat, d.poolFormat);
+  const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, d, d.finalsFormat, d.poolFormat, d.qualifyPerPool);
   // Le barème détaillé (et sa jauge de validité) ne concerne que Survival — les autres formats n'ont rien à dépasser.
   // scoringOk : chaque valeur de "victoire" doit être ≥ 0,25 (voir WIZ_SCORING_FLOOR) — sinon l'API
   // refuse la création avec un message technique brut ; on bloque ici avec une raison compréhensible.
@@ -857,11 +902,19 @@ function wizValidateStep(S: State) {
   const scoringFields = isSurvival ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
   const brk = scoringFields.map(([, label, key]) => row(label, String((d as unknown as Record<string, number>)[key]))).join("");
   const formatLabel = (WIZ_FORMATS.find(([key]) => key === d.format) || WIZ_FORMATS[0])[1];
-  const structureRow = isSurvival
+  // Une phase de groupes existe pour Survival (toujours) et pour les formats a phase finale des
+  // que plus d une poule est demandee (miroir de Engine.usesPools).
+  const pooled = wizHasPools(d.format) && (isSurvival || d.nbPools > 1);
+  const structureRow = pooled
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
-  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
-  const backTarget = !editing ? (isSurvival ? 4 : isBR ? 3 : 2) : (!S.wizFullEdit ? 4 : (isSurvival ? 4 : isBR ? 3 : 1));
+  const poolRows = pooled && !isSurvival
+    ? row("Mode des poules", (WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[1])
+      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat))))
+    : "";
+  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
+  const hasPoolsStep = isBR || wizHasPools(d.format);
+  const backTarget = !editing ? (isSurvival ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? 4 : (isSurvival ? 4 : hasPoolsStep ? 3 : 1));
   const bareme = !isBR ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>` : "";
@@ -2349,15 +2402,20 @@ function playersRosterPanel(S: State, t: Detail, manage: boolean): string {
 }
 
 /** Poule Survival (match courant cliquable + classement) — partagé entre pTournoi et la régie. */
-function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" = "survival"): string {
+function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival"): string {
   let body: string;
   if (p.current) {
-    const stageLabel: Record<string, string> = poolFormat === "double"
+    const stageLabel: Record<string, string> = poolFormat === "roundrobin"
+      ? { survival: "Round Robin", losers: "Round Robin", poolFinal: "Round Robin" }
+      : poolFormat === "double"
       ? { survival: "Bracket vainqueurs", losers: "Bracket perdants", poolFinal: "Finale de poule" }
       : { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
     const stageTitle = `${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""}`;
-    const subA = p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
-    const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
+    // En round robin il n y a ni survivant ni challenger : les deux cotes sont symetriques.
+    const subA = poolFormat === "roundrobin" ? "Joueur"
+      : p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
+    const subB = poolFormat === "roundrobin" ? "Adversaire"
+      : p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
     if (manage) {
       const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
       const inp = "width:64px;height:44px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;line-height:44px;padding:0";
@@ -2449,8 +2507,13 @@ function roundRobinMatchList(matches: Detail[], manage: boolean): string {
 /** Bouton "Lancer la phase finale" (toujours en double élimination pour Survival), une fois toutes les poules terminées. Partagé entre pTournoi et la régie. */
 function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
   if (!manage || !t.allPoolsDone || t.finals) return "";
+  // Survival joue toujours sa phase finale en double elimination ; pour les autres formats, ce sont
+  // les qualifies des poules qui disputent le format principal du tournoi.
+  const finalsLabel = t.mainFormat === "single" ? "bracket simple"
+    : t.mainFormat === "roundrobin" ? "round robin"
+    : "double élimination";
   return `<div style="text-align:center;margin:24px 0">
-      <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (double élimination)</button></div>
+      <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (${finalsLabel})</button></div>
     </div>`;
 }
 
@@ -3562,7 +3625,7 @@ export default function Page() {
     editingPlayerId: null, brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -4702,7 +4765,7 @@ export default function Page() {
       finalsWin: num("wz-sc-finals", 0), championBonus: num("wz-sc-champion", 0), streakBonus: num("wz-sc-streak", 0),
     };
     const d = S.wizData;
-    const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, scoring, d.finalsFormat, d.poolFormat);
+    const c = cagnottePreview(d.players.length, d.nbPools, d.pointsPerPlayer, scoring, d.finalsFormat, d.poolFormat, d.qualifyPerPool);
     const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
     prog.textContent = String(c.programmed);
     prog.style.color = "#F4F5FB";
@@ -4768,6 +4831,7 @@ export default function Page() {
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
+      qualifyPerPool: d.qualifyPerPool,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
@@ -4797,7 +4861,7 @@ export default function Page() {
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -4818,7 +4882,9 @@ export default function Page() {
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
       entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
-      ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength } : {}),
+      // Les reglages de poule concernent tous les formats qui en proposent, pas seulement Survival.
+      ...(wizHasPools(d.format) ? { poolFormat: d.poolFormat, qualifyPerPool: d.qualifyPerPool } : {}),
+      ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, streakLength: d.streakLength } : {}),
       // Format envoyé uniquement depuis "Changer le format" (assistant complet) — le raccourci abrégé
       // ne le propose pas, pas la peine de le renvoyer à chaque enregistrement de barème.
       ...(S.wizFullEdit ? { format: d.format } : {}),
@@ -4856,7 +4922,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -4945,6 +5011,7 @@ export default function Page() {
             finalsFormat: t.finalsFormat || "single",
             poolFormat: t.poolFormat || "survival",
             streakLength: t.streakLength === 3 ? 3 : 5,
+            qualifyPerPool: t.qualifyPerPool || 2,
             imageUrl: t.imageUrl || null,
           },
         }));
@@ -4982,7 +5049,17 @@ export default function Page() {
     else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => ({ ...s, wizData: { ...s.wizData, format: d.wizformat! } }));
-    else if (d.wizpoolformat) setS((s) => ({ ...s, wizData: { ...s.wizData, poolFormat: d.wizpoolformat as "survival" | "double" } }));
+    else if (d.wizpoolformat) setS((s) => ({
+      ...s,
+      wizData: {
+        ...s.wizData,
+        poolFormat: d.wizpoolformat as "survival" | "double" | "roundrobin",
+        // Survival/double ne departagent que 2 finalistes : on rabaisse le nombre de qualifies
+        // en changeant de mode, sinon on enverrait une valeur que le moteur bornerait en silence.
+        qualifyPerPool: Math.min(s.wizData.qualifyPerPool || 2, wizMaxQualify(d.wizpoolformat!)),
+      },
+    }));
+    else if (d.wizqualify) setS((s) => ({ ...s, wizData: { ...s.wizData, qualifyPerPool: parseInt(d.wizqualify!) || 2 } }));
     else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));
     else if (d.wizgame) setS((s) => ({ ...s, wizData: { ...s.wizData, game: d.wizgame! } }));
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
@@ -5185,7 +5262,7 @@ export default function Page() {
       }
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
       }));
       loadRoster();
     }

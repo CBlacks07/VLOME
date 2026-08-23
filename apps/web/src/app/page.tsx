@@ -3063,14 +3063,12 @@ function pTournoi(S: State) {
       : "";
     // Aperçu des oppositions du 1er tour (formats à bracket : single/double élim uniquement — Round
     // Robin/Swiss n'ont pas un "1er tour" figé de la même façon). Le calcul mime exactement
-    // Engine.buildBracket (seed i vs seed P-1-i) : réordonner ici change réellement les oppositions
-    // au lancement (voir Engine.movePlayerOrder — même ordre que t.players).
+    // Engine.buildBracket (placement par têtes de série) : réordonner ici change réellement les
+    // oppositions au lancement (voir Engine.movePlayerOrder — même ordre que t.players).
     const seedPreview = manage && (t.mainFormat === "single" || t.mainFormat === "double") && roster.length >= 2
       ? (() => {
           let p = 1; while (p < roster.length) p *= 2;
           p = Math.max(2, p);
-          // Meme placement que Engine.buildBracket : le n-ieme participant est la tete de serie n,
-          // et l ordre des places (miroirs successifs) repartit les exempts dans tout l arbre.
           let slots = [1, 2];
           while (slots.length < p) {
             const sum = slots.length * 2 + 1;
@@ -3078,16 +3076,57 @@ function pTournoi(S: State) {
             for (const seed of slots) { next.push(seed); next.push(sum - seed); }
             slots = next;
           }
-          const pairs: [{ id: string; name: string } | null, { id: string; name: string } | null][] = [];
-          for (let i = 0; i < p / 2; i++) pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null]);
-          const side = (pl: { id: string; name: string } | null) => pl ? `<span style="flex:1;font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span>` : `<span style="flex:1;font-size:12.5px;color:#5D5E72;font-style:italic">exempt</span>`;
-          const matchups = pairs.map(([a, b], i) => `<div style="border:1px solid #282838;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px"><span style="font-size:10.5px;color:#5D5E72;flex:none;width:24px">M${i + 1}</span>${side(a)}<span style="color:#5D5E72;font-size:10.5px;flex:none">VS</span>${side(b)}</div>`).join("");
-          const rows = roster.map((pl, i) => `<div style="display:flex;align-items:center;gap:6px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 8px"><span style="color:#5D5E72;width:16px">${i + 1}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span><button data-roster-move="${t.id}|${pl.id}|-1" ${i === 0 ? "disabled" : ""} style="background:transparent;border:0;color:${i === 0 ? "#33334A" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};padding:2px">▲</button><button data-roster-move="${t.id}|${pl.id}|1" ${i === roster.length - 1 ? "disabled" : ""} style="background:transparent;border:0;color:${i === roster.length - 1 ? "#33334A" : "#8E8FA6"};cursor:${i === roster.length - 1 ? "default" : "pointer"};padding:2px">▼</button></div>`).join("");
+          type Cell = { id: string; name: string } | null;
+          const pairs: [Cell, Cell, number, number][] = [];
+          for (let i = 0; i < p / 2; i++) {
+            pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null, slots[2 * i], slots[2 * i + 1]]);
+          }
+          const nDuels = pairs.filter(([a, b]) => a && b).length;
+          const nByes = pairs.length - nDuels;
+          const seedNum = (n: number) => `<span style="flex:none;width:19px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3F4054">${n}</span>`;
+          const nameCell = (nm: string) => `<span style="flex:1;min-width:0;font-size:12.5px;font-weight:650;color:#F4F5FB;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(nm)}</span>`;
+          // Les noms sont empilés plutôt que côte à côte : la carte reste étroite, ce qui permet
+          // d'aligner 5 à 7 colonnes au lieu de 3 et supprime les lignes pleine largeur.
+          const matchups = pairs.map(([a, b, sa, sb], i) => {
+            const num = `<span style="flex:none;width:26px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#4A4B5F">M${i + 1}</span>`;
+            if (!a || !b) {
+              const solo = (a || b)!;
+              return `<div style="display:flex;align-items:center;gap:8px;border:1px dashed #26263A;border-radius:11px;padding:10px 12px;background:#0F0F17">
+                ${num}
+                <span style="flex:1;min-width:0;display:flex;align-items:center;gap:7px">${seedNum(a ? sa : sb)}${nameCell(solo.name)}</span>
+                <span style="flex:none;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#5D5E72;border:1px solid #26263A;border-radius:99px;padding:3px 8px">exempt</span>
+              </div>`;
+            }
+            return `<div style="display:flex;align-items:center;gap:8px;border:1px solid #2A2A3C;border-radius:11px;padding:9px 12px;background:linear-gradient(180deg,#16161F,#101019)">
+              ${num}
+              <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                <span style="display:flex;align-items:center;gap:7px">${seedNum(sa)}${nameCell(a.name)}</span>
+                <span style="display:flex;align-items:center;gap:7px;border-top:1px solid #1E1E2C;padding-top:4px">${seedNum(sb)}${nameCell(b.name)}</span>
+              </span>
+            </div>`;
+          }).join("");
+          const rows = roster.map((pl, i) => `<div style="display:flex;align-items:center;gap:6px;background:#12121B;border:1px solid #232331;border-radius:9px;padding:5px 7px">
+              <span style="flex:none;width:20px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#4A4B5F">${i + 1}</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span>
+              <button data-roster-move="${t.id}|${pl.id}|-1" ${i === 0 ? "disabled" : ""} title="Monter" style="flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:transparent;border:0;color:${i === 0 ? "#2C2C3E" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};font-size:9px">&#9650;</button>
+              <button data-roster-move="${t.id}|${pl.id}|1" ${i === roster.length - 1 ? "disabled" : ""} title="Descendre" style="flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:transparent;border:0;color:${i === roster.length - 1 ? "#2C2C3E" : "#8E8FA6"};cursor:${i === roster.length - 1 ? "default" : "pointer"};font-size:9px">&#9660;</button>
+            </div>`).join("");
+          const stat = (v: string, k: string, color: string) => `<span style="display:inline-flex;align-items:baseline;gap:5px"><b style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${color}">${v}</b><span style="font-size:11.5px;color:#5D5E72">${k}</span></span>`;
           return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Oppositions du 1er tour</h3><button data-roster-shuffle="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Rebrasser</button></div>
-            <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">Calculées depuis l'ordre des participants — le même ordre sera utilisé au lancement.</p>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:14px">${matchups}</div>
-            <details><summary style="cursor:pointer;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Réordonner les participants</summary><div style="display:flex;flex-direction:column;gap:5px;margin-top:10px">${rows}</div></details>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0">
+                <h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;white-space:nowrap">Oppositions du 1er tour</h3>
+                <span style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">${stat(String(nDuels), nDuels > 1 ? "duels" : "duel", "#22D3EE")}${nByes ? stat(String(nByes), nByes > 1 ? "exempts" : "exempt", "#FBBF24") : ""}</span>
+              </div>
+              <button data-roster-shuffle="${t.id}" style="flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.28);border-radius:9px;padding:6px 12px;cursor:pointer">${ic(I.arrow, 13)}Rebrasser</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:9px">${matchups}</div>
+            ${nByes ? `<p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0;max-width:62ch">${roster.length} participants pour un arbre de ${p} places : ${nByes} ${nByes > 1 ? "joueurs passent" : "joueur passe"} le 1er tour sans jouer, c'est imposé par l'effectif. Une phase de groupes les supprime.</p>` : ""}
+            <details style="margin-top:16px">
+              <summary style="cursor:pointer;font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Réordonner les participants</summary>
+              <p style="color:#5D5E72;font-size:11.5px;margin:8px 0 10px;max-width:62ch">Cet ordre est celui du tirage : le 1er est tête de série 1. C'est lui qui sera utilisé au lancement.</p>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:6px">${rows}</div>
+            </details>
           </div>`;
         })()
       : "";

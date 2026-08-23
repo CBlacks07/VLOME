@@ -618,6 +618,16 @@ function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid
     ${c.breakdown ? wizBreakdownBar(c.breakdown, c.programmed) : ""}`);
 }
 
+/** Suggestions de jeu (catalogue) filtrées par ce qui est tapé — masquées tant que le champ est
+ * vide, pour ne pas noyer la saisie sous des dizaines de jeux non pertinents (voir wizInfosStep). */
+function filterGames(games: Detail[], query: string): Detail[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return games.filter((g) => g.name.toLowerCase().includes(q)).slice(0, 8);
+}
+function gameChipHtml(name: string, active: boolean): string {
+  return `<button data-wizgame="${escAttr(name)}" style="font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 11px;cursor:pointer;background:${active ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${active ? "#22D3EE" : "#282838"};color:${active ? "#22D3EE" : "#8E8FA6"}">${escHtml(name)}</button>`;
+}
 function wizInfosStep(S: State) {
   const d = S.wizData;
   const editing = !!S.wizEditId;
@@ -640,7 +650,7 @@ function wizInfosStep(S: State) {
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${full ? "Étape 1 — Informations générales" : "Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
         ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
-        ${wizField("Jeu concerné", `<input id="wz-game" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" />${(S.games ?? []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${(S.games ?? []).map((g: Detail) => `<button data-wizgame="${escAttr(g.name)}" style="font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 11px;cursor:pointer;background:${d.game === g.name ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.game === g.name ? "#22D3EE" : "#282838"};color:${d.game === g.name ? "#22D3EE" : "#8E8FA6"}">${escHtml(g.name)}</button>`).join("")}</div>` : ""}`, "Depuis le catalogue si possible — garde les noms identiques d'un tournoi à l'autre pour des classements fiables.")}
+        ${wizField("Jeu concerné", `<input id="wz-game" autocomplete="off" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" /><div id="wiz-game-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${filterGames(S.games ?? [], d.game).map((g) => gameChipHtml(g.name, d.game.trim().toLowerCase() === g.name.toLowerCase())).join("")}</div>`, "Depuis le catalogue si possible — commence à taper pour voir les suggestions.")}
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
         ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
@@ -4534,6 +4544,21 @@ export default function Page() {
     recalc();
     return () => el.removeEventListener("input", recalc);
   }, [S.creating, S.wizStep, S.wizData.pointsPerPlayer]);
+
+  // Suggestions de jeu en direct (étape Infos générales) : masquées tant que le champ est vide,
+  // filtrées par ce qui est tapé — évite de noyer la saisie sous tout le catalogue en permanence.
+  useEffect(() => {
+    if (!(S.creating && S.wizStep === 1)) return;
+    const el = document.getElementById("wz-game") as HTMLInputElement | null;
+    const box = document.getElementById("wiz-game-suggestions");
+    if (!el || !box) return;
+    const recalc = () => {
+      const matches = filterGames(S.games ?? [], el.value);
+      box.innerHTML = matches.map((g) => gameChipHtml(g.name, el.value.trim().toLowerCase() === g.name.toLowerCase())).join("");
+    };
+    el.addEventListener("input", recalc);
+    return () => el.removeEventListener("input", recalc);
+  }, [S.creating, S.wizStep, S.games]);
 
   /** Simples pages sans paramètre : le hash correspond directement à la clé de page. */
   function applyHash(h: string) {

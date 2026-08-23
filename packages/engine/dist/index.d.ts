@@ -28,7 +28,7 @@ export interface BracketMatch {
 export interface Bracket {
     rounds: BracketMatch[][];
 }
-export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'done';
+export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'roundrobin' | 'done';
 /**
  * Mode de déroulement de chaque poule (phase 1 du format Survival) :
  * - survival (par défaut, historique) : le vainqueur reste sur le terrain et enchaîne les challengers,
@@ -38,7 +38,17 @@ export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'doubl
  *   perdants comme `loserWin`, la grande finale de poule (+ reset éventuel) comme `poolFinalWin` —
  *   réutilise le barème existant sans nouveau champ.
  */
-export type PoolFormat = 'survival' | 'double';
+/** Mode de jeu à l'intérieur d'une poule. 'roundrobin' (chacun affronte tous les autres de sa
+ * poule) est la phase de groupes classique, ouverte à tous les formats à phase finale ;
+ * 'survival' et 'double' restent les deux modes historiques du format Survival. */
+export type PoolFormat = 'survival' | 'double' | 'roundrobin';
+export declare const DEFAULT_QUALIFY_PER_POOL = 2;
+/** Borne le nombre de qualifiés par poule (1 à 4, défaut 2). */
+export declare function clampQualifyPerPool(v?: number): number;
+/** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
+ * vainqueurs et vainqueur du bracket perdants) : seul le mode 'roundrobin', qui produit un
+ * classement complet, peut en qualifier davantage. */
+export declare function maxQualifyPerPool(poolFormat: PoolFormat): number;
 export interface Pool {
     id: string;
     name: string;
@@ -57,6 +67,11 @@ export interface Pool {
     top2: string | null;
     /** Bracket double élimination de la poule — seulement si le tournoi utilise poolFormat 'double'. */
     dbracket: DoubleFinals | null;
+    /** Rencontres de la poule en mode 'roundrobin' — chacun affronte tous les autres de sa poule. */
+    rrmatches: BracketMatch[] | null;
+    /** Qualifiés de la poule, dans l'ordre du classement — généralise top1/top2 à N qualifiés (voir
+     *  Tournament.qualifyPerPool). Vide sur d'anciennes données : retomber sur top1/top2. */
+    qualified: string[];
     /** Série de victoires en cours par joueur dans cette poule (matchs de stage 'survival' uniquement,
      *  remise à 0 dès une défaite) — sert au bonus striker, pour les deux modes de poule. */
     streaks: Record<string, number>;
@@ -142,6 +157,9 @@ export interface Tournament {
     pools: Pool[];
     /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
     poolFormat: PoolFormat;
+    /** Nombre de joueurs qualifiés par poule pour la phase finale (1 à 4, voir maxQualifyPerPool).
+     *  Absent sur d'anciennes données : traiter comme 2 (top1 + top2, comportement historique). */
+    qualifyPerPool: number;
     /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
      * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
     streakLength: StreakLength;
@@ -207,11 +225,22 @@ export declare function shuffleOrder(pool: Pool): void;
 /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement) : dir = -1 (monte) ou +1 (descend). */
 export declare function moveInOrder(pool: Pool, index: number, dir: number): boolean;
 export declare function launch(t: Tournament): void;
+/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis. */
+export declare function poolRRRanking(t: Tournament, pool: Pool): {
+    id: string;
+    wins: number;
+    gd: number;
+}[];
 /**
  * Point d'entrée unique du lancement, quel que soit le format. Le format survival garde
  * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :
  * le tournoi entier est directement la structure de compétition (bracket, rondes Swiss, parties BR).
  */
+/** Formats à phase finale qui acceptent une phase de groupes optionnelle en amont. */
+export declare const POOLED_FORMATS: TournamentFormat[];
+/** Le tournoi passe-t-il par une phase de groupes ? Survival en a toujours ; les formats à phase
+ *  finale en ont une dès que l'organisateur demande plus d'une poule. */
+export declare function usesPools(t: Tournament): boolean;
 export declare function launchTournament(t: Tournament): void;
 export declare function buildBracket(ids: string[]): Bracket;
 export declare function propagateBracket(bracket: Bracket): void;

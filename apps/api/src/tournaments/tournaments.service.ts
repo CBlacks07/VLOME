@@ -109,6 +109,7 @@ export class TournamentsService {
       format: engineFormatFor(dto.format),
       finalsFormat: dto.finalsFormat,
       poolFormat: dto.poolFormat,
+      qualifyPerPool: dto.qualifyPerPool,
       streakLength: dto.streakLength,
       ...(hasScoring ? {
         scoring: {
@@ -171,6 +172,7 @@ export class TournamentsService {
         format: engineFormatFor(dto.format),
         finalsFormat: dto.finalsFormat,
         poolFormat: dto.poolFormat,
+        qualifyPerPool: dto.qualifyPerPool,
         streakLength: dto.streakLength,
         ...(hasScoring ? {
           scoring: {
@@ -192,7 +194,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined) {
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
@@ -202,6 +204,7 @@ export class TournamentsService {
       if (dto.finalsFormat !== undefined) t.finalsFormat = dto.finalsFormat;
       if (dto.poolFormat !== undefined) t.poolFormat = dto.poolFormat;
       if (dto.streakLength !== undefined) t.streakLength = dto.streakLength;
+      if (dto.qualifyPerPool !== undefined) t.qualifyPerPool = Engine.clampQualifyPerPool(dto.qualifyPerPool);
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       data.engineState = JSON.parse(JSON.stringify(t));
@@ -589,10 +592,14 @@ export class TournamentsService {
     if (!t.poolFormat) t.poolFormat = 'survival';
     if (t.scoring && t.scoring.streakBonus === undefined) t.scoring.streakBonus = 0;
     if (!t.streakLength) t.streakLength = Engine.DEFAULT_STREAK_LENGTH;
+    // Compat : tournois créés avant l'ouverture des poules aux formats à phase finale.
+    if (!t.qualifyPerPool) t.qualifyPerPool = Engine.DEFAULT_QUALIFY_PER_POOL;
     t.pools?.forEach((p) => {
       if (!p.dbracket) p.dbracket = null;
       if (!p.streaks) p.streaks = {};
       if (!p.streakAwarded) p.streakAwarded = {};
+      if (!p.rrmatches) p.rrmatches = null;
+      if (!p.qualified) p.qualified = [];
     });
     return t;
   }
@@ -689,6 +696,16 @@ export class TournamentsService {
           : null,
         order: p.order.map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
         ranking: this.poolRanking(t, p),
+        qualified: (p.qualified || []).map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
+        // Rencontres du mini round robin de la poule (poolFormat 'roundrobin') — même forme que les
+        // matchs d'un Round Robin de phase finale, pour être rendues par le même composant.
+        rrmatches: (p.rrmatches || []).map((mm) => ({
+          matchId: mm.id, aId: mm.a, bId: mm.b,
+          aName: mm.a ? Engine.playerName(t, mm.a) : null,
+          bName: mm.b ? Engine.playerName(t, mm.b) : null,
+          winnerId: mm.winner, sa: mm.sa ?? null, sb: mm.sb ?? null,
+          playable: !!(mm.a && mm.b && !mm.winner && !mm.bye),
+        })),
       };
     });
     return {
@@ -705,6 +722,8 @@ export class TournamentsService {
       scoring: t.scoring,
       finalsFormat: t.finalsFormat,
       poolFormat: t.poolFormat,
+      qualifyPerPool: t.qualifyPerPool,
+      usesPools: Engine.usesPools(t),
       streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,

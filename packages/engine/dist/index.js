@@ -5,7 +5,9 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_BR_POINTS = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
+exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
+exports.clampQualifyPerPool = clampQualifyPerPool;
+exports.maxQualifyPerPool = maxQualifyPerPool;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.swissRoundCount = swissRoundCount;
@@ -29,6 +31,8 @@ exports.distributePools = distributePools;
 exports.shuffleOrder = shuffleOrder;
 exports.moveInOrder = moveInOrder;
 exports.launch = launch;
+exports.poolRRRanking = poolRRRanking;
+exports.usesPools = usesPools;
 exports.launchTournament = launchTournament;
 exports.buildBracket = buildBracket;
 exports.propagateBracket = propagateBracket;
@@ -54,6 +58,17 @@ exports.overallRanking = overallRanking;
 exports.ratings = ratings;
 exports.BYE = '__bye__';
 exports.DEFAULT_STREAK_LENGTH = 5;
+exports.DEFAULT_QUALIFY_PER_POOL = 2;
+/** Borne le nombre de qualifiés par poule (1 à 4, défaut 2). */
+function clampQualifyPerPool(v) {
+    return Math.max(1, Math.min(4, Math.round(Number(v) || exports.DEFAULT_QUALIFY_PER_POOL)));
+}
+/** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
+ * vainqueurs et vainqueur du bracket perdants) : seul le mode 'roundrobin', qui produit un
+ * classement complet, peut en qualifier davantage. */
+function maxQualifyPerPool(poolFormat) {
+    return poolFormat === 'roundrobin' ? 4 : 2;
+}
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
 const MAX_UNDO = 25;
 function uid() {
@@ -81,6 +96,7 @@ function newTournament(cfg = {}) {
         scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0 },
         pools: [],
         poolFormat: cfg.poolFormat || 'survival',
+        qualifyPerPool: clampQualifyPerPool(cfg.qualifyPerPool),
         streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,
         status: 'setup', log: [], points: {}, finals: null,
         finalsFormat: cfg.finalsFormat || 'single',
@@ -283,6 +299,7 @@ function distributePools(t) {
             wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
             lBracket: null, lChampion: null, top1: null, top2: null,
             dbracket: null, streaks: {}, streakAwarded: {},
+            rrmatches: null, qualified: [],
         });
     }
     mixed.forEach((pid, i) => pools[i % nb].playerIds.push(pid));
@@ -304,7 +321,9 @@ function launch(t) {
     t.pools.forEach(p => {
         if (!p.order.length)
             p.order = shuffle(p.playerIds);
-        if (t.poolFormat === 'double')
+        if (t.poolFormat === 'roundrobin')
+            initPoolRoundRobin(p);
+        else if (t.poolFormat === 'double')
             initPoolDouble(p);
         else
             initSurvival(p);
@@ -341,6 +360,49 @@ function checkPoolDoubleChampion(pool) {
     else if (!f.gf2)
         f.gf2 = { id: uid(), a: f.gf.a, b: f.gf.b, winner: null, bye: false };
 }
+/** Lance une poule en mini round robin (poolFormat 'roundrobin') : chacun affronte tous les autres
+ *  de sa poule. Le classement de poule désigne ensuite les qualifiés (voir qualifyPerPool). */
+function initPoolRoundRobin(pool) {
+    if (pool.order.length < 2) {
+        pool.top1 = pool.order[0] || null;
+        pool.qualified = pool.order.slice(0, 1);
+        pool.phase = 'done';
+        return;
+    }
+    pool.rrmatches = buildRoundRobin(pool.order).matches;
+    pool.phase = 'roundrobin';
+}
+/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis. */
+function poolRRRanking(t, pool) {
+    const ids = pool.order.length ? pool.order : pool.playerIds;
+    const wins = {}, gd = {};
+    ids.forEach(id => { wins[id] = 0; gd[id] = 0; });
+    (pool.rrmatches || []).forEach(m => {
+        if (!m.winner || !m.a || !m.b)
+            return;
+        wins[m.winner] = (wins[m.winner] || 0) + 1;
+        if (m.sa !== undefined && m.sb !== undefined) {
+            gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
+            gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
+        }
+    });
+    return ids.slice()
+        .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (gd[y] || 0) - (gd[x] || 0) || (t.points[y] || 0) - (t.points[x] || 0))
+        .map(id => ({ id, wins: wins[id] || 0, gd: gd[id] || 0 }));
+}
+/** Fin d'une poule round robin : toutes les rencontres jouées — classement, qualifiés, top1/top2. */
+function checkPoolRoundRobinDone(t, pool) {
+    if (pool.phase !== 'roundrobin')
+        return;
+    const ms = pool.rrmatches || [];
+    if (!ms.length || !ms.every(m => m.winner || m.bye))
+        return;
+    const rank = poolRRRanking(t, pool).map(r => r.id).filter(id => !t.disqualified.includes(id));
+    pool.qualified = rank.slice(0, clampQualifyPerPool(t.qualifyPerPool));
+    pool.top1 = rank[0] || null;
+    pool.top2 = rank[1] || null;
+    pool.phase = 'done';
+}
 function initSurvival(pool) {
     if (pool.order.length < 2) {
         pool.top1 = pool.order[0] || null;
@@ -357,8 +419,27 @@ function initSurvival(pool) {
  * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :
  * le tournoi entier est directement la structure de compétition (bracket, rondes Swiss, parties BR).
  */
+/** Formats à phase finale qui acceptent une phase de groupes optionnelle en amont. */
+exports.POOLED_FORMATS = ['single', 'double', 'roundrobin'];
+/** Le tournoi passe-t-il par une phase de groupes ? Survival en a toujours ; les formats à phase
+ *  finale en ont une dès que l'organisateur demande plus d'une poule. */
+function usesPools(t) {
+    if (t.format === 'survival' || !t.format)
+        return true;
+    return exports.POOLED_FORMATS.indexOf(t.format) >= 0 && (t.nbPools || 1) > 1;
+}
 function launchTournament(t) {
     if (t.format === 'survival' || !t.format) {
+        launch(t);
+        return;
+    }
+    // Phase de groupes optionnelle : si l'organisateur a demandé plusieurs poules, on les joue
+    // d'abord ; les qualifiés se retrouvent ensuite en phase finale dans le format principal du
+    // tournoi (startFinals lit finalsFormat).
+    if (usesPools(t)) {
+        if (!t.pools.length)
+            distributePools(t);
+        t.finalsFormat = t.format;
         launch(t);
         return;
     }
@@ -455,6 +536,12 @@ function currentMatch(pool) {
     }
     if (pool.phase === 'poolFinal')
         return { a: pool.wChampion, b: pool.lChampion, stage: 'poolFinal', streak: 0 };
+    if (pool.phase === 'roundrobin') {
+        // Toutes les rencontres d'une poule round robin sont équivalentes : même catégorie de points
+        // que le bracket vainqueurs (survWin), et elles alimentent donc aussi le bonus striker.
+        const m = (pool.rrmatches || []).find(x => x.a && x.b && !x.winner && !x.bye);
+        return m ? { a: m.a, b: m.b, stage: 'survival', streak: pool.streaks[m.a] || 0, matchId: m.id } : null;
+    }
     if (pool.phase === 'double') {
         const f = pool.dbracket;
         if (!f)
@@ -514,7 +601,18 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
             t.log.push({ id: uid(), poolId, stage: 'streakBonus', a: winnerId, b: null, winner: winnerId, pts: t.scoring.streakBonus, ts: Date.now(), reason: `Série de ${streakLength} victoires` });
         }
     }
-    if (pool.phase === 'double') {
+    if (pool.phase === 'roundrobin') {
+        const match = (pool.rrmatches || []).find(x => x.id === m.matchId);
+        if (match) {
+            match.winner = winnerId;
+            if (sa || sb) {
+                match.sa = sa;
+                match.sb = sb;
+            }
+        }
+        checkPoolRoundRobinDone(t, pool);
+    }
+    else if (pool.phase === 'double') {
         const f = pool.dbracket;
         const match = [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []).find(x => x.id === m.matchId);
         if (match) {
@@ -586,11 +684,22 @@ function allPoolsDone(t) {
     return t.pools.length > 0 && t.pools.every(p => p.phase === 'done');
 }
 function qualifiers(t) {
-    const top1s = t.pools.map(p => p.top1).filter(Boolean);
-    const top2s = t.pools.map(p => p.top2).filter(Boolean).reverse();
+    const n = clampQualifyPerPool(t.qualifyPerPool);
+    // Compat : poules antérieures au champ qualified, et modes survival/double qui ne désignent
+    // que deux finalistes — on retombe sur top1/top2, naturellement borné à 2 par le slice.
+    const perPool = t.pools.map(p => (p.qualified && p.qualified.length
+        ? p.qualified
+        : [p.top1, p.top2].filter(Boolean)).slice(0, n));
     // Un joueur disqualifié ne doit jamais accéder à la phase finale, même s'il a
     // terminé top1/top2 de sa poule via un forfait adverse antérieur.
-    return top1s.concat(top2s).filter(id => !t.disqualified.includes(id));
+    // Serpentin : les 1ers dans l'ordre des poules, les 2es en ordre inverse, etc. — évite que deux
+    // qualifiés d'une même poule se retrouvent systématiquement du même côté du bracket.
+    const out = [];
+    for (let rank = 0; rank < n; rank++) {
+        const row = perPool.map(q => q[rank]).filter(Boolean);
+        out.push(...(rank % 2 === 1 ? row.reverse() : row));
+    }
+    return out.filter(id => !t.disqualified.includes(id));
 }
 function buildRoundRobin(ids) {
     const matches = [];
@@ -1107,7 +1216,11 @@ function cagnotte(t) {
         if (n < 2)
             return;
         nRealPools++;
-        if (t.poolFormat === 'double') {
+        if (t.poolFormat === 'roundrobin') {
+            // Round robin de poule : chacun affronte tous les autres, toutes les rencontres au tarif survWin.
+            surv += (n * (n - 1)) / 2;
+        }
+        else if (t.poolFormat === 'double') {
             const c = doublePoolMatchCounts(n);
             surv += c.wb;
             los += c.lb;
@@ -1119,7 +1232,12 @@ function cagnotte(t) {
             pf += 1;
         }
     });
-    const q = sizes.filter(n => n >= 2).length * 2 + sizes.filter(n => n === 1).length;
+    // Qualifiés : N par poule (borné par ce que le mode de poule sait départager, et par l'effectif
+    // réel de la poule) — auparavant figé à 2, ce qui sous-estimait la phase finale dès qu'on en
+    // qualifiait davantage, donc sous-budgétait la cagnotte.
+    const perPool = Math.min(clampQualifyPerPool(t.qualifyPerPool), maxQualifyPerPool(t.poolFormat));
+    const q = sizes.filter(n => n >= 2).reduce((acc, n) => acc + Math.min(perPool, n), 0)
+        + sizes.filter(n => n === 1).length;
     const finalsMatches = finalsMatchCount(q, t.finalsFormat);
     // Bonus striker : jamais garanti (dépend des performances), mais on budgète le pire cas réaliste —
     // au plus un joueur strikeur par poule — pour ne jamais sous-estimer la cagnotte nécessaire.

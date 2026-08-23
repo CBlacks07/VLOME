@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -27,7 +27,11 @@ export class CreateTournamentDto {
   // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
   // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
-  @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
+  @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
+  // Nombre de qualifiés par poule pour la phase finale (1 à 4). Seul le mode de poule 'roundrobin'
+  // produit un classement complet : 'survival'/'double' ne départagent que deux finalistes, le
+  // moteur borne donc à 2 dans ces modes (voir Engine.maxQualifyPerPool).
+  @IsOptional() @IsInt() @Min(1) @Max(4) qualifyPerPool?: number;
 }
 
 export class UpdateTournamentDto {
@@ -42,7 +46,11 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
-  @IsOptional() @IsIn(['survival', 'double']) poolFormat?: 'survival' | 'double';
+  @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
+  // Nombre de qualifiés par poule pour la phase finale (1 à 4). Seul le mode de poule 'roundrobin'
+  // produit un classement complet : 'survival'/'double' ne départagent que deux finalistes, le
+  // moteur borne donc à 2 dans ces modes (voir Engine.maxQualifyPerPool).
+  @IsOptional() @IsInt() @Min(1) @Max(4) qualifyPerPool?: number;
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.

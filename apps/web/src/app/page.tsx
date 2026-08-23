@@ -3068,8 +3068,18 @@ function pTournoi(S: State) {
     const seedPreview = manage && (t.mainFormat === "single" || t.mainFormat === "double") && roster.length >= 2
       ? (() => {
           let p = 1; while (p < roster.length) p *= 2;
+          p = Math.max(2, p);
+          // Meme placement que Engine.buildBracket : le n-ieme participant est la tete de serie n,
+          // et l ordre des places (miroirs successifs) repartit les exempts dans tout l arbre.
+          let slots = [1, 2];
+          while (slots.length < p) {
+            const sum = slots.length * 2 + 1;
+            const next: number[] = [];
+            for (const seed of slots) { next.push(seed); next.push(sum - seed); }
+            slots = next;
+          }
           const pairs: [{ id: string; name: string } | null, { id: string; name: string } | null][] = [];
-          for (let i = 0; i < p / 2; i++) pairs.push([roster[i] ?? null, roster[p - 1 - i] ?? null]);
+          for (let i = 0; i < p / 2; i++) pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null]);
           const side = (pl: { id: string; name: string } | null) => pl ? `<span style="flex:1;font-weight:650;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span>` : `<span style="flex:1;font-size:12.5px;color:#5D5E72;font-style:italic">exempt</span>`;
           const matchups = pairs.map(([a, b], i) => `<div style="border:1px solid #282838;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px"><span style="font-size:10.5px;color:#5D5E72;flex:none;width:24px">M${i + 1}</span>${side(a)}<span style="color:#5D5E72;font-size:10.5px;flex:none">VS</span>${side(b)}</div>`).join("");
           const rows = roster.map((pl, i) => `<div style="display:flex;align-items:center;gap:6px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 8px"><span style="color:#5D5E72;width:16px">${i + 1}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span><button data-roster-move="${t.id}|${pl.id}|-1" ${i === 0 ? "disabled" : ""} style="background:transparent;border:0;color:${i === 0 ? "#33334A" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};padding:2px">▲</button><button data-roster-move="${t.id}|${pl.id}|1" ${i === roster.length - 1 ? "disabled" : ""} style="background:transparent;border:0;color:${i === roster.length - 1 ? "#33334A" : "#8E8FA6"};cursor:${i === roster.length - 1 ? "default" : "pointer"};padding:2px">▼</button></div>`).join("");
@@ -5048,7 +5058,16 @@ export default function Page() {
     else if (d.wizgoto) wizGoto(parseInt(d.wizgoto));
     else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
     else if (d.wizaddall !== undefined) wizAddAllRoster();
-    else if (d.wizformat) setS((s) => ({ ...s, wizData: { ...s.wizData, format: d.wizformat! } }));
+    else if (d.wizformat) setS((s) => ({
+      ...s,
+      wizData: {
+        ...s.wizData,
+        format: d.wizformat!,
+        // Survival = format a poules (2). Les formats a bracket restent des brackets directs
+        // par defaut (1 poule = pas de phase de groupes) ; Battle Royale garde son nb de parties.
+        nbPools: d.wizformat === "SURVIVAL" ? 2 : d.wizformat === "BATTLE_ROYALE" ? s.wizData.nbPools : 1,
+      },
+    }));
     else if (d.wizpoolformat) setS((s) => ({
       ...s,
       wizData: {

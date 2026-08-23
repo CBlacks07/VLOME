@@ -520,13 +520,32 @@ export function launchTournament(t: Tournament): void {
 
 function nextPow2(n: number): number { let p = 1; while (p < n) p *= 2; return p; }
 
+/** Ordre de placement standard d'un arbre à `size` places, construit par miroirs successifs :
+ *  chaque paire de places somme à size+1, si bien que les têtes de série 1 et 2 ne peuvent se
+ *  rencontrer qu'en finale. C'est aussi ce qui RÉPARTIT les exempts : avec 23 joueurs sur 32 places,
+ *  les 9 places vides tombent aux quatre coins de l'arbre au lieu d'être toutes groupées en tête
+ *  (l'appariement naïf i / P-1-i les entassait dans la moitié haute). */
+function seedSlots(size: number): number[] {
+  let arr = [1, 2];
+  while (arr.length < size) {
+    const sum = arr.length * 2 + 1;
+    const next: number[] = [];
+    for (const seed of arr) { next.push(seed); next.push(sum - seed); }
+    arr = next;
+  }
+  return arr;
+}
+
 export function buildBracket(ids: string[]): Bracket {
   const q = ids.slice();
-  const P = nextPow2(q.length);
+  // Minimum 2 places : à un seul participant, nextPow2 renvoie 1 et le tour initial appariait le
+  // joueur avec lui-même au lieu de le déclarer exempt.
+  const P = Math.max(2, nextPow2(q.length));
+  const slots = seedSlots(P); // le n-ième participant de la liste est la tête de série n
   const round0: BracketMatch[] = [];
   for (let i = 0; i < P / 2; i++) {
-    const a = q[i] || null;
-    const b = q[P - 1 - i] !== undefined ? q[P - 1 - i] : null;
+    const a = q[slots[2 * i] - 1] ?? null;
+    const b = q[slots[2 * i + 1] - 1] ?? null;
     const m: BracketMatch = { id: uid(), a, b, winner: null, bye: !a || !b };
     if (m.bye) m.winner = a || b;
     round0.push(m);

@@ -2606,7 +2606,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   const sa = S.matchScoreA, sb = S.matchScoreB;
   const canValidate = sa !== sb && !S.detailBusy;
   const side = (name: string, score: number, key: "a" | "b") => `
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#101019;border:1px solid #282838;margin-top:8px">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#101019;border:1px solid #282838;flex:1 1 230px;min-width:0">
       <span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;font-size:11px;font-weight:800;color:#22D3EE;flex:none">${escHtml(name).charAt(0).toUpperCase()}</span>
       <b style="font-size:13.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}</b>
       <button data-scorestep="${key}|-1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;border:1px solid #33334A;background:transparent;color:#8E8FA6;font-size:15px;font-weight:700;cursor:pointer;flex:none">–</button>
@@ -2619,8 +2619,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE">Match en cours</span>
     </div>
     <div style="padding:14px">
-      ${side(active.aName, sa, "a")}
-      ${side(active.bName, sb, "b")}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${side(active.aName, sa, "a")}${side(active.bName, sb, "b")}</div>
       <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="1" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button></div>
       <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:750;margin-top:12px">Déclarer forfait</div>
       <div style="display:flex;gap:8px;margin-top:6px">
@@ -2667,18 +2666,16 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   );
 }
 
-/** Bloc « Grande finale » mis en tête de la phase finale : c'est l'affiche qui décide du titre,
- * elle doit se voir avant les deux brackets qui y mènent plutôt qu'être reléguée tout en bas. */
-function grandFinalBanner(finals: Detail, manage: boolean): string {
-  const gfs: Detail[] = finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf];
-  const cards = gfs.map((m: Detail, i: number) => {
-    const label = gfs.length > 1 ? (i === 0 ? "Manche 1" : "Manche 2 · bracket reset") : "";
-    return `<div style="width:230px">${label ? `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:6px;text-align:center">${escHtml(label)}</div>` : ""}${matchBox(m, manage)}</div>`;
-  }).join("");
-  return `<div style="margin:0 0 22px;padding:16px;border:1px solid rgba(251,191,36,.3);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.06),#0E0E16)">
-    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;color:#FBBF24;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:800">${ic(I.crown, 15)}Grande finale</div>
-    <div style="display:flex;gap:18px;justify-content:center;flex-wrap:wrap">${cards}</div>
-  </div>`;
+/** Tours du bracket des vainqueurs prolongés par la grande finale (et sa 2e manche en cas de
+ * bracket reset). Ainsi l'affiche qui décide du titre se lit dans le prolongement naturel de
+ * l'arbre, reliée à la finale des vainqueurs, au lieu d'être isolée ailleurs sur la page.
+ * La filiation par défaut suffit : le tour ne contient qu'une affiche, dont le seul parent
+ * existant est la finale précédente. */
+function winnersRoundsWithFinal(finals: Detail): Detail[] {
+  const rounds: Detail[] = [...(finals.wb || [])];
+  if (finals.gf) rounds.push({ label: "Grande finale", matches: [finals.gf], accent: "#FBBF24" });
+  if (finals.gf2) rounds.push({ label: "Grande finale · manche 2", matches: [finals.gf2], accent: "#FBBF24" });
+  return rounds;
 }
 /** Arbre de bracket avec connecteurs, disposition calculée génériquement (pas de pixels codés en dur) — élimination simple ou bracket vainqueurs d'un double élim. */
 /** Filiation par défaut (élimination directe) : deux affiches d'un tour alimentent la suivante. */
@@ -2690,7 +2687,7 @@ const PARENTS_ELIM = (_r: number, i: number) => [2 * i, 2 * i + 1];
  * Voir propagateDouble() dans le moteur, qui applique exactement la même règle. */
 const PARENTS_LOSERS = (r: number, i: number) => ((r - 1) % 2 === 0 ? [i] : [2 * i, 2 * i + 1]);
 
-function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
+function bracketTree(rounds: { label: string; matches: Detail[]; accent?: string }[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
   if (!rounds.length) return "";
   const BOX_W = 172, COL_GAP = 40, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
   const centers: number[][] = [];
@@ -2724,8 +2721,8 @@ function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatch
   }
   const boxes = rounds.map((round, r) => round.matches.map((m, i) => matchTreeBox(m, r * (BOX_W + COL_GAP), centers[r][i] - BOX_H / 2, BOX_W, m.matchId === activeMatchId, manage)).join("")).join("");
   const totalW = rounds.length * (BOX_W + COL_GAP) - COL_GAP;
-  const totalH = Math.max(...centers[0].map((c) => c + BOX_H / 2 + 10), BOX_H);
-  const header = `<div style="display:flex;gap:${COL_GAP}px;margin-bottom:14px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
+  const totalH = Math.max(...centers.flat().map((y) => y + BOX_H / 2 + 10), BOX_H);
+  const header = `<div style="display:flex;gap:${COL_GAP}px;margin-bottom:14px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:${r.accent || "#5D5E72"};font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
   return `<div style="overflow-x:auto;padding-bottom:14px"><div style="width:${totalW}px">${header}<div style="position:relative;width:${totalW}px;height:${totalH}px">${connectors}${boxes}</div></div></div>`;
 }
 
@@ -2885,11 +2882,11 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
       <span data-bracketview="tree" style="font-size:11.5px;font-weight:${S.bracketView === "tree" ? 750 : 700};color:${S.bracketView === "tree" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "tree" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "tree" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Arbre</span>
       <span data-bracketview="list" style="font-size:11.5px;font-weight:${S.bracketView === "list" ? 750 : 700};color:${S.bracketView === "list" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "list" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "list" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Liste des matchs</span>
     </div>`;
-    // La grande finale décide du titre : elle passe devant les deux brackets qui y mènent.
-    const gfTop = t.finals.format === "double" ? grandFinalBanner(t.finals, manage) : "";
-    const body = gfTop + (S.bracketView === "list"
-      ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
-      : bracketTree(rounds, active?.matchId || null, manage));
+    // En double élim, l'arbre des vainqueurs se prolonge jusqu'à la grande finale.
+    const treeRounds = t.finals.format === "double" ? winnersRoundsWithFinal(t.finals) : rounds;
+    const body = S.bracketView === "list"
+      ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${treeRounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
+      : bracketTree(treeRounds, active?.matchId || null, manage);
     const extra = t.finals.format === "double"
       ? `<div style="margin-top:20px">
           <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div>
@@ -3242,8 +3239,7 @@ function pTournoi(S: State) {
       body = standings + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`;
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
-      body = `${grandFinalBanner(t.finals, manage)}
-        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(t.finals.wb, null, manage)}
+      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(winnersRoundsWithFinal(t.finals), null, manage)}
         <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div>${bracketTree(t.finals.lb, null, manage, PARENTS_LOSERS)}`;
     } else {
       body = bracketTree(t.finals.rounds, null, manage);

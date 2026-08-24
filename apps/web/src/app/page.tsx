@@ -2411,10 +2411,11 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
       ? { survival: "Bracket vainqueurs", losers: "Bracket perdants", poolFinal: "Finale de poule" }
       : { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
     const stageTitle = `${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""}`;
-    // En round robin il n y a ni survivant ni challenger : les deux cotes sont symetriques.
-    const subA = poolFormat === "roundrobin" ? "Joueur"
+    // En round robin il n y a ni survivant ni challenger : les deux cotes sont symetriques, d ou
+    // « Joueur 1 / Joueur 2 » plutot que « Joueur / Adversaire » qui suggerait une asymetrie.
+    const subA = poolFormat === "roundrobin" ? "Joueur 1"
       : p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
-    const subB = poolFormat === "roundrobin" ? "Adversaire"
+    const subB = poolFormat === "roundrobin" ? "Joueur 2"
       : p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
     if (manage) {
       const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
@@ -2616,32 +2617,45 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
 }
 
 /** Une case de l'arbre de bracket, positionnée en absolu. */
+/** Hauteur d'une affiche de l'arbre. Imposée en dur à la boîte ET utilisée par bracketTree pour
+ * placer les affiches : sans cette contrainte, ajouter une ligne dans la boîte (le badge « Joué »,
+ * par exemple) la fait dépasser de la hauteur supposée et les affiches se collent entre elles. */
+const TREE_BOX_H = 92;
+const TREE_ROW_GAP = 22;
+
 function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolean, manage: boolean): string {
+  const shell = (inner: string, border: string, bg: string, attrs = "", cursor = "") =>
+    `<div ${attrs} style="position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${TREE_BOX_H}px;display:flex;flex-direction:column;border:${border};border-radius:10px;overflow:hidden;background:${bg};${cursor}">${inner}</div>`;
   if (m.bye) {
-    return `<div style="position:absolute;left:${x}px;top:${y}px;width:${w}px;border:1px solid #1B1B27;border-radius:10px;overflow:hidden;background:#101019">
-      <div style="padding:8px 10px;font-size:12.5px;font-weight:600">${escHtml(m.aName || m.bName || "—")}</div>
-      <div style="padding:8px 10px;color:#5D5E72;font-style:italic;font-size:11.5px;border-top:1px solid #1B1B27">exempt</div>
-    </div>`;
+    return shell(
+      `<div style="flex:1;display:flex;align-items:center;padding:0 10px;font-size:12.5px;font-weight:600">${escHtml(m.aName || m.bName || "—")}</div><div style="flex:1;display:flex;align-items:center;padding:0 10px;color:#5D5E72;font-style:italic;font-size:11.5px;border-top:1px solid #1B1B27">exempt</div>`,
+      "1px solid #1B1B27", "#101019",
+    );
   }
   const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
-  const row = (name: string | null, win: boolean, score: number | null) => name
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "#F4F5FB"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "#5D5E72"};flex:none">${score}</span>` : ""}</div>`
-    : `<div style="padding:8px 10px;color:#5D5E72;font-style:italic;font-size:11.5px">à venir</div>`;
+  const row = (name: string | null, win: boolean, score: number | null, sep: boolean) => {
+    const base = `flex:1;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 10px${sep ? ";border-top:1px solid #1B1B27" : ""}`;
+    return name
+      ? `<div style="${base};font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "#F4F5FB"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "#5D5E72"};flex:none">${score}</span>` : ""}</div>`
+      : `<div style="${base};color:#5D5E72;font-style:italic;font-size:11.5px">à venir</div>`;
+  };
   // La mise en avant du prochain match jouable reste visible côté spectateur (on voit ce qui arrive) ;
   // seul le clic pour le rapporter est réservé à l'organisateur.
   const v = matchVisual(m, active);
   const clickable = !!m.playable && manage && !active;
-  return `<div ${clickable ? `data-activematch="${m.matchId}"` : ""} style="position:absolute;left:${x}px;top:${y}px;width:${w}px;border:${v.border};border-radius:10px;overflow:hidden;background:${v.bg};${clickable ? "cursor:pointer" : ""}">
-    <div style="display:flex;align-items:center;padding:6px 10px;background:#0d0d14;border-bottom:1px solid #1B1B27"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span></div>
-    ${row(m.aName, m.winnerId === m.aId, hasScore ? m.sa : null)}
-    <div style="border-top:1px solid #1B1B27">${row(m.bName, m.winnerId === m.bId, hasScore ? m.sb : null)}</div>
-  </div>`;
+  const badge = `<div style="flex:none;display:flex;align-items:center;padding:5px 10px;background:#0d0d14;border-bottom:1px solid #1B1B27"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span></div>`;
+  return shell(
+    badge + row(m.aName, m.winnerId === m.aId, hasScore ? m.sa : null, false) + row(m.bName, m.winnerId === m.bId, hasScore ? m.sb : null, true),
+    v.border, v.bg,
+    clickable ? `data-activematch="${m.matchId}"` : "",
+    clickable ? "cursor:pointer" : "",
+  );
 }
 
 /** Arbre de bracket avec connecteurs, disposition calculée génériquement (pas de pixels codés en dur) — élimination simple ou bracket vainqueurs d'un double élim. */
 function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatchId: string | null, manage: boolean): string {
   if (!rounds.length) return "";
-  const BOX_W = 172, COL_GAP = 40, BOX_H = 74, ROW_GAP = 18;
+  const BOX_W = 172, COL_GAP = 40, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
   const centers: number[][] = [];
   rounds.forEach((round, r) => {
     if (r === 0) centers.push(round.matches.map((_, i) => i * (BOX_H + ROW_GAP) + BOX_H / 2));

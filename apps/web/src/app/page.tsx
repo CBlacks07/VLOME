@@ -2636,6 +2636,8 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
  * par exemple) la fait dépasser de la hauteur supposée et les affiches se collent entre elles. */
 const TREE_BOX_H = 92;
 const TREE_ROW_GAP = 22;
+const TREE_BOX_W = 172;
+const TREE_COL_GAP = 40;
 
 function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolean, manage: boolean): string {
   const shell = (inner: string, border: string, bg: string, attrs = "", cursor = "") =>
@@ -2687,9 +2689,15 @@ const PARENTS_ELIM = (_r: number, i: number) => [2 * i, 2 * i + 1];
  * Voir propagateDouble() dans le moteur, qui applique exactement la même règle. */
 const PARENTS_LOSERS = (r: number, i: number) => ((r - 1) % 2 === 0 ? [i] : [2 * i, 2 * i + 1]);
 
-function bracketTree(rounds: { label: string; matches: Detail[]; accent?: string }[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
-  if (!rounds.length) return "";
-  const BOX_W = 172, COL_GAP = 40, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
+type TreeRound = { label: string; matches: Detail[]; accent?: string };
+type TreeParts = { header: string; canvas: string; centers: number[][]; totalW: number; totalH: number };
+
+/** Géométrie d’un arbre : rangées calculées une seule fois puis réutilisées pour les affiches,
+ * les connecteurs et — en double élimination — la liaison qui remonte du bracket des perdants vers
+ * la grande finale. Les morceaux sont renvoyés séparément pour pouvoir les reposer dans un canevas
+ * commun aux deux brackets. */
+function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[]): TreeParts {
+  const BOX_W = TREE_BOX_W, COL_GAP = TREE_COL_GAP, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
   const centers: number[][] = [];
   rounds.forEach((round, r) => {
     if (r === 0) centers.push(round.matches.map((_, i) => i * (BOX_H + ROW_GAP) + BOX_H / 2));
@@ -2720,10 +2728,63 @@ function bracketTree(rounds: { label: string; matches: Detail[]; accent?: string
     });
   }
   const boxes = rounds.map((round, r) => round.matches.map((m, i) => matchTreeBox(m, r * (BOX_W + COL_GAP), centers[r][i] - BOX_H / 2, BOX_W, m.matchId === activeMatchId, manage)).join("")).join("");
-  const totalW = rounds.length * (BOX_W + COL_GAP) - COL_GAP;
-  const totalH = Math.max(...centers.flat().map((y) => y + BOX_H / 2 + 10), BOX_H);
-  const header = `<div style="display:flex;gap:${COL_GAP}px;margin-bottom:14px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:${r.accent || "#5D5E72"};font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
-  return `<div style="overflow-x:auto;padding-bottom:14px"><div style="width:${totalW}px">${header}<div style="position:relative;width:${totalW}px;height:${totalH}px">${connectors}${boxes}</div></div></div>`;
+  const header = `<div style="display:flex;gap:${COL_GAP}px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:${r.accent || "#5D5E72"};font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
+  return {
+    header, canvas: connectors + boxes, centers,
+    totalW: rounds.length * (BOX_W + COL_GAP) - COL_GAP,
+    totalH: Math.max(...centers.flat().map((y) => y + BOX_H / 2 + 10), BOX_H),
+  };
+}
+
+function bracketTree(rounds: TreeRound[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
+  if (!rounds.length) return "";
+  const g = treeParts(rounds, activeMatchId, manage, parentsOf);
+  return `<div style="overflow-x:auto;padding-bottom:14px"><div style="width:${g.totalW}px">${g.header}<div style="position:relative;width:${g.totalW}px;height:${g.totalH}px;margin-top:14px">${g.canvas}</div></div></div>`;
+}
+
+/** Double élimination : les deux brackets dans un seul canevas, pour tracer la liaison qui manquait
+ * — la finale des perdants remonte vers la grande finale, qu’elle alimente au même titre que la
+ * finale des vainqueurs. Sans ce trait, les deux arbres paraissent indépendants. */
+function doubleElimTree(finals: Detail, activeMatchId: string | null, manage: boolean): string {
+  const wbRounds = winnersRoundsWithFinal(finals);
+  const lb: TreeRound[] = finals.lb || [];
+  if (!wbRounds.length) return "";
+  if (!lb.length) return bracketTree(wbRounds, activeMatchId, manage);
+  const gw = treeParts(wbRounds, activeMatchId, manage, PARENTS_ELIM);
+  const gl = treeParts(lb, activeMatchId, manage, PARENTS_LOSERS);
+  const TITLE_H = 24, HEAD_H = 28, GAP = 36;
+  const yWb = TITLE_H + HEAD_H;
+  const yLbTitle = yWb + gw.totalH + GAP;
+  const yLb = yLbTitle + TITLE_H + HEAD_H;
+  const totalW = Math.max(gw.totalW, gl.totalW);
+  const totalH = yLb + gl.totalH;
+  const title = (txt: string, y: number) => `<div style="position:absolute;left:0;top:${y}px;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${txt}</div>`;
+  const layer = (inner: string, y: number, w: number, h: number) => `<div style="position:absolute;left:0;top:${y}px;width:${w}px;height:${h}px">${inner}</div>`;
+  // Liaison finale des perdants → grande finale : en pointillés, car elle traverse toute la hauteur
+  // de la page et un trait plein se confondrait avec les connecteurs internes d’un bracket.
+  // Décalée vers la droite de l’affiche plutôt que centrée : au centre, la verticale barrerait
+  // l’intitulé du tour qu’elle traverse.
+  const colX = (col: number) => col * (TREE_BOX_W + TREE_COL_GAP) + TREE_BOX_W * 0.85;
+  const vline = (x: number, y: number, h: number) => `<span style="position:absolute;left:${x - 1}px;top:${y}px;height:${Math.max(h, 2)}px;border-left:2px dashed #3F3F5C"></span>`;
+  const hline = (x: number, y: number, w: number) => `<span style="position:absolute;left:${x}px;top:${y - 1}px;width:${Math.max(w, 2)}px;border-top:2px dashed #3F3F5C"></span>`;
+  let link = "";
+  const cG = finals.gf ? (finals.wb || []).length : -1;
+  const cL = lb.length - 1;
+  if (cG >= 0 && gw.centers[cG] && gl.centers[cL]) {
+    const xG = colX(cG), xL = colX(cL);
+    const yG = yWb + gw.centers[cG][0] + TREE_BOX_H / 2;
+    const yL = yLb + gl.centers[cL][0] - TREE_BOX_H / 2;
+    const yJog = yLbTitle - 14;
+    link = Math.abs(xG - xL) < 1
+      ? vline(xG, yG, yL - yG)
+      : vline(xG, yG, yJog - yG) + hline(Math.min(xG, xL), yJog, Math.abs(xG - xL)) + vline(xL, yJog, yL - yJog);
+    link += `<span style="position:absolute;left:${xG - 5}px;top:${yG}px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:7px solid #3F3F5C"></span>`;
+  }
+  return `<div style="overflow-x:auto;padding-bottom:14px"><div style="position:relative;width:${totalW}px;height:${totalH}px">
+    ${link}
+    ${title("Bracket des vainqueurs", 0)}${layer(gw.header, TITLE_H, gw.totalW, HEAD_H)}${layer(gw.canvas, yWb, gw.totalW, gw.totalH)}
+    ${title("Bracket des perdants", yLbTitle)}${layer(gl.header, yLbTitle + TITLE_H, gl.totalW, HEAD_H)}${layer(gl.canvas, yLb, gl.totalW, gl.totalH)}
+  </div></div>`;
 }
 
 /** Une ligne de statut de round (phase finale) dans le rail de régie — terminée / en cours / à venir, à partir des données réelles des matchs. */
@@ -2886,13 +2947,14 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     const treeRounds = t.finals.format === "double" ? winnersRoundsWithFinal(t.finals) : rounds;
     const body = S.bracketView === "list"
       ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${treeRounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
-      : bracketTree(treeRounds, active?.matchId || null, manage);
-    const extra = t.finals.format === "double"
+      : t.finals.format === "double"
+        ? doubleElimTree(t.finals, active?.matchId || null, manage)
+        : bracketTree(treeRounds, active?.matchId || null, manage);
+    // En mode arbre, le bracket des perdants est déjà dans le canevas commun (avec sa liaison).
+    const extra = t.finals.format === "double" && S.bracketView === "list"
       ? `<div style="margin-top:20px">
           <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div>
-          ${S.bracketView === "list"
-            ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
-            : bracketTree(t.finals.lb, active?.matchId || null, manage, PARENTS_LOSERS)}
+          <div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
         </div>`
       : "";
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
@@ -3239,8 +3301,7 @@ function pTournoi(S: State) {
       body = standings + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`;
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
-      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(winnersRoundsWithFinal(t.finals), null, manage)}
-        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div>${bracketTree(t.finals.lb, null, manage, PARENTS_LOSERS)}`;
+      body = doubleElimTree(t.finals, null, manage);
     } else {
       body = bracketTree(t.finals.rounds, null, manage);
     }

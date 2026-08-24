@@ -194,6 +194,7 @@ const I = {
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 9v5M12 17.5v.5"/>',
   printer: '<path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/>',
   share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2"/>',
+  extlink: '<path d="M14 4h6v6M20 4 10 14M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -1723,6 +1724,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
       <div class="console-mobile-top" style="align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid #1B1B27">
         <button data-consolemenu="1" title="Menu" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;cursor:pointer;flex:none">${ic(I.menu, 17)}</button>
         <span style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>
+        <button data-go="accueil" title="Voir le site public" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;cursor:pointer;flex:none">${ic(I.extlink, 15)}</button>
       </div>
       <div style="display:flex;align-items:center;gap:16px;padding:16px 28px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">
         <h1 class="console-desktop-title" style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;margin:0;line-height:1">${title}</h1>
@@ -1731,6 +1733,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
           <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#5D5E72;pointer-events:none">${ic(I.search, 15)}</span>
           <input id="hsearch" value="${escAttr(S.q)}" placeholder="Tournoi, jeu… (Entrée)" style="width:100%;background:#14141D;border:1px solid #282838;border-radius:9px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px 9px 34px" />
         </div>
+        <button data-go="accueil" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.extlink, 15)}Voir le site</button>
         <button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 16)}Nouveau tournoi</button>
       </div>
       <div style="padding:22px 28px;flex:1">${body}</div>

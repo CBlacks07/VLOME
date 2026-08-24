@@ -2282,6 +2282,21 @@ function finalsMatchGroups(finals: Detail): Detail[][] {
   } else finals.rounds.forEach((r: Detail) => pools.push(r.matches));
   return pools;
 }
+/** Comme finalsMatchGroups, mais en conservant le nom de l'étape de chaque affiche. Le Mode Show
+ * s'en sert pour annoncer « Winners · Finale » ou « Grande finale » plutôt que deux noms sans
+ * contexte — sans quoi le public ne sait pas où en est le tournoi. */
+function finalsLabelledMatches(finals: Detail): { label: string; m: Detail }[] {
+  const out: { label: string; m: Detail }[] = [];
+  const push = (label: string, ms: Detail[]) => (ms || []).forEach((m) => m && out.push({ label, m }));
+  if (!finals || finals.format === "battle_royale") return out;
+  if (finals.format === "roundrobin") push("Round Robin", finals.matches);
+  else if (finals.format === "double") {
+    (finals.wb || []).forEach((r: Detail) => push(r.label, r.matches));
+    (finals.lb || []).forEach((r: Detail) => push(r.label, r.matches));
+    push("Grande finale", finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
+  } else (finals.rounds || []).forEach((r: Detail) => push(r.label, r.matches));
+  return out;
+}
 function findPlayableFinalsMatch(finals: Detail): Detail | null {
   for (const arr of finalsMatchGroups(finals)) for (const m of arr) if (m && m.playable) return m;
   return null;
@@ -2652,8 +2667,30 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   );
 }
 
+/** Bloc « Grande finale » mis en tête de la phase finale : c'est l'affiche qui décide du titre,
+ * elle doit se voir avant les deux brackets qui y mènent plutôt qu'être reléguée tout en bas. */
+function grandFinalBanner(finals: Detail, manage: boolean): string {
+  const gfs: Detail[] = finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf];
+  const cards = gfs.map((m: Detail, i: number) => {
+    const label = gfs.length > 1 ? (i === 0 ? "Manche 1" : "Manche 2 · bracket reset") : "";
+    return `<div style="width:230px">${label ? `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:6px;text-align:center">${escHtml(label)}</div>` : ""}${matchBox(m, manage)}</div>`;
+  }).join("");
+  return `<div style="margin:0 0 22px;padding:16px;border:1px solid rgba(251,191,36,.3);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.06),#0E0E16)">
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;color:#FBBF24;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:800">${ic(I.crown, 15)}Grande finale</div>
+    <div style="display:flex;gap:18px;justify-content:center;flex-wrap:wrap">${cards}</div>
+  </div>`;
+}
 /** Arbre de bracket avec connecteurs, disposition calculée génériquement (pas de pixels codés en dur) — élimination simple ou bracket vainqueurs d'un double élim. */
-function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatchId: string | null, manage: boolean): string {
+/** Filiation par défaut (élimination directe) : deux affiches d'un tour alimentent la suivante. */
+const PARENTS_ELIM = (_r: number, i: number) => [2 * i, 2 * i + 1];
+/** Filiation du bracket des perdants : les tours alternent. Un tour pair reçoit un repêché du
+ * bracket des vainqueurs et conserve donc l'indice de son prédécesseur (1 vers 1) ; un tour impair
+ * fusionne deux affiches comme une élimination directe. Sans cette distinction, l'arbre des
+ * perdants serait relié de travers — c'est pourquoi il restait affiché en simple liste.
+ * Voir propagateDouble() dans le moteur, qui applique exactement la même règle. */
+const PARENTS_LOSERS = (r: number, i: number) => ((r - 1) % 2 === 0 ? [i] : [2 * i, 2 * i + 1]);
+
+function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
   if (!rounds.length) return "";
   const BOX_W = 172, COL_GAP = 40, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
   const centers: number[][] = [];
@@ -2661,14 +2698,19 @@ function bracketTree(rounds: { label: string; matches: Detail[] }[], activeMatch
     if (r === 0) centers.push(round.matches.map((_, i) => i * (BOX_H + ROW_GAP) + BOX_H / 2));
     else {
       const prev = centers[r - 1];
-      centers.push(round.matches.map((_, i) => (prev[2 * i] + (prev[2 * i + 1] ?? prev[2 * i])) / 2));
+      centers.push(round.matches.map((_, i) => {
+        const ys = parentsOf(r, i).map((k) => prev[k]).filter((y) => y !== undefined);
+        return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : i * (BOX_H + ROW_GAP) + BOX_H / 2;
+      }));
     }
   });
   let connectors = "";
   for (let r = 1; r < rounds.length; r++) {
     const prev = centers[r - 1];
     rounds[r].matches.forEach((_, i) => {
-      const yA = prev[2 * i], yB = prev[2 * i + 1];
+      const ys = parentsOf(r, i).map((k) => prev[k]).filter((y) => y !== undefined);
+      const yA = ys[0], yB = ys[1];
+      if (yA === undefined) return;
       const xLeft = r * (BOX_W + COL_GAP) - COL_GAP;
       const xMid = xLeft + COL_GAP / 2;
       const yMid = centers[r][i];
@@ -2843,13 +2885,17 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
       <span data-bracketview="tree" style="font-size:11.5px;font-weight:${S.bracketView === "tree" ? 750 : 700};color:${S.bracketView === "tree" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "tree" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "tree" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Arbre</span>
       <span data-bracketview="list" style="font-size:11.5px;font-weight:${S.bracketView === "list" ? 750 : 700};color:${S.bracketView === "list" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "list" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "list" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Liste des matchs</span>
     </div>`;
-    const body = S.bracketView === "list"
+    // La grande finale décide du titre : elle passe devant les deux brackets qui y mènent.
+    const gfTop = t.finals.format === "double" ? grandFinalBanner(t.finals, manage) : "";
+    const body = gfTop + (S.bracketView === "list"
       ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${rounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
-      : bracketTree(rounds, active?.matchId || null, manage);
+      : bracketTree(rounds, active?.matchId || null, manage));
     const extra = t.finals.format === "double"
       ? `<div style="margin-top:20px">
-          <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
-          <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:14px 0 10px">Grande finale${t.finals.gf2 ? " (2e manche — bracket reset)" : ""}</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${roundCol("", t.finals.gf2 ? [t.finals.gf, t.finals.gf2] : [t.finals.gf], manage)}</div>
+          <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div>
+          ${S.bracketView === "list"
+            ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
+            : bracketTree(t.finals.lb, active?.matchId || null, manage, PARENTS_LOSERS)}
         </div>`
       : "";
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
@@ -3196,10 +3242,9 @@ function pTournoi(S: State) {
       body = standings + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`;
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
-      const gf = t.finals.gf2 ? [t.finals.gf, t.finals.gf2] : [t.finals.gf];
-      body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(t.finals.wb, null, manage)}
-        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
-        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Grande finale${t.finals.gf2 ? " (2e manche — bracket reset)" : ""}</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${roundCol("", gf, manage)}</div>`;
+      body = `${grandFinalBanner(t.finals, manage)}
+        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(t.finals.wb, null, manage)}
+        <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div>${bracketTree(t.finals.lb, null, manage, PARENTS_LOSERS)}`;
     } else {
       body = bracketTree(t.finals.rounds, null, manage);
     }
@@ -3507,13 +3552,15 @@ function showStandingsTable(rows: { name: string; pts: number }[], ptsLabel: str
   </table></div>`;
 }
 /** Un à trois duels en gros plan (Mode Show) — phase finale single/double/round robin/swiss, ou file d'attente Survival. */
-function showMatchesFocus(matches: { aName: string; bName: string }[]): string {
+function showMatchesFocus(matches: { aName: string; bName: string; label?: string }[]): string {
   if (!matches.length) return `<div style="text-align:center;color:#5D5E72;font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
-  const box = (m: { aName: string; bName: string }) => `<div style="display:flex;align-items:center;justify-content:center;gap:2vw;flex-wrap:wrap">
+  const box = (m: { aName: string; bName: string; label?: string }) => `<div>
+    ${m.label ? `<div style="text-align:center;color:#FBBF24;font-size:1.5vh;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:.8vh">${escHtml(m.label)}</div>` : ""}
+    <div style="display:flex;align-items:center;justify-content:center;gap:2vw;flex-wrap:wrap">
     <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#22D3EE;line-height:1">${escHtml(m.aName)}</div></div>
     <div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 2 : 3.4}vh;color:#5D5E72;flex:none">VS</div>
     <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#F43F7E;line-height:1">${escHtml(m.bName)}</div></div>
-  </div>`;
+    </div></div>`;
   return `<div style="display:flex;flex-direction:column;gap:${matches.length > 1 ? 2.6 : 0}vh;margin-top:3vh;max-width:82vw;margin-left:auto;margin-right:auto">${matches.map(box).join("")}</div>`;
 }
 /** Derniers résultats (Mode Show) — vainqueur mis en avant, une ligne par match. */
@@ -3582,7 +3629,10 @@ function pShow(S: State) {
   } else {
     // single / double élimination.
     phaseLabel = t.finals.format === "double" ? "Double élimination" : "Élimination simple";
-    const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable);
+    // Les affiches décisives (grande finale, finales de bracket) passent devant : elles arrivent en
+    // fin de liste, or seules les trois premières sont affichées.
+    const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable).reverse()
+      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label }));
     slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable.slice(0, 3)) });
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });

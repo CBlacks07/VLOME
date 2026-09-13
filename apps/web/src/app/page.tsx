@@ -571,8 +571,14 @@ const WIZ_POOL_MODES: [string, string, string][] = [
   ["double", "Double élimination", "Chaque poule est jouée en mini-bracket double élimination."],
 ];
 /** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
- *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool). */
-function wizMaxQualify(poolFormat: string): number { return poolFormat === "roundrobin" ? 4 : 2; }
+ *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool, structurel,
+ *  pas un choix produit). En Round Robin, aucun plafond arbitraire : la seule vraie limite est
+ *  l'effectif de la plus petite poule — impossible d'en qualifier plus qu'il n'y a de joueurs. */
+function wizMaxQualify(poolFormat: string, nPlayers: number, nbPools: number): number {
+  if (poolFormat !== "roundrobin") return 2;
+  const sizes = balancedSizesPreview(Math.max(nPlayers, 1), nbPools);
+  return Math.max(1, Math.min(...sizes));
+}
 
 function wizSteps(S: State) {
   const d = S.wizData;
@@ -785,12 +791,15 @@ function wizPoolsStep(S: State) {
   }
   const isSurvival = d.format === "SURVIVAL";
   const formatLabel = (WIZ_FORMATS.find(([k]) => k === d.format) || WIZ_FORMATS[0])[1];
-  // Le nombre de qualifiés est borné par ce que le mode de poule sait départager (2 hors Round Robin).
-  const maxQ = wizMaxQualify(d.poolFormat);
+  const isRR = d.poolFormat === "roundrobin";
+  // Le nombre de qualifiés n'est vraiment borné qu'en dehors du Round Robin (2 : vainqueur +
+  // finaliste, structurel). En Round Robin, aucun plafond produit : à toi de choisir, jusqu'à
+  // l'effectif de la plus petite poule.
+  const maxQ = wizMaxQualify(d.poolFormat, d.players.length, d.nbPools);
   const qualif = Math.min(d.qualifyPerPool || 2, maxQ);
-  const qualifNote = maxQ === 2
+  const qualifNote = !isRR
     ? "Ce mode ne départage qu'un vainqueur et un finaliste : 2 qualifiés au maximum. Passe en Round Robin pour en qualifier davantage."
-    : `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale.`;
+    : `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
   const sizes = balancedSizesPreview(d.players.length, d.nbPools);
   return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
@@ -811,13 +820,15 @@ function wizPoolsStep(S: State) {
     </div>
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${[1, 2, 3, 4].filter((q) => q <= maxQ).map((q) => {
-          const on = qualif === q;
-          return `<button data-wizqualify="${q}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${q === 1 ? "Le 1er" : "Les " + q + " premiers"}</button>`;
-        }).join("")}
-      </div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${qualifNote}</p>
+      ${isRR
+        ? `<input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />`
+        : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${[1, 2].map((q) => {
+              const on = qualif === q;
+              return `<button data-wizqualify="${q}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${q === 1 ? "Le 1er" : "Les " + q + " premiers"}</button>`;
+            }).join("")}
+          </div>`}
+      <p id="wiz-qualify-note" style="color:#5D5E72;font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>`)}
   ${wizFoot("Retour", S.wizEditId ? 1 : 2, isSurvival ? 4 : 5, isSurvival ? "Continuer" : "Validation")}`;
 }
@@ -911,7 +922,7 @@ function wizValidateStep(S: State) {
     : isBR ? row("Parties", String(d.nbPools)) : "";
   const poolRows = pooled && !isSurvival
     ? row("Mode des poules", (WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[1])
-      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat))))
+      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
     : "";
   const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
@@ -3165,19 +3176,34 @@ function pTournoi(S: State) {
           ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
         </div>`
       : "";
-    // Répartition des poules (facultative, Survival uniquement) : prévisualiser et réordonner
-    // l'ordre de passage avant le lancement — sinon le lancement répartit et tire au sort tout seul.
-    // Les autres formats n'ont pas de poules (voir Engine.startFinals) : rien à répartir ici.
+    // Répartition des poules : prévisualiser, réordonner et rééquilibrer l'effectif avant le
+    // lancement — sinon le lancement répartit et tire au sort tout seul. Concerne tout format qui
+    // utilise des poules (Survival toujours, les formats à bracket dès qu'on en a demandé plusieurs
+    // — voir Engine.usesPools), pas seulement Survival : un Bracket simple ou un Round Robin avec
+    // poules a exactement le même besoin de rééquilibrage manuel.
     const poolsList: { id: string; name: string; order: { id: string; name: string }[] }[] = Array.isArray(t.pools) ? t.pools : [];
-    const poolsPreview = manage && t.mainFormat === "survival"
+    // Round Robin est le seul mode de poule qui qualifie plus qu'un vainqueur + un finaliste : c'est
+    // là que la taille réelle de chaque poule (après un rééquilibrage manuel) compte vraiment pour
+    // savoir combien de joueurs elle peut effectivement envoyer en phase finale.
+    const qualifyPerPool = Math.min(t.qualifyPerPool || 2, t.poolFormat === "roundrobin" ? Infinity : 2);
+    const poolsPreview = manage && t.usesPools
       ? poolsList.length
         ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Répartition des poules</h3><button data-pools-distribute="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Re-répartir au hasard</button></div>
-            <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule.</p>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p) => `<div style="border:1px solid #282838;border-radius:12px;padding:14px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><b style="font-size:13.5px">${escHtml(p.name)}</b><button data-pool-shuffle="${t.id}|${p.id}" title="Rebrasser" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;display:grid;place-items:center">${ic(I.arrow, 14)}</button></div>
-              <div style="display:flex;flex-direction:column;gap:5px">${p.order.map((pl, i) => `<div style="display:flex;align-items:center;gap:6px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 8px"><span style="color:#5D5E72;width:16px">${i + 1}</span><span style="flex:1">${escHtml(pl.name)}</span><button data-pool-move="${t.id}|${p.id}|${i}|-1" ${i === 0 ? "disabled" : ""} style="background:transparent;border:0;color:${i === 0 ? "#33334A" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};padding:2px">▲</button><button data-pool-move="${t.id}|${p.id}|${i}|1" ${i === p.order.length - 1 ? "disabled" : ""} style="background:transparent;border:0;color:${i === p.order.length - 1 ? "#33334A" : "#8E8FA6"};cursor:${i === p.order.length - 1 ? "default" : "pointer"};padding:2px">▼</button></div>`).join("")}</div>
-            </div>`).join("")}</div>
+            <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule. Les flèches ◀ ▶ déplacent un joueur vers la poule voisine, pour rééquilibrer manuellement l'effectif.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p, pi) => {
+              const short = t.poolFormat === "roundrobin" && p.order.length < qualifyPerPool;
+              return `<div style="border:1px solid #282838;border-radius:12px;padding:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><b style="font-size:13.5px">${escHtml(p.name)} <span style="color:#5D5E72;font-weight:600">· ${p.order.length}</span></b><button data-pool-shuffle="${t.id}|${p.id}" title="Rebrasser" style="background:transparent;border:0;color:#8E8FA6;cursor:pointer;display:grid;place-items:center">${ic(I.arrow, 14)}</button></div>
+              ${short ? `<p style="color:#FBBF24;font-size:11px;margin:0 0 8px">${ic(I.warn, 11)} Seulement ${p.order.length} joueur${p.order.length > 1 ? "s" : ""} ici : ${p.order.length} qualifié${p.order.length > 1 ? "s" : ""} au maximum, pas ${qualifyPerPool}.</p>` : ""}
+              <div style="display:flex;flex-direction:column;gap:5px">${p.order.map((pl, i) => {
+                // Une poule à un seul joueur ne peut pas se vider davantage (voir Engine.movePlayerToPool) : désactivé plutôt que de laisser échouer la requête.
+                const canLeave = p.order.length > 1;
+                const canPrev = pi > 0 && canLeave, canNext = pi < poolsList.length - 1 && canLeave;
+                return `<div style="display:flex;align-items:center;gap:6px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 8px"><span style="color:#5D5E72;width:16px">${i + 1}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(pl.name)}</span><button data-pool-moveto="${t.id}|${p.id}|${pl.id}|-1" title="Vers la poule précédente" ${canPrev ? "" : "disabled"} style="background:transparent;border:0;color:${canPrev ? "#7C82FF" : "#33334A"};cursor:${canPrev ? "pointer" : "default"};padding:2px;font-size:11px">◀</button><button data-pool-moveto="${t.id}|${p.id}|${pl.id}|1" title="Vers la poule suivante" ${canNext ? "" : "disabled"} style="background:transparent;border:0;color:${canNext ? "#7C82FF" : "#33334A"};cursor:${canNext ? "pointer" : "default"};padding:2px;font-size:11px">▶</button><button data-pool-move="${t.id}|${p.id}|${i}|-1" title="Monter dans l'ordre de passage" ${i === 0 ? "disabled" : ""} style="background:transparent;border:0;color:${i === 0 ? "#33334A" : "#8E8FA6"};cursor:${i === 0 ? "default" : "pointer"};padding:2px">▲</button><button data-pool-move="${t.id}|${p.id}|${i}|1" title="Descendre dans l'ordre de passage" ${i === p.order.length - 1 ? "disabled" : ""} style="background:transparent;border:0;color:${i === p.order.length - 1 ? "#33334A" : "#8E8FA6"};cursor:${i === p.order.length - 1 ? "default" : "pointer"};padding:2px">▼</button></div>`;
+              }).join("")}</div>
+            </div>`;
+            }).join("")}</div>
           </div>`
         : roster.length >= 2
           ? `<div style="text-align:center;margin-top:18px"><button data-pools-distribute="${t.id}" style="display:inline-flex;align-items:center;gap:7px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:10px 18px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Répartir en poules (aperçu avant lancement)</button></div>`
@@ -4863,11 +4889,38 @@ export default function Page() {
         const grid = document.getElementById("wiz-pools-grid");
         if (sizesEl) sizesEl.textContent = sizes.join(" / ");
         if (grid) grid.innerHTML = poolSizeBoxesHtml(sizes);
+        // Le plafond "Qualifiés par poule" (Round Robin) suit l'effectif de la plus petite poule :
+        // changer le nombre de poules sans repasser par l'étape le laissait figé sur l'ancien max.
+        const qtyInput = document.getElementById("wz-qualify") as HTMLInputElement | null;
+        const note = document.getElementById("wiz-qualify-note");
+        if (qtyInput && note) {
+          const maxQ = wizMaxQualify("roundrobin", S.wizData.players.length, n);
+          qtyInput.max = String(maxQ);
+          const qualif = Math.min(parseInt(qtyInput.value) || 2, maxQ);
+          qtyInput.value = String(qualif);
+          note.textContent = `${qualif * n} qualifiés au total (${qualif} × ${n} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+        }
       }
     };
     sel.addEventListener("change", recalc);
     return () => sel.removeEventListener("change", recalc);
   }, [S.creating, S.wizStep, S.wizData.format, S.wizData.players.length]);
+
+  // Note "Qualifiés par poule" en direct (Round Robin, étape Poules) : recalculée à la frappe, sans
+  // re-rendu React (perdrait le focus/curseur du champ en cours de saisie).
+  useEffect(() => {
+    if (!(S.creating && S.wizStep === 3 && S.wizData.poolFormat === "roundrobin")) return;
+    const el = document.getElementById("wz-qualify") as HTMLInputElement | null;
+    const note = document.getElementById("wiz-qualify-note");
+    if (!el || !note) return;
+    const maxQ = wizMaxQualify("roundrobin", S.wizData.players.length, S.wizData.nbPools);
+    const recalc = () => {
+      const qualif = Math.max(1, Math.min(parseInt(el.value) || 1, maxQ));
+      note.textContent = `${qualif * S.wizData.nbPools} qualifiés au total (${qualif} × ${S.wizData.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+    };
+    el.addEventListener("input", recalc);
+    return () => el.removeEventListener("input", recalc);
+  }, [S.creating, S.wizStep, S.wizData.poolFormat, S.wizData.players.length, S.wizData.nbPools]);
 
   // Suggestions de jeu en direct (étape Infos générales) : masquées tant que le champ est vide,
   // filtrées par ce qui est tapé — évite de noyer la saisie sous tout le catalogue en permanence.
@@ -4918,6 +4971,14 @@ export default function Page() {
       d.players = val("wz-players").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     } else if (S.wizStep === 3) {
       d.nbPools = Math.max(1, parseInt(val("wz-pools")) || 2);
+      // "Qualifiés par poule" n'est une saisie libre qu'en Round Robin (survival/double restent
+      // deux boutons, déjà posés dans l'état par leur dispatcher au clic) — sans plafond produit,
+      // seulement borné par l'effectif réel de la plus petite poule (voir wizMaxQualify).
+      if (d.poolFormat === "roundrobin") {
+        const maxQ = wizMaxQualify("roundrobin", d.players.length, d.nbPools);
+        const raw = parseInt(val("wz-qualify"));
+        d.qualifyPerPool = Math.max(1, Math.min(Number.isFinite(raw) ? raw : (d.qualifyPerPool || 2), maxQ));
+      }
     } else if (S.wizStep === 4) {
       const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
       d.survWin = num("wz-sc-surv", 1); d.loserWin = num("wz-sc-loser", 0.5); d.poolFinalWin = num("wz-sc-poolfinal", 1.5);
@@ -5095,7 +5156,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5110,6 +5171,7 @@ export default function Page() {
     else if (d.poolsDistribute) { act(`${API}/api/tournaments/${d.poolsDistribute}/pools/distribute`); }
     else if (d.poolShuffle) { const [tid, poolId] = d.poolShuffle.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/shuffle`); }
     else if (d.poolMove) { const [tid, poolId, index, dir] = d.poolMove.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/move`, { index: parseInt(index), dir: parseInt(dir) }); }
+    else if (d.poolMoveto) { const [tid, poolId, playerId, dir] = d.poolMoveto.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/players/move`, { playerId, dir: parseInt(dir) }); }
     else if (d.rosterMove) { const [tid, playerId, dir] = d.rosterMove.split("|"); act(`${API}/api/tournaments/${tid}/roster/move`, { playerId, dir: parseInt(dir) }); }
     else if (d.rosterShuffle) { act(`${API}/api/tournaments/${d.rosterShuffle}/roster/shuffle`); }
     else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }
@@ -5231,16 +5293,25 @@ export default function Page() {
         nbPools: d.wizformat === "SURVIVAL" ? 2 : d.wizformat === "BATTLE_ROYALE" ? s.wizData.nbPools : 1,
       },
     }));
-    else if (d.wizpoolformat) setS((s) => ({
-      ...s,
-      wizData: {
-        ...s.wizData,
-        poolFormat: d.wizpoolformat as "survival" | "double" | "roundrobin",
-        // Survival/double ne departagent que 2 finalistes : on rabaisse le nombre de qualifies
-        // en changeant de mode, sinon on enverrait une valeur que le moteur bornerait en silence.
-        qualifyPerPool: Math.min(s.wizData.qualifyPerPool || 2, wizMaxQualify(d.wizpoolformat!)),
-      },
-    }));
+    else if (d.wizpoolformat) {
+      // wizCapture() relit d'abord "Qualifiés par poule" (saisie libre en Round Robin) : sans ça,
+      // basculer de mode juste après y avoir tapé une valeur la perdrait au profit de l'état React
+      // pas encore synchronisé.
+      const captured = wizCapture();
+      const nextPoolFormat = d.wizpoolformat as "survival" | "double" | "roundrobin";
+      const maxQ = wizMaxQualify(nextPoolFormat, captured.players.length, captured.nbPools);
+      setS((s) => ({
+        ...s,
+        wizData: {
+          ...captured,
+          poolFormat: nextPoolFormat,
+          // Survival/double ne departagent que 2 finalistes (limite structurelle, pas produit) :
+          // on rabaisse le nombre de qualifies en changeant de mode, sinon on enverrait une valeur
+          // que le moteur bornerait en silence. Round Robin n'a rien à rabaisser.
+          qualifyPerPool: Math.min(captured.qualifyPerPool || 2, maxQ),
+        },
+      }));
+    }
     else if (d.wizqualify) setS((s) => ({ ...s, wizData: { ...s.wizData, qualifyPerPool: parseInt(d.wizqualify!) || 2 } }));
     else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));
     else if (d.wizgame) setS((s) => ({ ...s, wizData: { ...s.wizData, game: d.wizgame! } }));

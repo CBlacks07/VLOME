@@ -28,10 +28,12 @@ export class CreateTournamentDto {
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
   // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
-  // Nombre de qualifiés par poule pour la phase finale (1 à 4). Seul le mode de poule 'roundrobin'
-  // produit un classement complet : 'survival'/'double' ne départagent que deux finalistes, le
-  // moteur borne donc à 2 dans ces modes (voir Engine.maxQualifyPerPool).
-  @IsOptional() @IsInt() @Min(1) @Max(4) qualifyPerPool?: number;
+  // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
+  // un classement complet et n'a pas de plafond produit : sa seule vraie limite est l'effectif de
+  // la poule, appliqué par le moteur (voir Engine.maxQualifyPerPool). 'survival'/'double' ne
+  // départagent que deux finalistes, le moteur borne donc à 2 dans ces modes quoi qu'on envoie ici.
+  // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
+  @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
 }
 
 export class UpdateTournamentDto {
@@ -47,10 +49,12 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
-  // Nombre de qualifiés par poule pour la phase finale (1 à 4). Seul le mode de poule 'roundrobin'
-  // produit un classement complet : 'survival'/'double' ne départagent que deux finalistes, le
-  // moteur borne donc à 2 dans ces modes (voir Engine.maxQualifyPerPool).
-  @IsOptional() @IsInt() @Min(1) @Max(4) qualifyPerPool?: number;
+  // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
+  // un classement complet et n'a pas de plafond produit : sa seule vraie limite est l'effectif de
+  // la poule, appliqué par le moteur (voir Engine.maxQualifyPerPool). 'survival'/'double' ne
+  // départagent que deux finalistes, le moteur borne donc à 2 dans ces modes quoi qu'on envoie ici.
+  // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
+  @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
@@ -88,6 +92,14 @@ export class MoveOrderDto {
 }
 
 export class RosterMoveDto {
+  @IsString() playerId!: string;
+  @IsIn([-1, 1]) dir!: number;
+}
+
+// Rééquilibrage manuel de l'effectif des poules (avant lancement) : déplace un joueur vers la poule
+// adjacente — la répartition automatique équilibrée ne peut pas deviner qu'on veut, par exemple,
+// qualifier plus de monde d'une poule en particulier (voir Engine.movePlayerToPool).
+export class PoolPlayerMoveDto {
   @IsString() playerId!: string;
   @IsIn([-1, 1]) dir!: number;
 }

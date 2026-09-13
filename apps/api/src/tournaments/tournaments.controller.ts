@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, RegisterDto, ReportDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -258,6 +258,17 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async movePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: MoveOrderDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.movePoolOrder(id, poolId, dto.index, dto.dir, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  // Rééquilibrage manuel de l'effectif des poules (avant lancement) — distinct de /move ci-dessus,
+  // qui ne fait que réordonner à l'intérieur d'une même poule.
+  @Post(':id/pools/:poolId/players/move')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async movePoolPlayer(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: PoolPlayerMoveDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.movePoolPlayer(id, poolId, dto.playerId, dto.dir, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

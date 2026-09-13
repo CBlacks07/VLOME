@@ -40,15 +40,18 @@ export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'doubl
 export type PoolFormat = 'survival' | 'double' | 'roundrobin';
 
 export const DEFAULT_QUALIFY_PER_POOL = 2;
-/** Borne le nombre de qualifiés par poule (1 à 4, défaut 2). */
+/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Pas de plafond arbitraire ici :
+ * chaque appelant re-borne déjà par l'effectif réel d'une poule (slice()/Math.min() naturellement
+ * sans dépassement), donc le seul cap produit vient de maxQualifyPerPool selon le mode de poule. */
 export function clampQualifyPerPool(v?: number): number {
-  return Math.max(1, Math.min(4, Math.round(Number(v) || DEFAULT_QUALIFY_PER_POOL)));
+  return Math.max(1, Math.round(Number(v) || DEFAULT_QUALIFY_PER_POOL));
 }
 /** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
- * vainqueurs et vainqueur du bracket perdants) : seul le mode 'roundrobin', qui produit un
- * classement complet, peut en qualifier davantage. */
+ * vainqueurs et vainqueur du bracket perdants) : structurellement borné à 2, quel que soit
+ * l'effectif. Le mode 'roundrobin' produit un classement complet — rien ne le borne ici, sa seule
+ * limite réelle est l'effectif de la poule (appliqué par l'appelant, poule par poule). */
 export function maxQualifyPerPool(poolFormat: PoolFormat): number {
-  return poolFormat === 'roundrobin' ? 4 : 2;
+  return poolFormat === 'roundrobin' ? Infinity : 2;
 }
 
 export interface Pool {
@@ -124,8 +127,9 @@ export interface Tournament {
   pools: Pool[];
   /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
   poolFormat: PoolFormat;
-  /** Nombre de joueurs qualifiés par poule pour la phase finale (1 à 4, voir maxQualifyPerPool).
-   *  Absent sur d'anciennes données : traiter comme 2 (top1 + top2, comportement historique). */
+  /** Nombre de joueurs qualifiés par poule pour la phase finale — au moins 1, borné en pratique par
+   *  l'effectif de la plus petite poule (voir maxQualifyPerPool). Absent sur d'anciennes données :
+   *  traiter comme 2 (top1 + top2, comportement historique). */
   qualifyPerPool: number;
   /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
    * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
@@ -382,6 +386,28 @@ export function moveInOrder(pool: Pool, index: number, dir: number): boolean {
   const j = index + dir;
   if (index < 0 || index >= pool.order.length || j < 0 || j >= pool.order.length) return false;
   [pool.order[index], pool.order[j]] = [pool.order[j], pool.order[index]];
+  return true;
+}
+
+/** Déplace un joueur vers la poule adjacente (avant lancement) — rééquilibre manuellement l'effectif
+ * des poules après la répartition automatique équilibrée, qui ne peut pas deviner qu'un organisateur
+ * veut par exemple qualifier plus de monde d'une poule en particulier. `dir` = -1 (poule précédente
+ * dans t.pools) ou +1 (poule suivante). Ajouté en fin d'ordre de la poule cible. Refuse de vider une
+ * poule (au moins 1 joueur doit y rester) et refuse hors du statut 'setup'. */
+export function movePlayerToPool(t: Tournament, playerId: string, poolId: string, dir: number): boolean {
+  if (t.status !== 'setup') return false;
+  const idx = t.pools.findIndex(p => p.id === poolId);
+  if (idx < 0) return false;
+  const targetIdx = idx + (dir < 0 ? -1 : 1);
+  if (targetIdx < 0 || targetIdx >= t.pools.length) return false;
+  const from = t.pools[idx];
+  const to = t.pools[targetIdx];
+  if (!from.playerIds.includes(playerId)) return false;
+  if (from.playerIds.length <= 1) return false;
+  from.playerIds = from.playerIds.filter(id => id !== playerId);
+  from.order = from.order.filter(id => id !== playerId);
+  to.playerIds.push(playerId);
+  to.order.push(playerId);
   return true;
 }
 
@@ -713,8 +739,12 @@ export function qualifiers(t: Tournament): string[] {
   // terminé top1/top2 de sa poule via un forfait adverse antérieur.
   // Serpentin : les 1ers dans l'ordre des poules, les 2es en ordre inverse, etc. — évite que deux
   // qualifiés d'une même poule se retrouvent systématiquement du même côté du bracket.
+  // Borné par la plus grande liste réellement qualifiée (pas par `n`, qui n'a plus de plafond
+  // arbitraire depuis clampQualifyPerPool) : sinon un qualifyPerPool démesuré ferait tourner cette
+  // boucle pour rien après que perPool s'est déjà tarie.
+  const cap = perPool.reduce((m, q) => Math.max(m, q.length), 0);
   const out: string[] = [];
-  for (let rank = 0; rank < n; rank++) {
+  for (let rank = 0; rank < cap; rank++) {
     const row = perPool.map(q => q[rank]).filter(Boolean) as string[];
     out.push(...(rank % 2 === 1 ? row.reverse() : row));
   }

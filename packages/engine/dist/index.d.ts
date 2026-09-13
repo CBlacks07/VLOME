@@ -43,11 +43,14 @@ export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'doubl
  * 'survival' et 'double' restent les deux modes historiques du format Survival. */
 export type PoolFormat = 'survival' | 'double' | 'roundrobin';
 export declare const DEFAULT_QUALIFY_PER_POOL = 2;
-/** Borne le nombre de qualifiés par poule (1 à 4, défaut 2). */
+/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Pas de plafond arbitraire ici :
+ * chaque appelant re-borne déjà par l'effectif réel d'une poule (slice()/Math.min() naturellement
+ * sans dépassement), donc le seul cap produit vient de maxQualifyPerPool selon le mode de poule. */
 export declare function clampQualifyPerPool(v?: number): number;
 /** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
- * vainqueurs et vainqueur du bracket perdants) : seul le mode 'roundrobin', qui produit un
- * classement complet, peut en qualifier davantage. */
+ * vainqueurs et vainqueur du bracket perdants) : structurellement borné à 2, quel que soit
+ * l'effectif. Le mode 'roundrobin' produit un classement complet — rien ne le borne ici, sa seule
+ * limite réelle est l'effectif de la poule (appliqué par l'appelant, poule par poule). */
 export declare function maxQualifyPerPool(poolFormat: PoolFormat): number;
 export interface Pool {
     id: string;
@@ -157,8 +160,9 @@ export interface Tournament {
     pools: Pool[];
     /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
     poolFormat: PoolFormat;
-    /** Nombre de joueurs qualifiés par poule pour la phase finale (1 à 4, voir maxQualifyPerPool).
-     *  Absent sur d'anciennes données : traiter comme 2 (top1 + top2, comportement historique). */
+    /** Nombre de joueurs qualifiés par poule pour la phase finale — au moins 1, borné en pratique par
+     *  l'effectif de la plus petite poule (voir maxQualifyPerPool). Absent sur d'anciennes données :
+     *  traiter comme 2 (top1 + top2, comportement historique). */
     qualifyPerPool: number;
     /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
      * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
@@ -224,6 +228,12 @@ export declare function distributePools(t: Tournament): void;
 export declare function shuffleOrder(pool: Pool): void;
 /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement) : dir = -1 (monte) ou +1 (descend). */
 export declare function moveInOrder(pool: Pool, index: number, dir: number): boolean;
+/** Déplace un joueur vers la poule adjacente (avant lancement) — rééquilibre manuellement l'effectif
+ * des poules après la répartition automatique équilibrée, qui ne peut pas deviner qu'un organisateur
+ * veut par exemple qualifier plus de monde d'une poule en particulier. `dir` = -1 (poule précédente
+ * dans t.pools) ou +1 (poule suivante). Ajouté en fin d'ordre de la poule cible. Refuse de vider une
+ * poule (au moins 1 joueur doit y rester) et refuse hors du statut 'setup'. */
+export declare function movePlayerToPool(t: Tournament, playerId: string, poolId: string, dir: number): boolean;
 export declare function launch(t: Tournament): void;
 /** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis. */
 export declare function poolRRRanking(t: Tournament, pool: Pool): {

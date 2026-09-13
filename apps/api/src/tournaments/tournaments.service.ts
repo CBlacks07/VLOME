@@ -951,6 +951,20 @@ export class TournamentsService {
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
+  /** Déplace un joueur vers la poule adjacente (avant lancement) — rééquilibre manuellement l'effectif
+   * des poules après la répartition automatique équilibrée (voir Engine.movePlayerToPool). */
+  async movePoolPlayer(id: string, poolId: string, playerId: string, dir: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    const pool = l.t.pools.find((p) => p.id === poolId);
+    if (!pool) throw new NotFoundException('Poule introuvable.');
+    if (!Engine.movePlayerToPool(l.t, playerId, poolId, dir)) throw new BadRequestException('Déplacement impossible (poule de destination inexistante, ou poule d’origine réduite à un seul joueur).');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+  }
+
   /** Déplace un joueur dans l'ordre du roster (formats sans poules : single/double/roundrobin/swiss) —
    * avant lancement, cet ordre détermine directement les oppositions du 1er tour (voir Engine.movePlayerOrder). */
   async moveRosterOrder(id: string, playerId: string, dir: number, user: JwtUser) {

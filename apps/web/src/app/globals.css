@@ -209,7 +209,9 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .regie-banner { height: auto !important; min-height: 70px; flex-wrap: wrap; padding: 12px 16px !important; row-gap: 10px; }
   .regie-grid { grid-template-columns: 1fr !important; }
   .regie-rail, .regie-center, .regie-control { overflow-y: visible !important; max-height: none !important; border-left: 0 !important; border-right: 0 !important; border-top: 1px solid #1B1B27; width: 100% !important; }
-  .regie-control { order: 1 !important; border-top: 0; }
+  /* Empilée, la colonne de contrôle ne doit pas s’étirer sur toute la largeur : les cibles
+     tactiles se retrouveraient aux deux extrémités de l’écran. */
+  .regie-control { order: 1 !important; border-top: 0; max-width: 760px; margin: 0 auto; }
   .regie-center { order: 2 !important; }
   .regie-rail { order: 3 !important; }
 }

@@ -27,6 +27,10 @@ export interface BracketMatch {
 }
 export interface Bracket {
     rounds: BracketMatch[][];
+    /** Petite finale (3e place), entre les deux perdants de demi-finale — seulement s'il existe une
+     *  vraie demi-finale (4 participants ou plus dans l'arbre). null tant qu'elle n'est pas jouable,
+     *  et pour les arbres trop petits pour en avoir une (2-3 participants). */
+    thirdPlace: BracketMatch | null;
 }
 export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'roundrobin' | 'done';
 /**

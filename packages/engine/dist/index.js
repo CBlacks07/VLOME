@@ -515,7 +515,15 @@ function buildBracket(ids) {
         size = size / 2;
         rounds.push(Array.from({ length: size }, () => ({ id: uid(), a: null, b: null, winner: null, bye: false })));
     }
-    const bracket = { rounds };
+    // Une demi-finale n'existe que si le round precedant la finale compte deux matchs (P >= 4) —
+    // a P = 2 il n'y a que la finale, personne a departager pour la 3e place.
+    const semis = rounds.length >= 2 ? rounds[rounds.length - 2] : null;
+    // Egalement absente si l'une des deux demi-finales est un bye (ex. 3 participants -> P=4, une
+    // demi n'a qu'un seul vrai joueur) : il n'y aurait alors qu'un seul perdant reel a en departager,
+    // jamais deux -> mieux vaut ne pas creer un match qui resterait pour toujours injouable.
+    const thirdPlace = semis && semis.length === 2 && !semis[0].bye && !semis[1].bye
+        ? { id: uid(), a: null, b: null, winner: null, bye: false } : null;
+    const bracket = { rounds, thirdPlace };
     propagateBracket(bracket);
     return bracket;
 }
@@ -531,6 +539,16 @@ function propagateBracket(bracket) {
                     target.b = m.winner;
             }
         });
+    }
+    // Petite finale : les deux perdants de demi-finale, des que les deux resultats sont connus. Un
+    // demi decide par un bye (pas de vrai 4e participant) ne fournit pas de perdant legitime.
+    if (bracket.thirdPlace && rounds.length >= 2) {
+        const semis = rounds[rounds.length - 2];
+        if (semis.length === 2) {
+            const loserOf = (m) => (m.winner && !m.bye ? (m.winner === m.a ? m.b : m.a) : null);
+            bracket.thirdPlace.a = loserOf(semis[0]);
+            bracket.thirdPlace.b = loserOf(semis[1]);
+        }
     }
 }
 function bracketChampion(bracket) {
@@ -734,19 +752,28 @@ function rrRanking(t) {
     if (!t.finals || t.finals.format !== 'roundrobin')
         return [];
     const rr = t.finals;
-    const wins = {}, gd = {};
-    rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; });
+    const wins = {}, gd = {}, gf = {};
+    const beat = {}; // qui a battu qui, pour la confrontation directe
+    rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; gf[id] = 0; beat[id] = new Set(); });
     rr.matches.forEach(m => {
         if (!m.winner || !m.a || !m.b)
             return;
         wins[m.winner] = (wins[m.winner] || 0) + 1;
+        beat[m.winner].add(m.winner === m.a ? m.b : m.a);
         if (m.sa != null && m.sb != null) {
             gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
             gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
+            gf[m.a] = (gf[m.a] || 0) + m.sa;
+            gf[m.b] = (gf[m.b] || 0) + m.sb;
         }
     });
+    // Departage standard : victoires, puis difference de buts, puis buts marques, puis confrontation
+    // directe (tranchable seulement entre deux joueurs qui se sont affrontes — un blocage a 3+ retombe
+    // sur le critere precedent, comme la plupart des reglements amateurs qui n'ouvrent pas de mini-poule).
     return rr.players.slice()
-        .sort((x, y) => wins[y] - wins[x] || gd[y] - gd[x] || (t.points[y] || 0) - (t.points[x] || 0))
+        .sort((x, y) => wins[y] - wins[x] || gd[y] - gd[x] || gf[y] - gf[x]
+        || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0)
+        || (t.points[y] || 0) - (t.points[x] || 0))
         .map(id => ({ id, wins: wins[id], gd: gd[id] }));
 }
 function placeSlot(m, slot, val) {
@@ -787,9 +814,10 @@ function buildDoubleElim(ids) {
     const R = Math.round(Math.log2(P));
     const mk = () => ({ id: uid(), a: null, b: null, winner: null, bye: false });
     const wb = [];
+    const slots = seedSlots(P);
     const r0 = [];
     for (let i = 0; i < P / 2; i++)
-        r0.push({ id: uid(), a: seeds[i], b: seeds[P - 1 - i], winner: null, bye: false });
+        r0.push({ id: uid(), a: seeds[slots[2 * i] - 1], b: seeds[slots[2 * i + 1] - 1], winner: null, bye: false });
     wb.push(r0);
     let size = P / 2;
     for (let r = 1; r < R; r++) {
@@ -905,7 +933,7 @@ function allFinalsMatches(t) {
     if (f.format === 'roundrobin')
         return f.matches;
     if (f.format === 'single')
-        return f.bracket.rounds.flat();
+        return f.bracket.thirdPlace ? f.bracket.rounds.flat().concat([f.bracket.thirdPlace]) : f.bracket.rounds.flat();
     if (f.format === 'double')
         return [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
     if (f.format === 'swiss')

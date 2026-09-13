@@ -677,6 +677,8 @@ export class TournamentsService {
     return {
       format: 'single' as const, champion,
       rounds: f.bracket.rounds.map((round, r) => ({ label: this.roundLabel(r, total), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+      // Petite finale (3e place) — n'existe que s'il y a eu une vraie demi-finale (voir Engine.buildBracket).
+      thirdPlace: f.bracket.thirdPlace ? this.serializeMatch(t, f.bracket.thirdPlace) : null,
     };
   }
 

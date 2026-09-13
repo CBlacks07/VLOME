@@ -2279,7 +2279,10 @@ function finalsMatchGroups(finals: Detail): Detail[][] {
     finals.wb.forEach((r: Detail) => pools.push(r.matches));
     finals.lb.forEach((r: Detail) => pools.push(r.matches));
     pools.push(finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
-  } else finals.rounds.forEach((r: Detail) => pools.push(r.matches));
+  } else {
+    finals.rounds.forEach((r: Detail) => pools.push(r.matches));
+    if (finals.thirdPlace) pools.push([finals.thirdPlace]);
+  }
   return pools;
 }
 function findPlayableFinalsMatch(finals: Detail): Detail | null {
@@ -3186,6 +3189,10 @@ function pTournoi(S: State) {
       body = `<div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des vainqueurs</div>${bracketTree(t.finals.wb, null, manage)}
         <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Bracket des perdants</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
         <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin:18px 0 10px">Grande finale${t.finals.gf2 ? " (2e manche — bracket reset)" : ""}</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${roundCol("", gf, manage)}</div>`;
+    } else if (t.finals.format === "single") {
+      const tp = t.finals.thirdPlace;
+      body = bracketTree(t.finals.rounds, null, manage)
+        + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage)}</div></div>` : "");
     } else {
       body = bracketTree(t.finals.rounds, null, manage);
     }

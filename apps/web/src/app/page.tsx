@@ -570,6 +570,13 @@ const WIZ_POOL_MODES: [string, string, string][] = [
   ["survival", "Survival classique", "Le vainqueur reste sur le terrain et enchaîne les challengers ; les perdants sont repêchés."],
   ["double", "Double élimination", "Chaque poule est jouée en mini-bracket double élimination."],
 ];
+/** Modes de poule proposés pour ce format — "survival" est la marque de fabrique du format
+ *  Survival : aucune trace de ce mode (ni le mot lui-même) ne doit apparaître ailleurs, y compris
+ *  quand une donnée ancienne l'a laissé enregistré (voir le retrofit côté API dans
+ *  TournamentsService.applyEngineCompat, et la coercition au choix du format ci-dessous). */
+function wizPoolModes(format: string): [string, string, string][] {
+  return format === "SURVIVAL" ? WIZ_POOL_MODES : WIZ_POOL_MODES.filter(([key]) => key !== "survival");
+}
 /** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
  *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool). */
 function wizMaxQualify(poolFormat: string): number { return poolFormat === "roundrobin" ? 4 : 2; }
@@ -674,11 +681,11 @@ function wizInfosStep(S: State) {
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${full ? "Étape 1 — Informations générales" : "Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
-        ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
+        ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="${d.format === "SURVIVAL" ? "Survival Summer Cup" : "Coupe de Lomé 2026"}" style="${WIZ_INP}" />`)}
         ${wizField("Jeu concerné", `<input id="wz-game" autocomplete="off" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" /><div id="wiz-game-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${filterGames(S.games ?? [], d.game).map((g) => gameChipHtml(g.name, d.game.trim().toLowerCase() === g.name.toLowerCase())).join("")}</div>`, "Depuis le catalogue si possible — commence à taper pour voir les suggestions.")}
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
-        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
+        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point n'est utilisée que par certains formats.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
       </div>
@@ -802,12 +809,12 @@ function wizPoolsStep(S: State) {
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode des poules</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${WIZ_POOL_MODES.map(([key, label]) => {
+        ${wizPoolModes(d.format).map(([key, label]) => {
           const on = d.poolFormat === key;
           return `<button data-wizpoolformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
         }).join("")}
       </div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[2]}</p>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2]}</p>
     </div>
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
@@ -910,7 +917,7 @@ function wizValidateStep(S: State) {
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
   const poolRows = pooled && !isSurvival
-    ? row("Mode des poules", (WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[1])
+    ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1])
       + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat))))
     : "";
   const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;

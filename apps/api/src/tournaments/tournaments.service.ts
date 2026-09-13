@@ -590,6 +590,13 @@ export class TournamentsService {
     if (!t.format) t.format = 'survival';
     // Compat : tournois créés avant l'ajout du mode de poule (double élim) et du bonus striker.
     if (!t.poolFormat) t.poolFormat = 'survival';
+    // Compat : tournois enregistrés avant que "survival" (le mode de poule, marque de fabrique du
+    // format Survival) ne soit réservé à ce seul format — un Bracket simple/Double élim/Round Robin
+    // hérité affichait encore "Survival classique" dans son réglage de poules. Restreint au brouillon
+    // (avant lancement) : une fois les poules jouées sous le mécanisme survival (vainqueur qui reste
+    // sur le terrain, wSurvivor/wIndex), changer l'étiquette a posteriori mélangerait le libellé des
+    // matchs déjà joués avec un mode qu'ils n'ont jamais suivi.
+    if (t.format !== 'survival' && t.poolFormat === 'survival' && t.status === 'setup') t.poolFormat = 'roundrobin';
     if (t.scoring && t.scoring.streakBonus === undefined) t.scoring.streakBonus = 0;
     if (!t.streakLength) t.streakLength = Engine.DEFAULT_STREAK_LENGTH;
     // Compat : tournois créés avant l'ouverture des poules aux formats à phase finale.

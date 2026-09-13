@@ -95,7 +95,10 @@ function newTournament(cfg = {}) {
         disqualified: [],
         scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0 },
         pools: [],
-        poolFormat: cfg.poolFormat || 'survival',
+        // Le mode de poule "survival" (le vainqueur enchaine, les perdants repeches) est la marque de
+        // fabrique du format Survival : il ne doit jamais s'appliquer par defaut a un autre format —
+        // ceux-la recoivent une vraie phase de groupes "normale" (Round Robin) quand rien n'est precise.
+        poolFormat: cfg.poolFormat || ((cfg.format === 'survival' || !cfg.format) ? 'survival' : 'roundrobin'),
         qualifyPerPool: clampQualifyPerPool(cfg.qualifyPerPool),
         streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,
         status: 'setup', log: [], points: {}, finals: null,

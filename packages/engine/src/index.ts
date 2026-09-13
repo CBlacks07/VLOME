@@ -22,7 +22,13 @@ export type StreakLength = 3 | 5;
 export const DEFAULT_STREAK_LENGTH: StreakLength = 5;
 
 export interface BracketMatch { id: string; a: string | null; b: string | null; winner: string | null; bye: boolean; sa?: number; sb?: number; }
-export interface Bracket { rounds: BracketMatch[][]; }
+export interface Bracket {
+  rounds: BracketMatch[][];
+  /** Petite finale (3e place), entre les deux perdants de demi-finale — seulement s'il existe une
+   *  vraie demi-finale (4 participants ou plus dans l'arbre). null tant qu'elle n'est pas jouable,
+   *  et pour les arbres trop petits pour en avoir une (2-3 participants). */
+  thirdPlace: BracketMatch | null;
+}
 
 export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'roundrobin' | 'done';
 /**
@@ -174,7 +180,10 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     disqualified: [],
     scoring: cfg.scoring || { survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0 },
     pools: [],
-    poolFormat: cfg.poolFormat || 'survival',
+    // Le mode de poule "survival" (le vainqueur enchaine, les perdants repeches) est la marque de
+    // fabrique du format Survival : il ne doit jamais s'appliquer par defaut a un autre format —
+    // ceux-la recoivent une vraie phase de groupes "normale" (Round Robin) quand rien n'est precise.
+    poolFormat: cfg.poolFormat || ((cfg.format === 'survival' || !cfg.format) ? 'survival' : 'roundrobin'),
     qualifyPerPool: clampQualifyPerPool(cfg.qualifyPerPool),
     streakLength: cfg.streakLength || DEFAULT_STREAK_LENGTH,
     status: 'setup', log: [], points: {}, finals: null,
@@ -582,7 +591,15 @@ export function buildBracket(ids: string[]): Bracket {
     size = size / 2;
     rounds.push(Array.from({ length: size }, () => ({ id: uid(), a: null, b: null, winner: null, bye: false })));
   }
-  const bracket = { rounds };
+  // Une demi-finale n'existe que si le round precedant la finale compte deux matchs (P >= 4) —
+  // a P = 2 il n'y a que la finale, personne a departager pour la 3e place.
+  const semis = rounds.length >= 2 ? rounds[rounds.length - 2] : null;
+  // Egalement absente si l'une des deux demi-finales est un bye (ex. 3 participants -> P=4, une
+  // demi n'a qu'un seul vrai joueur) : il n'y aurait alors qu'un seul perdant reel a en departager,
+  // jamais deux -> mieux vaut ne pas creer un match qui resterait pour toujours injouable.
+  const thirdPlace = semis && semis.length === 2 && !semis[0].bye && !semis[1].bye
+    ? { id: uid(), a: null, b: null, winner: null, bye: false } : null;
+  const bracket: Bracket = { rounds, thirdPlace };
   propagateBracket(bracket);
   return bracket;
 }
@@ -596,6 +613,16 @@ export function propagateBracket(bracket: Bracket): void {
         if (i % 2 === 0) target.a = m.winner; else target.b = m.winner;
       }
     });
+  }
+  // Petite finale : les deux perdants de demi-finale, des que les deux resultats sont connus. Un
+  // demi decide par un bye (pas de vrai 4e participant) ne fournit pas de perdant legitime.
+  if (bracket.thirdPlace && rounds.length >= 2) {
+    const semis = rounds[rounds.length - 2];
+    if (semis.length === 2) {
+      const loserOf = (m: BracketMatch) => (m.winner && !m.bye ? (m.winner === m.a ? m.b : m.a) : null);
+      bracket.thirdPlace.a = loserOf(semis[0]);
+      bracket.thirdPlace.b = loserOf(semis[1]);
+    }
   }
 }
 
@@ -763,15 +790,26 @@ function buildRoundRobin(ids: string[]): { players: string[]; matches: BracketMa
 export function rrRanking(t: Tournament): { id: string; wins: number; gd: number }[] {
   if (!t.finals || t.finals.format !== 'roundrobin') return [];
   const rr = t.finals;
-  const wins: Record<string, number> = {}, gd: Record<string, number> = {};
-  rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; });
+  const wins: Record<string, number> = {}, gd: Record<string, number> = {}, gf: Record<string, number> = {};
+  const beat: Record<string, Set<string>> = {}; // qui a battu qui, pour la confrontation directe
+  rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; gf[id] = 0; beat[id] = new Set(); });
   rr.matches.forEach(m => {
     if (!m.winner || !m.a || !m.b) return;
     wins[m.winner] = (wins[m.winner] || 0) + 1;
-    if (m.sa != null && m.sb != null) { gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb); gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa); }
+    beat[m.winner].add(m.winner === m.a ? m.b : m.a);
+    if (m.sa != null && m.sb != null) {
+      gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb); gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
+      gf[m.a] = (gf[m.a] || 0) + m.sa; gf[m.b] = (gf[m.b] || 0) + m.sb;
+    }
   });
+  // Departage standard : victoires, puis difference de buts, puis buts marques, puis confrontation
+  // directe (tranchable seulement entre deux joueurs qui se sont affrontes — un blocage a 3+ retombe
+  // sur le critere precedent, comme la plupart des reglements amateurs qui n'ouvrent pas de mini-poule).
   return rr.players.slice()
-    .sort((x, y) => wins[y] - wins[x] || gd[y] - gd[x] || (t.points[y] || 0) - (t.points[x] || 0))
+    .sort((x, y) =>
+      wins[y] - wins[x] || gd[y] - gd[x] || gf[y] - gf[x]
+      || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0)
+      || (t.points[y] || 0) - (t.points[x] || 0))
     .map(id => ({ id, wins: wins[id], gd: gd[id] }));
 }
 
@@ -798,8 +836,9 @@ function buildDoubleElim(ids: string[]): DoubleFinals {
   const R = Math.round(Math.log2(P));
   const mk = (): BracketMatch => ({ id: uid(), a: null, b: null, winner: null, bye: false });
   const wb: BracketMatch[][] = [];
+  const slots = seedSlots(P);
   const r0: BracketMatch[] = [];
-  for (let i = 0; i < P / 2; i++) r0.push({ id: uid(), a: seeds[i], b: seeds[P - 1 - i], winner: null, bye: false });
+  for (let i = 0; i < P / 2; i++) r0.push({ id: uid(), a: seeds[slots[2 * i] - 1], b: seeds[slots[2 * i + 1] - 1], winner: null, bye: false });
   wb.push(r0);
   let size = P / 2;
   for (let r = 1; r < R; r++) { size = size / 2; wb.push(Array.from({ length: size }, mk)); }
@@ -874,7 +913,7 @@ export function startFinals(t: Tournament, format?: FinalsFormat): void {
 export function allFinalsMatches(t: Tournament): BracketMatch[] {
   const f = t.finals; if (!f) return [];
   if (f.format === 'roundrobin') return f.matches;
-  if (f.format === 'single') return f.bracket.rounds.flat();
+  if (f.format === 'single') return f.bracket.thirdPlace ? f.bracket.rounds.flat().concat([f.bracket.thirdPlace]) : f.bracket.rounds.flat();
   if (f.format === 'double') return ([] as BracketMatch[]).concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
   if (f.format === 'swiss') return f.rounds.flat();
   return []; // battle_royale : pas de duels 1v1, se pilote via reportBattleRoyale (classement de partie)

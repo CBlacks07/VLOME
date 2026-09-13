@@ -570,6 +570,13 @@ const WIZ_POOL_MODES: [string, string, string][] = [
   ["survival", "Survival classique", "Le vainqueur reste sur le terrain et enchaîne les challengers ; les perdants sont repêchés."],
   ["double", "Double élimination", "Chaque poule est jouée en mini-bracket double élimination."],
 ];
+/** Modes de poule proposés pour ce format — "survival" est la marque de fabrique du format
+ *  Survival : aucune trace de ce mode (ni le mot lui-même) ne doit apparaître ailleurs, y compris
+ *  quand une donnée ancienne l'a laissé enregistré (voir le retrofit côté API dans
+ *  TournamentsService.applyEngineCompat, et la coercition au choix du format ci-dessous). */
+function wizPoolModes(format: string): [string, string, string][] {
+  return format === "SURVIVAL" ? WIZ_POOL_MODES : WIZ_POOL_MODES.filter(([key]) => key !== "survival");
+}
 /** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
  *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool, structurel,
  *  pas un choix produit). En Round Robin, aucun plafond arbitraire : la seule vraie limite est
@@ -680,11 +687,11 @@ function wizInfosStep(S: State) {
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${full ? "Étape 1 — Informations générales" : "Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
-        ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="Survival Summer Cup" style="${WIZ_INP}" />`)}
+        ${wizField("Nom du tournoi", `<input id="wz-name" value="${escAttr(d.name)}" placeholder="${d.format === "SURVIVAL" ? "Survival Summer Cup" : "Coupe de Lomé 2026"}" style="${WIZ_INP}" />`)}
         ${wizField("Jeu concerné", `<input id="wz-game" autocomplete="off" value="${escAttr(d.game)}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" /><div id="wiz-game-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${filterGames(S.games ?? [], d.game).map((g) => gameChipHtml(g.name, d.game.trim().toLowerCase() === g.name.toLowerCase())).join("")}</div>`, "Depuis le catalogue si possible — commence à taper pour voir les suggestions.")}
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
-        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point ne concerne que le mode Survival.")}
+        ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point n'est utilisée que par certains formats.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
       </div>
@@ -697,9 +704,9 @@ function wizInfosStep(S: State) {
 
 const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
   SURVIVAL: `<b style="color:#F4F5FB">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras à l'étape 4.<br><br><b style="color:#F4F5FB">Déroulé</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.`,
-  SINGLE_ELIM: `<b style="color:#F4F5FB">Bracket simple</b> : tous les participants sont placés directement dans un bracket à élimination directe — pas de poules. Une défaite élimine. Chaque victoire vaut les points en jeu ; un bonus couronne le champion.`,
-  DOUBLE_ELIM: `<b style="color:#F4F5FB">Double élimination</b> : deux brackets (vainqueurs et perdants). Une première défaite fait basculer dans le bracket des perdants, une deuxième élimine. La grande finale peut se rejouer une fois si le finaliste du bracket des perdants gagne.`,
-  ROUND_ROBIN: `<b style="color:#F4F5FB">Round Robin</b> : chaque participant affronte tous les autres, une seule fois. Classement final aux victoires (départage à la différence de manches). Pas de poules, pas d'élimination en cours de route.`,
+  SINGLE_ELIM: `<b style="color:#F4F5FB">Bracket simple</b> : élimination directe — une défaite élimine. Chaque victoire vaut les points en jeu ; un bonus couronne le champion.<br><br>Par défaut tous les participants entrent directement dans le bracket. Une phase de groupes en amont reste possible (réglable à l'étape suivante) si tu préfères répartir en poules avant l'élimination directe.`,
+  DOUBLE_ELIM: `<b style="color:#F4F5FB">Double élimination</b> : deux brackets (vainqueurs et perdants). Une première défaite fait basculer dans le bracket des perdants, une deuxième élimine. La grande finale peut se rejouer une fois si le finaliste du bracket des perdants gagne.<br><br>Par défaut tous les participants entrent directement dans le bracket. Une phase de groupes en amont reste possible (réglable à l'étape suivante) si tu préfères répartir en poules avant l'élimination.`,
+  ROUND_ROBIN: `<b style="color:#F4F5FB">Round Robin</b> : chaque participant affronte tous les autres, une seule fois. Classement final aux victoires (départage à la différence de manches, puis aux buts marqués, puis à la confrontation directe).<br><br>Par défaut tout le monde s'affronte dans un seul groupe. Une phase de poules en amont reste possible (réglable à l'étape suivante) : les qualifiés de chaque poule se retrouvent alors dans un Round Robin final.`,
   SWISS: `<b style="color:#F4F5FB">Système suisse</b> : à chaque ronde, les joueurs sont réappariés selon leur classement du moment (le moteur évite de refaire jouer deux adversaires déjà rencontrés quand c'est possible). Le nombre de rondes est calculé automatiquement selon l'effectif. Pas d'élimination : tout le monde joue toutes les rondes.`,
   BATTLE_ROYALE: `<b style="color:#F4F5FB">Battle Royale</b> : des parties à plusieurs joueurs, classées du 1er au dernier à chaque fois. Des points sont attribués par palier de classement (1er, 2e, 3e…) et cumulés sur l'ensemble des parties. Le nombre de parties se règle à l'étape suivante.`,
 };
@@ -811,12 +818,12 @@ function wizPoolsStep(S: State) {
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode des poules</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${WIZ_POOL_MODES.map(([key, label]) => {
+        ${wizPoolModes(d.format).map(([key, label]) => {
           const on = d.poolFormat === key;
           return `<button data-wizpoolformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
         }).join("")}
       </div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[2]}</p>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2]}</p>
     </div>
     <div style="margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
@@ -921,7 +928,7 @@ function wizValidateStep(S: State) {
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
   const poolRows = pooled && !isSurvival
-    ? row("Mode des poules", (WIZ_POOL_MODES.find(([k]) => k === d.poolFormat) || WIZ_POOL_MODES[0])[1])
+    ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1])
       + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
     : "";
   const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
@@ -2293,7 +2300,10 @@ function finalsMatchGroups(finals: Detail): Detail[][] {
     finals.wb.forEach((r: Detail) => pools.push(r.matches));
     finals.lb.forEach((r: Detail) => pools.push(r.matches));
     pools.push(finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
-  } else finals.rounds.forEach((r: Detail) => pools.push(r.matches));
+  } else {
+    finals.rounds.forEach((r: Detail) => pools.push(r.matches));
+    if (finals.thirdPlace) pools.push([finals.thirdPlace]);
+  }
   return pools;
 }
 /** Comme finalsMatchGroups, mais en conservant le nom de l'étape de chaque affiche. Le Mode Show
@@ -2308,7 +2318,10 @@ function finalsLabelledMatches(finals: Detail): { label: string; m: Detail }[] {
     (finals.wb || []).forEach((r: Detail) => push(r.label, r.matches));
     (finals.lb || []).forEach((r: Detail) => push(r.label, r.matches));
     push("Grande finale", finals.gf2 ? [finals.gf, finals.gf2] : [finals.gf]);
-  } else (finals.rounds || []).forEach((r: Detail) => push(r.label, r.matches));
+  } else {
+    (finals.rounds || []).forEach((r: Detail) => push(r.label, r.matches));
+    if (finals.thirdPlace) push("Petite finale", [finals.thirdPlace]);
+  }
   return out;
 }
 function findPlayableFinalsMatch(finals: Detail): Detail | null {
@@ -2970,7 +2983,12 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
           <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div>
           <div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
         </div>`
-      : "";
+      : t.finals.format === "single" && t.finals.thirdPlace
+        ? `<div style="margin-top:20px">
+            <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Petite finale · 3e place</div>
+            <div style="max-width:280px">${matchBox(t.finals.thirdPlace, manage)}</div>
+          </div>`
+        : "";
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
         <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${t.finals.format === "double" ? "Double élimination" : "Élimination simple"}</div>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Arbre de la phase finale</h2></div>
@@ -3331,6 +3349,10 @@ function pTournoi(S: State) {
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
       body = doubleElimTree(t.finals, null, manage);
+    } else if (t.finals.format === "single") {
+      const tp = t.finals.thirdPlace;
+      body = bracketTree(t.finals.rounds, null, manage)
+        + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage)}</div></div>` : "");
     } else {
       body = bracketTree(t.finals.rounds, null, manage);
     }

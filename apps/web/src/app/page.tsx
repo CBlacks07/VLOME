@@ -112,7 +112,7 @@ type State = {
   activeMatchId: string | null; // match mis en avant dans le panneau de contrôle de la régie (null = auto : premier jouable)
   matchScoreA: number; matchScoreB: number; // score en cours de saisie (stepper) pour le match actif de la régie
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
-  bracketView: "tree" | "list"; // bascule d'affichage de la phase finale en régie
+  bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
   showSlide: number; // diapositive active du Mode Show (classement / matchs en direct / derniers résultats…), tourne automatiquement
   consoleMenuOpen: boolean; // tiroir de navigation de la console admin/organisateur ouvert (mobile/tablette uniquement)
@@ -586,6 +586,18 @@ function wizMaxQualify(poolFormat: string, nPlayers: number, nbPools: number): n
   const sizes = balancedSizesPreview(Math.max(nPlayers, 1), nbPools);
   return Math.max(1, Math.min(...sizes));
 }
+/** Conseil affiché sous le réglage "Qualifiés par poule" une fois les poules réellement constituées
+ * (tailles connues, pas seulement estimées) — dit précisément quelles poules sont trop petites pour
+ * la valeur choisie plutôt que de laisser découvrir un total silencieusement réduit au lancement. */
+function poolQualifyNote(pools: { name: string; size: number }[], q: number, isRR: boolean): string {
+  if (!isRR) return "Ce mode ne départage qu'un vainqueur et un finaliste : 2 qualifiés au maximum. Passe en Round Robin pour en qualifier davantage.";
+  const total = pools.reduce((acc, p) => acc + Math.min(q, p.size), 0);
+  const short = pools.filter((p) => p.size < q);
+  if (!short.length) return `${total} qualifiés au total (${q} par poule) rejoignent la phase finale.`;
+  const detail = short.map((p) => `${p.name} : ${p.size} au lieu de ${q}`).join(", ");
+  const safeMax = Math.max(1, Math.min(...pools.map((p) => p.size)));
+  return `${short.length} poule${short.length > 1 ? "s" : ""} trop petite${short.length > 1 ? "s" : ""} pour ${q} qualifiés (${detail}) — ${total} qualifiés au total malgré tout, pas ${q * pools.length}. Choisis ${safeMax} ou moins pour que toutes les poules suivent.`;
+}
 
 function wizSteps(S: State) {
   const d = S.wizData;
@@ -683,7 +695,10 @@ function wizInfosStep(S: State) {
     ${editing ? `<p style="color:#5D5E72;font-size:11.5px;margin-top:8px">Les participants déjà inscrits sont conservés. Le lancement répartit tout selon le nouveau format.</p>` : ""}
   </div>`;
   const chosen = WIZ_FORMATS.find(([key]) => key === d.format) || WIZ_FORMATS[0];
-  const nextStep = !editing ? 2 : !S.wizFullEdit ? 4 : (isSurvival || isBR || wizHasPools(d.format) ? 3 : 5);
+  // Raccourci abrégé (Modifier, format figé) : le barème détaillé n'a de sens qu'en Survival (seul
+  // format à respecter une cagnotte) — les autres formats n'ont rien à régler ici, on saute direct à
+  // la validation (voir la même règle dans wizSteps() et le backTarget de wizValidateStep()).
+  const nextStep = !editing ? 2 : !S.wizFullEdit ? (isSurvival ? 4 : 5) : (isSurvival || isBR || wizHasPools(d.format) ? 3 : 5);
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}${full ? "Étape 1 — Informations générales" : "Informations générales"}</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
@@ -2874,10 +2889,13 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
       body += `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#7C82FF;font-weight:800;padding:12px 8px 6px">Phase 2 · finale</div><div style="padding:8px 10px;font-size:12px;color:#63C6DA">Poules terminées — à lancer</div>`;
     }
   }
+  // Barème (cagnotte à respecter) : ne concerne que Survival. Les autres formats n'ont rien à y
+  // régler une fois lancés (finalsWin/championBonus restent aux valeurs figées à la création) — le
+  // bouton n'a pas lieu d'exister, comme pour l'étape équivalente de l'assistant.
   const nav = `<div style="margin-top:16px;border-top:1px solid #1B1B27;padding-top:12px;display:flex;flex-direction:column;gap:2px">
     <div data-regiepanel="joueurs" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.user, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Joueurs</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5D5E72">${(t.players || []).length}</span></div>
     <div data-regiepanel="paiements" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.cart, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Paiements</span></div>
-    <div data-regiepanel="reglages" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.warn, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Réglages &amp; barème</span></div>
+    ${t.mainFormat === "survival" ? `<div data-regiepanel="reglages" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:#8E8FA6">${ic(I.warn, 15)}</span><span style="font-size:12.5px;color:#8E8FA6;flex:1">Réglages &amp; barème</span></div>` : ""}
   </div>`;
   return `<div class="regie-rail" style="width:236px;flex:none;border-right:1px solid #1B1B27;padding:20px 16px;display:flex;flex-direction:column;gap:6px;background:#0a0a10;overflow-y:auto">
     <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Déroulé du tournoi</div>
@@ -2960,6 +2978,12 @@ function battleRoyaleRegieCenter(S: State, t: Detail): string {
 function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch | null): string {
   if (t.finals && t.finals.format === "battle_royale") return battleRoyaleRegieCenter(S, t);
 
+  // Une fois en phase finale, les poules qui y ont mené ne doivent pas devenir inconsultables pour
+  // autant — troisième onglet du même sélecteur "Arbre/Liste" plutôt qu'un écran séparé à chercher.
+  const hasPools = Array.isArray(t.pools) && t.pools.length > 0;
+  const poolsToggleBtn = hasPools ? `<span data-bracketview="pools" style="font-size:11.5px;font-weight:${S.bracketView === "pools" ? 750 : 700};color:${S.bracketView === "pools" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "pools" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Poules</span>` : "";
+  const poolsGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${(t.pools || []).map((p: Detail) => poolCard(S, p, manage, t.poolFormat)).join("")}</div>`;
+
   const champ = t.finals?.champion
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin:18px 28px 0"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
     : "";
@@ -2969,7 +2993,16 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     const viewToggle = `<div style="display:flex;gap:7px">
       <span data-bracketview="tree" style="font-size:11.5px;font-weight:${S.bracketView === "tree" ? 750 : 700};color:${S.bracketView === "tree" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "tree" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "tree" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Arbre</span>
       <span data-bracketview="list" style="font-size:11.5px;font-weight:${S.bracketView === "list" ? 750 : 700};color:${S.bracketView === "list" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "list" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "list" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Liste des matchs</span>
+      ${poolsToggleBtn}
     </div>`;
+    if (S.bracketView === "pools") {
+      return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
+          <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Phase 1</div>
+          <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Poules</h2></div>
+          <span style="flex:1"></span>${viewToggle}
+        </div>
+        <div style="padding:22px 28px 30px">${poolsGrid}</div>`;
+    }
     // En double élim, l'arbre des vainqueurs se prolonge jusqu'à la grande finale.
     const treeRounds = t.finals.format === "double" ? winnersRoundsWithFinal(t.finals) : rounds;
     const body = S.bracketView === "list"
@@ -3002,12 +3035,22 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     const isSwiss = t.finals.format === "swiss";
     const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">V</td><td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td><td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td><td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
     const label = isSwiss ? `Ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : `${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués`;
+    const rrBackBtn = `<span data-bracketview="tree" style="font-size:11.5px;font-weight:700;color:#8E8FA6;background:transparent;border:1px solid #282838;border-radius:8px;padding:7px 12px;cursor:pointer">${isSwiss ? "Classement Swiss" : "Round Robin"}</span>`;
+    if (S.bracketView === "pools" && hasPools) {
+      return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
+          <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Phase 1</div>
+          <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Poules</h2></div>
+          <span style="flex:1"></span><div style="display:flex;gap:7px">${rrBackBtn}${poolsToggleBtn}</div>
+        </div>
+        <div style="padding:22px 28px 30px">${poolsGrid}</div>`;
+    }
     const body = isSwiss
       ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.rounds[t.finals.rounds.length - 1].matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`
       : roundRobinMatchList(t.finals.matches, manage);
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
         <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${label}</div>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">${isSwiss ? "Classement Swiss" : "Round Robin"}</h2></div>
+        <span style="flex:1"></span>${hasPools ? `<div style="display:flex;gap:7px">${poolsToggleBtn}</div>` : ""}
       </div>
       ${champ}
       <div style="padding:18px 28px 30px">${standings}${body}</div>`;
@@ -3039,7 +3082,9 @@ function regieScoringForm(t: Detail): string {
 
 /** Overlay Joueurs / Paiements / Réglages ouvert depuis le bas du rail de régie. */
 function regieOverlay(S: State, t: Detail, manage: boolean): string {
-  if (!S.regiePanel) return "";
+  // Le barème n'a pas de sens hors Survival (voir regieRail, qui n'affiche même plus le bouton) —
+  // filet de sécurité si l'état retenait ce panneau d'un tournoi Survival visité juste avant.
+  if (!S.regiePanel || (S.regiePanel === "reglages" && t.mainFormat !== "survival")) return "";
   const titles: Record<string, string> = { joueurs: "Joueurs", paiements: "Paiements en attente", reglages: "Réglages & barème" };
   const body = S.regiePanel === "joueurs" ? (playersRosterPanel(S, t, manage) || `<div style="color:#8E8FA6;text-align:center;padding:20px">Aucun joueur.</div>`)
     : S.regiePanel === "paiements" ? (paymentsPanel(S, t.id) || `<div style="color:#8E8FA6;text-align:center;padding:20px">Aucun paiement en attente.</div>`)
@@ -3209,6 +3254,16 @@ function pTournoi(S: State) {
         ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Répartition des poules</h3><button data-pools-distribute="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Re-répartir au hasard</button></div>
             <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule. Les flèches ◀ ▶ déplacent un joueur vers la poule voisine, pour rééquilibrer manuellement l'effectif.</p>
+            <div style="border:1px solid #282838;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#101019">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:12px;color:#8E8FA6;font-weight:650">Qualifiés par poule</span>
+                ${t.poolFormat === "roundrobin"
+                  ? `<input id="pq-input-${t.id}" type="number" min="1" value="${qualifyPerPool}" style="width:76px;background:#14141D;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:6px 9px" />
+                     <button data-poolqualify-apply="${t.id}" style="font-size:12px;font-weight:700;color:#04222a;background:#22D3EE;border:0;border-radius:8px;padding:7px 13px;cursor:pointer">Appliquer</button>`
+                  : [1, 2].map((q) => `<button data-poolqualify="${t.id}|${q}" style="font-size:12.5px;font-weight:700;border-radius:9px;padding:7px 13px;cursor:pointer;background:${qualifyPerPool === q ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${qualifyPerPool === q ? "#22D3EE" : "#282838"};color:${qualifyPerPool === q ? "#22D3EE" : "#8E8FA6"}">${q === 1 ? "Le 1er" : "Les 2 premiers"}</button>`).join("")}
+              </div>
+              <p style="color:${t.poolFormat === "roundrobin" && poolsList.some((p) => p.order.length < qualifyPerPool) ? "#FBBF24" : "#5D5E72"};font-size:11.5px;margin:8px 0 0">${poolQualifyNote(poolsList.map((p) => ({ name: p.name, size: p.order.length })), qualifyPerPool, t.poolFormat === "roundrobin")}</p>
+            </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p, pi) => {
               const short = t.poolFormat === "roundrobin" && p.order.length < qualifyPerPool;
               return `<div style="border:1px solid #282838;border-radius:12px;padding:14px">
@@ -3381,7 +3436,22 @@ function pTournoi(S: State) {
 
   const rosterPanel = playersRosterPanel(S, t, manage);
 
-  return `<main class="rise" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${finalsHtml || poolsHtml + finalsBtn}</main>${wizModal}`;
+  // Une fois en phase finale, les poules qui y ont mené ne doivent pas devenir inconsultables pour
+  // autant — organisateur ET public : un bouton bascule vers leur tableau sans quitter la page
+  // (même bascule qu'en régie, voir regieCenter). Absent si le format n'a jamais eu de vraies poules
+  // (bracket direct dès le départ, ou Battle Royale dont "nbPools" désigne des parties, pas des poules).
+  const hasPoolsHistory = Array.isArray(t.pools) && t.pools.length > 0 && t.mainFormat !== "battle_royale";
+  const poolsToggle = hasPoolsHistory && t.finals
+    ? `<div style="display:flex;gap:7px;margin-top:26px">
+        <span data-bracketview="tree" style="font-size:11.5px;font-weight:${S.bracketView !== "pools" ? 750 : 700};color:${S.bracketView !== "pools" ? "#04222a" : "#8E8FA6"};background:${S.bracketView !== "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView !== "pools" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Phase finale</span>
+        <span data-bracketview="pools" style="font-size:11.5px;font-weight:${S.bracketView === "pools" ? 750 : 700};color:${S.bracketView === "pools" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "pools" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Poules</span>
+      </div>`
+    : "";
+  const mainSection = hasPoolsHistory && t.finals && S.bracketView === "pools"
+    ? `<div style="margin-top:18px">${poolsHtml}</div>`
+    : (finalsHtml || poolsHtml + finalsBtn);
+
+  return `<main class="rise" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${poolsToggle}${mainSection}</main>${wizModal}`;
 }
 
 
@@ -5178,7 +5248,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5194,6 +5264,16 @@ export default function Page() {
     else if (d.poolShuffle) { const [tid, poolId] = d.poolShuffle.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/shuffle`); }
     else if (d.poolMove) { const [tid, poolId, index, dir] = d.poolMove.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/move`, { index: parseInt(index), dir: parseInt(dir) }); }
     else if (d.poolMoveto) { const [tid, poolId, playerId, dir] = d.poolMoveto.split("|"); act(`${API}/api/tournaments/${tid}/pools/${poolId}/players/move`, { playerId, dir: parseInt(dir) }); }
+    // Endpoint dédié /pools/qualify (comme /scoring) plutôt que le PATCH générique du tournoi : ce
+    // dernier renvoie la carte résumée (toCard), pas l'état complet (toState) qu'attend S.detail —
+    // act() aurait sinon remplacé S.detail par un objet sans t.pools et cassé le rendu de la page.
+    else if (d.poolqualify) { const [tid, q] = d.poolqualify.split("|"); act(`${API}/api/tournaments/${tid}/pools/qualify`, { value: parseInt(q) }, "PATCH"); }
+    else if (d.poolqualifyApply) {
+      const tid = d.poolqualifyApply!;
+      const input = document.getElementById(`pq-input-${tid}`) as HTMLInputElement | null;
+      const q = Math.max(1, parseInt(input?.value || "") || 1);
+      act(`${API}/api/tournaments/${tid}/pools/qualify`, { value: q }, "PATCH");
+    }
     else if (d.rosterMove) { const [tid, playerId, dir] = d.rosterMove.split("|"); act(`${API}/api/tournaments/${tid}/roster/move`, { playerId, dir: parseInt(dir) }); }
     else if (d.rosterShuffle) { act(`${API}/api/tournaments/${d.rosterShuffle}/roster/shuffle`); }
     else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }

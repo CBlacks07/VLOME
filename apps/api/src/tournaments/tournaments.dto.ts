@@ -104,6 +104,14 @@ export class PoolPlayerMoveDto {
   @IsIn([-1, 1]) dir!: number;
 }
 
+// Endpoint dédié (même principe que /scoring) pour ajuster "Qualifiés par poule" directement depuis
+// le panneau "Répartition des poules" une fois les poules réellement constituées — sans repasser par
+// l'assistant complet. Le plafond ci-dessous est un garde-fou anti-abus, pas une limite produit (voir
+// Engine.clampQualifyPerPool).
+export class QualifyPerPoolDto {
+  @IsInt() @Min(1) @Max(500) value!: number;
+}
+
 export class StartFinalsDto {
   @IsOptional() @IsIn(['single', 'double', 'roundrobin']) format?: 'single' | 'double' | 'roundrobin';
 }

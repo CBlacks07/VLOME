@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -269,6 +269,15 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async movePoolPlayer(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: PoolPlayerMoveDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.movePoolPlayer(id, poolId, dto.playerId, dto.dir, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Patch(':id/pools/qualify')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async setQualifyPerPool(@Param('id') id: string, @Body() dto: QualifyPerPoolDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.setQualifyPerPool(id, dto.value, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

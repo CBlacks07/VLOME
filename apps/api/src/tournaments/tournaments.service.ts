@@ -960,6 +960,20 @@ export class TournamentsService {
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
+  /** Change le nombre de qualifiés par poule (avant lancement) — endpoint dédié (même principe que
+   * /scoring) pour rester ajustable directement depuis le panneau "Répartition des poules" une fois
+   * les tailles réelles connues, sans repasser par l'assistant complet. */
+  async setQualifyPerPool(id: string, value: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
+    l.t.qualifyPerPool = Engine.clampQualifyPerPool(value);
+    if (l.t.format === 'survival' && !Engine.cagnotte(l.t).valid) Engine.autoFitScoring(l.t);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+  }
+
   /** Déplace un joueur vers la poule adjacente (avant lancement) — rééquilibre manuellement l'effectif
    * des poules après la répartition automatique équilibrée (voir Engine.movePlayerToPool). */
   async movePoolPlayer(id: string, poolId: string, playerId: string, dir: number, user: JwtUser) {

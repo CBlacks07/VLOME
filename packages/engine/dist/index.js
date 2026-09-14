@@ -5,9 +5,12 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
+exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.DEFAULT_MATCH_FORMAT = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
 exports.clampQualifyPerPool = clampQualifyPerPool;
 exports.maxQualifyPerPool = maxQualifyPerPool;
+exports.clampMatchFormat = clampMatchFormat;
+exports.winsNeeded = winsNeeded;
+exports.matchFormatLabel = matchFormatLabel;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.swissRoundCount = swissRoundCount;
@@ -73,6 +76,25 @@ function clampQualifyPerPool(v) {
 function maxQualifyPerPool(poolFormat) {
     return poolFormat === 'roundrobin' ? Infinity : 2;
 }
+exports.DEFAULT_MATCH_FORMAT = { mode: 'bo', value: 1 };
+/** Borne un format de manche : Bo1/3/5/7/9 pour "bo", 1 à 99 pour "ft". */
+function clampMatchFormat(v) {
+    const mode = v?.mode === 'ft' ? 'ft' : 'bo';
+    if (mode === 'ft')
+        return { mode, value: Math.max(1, Math.min(99, Math.round(Number(v?.value) || 10))) };
+    const bo = Math.round(Number(v?.value) || 1);
+    const allowed = [1, 3, 5, 7, 9];
+    return { mode, value: allowed.includes(bo) ? bo : 1 };
+}
+/** Nombre de manches à remporter pour gagner un match dans ce format — la majorité en Bo (Bo3 → 2),
+ *  la valeur elle-même en Ft (Ft10 → 10). */
+function winsNeeded(f) {
+    return f.mode === 'ft' ? f.value : Math.ceil(f.value / 2);
+}
+/** Étiquette courte affichée sur les match(s) et l'en-tête de phase — "Bo3", "Ft10". */
+function matchFormatLabel(f) {
+    return f.mode === 'ft' ? `Ft${f.value}` : `Bo${f.value}`;
+}
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
 const MAX_UNDO = 25;
 function uid() {
@@ -107,6 +129,7 @@ function newTournament(cfg = {}) {
         streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,
         status: 'setup', log: [], points: {}, finals: null,
         finalsFormat: cfg.finalsFormat || 'single',
+        matchFormat: clampMatchFormat(cfg.matchFormat),
         champion: null, _undo: [],
     };
 }

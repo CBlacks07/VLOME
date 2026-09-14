@@ -34,6 +34,12 @@ export class CreateTournamentDto {
   // départagent que deux finalistes, le moteur borne donc à 2 dans ces modes quoi qu'on envoie ici.
   // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
   @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
+  // Format de manche appliqué à tous les matchs du tournoi (poules et phase finale) — 'bo' (Best of,
+  // matchValue impair parmi 1/3/5/7/9, premier à la majorité) ou 'ft' (First To, premier à matchValue).
+  // Purement informatif pour le moteur (voir Engine.MatchFormat) : n'affecte pas la structure du
+  // bracket, seulement l'étiquette affichée et le seuil de victoire suggéré.
+  @IsOptional() @IsIn(['bo', 'ft']) matchMode?: 'bo' | 'ft';
+  @IsOptional() @IsInt() @Min(1) @Max(99) matchValue?: number;
 }
 
 export class UpdateTournamentDto {
@@ -56,6 +62,9 @@ export class UpdateTournamentDto {
   // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
   @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
+  // Format de manche (voir CreateTournamentDto) — modifiable tant que le tournoi n'est pas lancé.
+  @IsOptional() @IsIn(['bo', 'ft']) matchMode?: 'bo' | 'ft';
+  @IsOptional() @IsInt() @Min(1) @Max(99) matchValue?: number;
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
   @IsOptional() @IsIn(['SURVIVAL', 'SINGLE_ELIM', 'DOUBLE_ELIM', 'SWISS', 'ROUND_ROBIN', 'BATTLE_ROYALE']) format?: string;

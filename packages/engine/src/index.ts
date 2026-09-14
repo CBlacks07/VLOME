@@ -146,8 +146,35 @@ export interface Tournament {
   finals: Finals | null;
   finalsFormat: FinalsFormat;
   champion: string | null;
+  /** Format de manche appliqué à tous les matchs du tournoi (poules et phase finale) — purement
+   *  informatif pour le moteur (un match reste tranché par un simple vainqueur + score sa/sb) : sert
+   *  à afficher "Bo3"/"Course à 10" et à indiquer quand une manche est jouable. Absent sur d'anciennes
+   *  données : traiter comme Bo1 (comportement historique, un match = un score final). */
+  matchFormat: MatchFormat;
   /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
   _undo?: string[];
+}
+
+/** 'bo' (Best of N, N impair) : le premier à (N+1)/2 manches gagne. 'ft' (First To N) : le premier
+ *  à N points/manches gagne, N libre (course, pas de majorité à calculer). */
+export type MatchFormat = { mode: 'bo' | 'ft'; value: number };
+export const DEFAULT_MATCH_FORMAT: MatchFormat = { mode: 'bo', value: 1 };
+/** Borne un format de manche : Bo1/3/5/7/9 pour "bo", 1 à 99 pour "ft". */
+export function clampMatchFormat(v?: Partial<MatchFormat> | null): MatchFormat {
+  const mode = v?.mode === 'ft' ? 'ft' : 'bo';
+  if (mode === 'ft') return { mode, value: Math.max(1, Math.min(99, Math.round(Number(v?.value) || 10))) };
+  const bo = Math.round(Number(v?.value) || 1);
+  const allowed = [1, 3, 5, 7, 9];
+  return { mode, value: allowed.includes(bo) ? bo : 1 };
+}
+/** Nombre de manches à remporter pour gagner un match dans ce format — la majorité en Bo (Bo3 → 2),
+ *  la valeur elle-même en Ft (Ft10 → 10). */
+export function winsNeeded(f: MatchFormat): number {
+  return f.mode === 'ft' ? f.value : Math.ceil(f.value / 2);
+}
+/** Étiquette courte affichée sur les match(s) et l'en-tête de phase — "Bo3", "Ft10". */
+export function matchFormatLabel(f: MatchFormat): string {
+  return f.mode === 'ft' ? `Ft${f.value}` : `Bo${f.value}`;
 }
 
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
@@ -188,6 +215,7 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     streakLength: cfg.streakLength || DEFAULT_STREAK_LENGTH,
     status: 'setup', log: [], points: {}, finals: null,
     finalsFormat: cfg.finalsFormat || 'single',
+    matchFormat: clampMatchFormat(cfg.matchFormat),
     champion: null, _undo: [],
   };
 }

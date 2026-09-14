@@ -122,10 +122,12 @@ type State = {
     name: string; game: string; date: string; place: string; format: string;
     pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
-    finalsFormat: string; // mode de phase finale (Survival) : toujours "double" (double élimination), non modifiable
+    finalsFormat: string; // mode de phase finale (Survival) : choisi à la création, non modifiable ensuite (voir wizScoringStep)
     poolFormat: "survival" | "double" | "roundrobin"; // mode des poules (Survival) : classique ou mini-bracket double élim
-    qualifyPerPool: number; // qualifiés par poule (1 à 4) envoyés en phase finale
+    qualifyPerPool: number; // qualifiés par poule envoyés en phase finale
     streakLength: 3 | 5; // longueur de série pour le bonus striker — un seul palier actif par tournoi
+    matchMode: "bo" | "ft"; // format de manche appliqué à tous les matchs — Best of (majorité) ou First To (course)
+    matchValue: number; // Bo1/3/5/7/9, ou la cible en First To
     imageUrl: string | null;
   };
   wizRosterSearch: string;
@@ -686,6 +688,16 @@ function filterGames(games: Detail[], query: string): Detail[] {
 function gameChipHtml(name: string, active: boolean): string {
   return `<button data-wizgame="${escAttr(name)}" style="font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 11px;cursor:pointer;background:${active ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${active ? "#22D3EE" : "#282838"};color:${active ? "#22D3EE" : "#8E8FA6"}">${escHtml(name)}</button>`;
 }
+const MATCH_FORMAT_BO_OPTIONS = [1, 3, 5, 7];
+/** Explication du format de manche choisi — affichée sous le sélecteur, recalculée en direct à la
+ * frappe (course à points) sans attendre un re-rendu complet. */
+function matchFormatNote(mode: "bo" | "ft", value: number): string {
+  return mode === "ft"
+    ? `Le premier à ${value} point${value > 1 ? "s" : ""}/manche${value > 1 ? "s" : ""} gagné${value > 1 ? "s" : ""} remporte le match.`
+    : value === 1
+      ? "Un seul match tranche la rencontre."
+      : `Le premier à ${Math.ceil(value / 2)} manches gagnées (sur ${value}) remporte le match.`;
+}
 function wizInfosStep(S: State) {
   const d = S.wizData;
   const editing = !!S.wizEditId;
@@ -719,6 +731,18 @@ function wizInfosStep(S: State) {
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:#F4F5FB">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>
+      <div style="margin-top:14px">
+        <label style="${WIZ_LBL}">Format des matchs</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${MATCH_FORMAT_BO_OPTIONS.map((n) => {
+            const on = d.matchMode === "bo" && d.matchValue === n;
+            return `<button data-wizmatchfmt="bo|${n}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">Bo${n}</button>`;
+          }).join("")}
+          <button data-wizmatchfmt="ft|${d.matchMode === "ft" ? d.matchValue : 10}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${d.matchMode === "ft" ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${d.matchMode === "ft" ? "#22D3EE" : "#282838"};color:${d.matchMode === "ft" ? "#22D3EE" : "#8E8FA6"}">Course à points</button>
+          ${d.matchMode === "ft" ? `<input id="wz-matchvalue" type="number" min="1" max="99" value="${d.matchValue}" style="width:70px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:9px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:13px;padding:8px" />` : ""}
+        </div>
+        <p id="wiz-matchfmt-note" style="color:#5D5E72;font-size:11.5px;margin-top:8px">${matchFormatNote(d.matchMode, d.matchValue)}</p>
+      </div>
       ${formatPicker}`)}
     ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.warn, 16)}Comment ça marche</h3>
       <div style="color:#8E8FA6;font-size:13px;line-height:1.9">${WIZ_FORMAT_EXPLAIN[chosen[0]] || ""}</div>`)}
@@ -986,6 +1010,7 @@ function wizValidateStep(S: State) {
     ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.crown, 17)}${editing ? "Récapitulatif" : "Étape 5 — Récapitulatif"}</h3>
       <table style="width:100%;border-collapse:collapse">
         ${row("Tournoi", escHtml(d.name) || "—")}${row("Jeu", escHtml(d.game) || "—")}${row("Date / lieu", `${escHtml(d.date) || "—"}${d.place ? " · " + escHtml(d.place) : ""}`)}
+        ${row("Format des matchs", d.matchMode === "ft" ? `Course à ${d.matchValue} pts` : `Bo${d.matchValue}`)}
         ${participantsRows}${row("Frais d'inscription", d.entryFeeXof ? money(d.entryFeeXof) : "Gratuit")}
       </table>
       ${bareme}
@@ -2688,7 +2713,8 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   return `<div style="border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
     <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid rgba(34,211,238,.22)">
       <span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>
-      <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE">Match en cours</span>
+      <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;flex:1">Match en cours</span>
+      ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
     </div>
     <div style="padding:14px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${side(active.aName, sa, "a")}${side(active.bName, sb, "b")}</div>
@@ -2951,7 +2977,7 @@ function regieTopBanner(S: State, t: Detail): string {
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px">${escHtml(t.name)}</h1>
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px;flex:none"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span>
       </div>
-      <div style="font-size:12px;color:#8E8FA6;margin-top:3px">${[t.game, t.format].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
+      <div style="font-size:12px;color:#8E8FA6;margin-top:3px">${[t.game, t.format, t.matchFormatLabel].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
     </div>
     <span style="flex:1"></span>
     ${cagnotteBlock}
@@ -3167,7 +3193,7 @@ function pTournoi(S: State) {
     <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;color:${t.imageUrl ? "#D5D6E3" : "#8E8FA6"};font-size:13px;font-weight:600">
-        <span>${[t.game, t.format, t.place, t.date].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</span>
+        <span>${[t.game, t.format, t.matchFormatLabel, t.place, t.date].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</span>
         ${t.entryFeeXof ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#FBBF24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;padding:3px 10px;font-size:12px">${ic(I.cart, 12)}${money(t.entryFeeXof)}</span>` : ""}
       </div>
     </div>
@@ -3946,7 +3972,7 @@ export default function Page() {
     editingPlayerId: null, brPick: [],
     activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, imageUrl: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -5070,6 +5096,18 @@ export default function Page() {
     return () => el.removeEventListener("input", recalc);
   }, [S.creating, S.wizStep, S.games]);
 
+  // Note "Format des matchs" en direct (course à points, étape Infos générales) : recalculée à la
+  // frappe, sans re-rendu React (perdrait le focus/curseur du champ en cours de saisie).
+  useEffect(() => {
+    if (!(S.creating && S.wizStep === 1 && S.wizData.matchMode === "ft")) return;
+    const el = document.getElementById("wz-matchvalue") as HTMLInputElement | null;
+    const note = document.getElementById("wiz-matchfmt-note");
+    if (!el || !note) return;
+    const recalc = () => { note.textContent = matchFormatNote("ft", Math.max(1, Math.min(99, parseInt(el.value) || 1))); };
+    el.addEventListener("input", recalc);
+    return () => el.removeEventListener("input", recalc);
+  }, [S.creating, S.wizStep, S.wizData.matchMode]);
+
   /** Simples pages sans paramètre : le hash correspond directement à la clé de page. */
   function applyHash(h: string) {
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
@@ -5100,6 +5138,7 @@ export default function Page() {
       d.pointsPerPlayer = Math.max(1, parseInt(val("wz-pts")) || 5);
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
+      if (d.matchMode === "ft") d.matchValue = Math.max(1, Math.min(99, parseInt(val("wz-matchvalue")) || d.matchValue));
     } else if (S.wizStep === 2) {
       d.players = val("wz-players").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     } else if (S.wizStep === 3) {
@@ -5199,6 +5238,7 @@ export default function Page() {
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
       qualifyPerPool: d.qualifyPerPool,
+      matchMode: d.matchMode, matchValue: d.matchValue,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
@@ -5228,7 +5268,7 @@ export default function Page() {
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -5252,6 +5292,9 @@ export default function Page() {
       // Les reglages de poule concernent tous les formats qui en proposent, pas seulement Survival.
       ...(wizHasPools(d.format) ? { poolFormat: d.poolFormat, qualifyPerPool: d.qualifyPerPool } : {}),
       ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, streakLength: d.streakLength } : {}),
+      // Format des matchs (Bo/Ft) : concerne tous les formats, modifiable tant que le tournoi n'est
+      // pas lancé (voir TournamentsService.update).
+      matchMode: d.matchMode, matchValue: d.matchValue,
       // Format envoyé uniquement depuis "Changer le format" (assistant complet) — le raccourci abrégé
       // ne le propose pas, pas la peine de le renvoyer à chaque enregistrement de barème.
       ...(S.wizFullEdit ? { format: d.format } : {}),
@@ -5289,7 +5332,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5390,6 +5433,8 @@ export default function Page() {
             poolFormat: t.poolFormat || "survival",
             streakLength: t.streakLength === 3 ? 3 : 5,
             qualifyPerPool: t.qualifyPerPool || 2,
+            matchMode: t.matchFormat?.mode === "ft" ? "ft" : "bo",
+            matchValue: t.matchFormat?.value || 1,
             imageUrl: t.imageUrl || null,
           },
         }));
@@ -5459,6 +5504,13 @@ export default function Page() {
       // wizCapture() relit d'abord le barème en cours de saisie — même raison que pour wizpoolformat.
       const captured = wizCapture();
       setS((s) => ({ ...s, wizData: { ...captured, finalsFormat: d.wizfinalsformat! } }));
+    }
+    else if (d.wizmatchfmt) {
+      // wizCapture() relit d'abord les champs de l'étape Infos en cours de saisie — même raison que
+      // pour wizpoolformat/wizfinalsformat.
+      const [mode, value] = d.wizmatchfmt.split("|");
+      const captured = wizCapture();
+      setS((s) => ({ ...s, wizData: { ...captured, matchMode: mode as "bo" | "ft", matchValue: parseInt(value) || 1 } }));
     }
     else if (d.wizqualify) setS((s) => ({ ...s, wizData: { ...s.wizData, qualifyPerPool: parseInt(d.wizqualify!) || 2 } }));
     else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));
@@ -5663,7 +5715,7 @@ export default function Page() {
       }
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, imageUrl: null },
       }));
       loadRoster();
     }

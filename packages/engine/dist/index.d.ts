@@ -177,9 +177,28 @@ export interface Tournament {
     finals: Finals | null;
     finalsFormat: FinalsFormat;
     champion: string | null;
+    /** Format de manche appliqué à tous les matchs du tournoi (poules et phase finale) — purement
+     *  informatif pour le moteur (un match reste tranché par un simple vainqueur + score sa/sb) : sert
+     *  à afficher "Bo3"/"Course à 10" et à indiquer quand une manche est jouable. Absent sur d'anciennes
+     *  données : traiter comme Bo1 (comportement historique, un match = un score final). */
+    matchFormat: MatchFormat;
     /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
     _undo?: string[];
 }
+/** 'bo' (Best of N, N impair) : le premier à (N+1)/2 manches gagne. 'ft' (First To N) : le premier
+ *  à N points/manches gagne, N libre (course, pas de majorité à calculer). */
+export type MatchFormat = {
+    mode: 'bo' | 'ft';
+    value: number;
+};
+export declare const DEFAULT_MATCH_FORMAT: MatchFormat;
+/** Borne un format de manche : Bo1/3/5/7/9 pour "bo", 1 à 99 pour "ft". */
+export declare function clampMatchFormat(v?: Partial<MatchFormat> | null): MatchFormat;
+/** Nombre de manches à remporter pour gagner un match dans ce format — la majorité en Bo (Bo3 → 2),
+ *  la valeur elle-même en Ft (Ft10 → 10). */
+export declare function winsNeeded(f: MatchFormat): number;
+/** Étiquette courte affichée sur les match(s) et l'en-tête de phase — "Bo3", "Ft10". */
+export declare function matchFormatLabel(f: MatchFormat): string;
 export declare function uid(): string;
 export declare function newTournament(cfg?: Partial<Tournament>): Tournament;
 /** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */

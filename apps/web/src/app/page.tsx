@@ -619,7 +619,7 @@ function wizSteps(S: State) {
   // (poules réutilisées) mais saute le barème ; les autres sautent les deux.
   const pooled = wizHasPools(d.format);
   const defs = editing
-    ? (!S.wizFullEdit ? [full[0], full[3], full[4]] : isSurvival ? [full[0], full[2], full[3], full[4]] : (isBR || pooled) ? [full[0], full[2], full[4]] : [full[0], full[4]])
+    ? (!S.wizFullEdit ? (isSurvival ? [full[0], full[3], full[4]] : [full[0], full[4]]) : isSurvival ? [full[0], full[2], full[3], full[4]] : (isBR || pooled) ? [full[0], full[2], full[4]] : [full[0], full[4]])
     : isSurvival ? full : (isBR || pooled) ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
   return `<div style="padding:14px 0">${defs.map(([label, n]) => {
     const active = n === S.wizStep, done = n < S.wizStep;
@@ -754,6 +754,7 @@ function dupeWarningHtml(dupes: string[]): string {
 }
 function wizParticipantsStep(S: State) {
   const d = S.wizData;
+  const isSurvival = d.format === "SURVIVAL";
   const names = d.players.join("\n");
   const fullRoster: Detail[] = S.roster ?? [];
   const inList = (nm: string) => d.players.some((p) => p.split("@")[0].trim().toLowerCase() === nm.toLowerCase());
@@ -784,17 +785,20 @@ function wizParticipantsStep(S: State) {
       <p style="color:#5D5E72;font-size:11.5px;margin:10px 0 0">${selCount} / ${fullRoster.length} sélectionné${selCount > 1 ? "s" : ""}. Clique un joueur pour l'ajouter ou le retirer.</p>`)
     : wizCard(`<h3 style="margin:0 0 8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Base de joueurs</h3><p style="color:#5D5E72;font-size:12.5px">La base est vide pour l'instant. Les participants saisis ici pourront l'alimenter — gère-la depuis Admin → Joueurs.</p>`);
   const dupes = findDuplicateNames(d.players);
-  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px">
-    ${wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants</h3>
+  const participantsCard = wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants</h3>
       ${wizField("Un nom par ligne", `<textarea id="wz-players" rows="8" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${WIZ_INP};resize:vertical">${escHtml(names)}</textarea>`, "Doublons fusionnés. Club optionnel avec la syntaxe « Nom @Club ».")}
       <div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:99px;padding:6px 13px">${ic(I.user, 13)}<span id="wiz-players-count">${d.players.length}</span> <span id="wiz-players-word">participant${d.players.length > 1 ? "s" : ""}</span></span></div>
-      <div id="wiz-players-dupe-warning" style="${dupes.length ? "" : "display:none;"}margin-top:10px;font-size:12px;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${dupeWarningHtml(dupes)}</div>`)}
-    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Cagnotte prévisionnelle</h3>
+      <div id="wiz-players-dupe-warning" style="${dupes.length ? "" : "display:none;"}margin-top:10px;font-size:12px;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${dupeWarningHtml(dupes)}</div>`);
+  // La cagnotte (participants × points en jeu) n'existe qu'en Survival — les autres formats n'ont
+  // pas de budget à respecter, ne pas l'afficher évite de laisser croire le contraire.
+  const cagnotteBlock = isSurvival
+    ? `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px">${participantsCard}${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Cagnotte prévisionnelle</h3>
       <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6;margin-bottom:6px"><span>Participants</span><b id="wiz-cagnotte-count" style="color:#F4F5FB">${d.players.length}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:13px;color:#8E8FA6"><span>Points / participant</span><b style="color:#F4F5FB">${d.pointsPerPlayer}</b></div>
       <hr style="border:0;border-top:1px solid #282838;margin:12px 0" />
-      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b id="wiz-cagnotte-total" style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`)}
-  </div>
+      <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#8E8FA6">Cagnotte totale</span><b id="wiz-cagnotte-total" style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`)}</div>`
+    : `<div style="margin-bottom:16px">${participantsCard}</div>`;
+  return `${cagnotteBlock}
   ${rosterPanel}${wizFoot("Retour", 1, wizHasPools(d.format) || d.format === "BATTLE_ROYALE" ? 3 : 5)}`;
 }
 
@@ -829,8 +833,8 @@ function wizPoolsStep(S: State) {
     </div>
     <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Répartition automatique équilibrée : <b id="wiz-pools-sizes" style="color:#F4F5FB">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}. L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
     <div id="wiz-pools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${poolSizeBoxesHtml(sizes)}</div>
-    ${!isSurvival && d.nbPools === 1 ? `<p style="color:#FBBF24;font-size:11.5px;margin-top:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${ic(I.warn, 12)} Avec une seule poule il n'y a pas de phase de groupes : tous les participants vont directement en ${escHtml(formatLabel)}.</p>` : ""}
-    <div style="margin-top:18px">
+    <p id="wiz-nopool-warning" style="${!isSurvival && d.nbPools === 1 ? "" : "display:none;"}color:#FBBF24;font-size:11.5px;margin-top:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${ic(I.warn, 12)} Avec une seule poule il n'y a pas de phase de groupes : tous les participants vont directement en <span id="wiz-nopool-format">${escHtml(formatLabel)}</span>, opposés au hasard. Choisis plusieurs poules ci-dessus pour ajouter une phase de groupes avant.</p>
+    <div id="wiz-poolmode-block" style="${isSurvival || d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode des poules</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${wizPoolModes(d.format).map(([key, label]) => {
@@ -840,7 +844,7 @@ function wizPoolsStep(S: State) {
       </div>
       <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2]}</p>
     </div>
-    <div style="margin-top:18px">
+    <div id="wiz-qualify-block" style="${isSurvival || d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
       ${isRR
         ? `<input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />`
@@ -948,7 +952,9 @@ function wizValidateStep(S: State) {
     : "";
   const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
-  const backTarget = !editing ? (isSurvival ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? 4 : (isSurvival ? 4 : hasPoolsStep ? 3 : 1));
+  // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
+  // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
+  const backTarget = !editing ? (isSurvival ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival ? 4 : 1) : (isSurvival ? 4 : hasPoolsStep ? 3 : 1));
   const bareme = !isBR ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>` : "";
@@ -4981,6 +4987,17 @@ export default function Page() {
         const grid = document.getElementById("wiz-pools-grid");
         if (sizesEl) sizesEl.textContent = sizes.join(" / ");
         if (grid) grid.innerHTML = poolSizeBoxesHtml(sizes);
+        // Une seule poule = pas de phase de groupes (voir Engine.usesPools) : "Mode des poules" et
+        // "Qualifiés par poule" n'ont alors aucun effet, on les masque plutôt que de laisser un
+        // réglage sans conséquence — change en direct avec le nombre de poules, pas seulement au
+        // rechargement de l'étape.
+        const isSurv = S.wizData.format === "SURVIVAL";
+        const warn = document.getElementById("wiz-nopool-warning");
+        const modeBlock = document.getElementById("wiz-poolmode-block");
+        const qualifyBlock = document.getElementById("wiz-qualify-block");
+        if (warn) warn.style.display = (!isSurv && n === 1) ? "" : "none";
+        if (modeBlock) modeBlock.style.display = (isSurv || n > 1) ? "" : "none";
+        if (qualifyBlock) qualifyBlock.style.display = (isSurv || n > 1) ? "" : "none";
         // Le plafond "Qualifiés par poule" (Round Robin) suit l'effectif de la plus petite poule :
         // changer le nombre de poules sans repasser par l'étape le laissait figé sur l'ancien max.
         const qtyInput = document.getElementById("wz-qualify") as HTMLInputElement | null;

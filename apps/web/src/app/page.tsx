@@ -577,6 +577,14 @@ const WIZ_POOL_MODES: [string, string, string][] = [
 function wizPoolModes(format: string): [string, string, string][] {
   return format === "SURVIVAL" ? WIZ_POOL_MODES : WIZ_POOL_MODES.filter(([key]) => key !== "survival");
 }
+/** Formats de phase finale proposés pour Survival — choisis à la création, jamais modifiables
+ *  ensuite (voir wizScoringStep). Les autres formats pilotés-poules (Bracket simple, Double élim,
+ *  Round Robin) n'ont pas ce choix : leur phase finale suit directement leur propre format. */
+const FINALS_FORMATS: [string, string, string][] = [
+  ["double", "Double élimination", "Deux brackets (vainqueurs/perdants) : il faut deux défaites pour être éliminé — le format historique Survival."],
+  ["single", "Bracket simple", "Élimination directe en finale : une défaite et c'est terminé."],
+  ["roundrobin", "Round Robin", "Les qualifiés s'affrontent tous une fois en finale ; classement final aux victoires."],
+];
 /** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
  *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool, structurel,
  *  pas un choix produit). En Round Robin, aucun plafond arbitraire : la seule vraie limite est
@@ -900,7 +908,23 @@ function wizScoringStep(S: State) {
       <span id="wiz-sc-pts-${key}" style="width:70px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6;flex:none">${b.pts} pts</span>
     </div>`;
   }).join("");
-  const finalsFmtNote = isSurvival ? `<p style="color:#5D5E72;font-size:11.5px;margin:0 0 16px">Phase finale : <b style="color:#22D3EE">double élimination</b> — fixe pour le format Survival, le barème ci-dessous est calculé en conséquence.</p>` : "";
+  // Format de la phase finale (Survival) : choisi une fois pour toutes à la création (ou en
+  // reconstruisant tout via "Changer le format" — wizFullFlow couvre les deux), jamais modifiable
+  // ensuite — un changement en cours de route avait faussé le calcul de la cagnotte par le passé
+  // (le nombre de matchs de finale dépend du format), voir Engine.finalsMatchCount.
+  const chosenFinalsFmt = (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0]);
+  const finalsFmtNote = !isSurvival ? "" : wizFullFlow(S)
+    ? `<div style="margin-bottom:16px">
+        <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Phase finale</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${FINALS_FORMATS.map(([key, label]) => {
+            const on = d.finalsFormat === key;
+            return `<button data-wizfinalsformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
+          }).join("")}
+        </div>
+        <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${chosenFinalsFmt[2]} Fixé à la création : le barème ci-dessous en dépend.</p>
+      </div>`
+    : `<p style="color:#5D5E72;font-size:11.5px;margin:0 0 16px">Phase finale : <b style="color:#22D3EE">${chosenFinalsFmt[1].toLowerCase()}</b> — fixée à la création pour ce tournoi, le barème ci-dessous est calculé en conséquence.</p>`;
   const streakLenPicker = !isSurvival ? "" : `<div style="margin-bottom:16px">
     <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Bonus striker — série de</div>
     <div style="display:flex;gap:8px">
@@ -950,7 +974,7 @@ function wizValidateStep(S: State) {
     ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1])
       + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
     : "";
-  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", d.poolFormat === "double" ? "Double élimination" : "Survival classique") : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", "Double élimination") : ""}`;
+  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
@@ -5265,7 +5289,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5430,6 +5454,11 @@ export default function Page() {
           qualifyPerPool: Math.min(captured.qualifyPerPool || 2, maxQ),
         },
       }));
+    }
+    else if (d.wizfinalsformat) {
+      // wizCapture() relit d'abord le barème en cours de saisie — même raison que pour wizpoolformat.
+      const captured = wizCapture();
+      setS((s) => ({ ...s, wizData: { ...captured, finalsFormat: d.wizfinalsformat! } }));
     }
     else if (d.wizqualify) setS((s) => ({ ...s, wizData: { ...s.wizData, qualifyPerPool: parseInt(d.wizqualify!) || 2 } }));
     else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));

@@ -40,6 +40,9 @@ export class CreateTournamentDto {
   // bracket, seulement l'étiquette affichée et le seuil de victoire suggéré.
   @IsOptional() @IsIn(['bo', 'ft']) matchMode?: 'bo' | 'ft';
   @IsOptional() @IsInt() @Min(1) @Max(99) matchValue?: number;
+  // Départage des égalités de victoires par différence de buts/manches (Round Robin — poules et
+  // phase finale). Activé par défaut ; désactivé, seules les victoires comptent.
+  @IsOptional() @IsBoolean() countGoalDiff?: boolean;
 }
 
 export class UpdateTournamentDto {
@@ -65,6 +68,7 @@ export class UpdateTournamentDto {
   // Format de manche (voir CreateTournamentDto) — modifiable tant que le tournoi n'est pas lancé.
   @IsOptional() @IsIn(['bo', 'ft']) matchMode?: 'bo' | 'ft';
   @IsOptional() @IsInt() @Min(1) @Max(99) matchValue?: number;
+  @IsOptional() @IsBoolean() countGoalDiff?: boolean;
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
   @IsOptional() @IsIn(['SURVIVAL', 'SINGLE_ELIM', 'DOUBLE_ELIM', 'SWISS', 'ROUND_ROBIN', 'BATTLE_ROYALE']) format?: string;

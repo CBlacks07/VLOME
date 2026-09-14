@@ -151,6 +151,11 @@ export interface Tournament {
    *  à afficher "Bo3"/"Course à 10" et à indiquer quand une manche est jouable. Absent sur d'anciennes
    *  données : traiter comme Bo1 (comportement historique, un match = un score final). */
   matchFormat: MatchFormat;
+  /** Départage des égalités de victoires par différence de buts/manches (Round Robin — poules et
+   *  phase finale) — activé par défaut. Désactivé, seules les victoires comptent (les scores sa/sb
+   *  restent saisis et affichés, juste ignorés pour le classement). Absent sur d'anciennes données :
+   *  traiter comme true (comportement historique). */
+  countGoalDiff: boolean;
   /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
   _undo?: string[];
 }
@@ -216,6 +221,7 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     status: 'setup', log: [], points: {}, finals: null,
     finalsFormat: cfg.finalsFormat || 'single',
     matchFormat: clampMatchFormat(cfg.matchFormat),
+    countGoalDiff: cfg.countGoalDiff ?? true,
     champion: null, _undo: [],
   };
 }
@@ -503,7 +509,7 @@ export function poolRRRanking(t: Tournament, pool: Pool): { id: string; wins: nu
     }
   });
   return ids.slice()
-    .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (gd[y] || 0) - (gd[x] || 0) || (t.points[y] || 0) - (t.points[x] || 0))
+    .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (t.countGoalDiff ? (gd[y] || 0) - (gd[x] || 0) : 0) || (t.points[y] || 0) - (t.points[x] || 0))
     .map(id => ({ id, wins: wins[id] || 0, gd: gd[id] || 0 }));
 }
 
@@ -835,8 +841,8 @@ export function rrRanking(t: Tournament): { id: string; wins: number; gd: number
   // sur le critere precedent, comme la plupart des reglements amateurs qui n'ouvrent pas de mini-poule).
   return rr.players.slice()
     .sort((x, y) =>
-      wins[y] - wins[x] || gd[y] - gd[x] || gf[y] - gf[x]
-      || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0)
+      wins[y] - wins[x]
+      || (t.countGoalDiff ? gd[y] - gd[x] || gf[y] - gf[x] || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0) : 0)
       || (t.points[y] || 0) - (t.points[x] || 0))
     .map(id => ({ id, wins: wins[id], gd: gd[id] }));
 }

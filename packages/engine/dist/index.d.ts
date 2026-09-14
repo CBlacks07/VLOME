@@ -182,6 +182,11 @@ export interface Tournament {
      *  à afficher "Bo3"/"Course à 10" et à indiquer quand une manche est jouable. Absent sur d'anciennes
      *  données : traiter comme Bo1 (comportement historique, un match = un score final). */
     matchFormat: MatchFormat;
+    /** Départage des égalités de victoires par différence de buts/manches (Round Robin — poules et
+     *  phase finale) — activé par défaut. Désactivé, seules les victoires comptent (les scores sa/sb
+     *  restent saisis et affichés, juste ignorés pour le classement). Absent sur d'anciennes données :
+     *  traiter comme true (comportement historique). */
+    countGoalDiff: boolean;
     /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
     _undo?: string[];
 }

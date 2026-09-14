@@ -130,6 +130,7 @@ function newTournament(cfg = {}) {
         status: 'setup', log: [], points: {}, finals: null,
         finalsFormat: cfg.finalsFormat || 'single',
         matchFormat: clampMatchFormat(cfg.matchFormat),
+        countGoalDiff: cfg.countGoalDiff ?? true,
         champion: null, _undo: [],
     };
 }
@@ -443,7 +444,7 @@ function poolRRRanking(t, pool) {
         }
     });
     return ids.slice()
-        .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (gd[y] || 0) - (gd[x] || 0) || (t.points[y] || 0) - (t.points[x] || 0))
+        .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (t.countGoalDiff ? (gd[y] || 0) - (gd[x] || 0) : 0) || (t.points[y] || 0) - (t.points[x] || 0))
         .map(id => ({ id, wins: wins[id] || 0, gd: gd[id] || 0 }));
 }
 /** Fin d'une poule round robin : toutes les rencontres jouées — classement, qualifiés, top1/top2. */
@@ -831,8 +832,8 @@ function rrRanking(t) {
     // directe (tranchable seulement entre deux joueurs qui se sont affrontes — un blocage a 3+ retombe
     // sur le critere precedent, comme la plupart des reglements amateurs qui n'ouvrent pas de mini-poule).
     return rr.players.slice()
-        .sort((x, y) => wins[y] - wins[x] || gd[y] - gd[x] || gf[y] - gf[x]
-        || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0)
+        .sort((x, y) => wins[y] - wins[x]
+        || (t.countGoalDiff ? gd[y] - gd[x] || gf[y] - gf[x] || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0) : 0)
         || (t.points[y] || 0) - (t.points[x] || 0))
         .map(id => ({ id, wins: wins[id], gd: gd[id] }));
 }

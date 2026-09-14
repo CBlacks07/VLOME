@@ -43,17 +43,22 @@ export class TournamentsService {
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
+    // La cagnotte (participants × points en jeu) n'existe qu'en Survival — les autres formats
+    // n'ont jamais configuré pointsPerPlayer (valeur par défaut envoyée mais jamais consultée),
+    // l'afficher aurait fait croire à un budget de points qui ne s'applique pas à ce tournoi.
+    const isSurvival = engineFormatFor(r.format) === 'survival';
     return {
       id: r.id,
       name: r.name,
       game: r.game || '',
       format: FORMAT_LABEL[r.format] || r.format,
+      mainFormat: engineFormatFor(r.format),
       live: r.status === 'LIVE',
       status: r.status === 'FINISHED' ? 'Terminé' : r.status === 'LIVE' ? '' : 'À venir',
       date: r.date ? new Date(r.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '',
       place: r.place || '',
       players,
-      cagnotte: players * r.pointsPerPlayer,
+      cagnotte: isSurvival ? players * r.pointsPerPlayer : null,
       imageUrl: r.imageUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
@@ -112,6 +117,7 @@ export class TournamentsService {
       qualifyPerPool: dto.qualifyPerPool,
       streakLength: dto.streakLength,
       matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : undefined,
+      countGoalDiff: dto.countGoalDiff,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -176,6 +182,7 @@ export class TournamentsService {
         qualifyPerPool: dto.qualifyPerPool,
         streakLength: dto.streakLength,
         matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : prev?.matchFormat,
+        countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff,
         ...(hasScoring ? {
           scoring: {
             survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -196,7 +203,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined) {
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
@@ -208,6 +215,7 @@ export class TournamentsService {
       if (dto.streakLength !== undefined) t.streakLength = dto.streakLength;
       if (dto.qualifyPerPool !== undefined) t.qualifyPerPool = Engine.clampQualifyPerPool(dto.qualifyPerPool);
       if (dto.matchMode !== undefined) t.matchFormat = Engine.clampMatchFormat({ mode: dto.matchMode, value: dto.matchValue });
+      if (dto.countGoalDiff !== undefined) t.countGoalDiff = dto.countGoalDiff;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       data.engineState = JSON.parse(JSON.stringify(t));
@@ -607,6 +615,9 @@ export class TournamentsService {
     // Compat : tournois créés avant le format de manche (Bo/Ft) — Bo1 reproduit exactement le
     // comportement historique (un match = un score final, pas de majorité à atteindre).
     if (!t.matchFormat) t.matchFormat = Engine.DEFAULT_MATCH_FORMAT;
+    // Compat : tournois créés avant l'option de départage par différence de buts — true reproduit
+    // le comportement historique (toujours pris en compte).
+    if (t.countGoalDiff === undefined) t.countGoalDiff = true;
     t.pools?.forEach((p) => {
       if (!p.dbracket) p.dbracket = null;
       if (!p.streaks) p.streaks = {};
@@ -629,6 +640,12 @@ export class TournamentsService {
   }
 
   private poolRanking(t: Engine.Tournament, pool: Engine.Pool) {
+    // Round Robin est le seul mode de poule où le classement affiché doit être EXACTEMENT celui qui
+    // décide de la qualification (Engine.poolRRRanking : victoires puis différence de buts/manches) —
+    // sinon le tableau pouvait montrer un ordre différent de celui des badges "qualifiés" au-dessus.
+    if (t.poolFormat === 'roundrobin') {
+      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: t.points[r.id] || 0, wins: r.wins, gd: r.gd }));
+    }
     const wins: Record<string, number> = {};
     t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
     return pool.playerIds.slice()
@@ -741,6 +758,7 @@ export class TournamentsService {
       usesPools: Engine.usesPools(t),
       matchFormat: t.matchFormat,
       matchFormatLabel: Engine.matchFormatLabel(t.matchFormat),
+      countGoalDiff: t.countGoalDiff,
       streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,

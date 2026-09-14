@@ -2627,10 +2627,10 @@ function roundRobinMatchList(matches: Detail[], manage: boolean): string {
 /** Bouton "Lancer la phase finale" (toujours en double élimination pour Survival), une fois toutes les poules terminées. Partagé entre pTournoi et la régie. */
 function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
   if (!manage || !t.allPoolsDone || t.finals) return "";
-  // Survival joue toujours sa phase finale en double elimination ; pour les autres formats, ce sont
-  // les qualifies des poules qui disputent le format principal du tournoi.
-  const finalsLabel = t.mainFormat === "single" ? "bracket simple"
-    : t.mainFormat === "roundrobin" ? "round robin"
+  // t.finalsFormat est déjà le bon choix dans tous les cas : celui posé à la création pour Survival,
+  // ou le format principal du tournoi pour les autres formats à poules (voir Engine.launchTournament).
+  const finalsLabel = t.finalsFormat === "single" ? "bracket simple"
+    : t.finalsFormat === "roundrobin" ? "round robin"
     : "double élimination";
   return `<div style="text-align:center;margin:24px 0">
       <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (${finalsLabel})</button></div>
@@ -5360,7 +5360,11 @@ export default function Page() {
     if (d.open) { openDetail(d.open); }
     else if (d.back !== undefined) { setS((s) => ({ ...s, page: "tournois", detail: null, openId: null })); }
     else if (d.launch) { act(`${API}/api/tournaments/${d.launch}/launch`); }
-    else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`, { format: "double" }); }
+    // Aucun format forcé ici : t.finalsFormat est déjà posé au lancement du tournoi (launchTournament),
+    // que ce soit le choix Survival fait à la création ou le format principal des autres formats à
+    // poules — l'envoyer en dur en "double" écrasait le choix réel (ex. Bracket simple lançait quand
+    // même une double élimination).
+    else if (d.finalsStart) { act(`${API}/api/tournaments/${d.finalsStart}/finals/start`, {}); }
     else if (d.undo) { act(`${API}/api/tournaments/${d.undo}/undo`); }
     else if (d.reset) {
       setS((s) => ({ ...s, confirmBox: { title: "Réinitialiser le tournoi", message: "Tous les résultats, poules et la phase finale seront effacés — les joueurs et le barème sont conservés. Irréversible.", okLabel: "Réinitialiser", action: `treset|${d.reset}` } }));

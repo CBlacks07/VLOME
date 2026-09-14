@@ -1003,7 +1003,10 @@ function wizValidateStep(S: State) {
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
   const backTarget = !editing ? (isSurvival ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival ? 4 : 1) : (isSurvival ? 4 : hasPoolsStep ? 3 : 1));
-  const bareme = !isBR ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
+  // Le barème (points par victoire, bonus champion) ne concerne que Survival — seul format à
+  // respecter une cagnotte. Les autres formats gardent des valeurs fixes en interne, jamais montrées
+  // ici : ça n'a rien à faire dans un récap Bracket simple/Round Robin/etc.
+  const bareme = isSurvival ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>` : "";
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
@@ -1053,7 +1056,7 @@ function tournamentWizard(S: State) {
         </div>
         ${wizSteps(S)}
         <div style="flex:1"></div>
-        <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">Format : <b style="color:#8E8FA6">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : " — points par victoire et bonus champion à leurs valeurs par défaut ; réglables ensuite via « Modifier »."}</div>
+        <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">Format : <b style="color:#8E8FA6">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : ""}</div>
       </div>
       <div class="wiz-body" style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
     </div>
@@ -2582,8 +2585,12 @@ function matchBox(m: Detail, manage: boolean): string {
     ${matchLine(m.aName, m.aId, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid #1B1B27">${matchLine(m.bName, m.bId, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div>
   </div>`;
 }
-function roundCol(label: string, matches: Detail[], manage: boolean): string {
-  return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${matches.map((m) => matchBox(m, manage)).join("")}</div>`;
+// hideByes (1er tour d'un bracket uniquement) : un exempt n'a pas de vraie rencontre à montrer — le
+// nom qualifié apparaît déjà, résolu, dans la case du tour suivant. Une case "exempt" isolée sur la
+// première colonne n'aurait fait que doubler cette info avec une fausse "rencontre".
+function roundCol(label: string, matches: Detail[], manage: boolean, hideByes = false): string {
+  const shown = hideByes ? matches.filter((m) => !m.bye) : matches;
+  return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${shown.map((m) => matchBox(m, manage)).join("")}</div>`;
 }
 
 /** Une ligne de match Round Robin en tableau compact — remplace la grille de mini-cartes, illisible dès qu'il y a beaucoup de joueurs (ex : 16 joueurs = 120 matchs). Clic sur un nom = victoire directe (1 manche), même sémantique que matchBox. */
@@ -2788,7 +2795,9 @@ const PARENTS_ELIM = (_r: number, i: number) => [2 * i, 2 * i + 1];
 const PARENTS_LOSERS = (r: number, i: number) => ((r - 1) % 2 === 0 ? [i] : [2 * i, 2 * i + 1]);
 
 type TreeRound = { label: string; matches: Detail[]; accent?: string };
-type TreeParts = { header: string; canvas: string; centers: number[][]; totalW: number; totalH: number };
+// centers[0][i] est undefined pour une affiche exempte du 1er tour : elle n'a pas de boîte propre
+// (voir treeParts) et sert seulement de parent absent — filtré comme tel dans le calcul des tours suivants.
+type TreeParts = { header: string; canvas: string; centers: (number | undefined)[][]; totalW: number; totalH: number };
 
 /** Géométrie d’un arbre : rangées calculées une seule fois puis réutilisées pour les affiches,
  * les connecteurs et — en double élimination — la liaison qui remonte du bracket des perdants vers
@@ -2796,14 +2805,22 @@ type TreeParts = { header: string; canvas: string; centers: number[][]; totalW: 
  * commun aux deux brackets. */
 function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[]): TreeParts {
   const BOX_W = TREE_BOX_W, COL_GAP = TREE_COL_GAP, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
-  const centers: number[][] = [];
+  const centers: (number | undefined)[][] = [];
   rounds.forEach((round, r) => {
-    if (r === 0) centers.push(round.matches.map((_, i) => i * (BOX_H + ROW_GAP) + BOX_H / 2));
+    // Un exempt du 1er tour n'a pas de vraie rencontre à montrer (voir la boucle "boxes" plus bas,
+    // qui saute les positions undefined) : le nom qualifié apparaît déjà, résolu, dans la case du
+    // tour suivant — inutile de doubler l'info avec une case "exempt" isolée sur la première colonne.
+    if (r === 0) centers.push(round.matches.map((m, i) => m.bye ? undefined : i * (BOX_H + ROW_GAP) + BOX_H / 2));
     else {
       const prev = centers[r - 1];
+      // Repli si aucun parent réel (les deux étaient des exempts du 1er tour, qui se retrouvent
+      // donc face à face ici sans jamais être passés par une case de tour 1) : répartit sur la
+      // même hauteur totale que le 1er tour, à la densité de CE tour — pas la formule du 1er tour
+      // elle-même, qui placerait plusieurs affiches à la même hauteur (chevauchement).
+      const fallbackY = (i: number) => (i + 0.5) * (rounds[0].matches.length / round.matches.length) * (BOX_H + ROW_GAP);
       centers.push(round.matches.map((_, i) => {
         const ys = parentsOf(r, i).map((k) => prev[k]).filter((y) => y !== undefined);
-        return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : i * (BOX_H + ROW_GAP) + BOX_H / 2;
+        return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : fallbackY(i);
       }));
     }
   });
@@ -2825,12 +2842,16 @@ function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: bo
       connectors += `<span style="position:absolute;left:${xMid}px;top:${yMid}px;width:${COL_GAP / 2}px;height:2px;background:#2c2c3d"></span>`;
     });
   }
-  const boxes = rounds.map((round, r) => round.matches.map((m, i) => matchTreeBox(m, r * (BOX_W + COL_GAP), centers[r][i] - BOX_H / 2, BOX_W, m.matchId === activeMatchId, manage)).join("")).join("");
+  const boxes = rounds.map((round, r) => round.matches.map((m, i) => {
+    const y = centers[r][i];
+    return y === undefined ? "" : matchTreeBox(m, r * (BOX_W + COL_GAP), y - BOX_H / 2, BOX_W, m.matchId === activeMatchId, manage);
+  }).join("")).join("");
   const header = `<div style="display:flex;gap:${COL_GAP}px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:${r.accent || "#5D5E72"};font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
+  const definedYs = centers.flat().filter((y): y is number => y !== undefined);
   return {
     header, canvas: connectors + boxes, centers,
     totalW: rounds.length * (BOX_W + COL_GAP) - COL_GAP,
-    totalH: Math.max(...centers.flat().map((y) => y + BOX_H / 2 + 10), BOX_H),
+    totalH: Math.max(...definedYs.map((y) => y + BOX_H / 2 + 10), BOX_H),
   };
 }
 
@@ -2870,8 +2891,8 @@ function doubleElimTree(finals: Detail, activeMatchId: string | null, manage: bo
   const cL = lb.length - 1;
   if (cG >= 0 && gw.centers[cG] && gl.centers[cL]) {
     const xG = colX(cG), xL = colX(cL);
-    const yG = yWb + gw.centers[cG][0] + TREE_BOX_H / 2;
-    const yL = yLb + gl.centers[cL][0] - TREE_BOX_H / 2;
+    const yG = yWb + (gw.centers[cG][0] ?? 0) + TREE_BOX_H / 2;
+    const yL = yLb + (gl.centers[cL][0] ?? 0) - TREE_BOX_H / 2;
     const yJog = yLbTitle - 14;
     link = Math.abs(xG - xL) < 1
       ? vline(xG, yG, yL - yG)
@@ -3062,7 +3083,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     // En double élim, l'arbre des vainqueurs se prolonge jusqu'à la grande finale.
     const treeRounds = t.finals.format === "double" ? winnersRoundsWithFinal(t.finals) : rounds;
     const body = S.bracketView === "list"
-      ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${treeRounds.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>`
+      ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${treeRounds.map((r: Detail, i: number) => roundCol(r.label, r.matches, manage, i === 0)).join("")}</div>`
       : t.finals.format === "double"
         ? doubleElimTree(t.finals, active?.matchId || null, manage)
         : bracketTree(treeRounds, active?.matchId || null, manage);
@@ -3070,7 +3091,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     const extra = t.finals.format === "double" && S.bracketView === "list"
       ? `<div style="margin-top:20px">
           <div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket des perdants</div>
-          <div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail) => roundCol(r.label, r.matches, manage)).join("")}</div>
+          <div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:14px">${t.finals.lb.map((r: Detail, i: number) => roundCol(r.label, r.matches, manage, i === 0)).join("")}</div>
         </div>`
       : t.finals.format === "single" && t.finals.thirdPlace
         ? `<div style="margin-top:20px">

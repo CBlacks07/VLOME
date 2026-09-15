@@ -110,9 +110,13 @@ type State = {
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
   editingPlayerId: string | null; // joueur en cours d'édition (renommer/club/ajustement) dans le panneau Joueurs
   brPick: string[]; // classement en cours de saisie (Battle Royale) — ids dans l'ordre cliqué, 1er = vainqueur de la partie
-  activeMatchId: string | null; // match mis en avant dans le panneau de contrôle de la régie (null = auto : premier jouable)
-
-  matchScoreA: number; matchScoreB: number; // score en cours de saisie (stepper) pour le match actif de la régie
+  // Matchs mis en avant dans le panneau de contrôle de la régie — plusieurs à la fois, une carte par
+  // match (plusieurs confrontations peuvent réellement se jouer en même temps sur des tables/écrans
+  // différents). Vide = auto (le premier jouable). Id = matchId (phase finale) ou poolId (poule).
+  activeMatchIds: string[];
+  // Score en cours de saisie (stepper), par match actif — plus un seul global, sinon deux contrôles
+  // simultanés partageraient la même saisie. Clé = même id que activeMatchIds.
+  matchScores: Record<string, { a: number; b: number }>;
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
@@ -2548,7 +2552,7 @@ function roundRobinSchedule(n: number): [number, number][][] {
  * chaque rencontre cliquable si `reportAttr` en renvoie un (les poules ne savent rapporter que le
  * prochain match jouable — Engine.currentMatch ; la phase finale accepte n'importe lequel via son
  * matchId, donc tout y est cliquable dès qu'il est jouable). */
-function journeeCalendar(names: { id: string; name: string }[], matches: Detail[], manage: boolean, reportAttr: (m: Detail, playerId: string) => string | null): string {
+function journeeCalendar(names: { id: string; name: string }[], matches: Detail[], manage: boolean, reportAttr: (m: Detail, playerId: string) => string | null, highlightCurrent = true): string {
   const byPair = new Map<string, Detail>();
   matches.forEach((m) => { if (m.aId && m.bId) byPair.set([m.aId, m.bId].sort().join("|"), m); });
   const schedule = roundRobinSchedule(names.length);
@@ -2561,14 +2565,20 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
       return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
     };
     const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
+    // highlightCurrent : n'a de sens que quand "playable" désigne LE match du moment parmi d'autres
+    // qui ne le sont pas encore (poules — un seul à la fois, voir Engine.currentMatch). En Round Robin
+    // de phase finale, tout match non joué est également reportable à tout instant (data-reportf
+    // accepte n'importe quel matchId) : y allumer chaque ligne en cyan ne distingue plus rien, et
+    // noie l'info utile (jouée/à venir) sous un mur bleu identique partout — on reste neutre.
+    const isCurrent = highlightCurrent && m.playable;
     const center = hasScore
       ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#34D399">${m.sa}–${m.sb}</span>`
       : m.winnerId
         ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
-        : m.playable
+        : isCurrent
           ? `<span style="font-size:11px;font-weight:800;letter-spacing:.3px;color:#22D3EE">VS</span>`
           : `<span style="font-size:11px;color:#5D5E72">vs</span>`;
-    return `<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #15151f;${m.playable ? "background:rgba(34,211,238,.05)" : ""}">
+    return `<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #15151f;${isCurrent ? "background:rgba(34,211,238,.05)" : ""}">
       <div style="text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
       <div style="text-align:center;min-width:40px">${center}</div>
       <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
@@ -2634,7 +2644,7 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
     // "match du moment" (Engine.currentMatch, carte VS ci-dessus, data-report) — un clic sur une
     // case de cet arbre déclencherait à tort data-reportf, qui vise la phase finale (t.finals), pas
     // les poules.
-    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, null, false)}</div>`;
+    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false)}</div>`;
   }
   // J (joués) / G (gagnés) / P (perdus) : vrai tableau de championnat, comme au football — seul le
   // mode Round Robin produit un classement complet (voir TournamentsService.poolRanking). Diff.
@@ -2702,33 +2712,48 @@ function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
 type ActiveMatch = { kind: "pool" | "finals"; poolId?: string; matchId?: string; aId: string; aName: string; bId: string; bName: string };
 
 /** Match mis en avant dans le panneau de contrôle : celui choisi via la file d'attente s'il est toujours jouable, sinon le premier jouable. */
-function getActiveMatch(S: State, t: Detail): ActiveMatch | null {
+/** Identifiant stable d'un match actif — matchId en phase finale, poolId en poule (une poule n'a
+ * qu'un seul match "courant" à la fois, voir Engine.currentMatch). Sert de clé pour activeMatchIds/matchScores. */
+function activeKey(a: ActiveMatch): string { return a.kind === "finals" ? a.matchId! : a.poolId!; }
+
+/** Matchs mis en avant dans le panneau de contrôle de la régie — plusieurs à la fois : plusieurs
+ * confrontations peuvent réellement se jouer en même temps (tables/écrans différents). S.activeMatchIds
+ * choisit lesquelles ; vide (ou plus aucune jouable) retombe sur la première trouvée, pour qu'il y ait
+ * toujours quelque chose à rapporter par défaut. */
+function getActiveMatches(S: State, t: Detail): ActiveMatch[] {
   if (t.finals && t.finals.format !== "battle_royale") {
-    const wanted = S.activeMatchId ? findFinalsMatchById(t.finals, S.activeMatchId) : null;
-    const m = (wanted && wanted.playable) ? wanted : findPlayableFinalsMatch(t.finals);
-    if (!m) return null;
-    return { kind: "finals", matchId: m.matchId, aId: m.aId, aName: m.aName, bId: m.bId, bName: m.bName };
+    let chosen = S.activeMatchIds
+      .map((id) => findFinalsMatchById(t.finals, id))
+      .filter((m): m is Detail => !!m && m.playable);
+    if (!chosen.length) { const m = findPlayableFinalsMatch(t.finals); if (m) chosen = [m]; }
+    const seen = new Set<string>();
+    chosen = chosen.filter((m) => (seen.has(m.matchId) ? false : (seen.add(m.matchId), true)));
+    return chosen.map((m) => ({ kind: "finals" as const, matchId: m.matchId, aId: m.aId, aName: m.aName, bId: m.bId, bName: m.bName }));
   }
   const pools: Detail[] = Array.isArray(t.pools) ? t.pools : [];
   const withCurrent = pools.filter((p: Detail) => p.current);
-  if (!withCurrent.length) return null;
-  const wanted = S.activeMatchId ? withCurrent.find((p: Detail) => p.id === S.activeMatchId) : null;
-  const p = wanted || withCurrent[0];
-  return { kind: "pool", poolId: p.id, aId: p.current.aId, aName: p.current.aName, bId: p.current.bId, bName: p.current.bName };
+  let chosenPools = S.activeMatchIds
+    .map((id) => withCurrent.find((p: Detail) => p.id === id))
+    .filter((p): p is Detail => !!p);
+  if (!chosenPools.length && withCurrent.length) chosenPools = [withCurrent[0]];
+  const seenP = new Set<string>();
+  chosenPools = chosenPools.filter((p) => (seenP.has(p.id) ? false : (seenP.add(p.id), true)));
+  return chosenPools.map((p) => ({ kind: "pool" as const, poolId: p.id, aId: p.current.aId, aName: p.current.aName, bId: p.current.bId, bName: p.current.bName }));
 }
 
-/** Les autres matchs jouables que celui affiché dans le contrôle — "Lancer" bascule S.activeMatchId. */
-function matchQueuePanel(t: Detail, active: ActiveMatch): string {
+/** Les autres matchs jouables qu'aucune des cartes affichées dans le contrôle — "Lancer" ajoute une carte de plus (S.activeMatchIds), sans remplacer celles déjà là. */
+function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
   // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), le calendrier par
   // journées du centre (journeeCalendar, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
   if (t.finals?.format === "roundrobin") return "";
+  const activeIds = new Set(actives.map(activeKey));
   const items: { id: string; label: string }[] = [];
   if (t.finals && t.finals.format !== "battle_royale") {
     for (const arr of finalsMatchGroups(t.finals)) for (const m of arr) {
-      if (m && m.playable && m.matchId !== active.matchId) items.push({ id: m.matchId, label: `${escHtml(m.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(m.bName)}` });
+      if (m && m.playable && !activeIds.has(m.matchId)) items.push({ id: m.matchId, label: `${escHtml(m.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(m.bName)}` });
     }
   } else if (!t.finals) {
-    (t.pools || []).forEach((p: Detail) => { if (p.current && p.id !== active.poolId) items.push({ id: p.id, label: `${escHtml(p.name)} · ${escHtml(p.current.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(p.current.bName)}` }); });
+    (t.pools || []).forEach((p: Detail) => { if (p.current && !activeIds.has(p.id)) items.push({ id: p.id, label: `${escHtml(p.name)} · ${escHtml(p.current.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(p.current.bName)}` }); });
   }
   if (!items.length) return "";
   return `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden;margin-top:16px">
@@ -2765,34 +2790,39 @@ function regieUndoBlock(t: Detail): string {
   return `<button data-undo="${t.id}" style="width:100%;text-align:center;border:1px solid #33334A;color:#F4F5FB;background:#14141D;border-radius:10px;padding:11px;font-size:12.5px;font-weight:700;cursor:pointer">Annuler le dernier résultat</button>`;
 }
 
-/** Panneau de contrôle du match actif : stepper de score, valider/annuler/forfait — remplace la saisie par input number. */
+/** Panneau de contrôle d'UN match actif : stepper de score, valider/annuler/forfait — remplace la
+ * saisie par input number. Appelé une fois par match actif (voir regiePage) — plusieurs peuvent donc
+ * s'afficher empilés quand plusieurs confrontations sont en cours en même temps. */
 function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
-  const sa = S.matchScoreA, sb = S.matchScoreB;
+  const key = activeKey(active);
+  const sc = S.matchScores[key] || { a: 0, b: 0 };
+  const sa = sc.a, sb = sc.b;
   const canValidate = sa !== sb && !S.detailBusy;
-  const side = (name: string, score: number, key: "a" | "b") => `
+  const side = (name: string, score: number, k: "a" | "b") => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#101019;border:1px solid #282838;flex:1 1 230px;min-width:0">
       <span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#22222F;font-size:11px;font-weight:800;color:#22D3EE;flex:none">${escHtml(name).charAt(0).toUpperCase()}</span>
       <b style="font-size:13.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}</b>
-      <button data-scorestep="${key}|-1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;border:1px solid #33334A;background:transparent;color:#8E8FA6;font-size:15px;font-weight:700;cursor:pointer;flex:none">–</button>
+      <button data-scorestep="${key}|${k}|-1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;border:1px solid #33334A;background:transparent;color:#8E8FA6;font-size:15px;font-weight:700;cursor:pointer;flex:none">–</button>
       <span style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;min-width:22px;text-align:center">${score}</span>
-      <button data-scorestep="${key}|1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#22D3EE;color:#04222a;font-size:15px;font-weight:800;border:0;cursor:pointer;flex:none">+</button>
+      <button data-scorestep="${key}|${k}|1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#22D3EE;color:#04222a;font-size:15px;font-weight:800;border:0;cursor:pointer;flex:none">+</button>
     </div>`;
   return `<div style="border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
     <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid rgba(34,211,238,.22)">
       <span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;flex:1">Match en cours</span>
       ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:#8E8FA6;background:#1B1B27;border:1px solid #282838;border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
+      <button data-matchclose="${key}" title="Retirer de la régie (reste jouable, revient dans la file d'attente)" style="display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:transparent;border:0;color:#5D5E72;cursor:pointer;flex:none">${ic(I.x, 12)}</button>
     </div>
     <div style="padding:14px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${side(active.aName, sa, "a")}${side(active.bName, sb, "b")}</div>
-      <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="1" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button></div>
+      <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="${key}" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#22D3EE" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button></div>
       <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:750;margin-top:12px">Déclarer forfait</div>
       <div style="display:flex;gap:8px;margin-top:6px">
-        <button data-matchforfeit="a" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.aName)}</button>
-        <button data-matchforfeit="b" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.bName)}</button>
+        <button data-matchforfeit="${key}|a" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.aName)}</button>
+        <button data-matchforfeit="${key}|b" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.bName)}</button>
       </div>
     </div>
-  </div>${matchQueuePanel(t, active)}`;
+  </div>`;
 }
 
 /** Une case de l'arbre de bracket, positionnée en absolu. */
@@ -2863,7 +2893,7 @@ type TreeParts = { header: string; canvas: string; centers: (number | undefined)
  * les connecteurs et — en double élimination — la liaison qui remonte du bracket des perdants vers
  * la grande finale. Les morceaux sont renvoyés séparément pour pouvoir les reposer dans un canevas
  * commun aux deux brackets. */
-function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[]): TreeParts {
+function treeParts(rounds: TreeRound[], activeMatchIds: string[], manage: boolean, parentsOf: (r: number, i: number) => number[]): TreeParts {
   const BOX_W = TREE_BOX_W, COL_GAP = TREE_COL_GAP, BOX_H = TREE_BOX_H, ROW_GAP = TREE_ROW_GAP;
   const centers: (number | undefined)[][] = [];
   rounds.forEach((round, r) => {
@@ -2904,7 +2934,7 @@ function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: bo
   }
   const boxes = rounds.map((round, r) => round.matches.map((m, i) => {
     const y = centers[r][i];
-    return y === undefined ? "" : matchTreeBox(m, r * (BOX_W + COL_GAP), y - BOX_H / 2, BOX_W, m.matchId === activeMatchId, manage);
+    return y === undefined ? "" : matchTreeBox(m, r * (BOX_W + COL_GAP), y - BOX_H / 2, BOX_W, activeMatchIds.includes(m.matchId), manage);
   }).join("")).join("");
   const header = `<div style="display:flex;gap:${COL_GAP}px">${rounds.map((r) => `<div style="width:${BOX_W}px"><div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:${r.accent || "#5D5E72"};font-weight:800">${escHtml(r.label)}</div></div>`).join("")}</div>`;
   const definedYs = centers.flat().filter((y): y is number => y !== undefined);
@@ -2915,22 +2945,22 @@ function treeParts(rounds: TreeRound[], activeMatchId: string | null, manage: bo
   };
 }
 
-function bracketTree(rounds: TreeRound[], activeMatchId: string | null, manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
+function bracketTree(rounds: TreeRound[], activeMatchIds: string[], manage: boolean, parentsOf: (r: number, i: number) => number[] = PARENTS_ELIM): string {
   if (!rounds.length) return "";
-  const g = treeParts(rounds, activeMatchId, manage, parentsOf);
+  const g = treeParts(rounds, activeMatchIds, manage, parentsOf);
   return `<div style="overflow-x:auto;padding-bottom:14px"><div style="width:${g.totalW}px">${g.header}<div style="position:relative;width:${g.totalW}px;height:${g.totalH}px;margin-top:14px">${g.canvas}</div></div></div>`;
 }
 
 /** Double élimination : les deux brackets dans un seul canevas, pour tracer la liaison qui manquait
  * — la finale des perdants remonte vers la grande finale, qu’elle alimente au même titre que la
  * finale des vainqueurs. Sans ce trait, les deux arbres paraissent indépendants. */
-function doubleElimTree(finals: Detail, activeMatchId: string | null, manage: boolean): string {
+function doubleElimTree(finals: Detail, activeMatchIds: string[], manage: boolean): string {
   const wbRounds = winnersRoundsWithFinal(finals);
   const lb: TreeRound[] = finals.lb || [];
   if (!wbRounds.length) return "";
-  if (!lb.length) return bracketTree(wbRounds, activeMatchId, manage);
-  const gw = treeParts(wbRounds, activeMatchId, manage, PARENTS_ELIM);
-  const gl = treeParts(lb, activeMatchId, manage, PARENTS_LOSERS);
+  if (!lb.length) return bracketTree(wbRounds, activeMatchIds, manage);
+  const gw = treeParts(wbRounds, activeMatchIds, manage, PARENTS_ELIM);
+  const gl = treeParts(lb, activeMatchIds, manage, PARENTS_LOSERS);
   const TITLE_H = 24, HEAD_H = 28, GAP = 36;
   const yWb = TITLE_H + HEAD_H;
   const yLbTitle = yWb + gw.totalH + GAP;
@@ -2981,11 +3011,11 @@ function regieRoundStatusRows(rounds: { label: string; matches: Detail[] }[]): s
     </div>`;
   }).join("");
 }
-/** Une ligne de statut de poule Survival dans le rail — cliquable si elle a un match en cours (bascule le panneau de contrôle dessus). */
-function regiePoolStatusRows(t: Detail, shownPoolId: string | null): string {
+/** Une ligne de statut de poule Survival dans le rail — cliquable si elle a un match en cours (l'ajoute au panneau de contrôle, plusieurs poules peuvent y être en même temps). */
+function regiePoolStatusRows(t: Detail, activePoolIds: Set<string>): string {
   const pools: Detail[] = Array.isArray(t.pools) ? t.pools : [];
   return pools.map((p: Detail) => {
-    const isActive = p.id === shownPoolId;
+    const isActive = activePoolIds.has(p.id);
     const statusLabel = p.done ? "terminée" : p.current ? "en cours" : "à venir";
     const color = p.done ? "#34D399" : p.current ? "#22D3EE" : "#5D5E72";
     // Toutes les poules sont cliquables (pas seulement celle en cours) : une poule terminée reste
@@ -3008,7 +3038,7 @@ function regieGamesStatusRows(t: Detail): string {
 }
 
 /** Rail de gauche de la régie : déroulé réel du tournoi (poules/rondes/parties selon le format) + accès Joueurs/Paiements/Réglages. */
-function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | null): string {
+function regieRail(S: State, t: Detail, manage: boolean, actives: ActiveMatch[]): string {
   const hasPools = Array.isArray(t.pools) && t.pools.length > 0;
   let body: string;
   if (t.finals && t.finals.format === "battle_royale") {
@@ -3020,7 +3050,8 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
     body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">${heading}</div>${rounds ? regieRoundStatusRows(rounds) : `<div style="padding:8px 10px;font-size:12px;color:#8E8FA6">${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués</div>`}`;
   } else {
     // Survival : poules, puis éventuellement phase finale une fois toutes terminées.
-    body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Phase 1 · poules</div>${regiePoolStatusRows(t, active?.kind === "pool" ? active.poolId || null : null)}`;
+    const activePoolIds = new Set(actives.filter((a) => a.kind === "pool").map((a) => a.poolId!));
+    body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Phase 1 · poules</div>${regiePoolStatusRows(t, activePoolIds)}`;
     if (t.finals) {
       const rounds = t.finals.format === "double" ? t.finals.wb : t.finals.format === "roundrobin" ? null : t.finals.rounds;
       body += `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#7C82FF;font-weight:800;padding:12px 8px 6px">Phase 2 · finale</div>${rounds ? regieRoundStatusRows(rounds) : `<div style="padding:8px 10px;font-size:12px;color:#8E8FA6">Round Robin en cours</div>`}`;
@@ -3114,8 +3145,9 @@ function battleRoyaleRegieCenter(S: State, t: Detail): string {
 }
 
 /** Centre de la régie : arbre de bracket (single/double), table Round Robin/Swiss, ou poule Survival active. Battle Royale a son propre centre dédié. */
-function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch | null): string {
+function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[]): string {
   if (t.finals && t.finals.format === "battle_royale") return battleRoyaleRegieCenter(S, t);
+  const activeMatchIds = actives.filter((a) => a.kind === "finals").map((a) => a.matchId!);
 
   // Une fois en phase finale, les poules qui y ont mené ne doivent pas devenir inconsultables pour
   // autant — troisième onglet du même sélecteur "Arbre/Liste" plutôt qu'un écran séparé à chercher.
@@ -3147,8 +3179,8 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     const body = S.bracketView === "list"
       ? `<div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:10px">${treeRounds.map((r: Detail, i: number) => roundCol(r.label, r.matches, manage, i === 0)).join("")}</div>`
       : t.finals.format === "double"
-        ? doubleElimTree(t.finals, active?.matchId || null, manage)
-        : bracketTree(treeRounds, active?.matchId || null, manage);
+        ? doubleElimTree(t.finals, activeMatchIds, manage)
+        : bracketTree(treeRounds, activeMatchIds, manage);
     // En mode arbre, le bracket des perdants est déjà dans le canevas commun (avec sa liaison).
     const extra = t.finals.format === "double" && S.bracketView === "list"
       ? `<div style="margin-top:20px">
@@ -3191,7 +3223,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     }
     const body = isSwiss
       ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.rounds[t.finals.rounds.length - 1].matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`
-      : journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null);
+      : journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null, false);
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
         <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${label}</div>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">${isSwiss ? "Classement Swiss" : "Round Robin"}</h2></div>
@@ -3252,16 +3284,18 @@ function regiePage(S: State): string {
   const t = S.detail;
   if (!t) return `<div style="min-height:100vh;display:grid;place-items:center;color:#8E8FA6">Chargement…</div>`;
   const manage = canManage(S);
-  const active = getActiveMatch(S, t);
-  const control = active
-    ? matchScoreControl(S, t, active)
+  // Plusieurs confrontations peuvent réellement se jouer en même temps (tables/écrans différents) :
+  // une carte de contrôle par match actif, empilées, plutôt qu'une seule qui forcerait à choisir.
+  const actives = getActiveMatches(S, t);
+  const control = actives.length
+    ? actives.map((a) => matchScoreControl(S, t, a)).join("<div style=\"height:2px\"></div>")
     : `<div style="border:1px solid #282838;border-radius:12px;background:#14141D;padding:24px;text-align:center;color:#8E8FA6;font-size:13px">Aucun match en attente pour l'instant.</div>`;
   return `<div class="regie-page-outer" style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
     <div class="regie-grid" style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
-      ${regieRail(S, t, manage, active)}
-      <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, active)}</div>
-      <div class="regie-control" style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${regieUndoBlock(t)}${regieRosterMini(S, t)}</div>
+      ${regieRail(S, t, manage, actives)}
+      <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, actives)}</div>
+      <div class="regie-control" style="border-left:1px solid #1B1B27;padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${matchQueuePanel(t, actives)}${regieUndoBlock(t)}${regieRosterMini(S, t)}</div>
     </div>
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${cartDrawer(S)}`;
 }
@@ -3388,7 +3422,7 @@ function pTournoi(S: State) {
     const participants = roster.length || manage
       ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
           <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Participants (${roster.length})</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${roster.map((p) => S.editingPlayerId === p.id ? plEditRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px">${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-pledit-open="${p.id}" title="Renommer / club" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button><button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;${roster.length > 15 ? "max-height:620px;overflow-y:auto;padding-right:4px" : ""}">${roster.map((p) => S.editingPlayerId === p.id ? plEditRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#F4F5FB;background:#14141D;border:1px solid #282838;border-radius:999px;padding:7px 8px 7px 13px">${p.club ? `<span style="color:#5D5E72;font-weight:500">@${escHtml(p.club)}</span>` : ""}<span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#22222F;font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-pledit-open="${p.id}" title="Renommer / club" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.edit || I.plus, 11)}</button><button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:#8E8FA6;cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
           ${roster.length ? "" : `<div style="color:#5D5E72;font-size:13px;margin-bottom:${manage ? "12px" : "0"}">Aucun participant pour l'instant.</div>`}
           ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px dashed #33334A;color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
         </div>`
@@ -3506,13 +3540,19 @@ function pTournoi(S: State) {
         })()
       : "";
     const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
-    // Participants + répartition des poules côte à côte dès qu'il y a une vraie composition à montrer
-    // (poolsList non vide) : petite colonne fixe pour la liste des joueurs, large colonne pour les
-    // poules — plus lisible que tout empiler en pleine largeur. Sans poules réparties (bouton "Répartir
-    // en poules" seul, ou format sans poules), on garde l'empilement simple d'avant.
-    const participantsAndPools = poolsList.length
-      ? `<div class="grid2c" style="display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start">${participants}${poolsPreview}</div>`
-      : `${participants}${poolsPreview}`;
+    // Participants (petite colonne fixe) + tout ce qui montre la composition de la compétition à
+    // venir (large colonne) : la grille des poules une fois réparties, ou à défaut le bouton "Répartir
+    // en poules" et/ou l'aperçu des oppositions du 1er tour (formats à bracket direct) — plutôt que
+    // tout empiler en pleine largeur. Rien à montrer à droite (format sans poules ni bracket, ou vue
+    // spectateur) : Participants garde toute la largeur, comme avant.
+    const compositionPreview = `${poolsPreview}${seedPreview}`;
+    // Un seul enfant par colonne : compositionPreview peut concaténer 2 fragments (bouton "Répartir en
+    // poules" + aperçu des oppositions) — sans ce conteneur, la grille CSS les auto-place chacun comme
+    // item séparé (2 colonnes déclarées → le 2e fragment retombe sur une nouvelle ligne, colonne 1,
+    // écrasé dans les 300px de Participants) au lieu de les garder empilés dans la colonne large.
+    const participantsAndPools = compositionPreview
+      ? `<div class="grid2c" style="display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start">${participants}<div style="display:flex;flex-direction:column;gap:18px">${compositionPreview}</div></div>`
+      : participants;
     const statTile = (label: string, value: string, color = "#F4F5FB") => `<div style="background:#14141D;padding:14px 16px"><div style="font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${label}</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;color:${color};margin-top:4px">${value}</div></div>`;
     // La cagnotte (participants × points en jeu) n'existe qu'en Survival — les autres formats
     // n'ont pas configuré pointsPerPlayer (valeur par défaut envoyée mais jamais consultée), la
@@ -3538,7 +3578,7 @@ function pTournoi(S: State) {
       <p style="color:#8E8FA6;font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}${seedPreview}</div>`;
+    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     return `<main class="rise" style="width:100%"><div style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
@@ -3568,17 +3608,17 @@ function pTournoi(S: State) {
       const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">P</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.played}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.losses}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
       // Calendrier par journées plutôt que la grille plate de mini-cartes — même traitement que les
       // poules Round Robin, cohérent avec "faut corriger tous les tableaux comme ça".
-      const calendar = journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null);
+      const calendar = journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null, false);
       body = standings + `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Calendrier</div>${calendar}`;
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
-      body = doubleElimTree(t.finals, null, manage);
+      body = doubleElimTree(t.finals, [], manage);
     } else if (t.finals.format === "single") {
       const tp = t.finals.thirdPlace;
-      body = bracketTree(t.finals.rounds, null, manage)
+      body = bracketTree(t.finals.rounds, [], manage)
         + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage)}</div></div>` : "");
     } else {
-      body = bracketTree(t.finals.rounds, null, manage);
+      body = bracketTree(t.finals.rounds, [], manage);
     }
     const bracketCol = `${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale${fmtLabel}</div>${body}`;
     // Panneau organisateur : premier match jouable extrait du bracket pour l'arbitrer en un clic, + suivi de la cagnotte (données déjà calculées plus haut : dist/total/pct).
@@ -4083,7 +4123,7 @@ export default function Page() {
     albums: null, albumEdit: null, albumOpen: null, boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brPick: [],
-    activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, imageUrl: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -4100,7 +4140,7 @@ export default function Page() {
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchId: null, matchScoreA: 0, matchScoreB: 0, regiePanel: null, brPick: [], showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, regiePanel: null, brPick: [], showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -5446,7 +5486,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5484,43 +5524,68 @@ export default function Page() {
     else if (d.brreset !== undefined) setS((s) => ({ ...s, brPick: [] }));
     else if (d.brsubmit) { act(`${API}/api/tournaments/${S.openId}/battle-royale-report`, { gameId: d.brsubmit, ranking: S.brPick }); setS((s) => ({ ...s, brPick: [] })); }
     else if (d.scorestep) {
-      const [key, dir] = d.scorestep.split("|");
+      const [key, side, dir] = d.scorestep.split("|") as [string, "a" | "b", string];
       setS((s) => {
-        const field = key === "a" ? "matchScoreA" : "matchScoreB";
-        return { ...s, [field]: Math.max(0, s[field] + (dir === "1" ? 1 : -1)) };
+        const cur = s.matchScores[key] || { a: 0, b: 0 };
+        const next = { ...cur, [side]: Math.max(0, cur[side] + (dir === "1" ? 1 : -1)) };
+        return { ...s, matchScores: { ...s.matchScores, [key]: next } };
       });
     }
-    else if (d.matchvalidate !== undefined) {
+    else if (d.matchvalidate) {
       const t = S.detail;
-      const active = t ? getActiveMatch(S, t) : null;
+      const key = d.matchvalidate;
+      const active = t ? getActiveMatches(S, t).find((a) => activeKey(a) === key) : null;
       if (t && active) {
-        const sa = S.matchScoreA, sb = S.matchScoreB;
-        if (sa !== sb) {
-          const winnerId = sa > sb ? active.aId : active.bId;
-          const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: sa, scoreB: sb } : { matchId: active.matchId, winnerId, scoreA: sa, scoreB: sb };
+        const sc = S.matchScores[key] || { a: 0, b: 0 };
+        if (sc.a !== sc.b) {
+          const winnerId = sc.a > sc.b ? active.aId : active.bId;
+          const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: sc.a, scoreB: sc.b } : { matchId: active.matchId, winnerId, scoreA: sc.a, scoreB: sc.b };
           act(`${API}/api/tournaments/${t.id}/report`, body);
-          setS((s) => ({ ...s, matchScoreA: 0, matchScoreB: 0, activeMatchId: null }));
+          setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms }; });
         }
       }
     }
     else if (d.matchforfeit) {
+      const [key, side] = d.matchforfeit.split("|");
       const t = S.detail;
-      const active = t ? getActiveMatch(S, t) : null;
+      const active = t ? getActiveMatches(S, t).find((a) => activeKey(a) === key) : null;
       if (t && active) {
-        const winnerId = d.matchforfeit === "a" ? active.bId : active.aId;
+        const winnerId = side === "a" ? active.bId : active.aId;
         const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: 0, scoreB: 0 } : { matchId: active.matchId, winnerId, scoreA: 0, scoreB: 0 };
         act(`${API}/api/tournaments/${t.id}/report`, body);
-        setS((s) => ({ ...s, matchScoreA: 0, matchScoreB: 0, activeMatchId: null }));
+        setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms }; });
       }
     }
-    else if (d.activematch) setS((s) => ({ ...s, activeMatchId: d.activematch!, matchScoreA: 0, matchScoreB: 0 }));
+    // "Lancer" dans la file d'attente AJOUTE une carte de contrôle de plus (plusieurs confrontations
+    // en cours en même temps), sans remplacer celles déjà affichées. Important : tant que
+    // S.activeMatchIds est vide, ce qui est affiché vient du repli automatique de getActiveMatches
+    // (le premier match jouable) — il faut d'abord le matérialiser dans la liste, sinon ajouter un
+    // second match REMPLACE ce premier au lieu de s'y ajouter (la liste passerait de [] à [nouveau],
+    // perdant le repli).
+    else if (d.activematch) {
+      const t = S.detail;
+      if (t) {
+        const currentKeys = getActiveMatches(S, t).map(activeKey);
+        const next = currentKeys.includes(d.activematch!) ? currentKeys : [...currentKeys, d.activematch!];
+        setS((s) => ({ ...s, activeMatchIds: next }));
+      }
+    }
+    // Retirer une carte du panneau de contrôle sans rapporter de résultat : le match reste jouable et
+    // revient dans la file d'attente. Si c'était la seule carte affichée et qu'un match reste jouable,
+    // getActiveMatches en réaffiche un automatiquement (le contrôle n'est vide que si plus rien à jouer).
+    else if (d.matchclose) setS((s) => ({ ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== d.matchclose) }));
     // Choix d'une poule dans le rail : toutes les poules sont déjà affichées côte à côte dans le
     // centre (voir regieCenter), donc on se contente d'y faire défiler jusqu'à la carte visée. Si
-    // cette poule a un match en cours, elle devient aussi la poule "active" du panneau de contrôle
-    // (même effet qu'avant) — sinon on ne touche pas au contrôle, qui reste sur la poule encore en jeu.
+    // cette poule a un match en cours, elle s'ajoute aussi au panneau de contrôle (même précaution de
+    // matérialisation du repli que ci-dessus) — sinon on ne touche pas au contrôle.
     else if (d.viewpool) {
-      const p = S.detail?.pools?.find((pp: Detail) => pp.id === d.viewpool);
-      if (p?.current) setS((s) => ({ ...s, activeMatchId: d.viewpool!, matchScoreA: 0, matchScoreB: 0 }));
+      const t = S.detail;
+      const p = t?.pools?.find((pp: Detail) => pp.id === d.viewpool);
+      if (t && p?.current) {
+        const currentKeys = getActiveMatches(S, t).map(activeKey);
+        const next = currentKeys.includes(d.viewpool!) ? currentKeys : [...currentKeys, d.viewpool!];
+        setS((s) => ({ ...s, activeMatchIds: next }));
+      }
       document.getElementById(`poolcard-${d.viewpool}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));

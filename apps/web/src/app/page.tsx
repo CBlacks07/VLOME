@@ -2455,7 +2455,14 @@ function battleRoyalePanel(S: State, t: Detail, manage: boolean): string {
 }
 
 /** Affiche imprimable (résultats) : classement général, qualifiés par poule, phase finale. Données réelles uniquement (mêmes champs que le cockpit). */
+/** Affiche imprimable : au lieu d'un mini résumé maison (les rondes suivantes n'ayant pas encore de
+ * nom réduites à des "—", le rendu paraissait cassé), on réutilise EXACTEMENT les mêmes composants
+ * que l'écran (bracketTree/doubleElimTree/journeeCalendar/poolCard) — même arbre avec ses connecteurs,
+ * mêmes cartes de poule. `dummyS` : ces composants prennent S en paramètre mais, appelés ici avec
+ * manage=false partout (l'affiche est un instantané, jamais interactive), aucun de ses champs n'est
+ * réellement lu — un objet vide suffit. */
 function buildPoster(t: Detail): string {
+  const dummyS = {} as State;
   const meta = [t.game, t.date, t.place].filter(Boolean).map((v: string) => escHtml(v)).join("  ·  ");
   // Classement général : concaténation des classements de chaque poule pour Survival (pts déjà cumulés sur tout le tournoi par le moteur) ;
   // pour les formats sans poules (single/double/roundrobin/swiss/battle_royale), repli sur le classement global format-agnostique de l'API.
@@ -2470,33 +2477,45 @@ function buildPoster(t: Detail): string {
   }
   const standings = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>Points</th></tr></thead>
     <tbody>${overall.slice(0, 16).map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td><b>${r.pts}</b></td></tr>`).join("")}</tbody></table>`;
-  const pools = (t.pools || []).filter((p: Detail) => p.top1).map((p: Detail) => `<div class="pa-pool"><b>${escHtml(p.name)}</b> — ${escHtml(p.top1)}${p.top2 ? ", " + escHtml(p.top2) : ""}</div>`).join("");
-  let bracket = "";
+  // Poules : les vraies cartes (calendrier ou match en cours + classement complet J/G/P/Pts), pas un
+  // simple "top1, top2" résumé — c'est tout l'intérêt de reproduire l'écran plutôt que le réinventer.
+  const poolsHtml = (t.pools || []).length
+    ? `<div class="pa-h" style="margin-top:14px">Poules</div><div class="pa-poolsgrid">${t.pools.map((p: Detail) => `<div class="pa-nostrip">${poolCard(dummyS, p, false, t.poolFormat, t.countGoalDiff)}</div>`).join("")}</div>`
+    : "";
+  // overflow-x:auto / max-height:…px + overflow-y:auto n'ont aucun sens sur une page imprimée (rien à
+  // faire défiler) : ça couperait l'arbre ou le calendrier en plein milieu. On les neutralise sur cette
+  // copie de rendu uniquement — la vraie page à l'écran garde son scroll normalement.
+  const unscroll = (html: string) => html.replace(/overflow(-x|-y)?:\s*auto/g, "overflow$1:visible").replace(/max-height:[^;"]+;?/g, "");
+  let bracketHtml = "";
   if (t.finals) {
-    const line = (name: string | null, win: boolean) => `<div class="${win ? "w" : ""}">${name ? escHtml(name) : "—"}</div>`;
-    const rounds = (arr: Detail[][]) => `<div class="pa-bracket">${arr.map((round) => `<div class="pa-round">${round.map((m: Detail) => `<div class="pa-seed">${line(m.aName, m.winnerId === m.aId)}${line(m.bName, m.winnerId === m.bId)}</div>`).join("")}</div>`).join("")}</div>`;
     const f = t.finals;
-    if (f.format === "roundrobin" || f.format === "swiss") {
-      const rowsHtml = f.format === "swiss"
-        ? f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td>${r.buchholz}</td></tr>`).join("")
-        : f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td>${r.gd > 0 ? "+" : ""}${r.gd}</td></tr>`).join("");
-      bracket = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>${f.format === "swiss" ? "Buchholz" : "Diff."}</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    if (f.format === "single") {
+      bracketHtml = unscroll(bracketTree(f.rounds, [], false))
+        + (f.thirdPlace ? `<div class="pa-h" style="font-size:13px;margin-top:14px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(f.thirdPlace, false)}</div>` : "");
     } else if (f.format === "double") {
-      bracket = `<div class="pa-h" style="font-size:13px">Vainqueurs</div>${rounds(f.wb.map((r: Detail) => r.matches))}<div class="pa-h" style="font-size:13px;margin-top:8px">Perdants</div>${rounds(f.lb.map((r: Detail) => r.matches))}`;
+      bracketHtml = unscroll(doubleElimTree(f, [], false));
+    } else if (f.format === "roundrobin") {
+      const names = f.standings.map((r: Detail) => ({ id: r.id, name: r.name }));
+      const showDiff = t.countGoalDiff !== false;
+      const rowsHtml = f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.losses}</td>${showDiff ? `<td>${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td><b>${r.pts}</b></td></tr>`).join("");
+      const table = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>J</th><th>G</th><th>P</th>${showDiff ? "<th>Diff.</th>" : ""}<th>Pts</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+      bracketHtml = table + `<div style="margin-top:10px">${unscroll(journeeCalendar(names, f.matches, false, () => null, false))}</div>`;
+    } else if (f.format === "swiss") {
+      const rowsHtml = f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td>${r.buchholz}</td></tr>`).join("");
+      const table = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>V</th><th>Buchholz</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+      const lastRound = f.rounds[f.rounds.length - 1];
+      bracketHtml = table + (lastRound ? `<div class="pa-h" style="font-size:13px;margin-top:10px">${escHtml(lastRound.label)}</div><div class="pa-poolsgrid">${lastRound.matches.map((m: Detail) => `<div style="max-width:220px">${matchBox(m, false)}</div>`).join("")}</div>` : "");
     } else if (f.format === "battle_royale") {
-      bracket = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>Points</th></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td><b>${r.pts}</b></td></tr>`).join("")}</tbody></table>`;
-    } else if (f.format === "single") {
-      bracket = rounds(f.rounds.map((r: Detail) => r.matches));
+      bracketHtml = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>Points</th></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td><b>${r.pts}</b></td></tr>`).join("")}</tbody></table>`;
     }
   }
   const now = new Date().toLocaleString("fr-FR");
   return `<div class="pa">
     <div class="pa-head"><div class="pa-brand">MIABE ESPORT</div><div class="pa-title">${escHtml(t.name)}</div>${meta ? `<div class="pa-meta">${meta}</div>` : ""}</div>
     ${champHtml}
-    <div class="pa-cols">
-      <div class="pa-col"><div class="pa-h">Classement général</div>${standings}</div>
-      <div class="pa-col">${pools ? `<div class="pa-h">Qualifiés par poule</div>${pools}` : ""}${bracket ? `<div class="pa-h" style="margin-top:14px">Phase finale</div>${bracket}` : ""}</div>
-    </div>
+    <div class="pa-h">Classement général</div>${standings}
+    ${poolsHtml}
+    ${bracketHtml ? `<div class="pa-h" style="margin-top:14px">Phase finale</div><div class="pa-bracketwrap">${bracketHtml}</div>` : ""}
     <div class="pa-foot">Édité le ${now} · Miabe Esport</div>
   </div>`;
 }

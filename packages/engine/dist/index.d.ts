@@ -136,14 +136,19 @@ export interface SwissFinals {
     rounds: BracketMatch[][];
     roundCount: number;
 }
+/** kills : nombre d'éliminations par joueur dans cette partie (rempli avec le classement, voir
+ * reportBattleRoyale) — absent/vide tant que la partie n'est pas jouée, ou pour d'anciennes parties
+ * enregistrées avant l'ajout du bonus d'élimination. */
 export interface BRGame {
     id: string;
     ranking: string[] | null;
+    kills?: Record<string, number> | null;
 }
 export interface BattleRoyaleFinals {
     format: 'battle_royale';
     games: BRGame[];
     pointsTable: number[];
+    killPoints: number;
 }
 export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals | SwissFinals | BattleRoyaleFinals;
 export interface Tournament {
@@ -187,6 +192,13 @@ export interface Tournament {
      *  restent saisis et affichés, juste ignorés pour le classement). Absent sur d'anciennes données :
      *  traiter comme true (comportement historique). */
     countGoalDiff: boolean;
+    /** Battle Royale (format 'battle_royale' uniquement) : barème réglable avant lancement — palier de
+     *  points par classement de partie (index 0 = 1er) et bonus par élimination. Consommés une seule
+     *  fois, au lancement, dans finals.pointsTable/killPoints (voir launchTournament) — comme
+     *  countGoalDiff/matchFormat, plus modifiables une fois le tournoi lancé (poules déjà constituées,
+     *  parties déjà jouées). Absents sur d'anciennes données : traiter comme DEFAULT_BR_POINTS / 1. */
+    brPointsTable?: number[];
+    brKillPoints?: number;
     /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
     _undo?: string[];
 }
@@ -331,8 +343,11 @@ export declare function reportSwiss(t: Tournament, matchId: string, winnerId: st
     winnerId: string;
     pts: number;
 } | null;
-/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier) ; enchaîne ou couronne le champion après la dernière partie. */
-export declare function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[]): {
+/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier), et
+ * optionnellement le nombre d'éliminations par joueur (kills[id]) ; chaque joueur marque les points
+ * de son palier de classement (f.pointsTable) PLUS f.killPoints par élimination. Enchaîne ou couronne
+ * le champion après la dernière partie. */
+export declare function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[], kills?: Record<string, number>): {
     ok: boolean;
 };
 /**

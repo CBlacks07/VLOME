@@ -118,6 +118,7 @@ export class TournamentsService {
       streakLength: dto.streakLength,
       matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : undefined,
       countGoalDiff: dto.countGoalDiff,
+      brPointsTable: dto.brPointsTable, brKillPoints: dto.brKillPoints,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -183,6 +184,7 @@ export class TournamentsService {
         streakLength: dto.streakLength,
         matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : prev?.matchFormat,
         countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff,
+        brPointsTable: dto.brPointsTable ?? prev?.brPointsTable, brKillPoints: dto.brKillPoints ?? prev?.brKillPoints,
         ...(hasScoring ? {
           scoring: {
             survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -203,7 +205,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined) {
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
@@ -216,6 +218,8 @@ export class TournamentsService {
       if (dto.qualifyPerPool !== undefined) t.qualifyPerPool = Engine.clampQualifyPerPool(dto.qualifyPerPool);
       if (dto.matchMode !== undefined) t.matchFormat = Engine.clampMatchFormat({ mode: dto.matchMode, value: dto.matchValue });
       if (dto.countGoalDiff !== undefined) t.countGoalDiff = dto.countGoalDiff;
+      if (dto.brPointsTable !== undefined) t.brPointsTable = dto.brPointsTable;
+      if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       data.engineState = JSON.parse(JSON.stringify(t));
@@ -618,6 +622,13 @@ export class TournamentsService {
     // Compat : tournois créés avant l'option de départage par différence de buts — true reproduit
     // le comportement historique (toujours pris en compte).
     if (t.countGoalDiff === undefined) t.countGoalDiff = true;
+    // Compat : tournois Battle Royale créés avant que le barème (palier de classement + bonus
+    // élimination) ne soit réglable — reprend les valeurs jusqu'ici figées dans le moteur.
+    if (!t.brPointsTable || !t.brPointsTable.length) t.brPointsTable = Engine.DEFAULT_BR_POINTS.slice();
+    if (t.brKillPoints === undefined) t.brKillPoints = 1;
+    if (t.finals && t.finals.format === 'battle_royale' && (t.finals as Engine.BattleRoyaleFinals).killPoints === undefined) {
+      (t.finals as Engine.BattleRoyaleFinals).killPoints = 0; // ancien tournoi déjà lancé sans le bonus : rétrocompatible à 0, pas de recalcul rétroactif des parties déjà jouées.
+    }
     t.pools?.forEach((p) => {
       if (!p.dbracket) p.dbracket = null;
       if (!p.streaks) p.streaks = {};
@@ -697,14 +708,36 @@ export class TournamentsService {
       };
     }
     if (f.format === 'battle_royale') {
+      // Classement enrichi (éliminations cumulées, victoires "WWCD", détail place+points par partie)
+      // pour le tableau de bord façon Battle Royale — pas seulement le total, qui à lui seul ne dit
+      // pas d'où viennent les points (place vs éliminations) ni la régularité sur les parties jouées.
+      const killPoints = f.killPoints || 0;
+      const gamePts = (rank: number, kills: number) => (f.pointsTable[rank] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0) + killPoints * kills;
+      const totalKills: Record<string, number> = {}, wins: Record<string, number> = {};
+      t.players.forEach((p) => { totalKills[p.id] = 0; wins[p.id] = 0; });
+      f.games.forEach((g) => {
+        if (!g.ranking) return;
+        g.ranking.forEach((pid, rk) => {
+          if (rk === 0) wins[pid] = (wins[pid] || 0) + 1;
+          totalKills[pid] = (totalKills[pid] || 0) + (g.kills?.[pid] || 0);
+        });
+      });
       const standings = t.players.slice()
         .sort((a, b) => (t.points[b.id] || 0) - (t.points[a.id] || 0))
-        .map((p) => ({ id: p.id, name: p.name, pts: t.points[p.id] || 0 }));
+        .map((p) => ({
+          id: p.id, name: p.name, pts: t.points[p.id] || 0, kills: totalKills[p.id] || 0, wins: wins[p.id] || 0,
+          games: f.games.map((g) => {
+            const rk = g.ranking ? g.ranking.indexOf(p.id) : -1;
+            if (!g.ranking || rk < 0) return { played: false as const };
+            const k = g.kills?.[p.id] || 0;
+            return { played: true as const, rank: rk + 1, kills: k, pts: gamePts(rk, k) };
+          }),
+        }));
       return {
-        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable,
+        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable, killPoints,
         games: f.games.map((g, i) => ({
           id: g.id, label: 'Partie ' + (i + 1), played: !!g.ranking,
-          ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, pts: f.pointsTable[rk] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0 })) : null,
+          ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, kills: g.kills?.[pid] || 0, pts: gamePts(rk, g.kills?.[pid] || 0) })) : null,
         })),
         standings,
       };
@@ -777,6 +810,11 @@ export class TournamentsService {
       matchFormat: t.matchFormat,
       matchFormatLabel: Engine.matchFormatLabel(t.matchFormat),
       countGoalDiff: t.countGoalDiff,
+      // Battle Royale : barème pré-lancement (préremplissage de l'assistant en édition) — une fois
+      // lancé, la valeur qui compte réellement est celle figée dans finals.pointsTable/killPoints
+      // (voir serializeFinals), ces deux-là ne représentent alors plus que le réglage figé au départ.
+      brPointsTable: t.brPointsTable,
+      brKillPoints: t.brKillPoints,
       streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
@@ -839,14 +877,14 @@ export class TournamentsService {
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
-  /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier). */
-  async reportBattleRoyale(id: string, gameId: string, ranking: string[], user: JwtUser) {
+  /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier), et optionnellement le nombre d'éliminations par joueur. */
+  async reportBattleRoyale(id: string, gameId: string, ranking: string[], user: JwtUser, kills?: Record<string, number>) {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
     const { t } = l;
     if (t.finals?.format !== 'battle_royale') throw new ConflictException('Ce tournoi n\'est pas au format Battle Royale.');
-    const res = Engine.reportBattleRoyale(t, gameId, ranking);
+    const res = Engine.reportBattleRoyale(t, gameId, ranking, kills);
     if (!res.ok) throw new BadRequestException('Partie introuvable, déjà rapportée, ou classement invalide.');
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);

@@ -117,8 +117,11 @@ export interface DoubleFinals {
 }
 /** Une ronde = les matchs de cette ronde (appariements). Les rondes précédentes sont conservées pour l'historique/l'affiche. */
 export interface SwissFinals { format: 'swiss'; rounds: BracketMatch[][]; roundCount: number; }
-export interface BRGame { id: string; ranking: string[] | null; }
-export interface BattleRoyaleFinals { format: 'battle_royale'; games: BRGame[]; pointsTable: number[]; }
+/** kills : nombre d'éliminations par joueur dans cette partie (rempli avec le classement, voir
+ * reportBattleRoyale) — absent/vide tant que la partie n'est pas jouée, ou pour d'anciennes parties
+ * enregistrées avant l'ajout du bonus d'élimination. */
+export interface BRGame { id: string; ranking: string[] | null; kills?: Record<string, number> | null; }
+export interface BattleRoyaleFinals { format: 'battle_royale'; games: BRGame[]; pointsTable: number[]; killPoints: number; }
 export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals | SwissFinals | BattleRoyaleFinals;
 
 export interface Tournament {
@@ -156,6 +159,13 @@ export interface Tournament {
    *  restent saisis et affichés, juste ignorés pour le classement). Absent sur d'anciennes données :
    *  traiter comme true (comportement historique). */
   countGoalDiff: boolean;
+  /** Battle Royale (format 'battle_royale' uniquement) : barème réglable avant lancement — palier de
+   *  points par classement de partie (index 0 = 1er) et bonus par élimination. Consommés une seule
+   *  fois, au lancement, dans finals.pointsTable/killPoints (voir launchTournament) — comme
+   *  countGoalDiff/matchFormat, plus modifiables une fois le tournoi lancé (poules déjà constituées,
+   *  parties déjà jouées). Absents sur d'anciennes données : traiter comme DEFAULT_BR_POINTS / 1. */
+  brPointsTable?: number[];
+  brKillPoints?: number;
   /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
   _undo?: string[];
 }
@@ -222,6 +232,8 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     finalsFormat: cfg.finalsFormat || 'single',
     matchFormat: clampMatchFormat(cfg.matchFormat),
     countGoalDiff: cfg.countGoalDiff ?? true,
+    brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : DEFAULT_BR_POINTS.slice(),
+    brKillPoints: cfg.brKillPoints ?? 1,
     champion: null, _undo: [],
   };
 }
@@ -575,7 +587,12 @@ export function launchTournament(t: Tournament): void {
     generateSwissRound(t); // peut déjà couronner le champion (cascade interne) pour un très petit effectif
   } else if (t.format === 'battle_royale') {
     const nGames = Math.max(1, t.nbPools || 3); // réutilise nbPools comme "nombre de parties" pour ce format (pas de poules ici)
-    t.finals = { format: 'battle_royale', games: Array.from({ length: nGames }, () => ({ id: uid(), ranking: null })), pointsTable: DEFAULT_BR_POINTS };
+    t.finals = {
+      format: 'battle_royale',
+      games: Array.from({ length: nGames }, () => ({ id: uid(), ranking: null, kills: null })),
+      pointsTable: t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : DEFAULT_BR_POINTS,
+      killPoints: t.brKillPoints ?? 1,
+    };
   } else if (t.format === 'roundrobin') {
     const rr = buildRoundRobin(ids);
     t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
@@ -1094,19 +1111,27 @@ export function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa
 
 /* ---------- Format Battle Royale (parties à N joueurs, classement par palier de points) ---------- */
 
-/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier) ; enchaîne ou couronne le champion après la dernière partie. */
-export function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[]): { ok: boolean } {
+/** Rapporte le classement complet d'une partie Battle Royale (ids du 1er au dernier), et
+ * optionnellement le nombre d'éliminations par joueur (kills[id]) ; chaque joueur marque les points
+ * de son palier de classement (f.pointsTable) PLUS f.killPoints par élimination. Enchaîne ou couronne
+ * le champion après la dernière partie. */
+export function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[], kills?: Record<string, number>): { ok: boolean } {
   const f = t.finals; if (!f || f.format !== 'battle_royale') return { ok: false };
   const game = f.games.find(g => g.id === gameId);
   if (!game || game.ranking) return { ok: false };
   const validIds = new Set(t.players.map(p => p.id));
   const clean = ranking.filter(id => validIds.has(id));
   if (!clean.length) return { ok: false };
+  const cleanKills: Record<string, number> = {};
+  if (kills) for (const id of clean) { const k = kills[id]; if (typeof k === 'number' && k > 0) cleanKills[id] = Math.floor(k); }
 
   snapshot(t);
   game.ranking = clean;
+  game.kills = Object.keys(cleanKills).length ? cleanKills : null;
   clean.forEach((pid, i) => {
-    const pts = f.pointsTable[i] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0;
+    const placePts = f.pointsTable[i] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0;
+    const killPts = (f.killPoints || 0) * (cleanKills[pid] || 0);
+    const pts = placePts + killPts;
     if (pts > 0) { award(t, pid, pts); t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: pid, b: null, winner: pid, pts, ts: Date.now() }); }
   });
   if (f.games.every(g => g.ranking)) {

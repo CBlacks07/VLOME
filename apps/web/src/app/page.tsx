@@ -109,7 +109,7 @@ type State = {
   adSlide: number;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
   editingPlayerId: string | null; // joueur en cours d'édition (renommer/club/ajustement) dans le panneau Joueurs
-  brPick: string[]; // classement en cours de saisie (Battle Royale) — ids dans l'ordre cliqué, 1er = vainqueur de la partie
+  brActiveGame: string | null; // onglet de partie affiché (Battle Royale) — null = la prochaine à jouer
   // Matchs mis en avant dans le panneau de contrôle de la régie — plusieurs à la fois, une carte par
   // match (plusieurs confrontations peuvent réellement se jouer en même temps sur des tables/écrans
   // différents). Vide = auto (le premier jouable). Id = matchId (phase finale) ou poolId (poule).
@@ -135,6 +135,8 @@ type State = {
     matchMode: "bo" | "ft"; // format de manche appliqué à tous les matchs — Best of (majorité) ou First To (course)
     matchValue: number; // Bo1/3/5/7/9, ou la cible en First To
     countGoalDiff: boolean; // départage des égalités de victoires par différence de buts (Round Robin — poules et phase finale)
+    brPoints: number[]; // Battle Royale : points par palier de classement (index 0 = 1er), réglable avant lancement (voir wizScoringStep)
+    brKillPoints: number; // Battle Royale : points par élimination, en plus du palier de classement
     imageUrl: string | null;
   };
   wizRosterSearch: string;
@@ -571,6 +573,10 @@ function wizFullFlow(S: State): boolean {
  *  élim et Round Robin peuvent commencer par une phase de groupes (voir Engine.usesPools). Swiss
  *  n'en a pas (ses rondes appariées jouent déjà ce rôle) et Battle Royale utilise cette étape pour
  *  son nombre de parties. */
+// Barème par défaut Battle Royale (palier de classement, 1er en premier) — même valeurs que
+// Engine.DEFAULT_BR_POINTS, dupliquées ici pour préremplir l'assistant sans dépendre du moteur côté web.
+const DEFAULT_BR_POINTS = [15, 12, 10, 8, 6, 4, 2, 1];
+const DEFAULT_BR_KILL_POINTS = 1;
 const WIZ_POOLED_FORMATS = ["SURVIVAL", "SINGLE_ELIM", "DOUBLE_ELIM", "ROUND_ROBIN"];
 function wizHasPools(format: string): boolean { return WIZ_POOLED_FORMATS.indexOf(format) >= 0; }
 /** Modes de poule proposés, et ce que chacun sait départager. */
@@ -632,12 +638,13 @@ function wizSteps(S: State) {
   // Raccourci abrégé (Modifier) : format figé, Participants/Poules gérés depuis la page du tournoi —
   // on saute directement à Barème. "Changer le format" (wizFullEdit) : même principe mais le format
   // choisi pilote quelles étapes Poules/Barème apparaissent, comme en création (moins Participants).
-  // Création pure : seul Survival utilise poules + barème détaillé ; Battle Royale garde "Parties"
-  // (poules réutilisées) mais saute le barème ; les autres sautent les deux.
+  // Création pure : Survival et Battle Royale ont chacun leur propre barème détaillé (toutes les
+  // étapes) ; les autres formats à poules gardent "Poules" mais sautent le barème (rien à y régler) ;
+  // le reste saute les deux.
   const pooled = wizHasPools(d.format);
   const defs = editing
-    ? (!S.wizFullEdit ? (isSurvival ? [full[0], full[3], full[4]] : [full[0], full[4]]) : isSurvival ? [full[0], full[2], full[3], full[4]] : (isBR || pooled) ? [full[0], full[2], full[4]] : [full[0], full[4]])
-    : isSurvival ? full : (isBR || pooled) ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
+    ? (!S.wizFullEdit ? (isSurvival || isBR ? [full[0], full[3], full[4]] : [full[0], full[4]]) : isSurvival || isBR ? [full[0], full[2], full[3], full[4]] : pooled ? [full[0], full[2], full[4]] : [full[0], full[4]])
+    : isSurvival || isBR ? full : pooled ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
   return `<div style="padding:14px 0">${defs.map(([label, n]) => {
     const active = n === S.wizStep, done = n < S.wizStep;
     const sub = done ? subtitle(n) : active ? "En cours" : "";
@@ -856,7 +863,7 @@ function wizPoolsStep(S: State) {
     return `${wizCard(`<h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Parties</h3>
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><label style="font-size:12.5px;color:#8E8FA6;font-weight:600">Nombre de parties</label><select id="wz-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => `<option value="${n}" ${n === d.nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>
       <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Après chaque partie, l'organisateur saisit le classement complet (du 1er au dernier). Les points par palier de classement se cumulent sur l'ensemble des <b id="wiz-pools-count" style="color:#F4F5FB">${d.nbPools}</b> partie<span id="wiz-pools-count-s">${d.nbPools > 1 ? "s" : ""}</span> — le plus haut total à la fin remporte le tournoi.</p>`)}
-    ${wizFoot("Retour", S.wizEditId ? 1 : 2, 5, "Validation")}`;
+    ${wizFoot("Retour", S.wizEditId ? 1 : 2, 4)}`;
   }
   const isSurvival = d.format === "SURVIVAL";
   const formatLabel = (WIZ_FORMATS.find(([k]) => k === d.format) || WIZ_FORMATS[0])[1];
@@ -923,8 +930,39 @@ function wizScoringValid(d: State["wizData"]): boolean {
   return fields.every(([, , key]) => ((d as unknown as Record<string, number>)[key] ?? 0) >= WIZ_SCORING_FLOOR[key]);
 }
 
+/** Battle Royale n'a ni victoire de match ni bonus champion (Engine.reportBattleRoyale) : son barème
+ * est un palier de points par classement de partie (1er, 2e, …) plus un bonus par élimination, tous
+ * deux réglables avant lancement — jusqu'ici seul le nombre de parties (étape 3) l'était, le barème
+ * restait figé sur Engine.DEFAULT_BR_POINTS. Nombre de paliers affichés = effectif (4 à 16, une ligne
+ * par place possible en partie) ; au-delà, une place ne rapporte que le bonus d'élimination. */
+function wizBrScoringStep(S: State) {
+  const d = S.wizData;
+  const nRanks = Math.max(4, Math.min(d.players.length || DEFAULT_BR_POINTS.length, 16));
+  const pts = Array.from({ length: nRanks }, (_, i) => d.brPoints[i] ?? 0);
+  const rankLabel = (i: number) => i === 0 ? "1er" : i === 1 ? "2e" : `${i + 1}e`;
+  const rows = pts.map((v, i) => `<div style="display:flex;align-items:center;gap:16px;padding:11px 18px;${i === pts.length - 1 ? "" : "border-bottom:1px solid #1B1B27;"}">
+      <div style="flex:1;min-width:0;font-size:13.5px;font-weight:650">${rankLabel(i)} de partie</div>
+      <input id="wz-br-pts-${i}" type="number" min="0" step="1" value="${v}" style="width:88px;text-align:center;border:1px solid #33334A;border-radius:9px;background:#1B1B27;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:14px;padding:9px" />
+      <span style="width:36px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6;flex:none">pts</span>
+    </div>`).join("");
+  return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
+    <div>
+      <h3 style="margin:0 0 6px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.cart, 17)}${wizFullFlow(S) ? "Étape 4 — Barème des points" : "Barème des points"}</h3>
+      <p style="color:#8E8FA6;font-size:13.5px;margin:6px 0 16px;max-width:520px">Après chaque partie, chaque participant marque les points de son classement (ci-dessous) plus un bonus par élimination — cumulés sur toutes les parties, le plus haut total à la fin remporte le tournoi.</p>
+      <div style="border:1px solid #282838;border-radius:12px;background:#14141D;overflow:hidden">${rows}</div>
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 18px;margin-top:14px;border:1px solid #282838;border-radius:12px;background:#14141D">
+        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:650">Bonus par élimination</div><div style="font-size:11.5px;color:#5D5E72;margin-top:2px">S'ajoute aux points de classement, par élimination réalisée dans la partie</div></div>
+        <input id="wz-br-kill" type="number" min="0" step="0.5" value="${d.brKillPoints}" style="width:88px;text-align:center;border:1px solid #33334A;border-radius:9px;background:#1B1B27;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:14px;padding:9px" />
+        <span style="width:36px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6;flex:none">pts</span>
+      </div>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:10px">Au-delà de ${rankLabel(nRanks - 1)}, une place ne rapporte plus que le bonus d'élimination. Comme le reste de ce barème, figé une fois le tournoi lancé.</p>
+    </div>
+  </div>${wizFoot("Retour", wizFullFlow(S) ? 3 : 1, 5, "Validation")}`;
+}
+
 function wizScoringStep(S: State) {
   const d = S.wizData;
+  if (d.format === "BATTLE_ROYALE") return wizBrScoringStep(S);
   const isSurvival = d.format === "SURVIVAL";
   // Seules finalsWin (points par victoire) et championBonus (sacre) s'appliquent à tous les formats
   // à élimination/rondes — le reste (poules, repêchage, striker) est spécifique à Survival (voir
@@ -1013,13 +1051,18 @@ function wizValidateStep(S: State) {
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
-  const backTarget = !editing ? (isSurvival ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival ? 4 : 1) : (isSurvival ? 4 : hasPoolsStep ? 3 : 1));
+  const backTarget = !editing ? (isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival || isBR ? 4 : 1) : (isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 1));
   // Le barème (points par victoire, bonus champion) ne concerne que Survival — seul format à
   // respecter une cagnotte. Les autres formats gardent des valeurs fixes en interne, jamais montrées
-  // ici : ça n'a rien à faire dans un récap Bracket simple/Round Robin/etc.
+  // ici : ça n'a rien à faire dans un récap Bracket simple/Round Robin/etc. Battle Royale a son propre
+  // barème (palier de classement + bonus élimination), réglable depuis wizBrScoringStep.
   const bareme = isSurvival ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
-      <table style="width:100%;border-collapse:collapse">${brk}</table>` : "";
+      <table style="width:100%;border-collapse:collapse">${brk}</table>`
+    : isBR ? `<hr style="border:0;border-top:1px solid #282838;margin:14px 0" />
+      <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
+      <table style="width:100%;border-collapse:collapse">${d.brPoints.map((v, i) => row(i === 0 ? "1er de partie" : i === 1 ? "2e de partie" : `${i + 1}e de partie`, `${v} pts`)).join("")}${row("Bonus par élimination", `${d.brKillPoints} pt${d.brKillPoints > 1 ? "s" : ""}`)}</table>`
+    : "";
   return `<div class="grid2b" style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px">
     ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.crown, 17)}${editing ? "Récapitulatif" : "Étape 5 — Récapitulatif"}</h3>
       <table style="width:100%;border-collapse:collapse">
@@ -2417,41 +2460,86 @@ function findFinalsMatchById(finals: Detail, matchId: string): Detail | null {
   return null;
 }
 
-/** Régie Battle Royale : classement cumulé + saisie du classement complet de la prochaine partie (clic dans l'ordre = classement). */
-function battleRoyalePanel(S: State, t: Detail, manage: boolean): string {
+/** Battle Royale — classement + saisie des résultats, partagé entre régie et page publique (comme
+ * poolCard/journeeCalendar). Onglets de parties (S.brActiveGame) : celles déjà jouées restent
+ * consultables (résultat + éliminations), seule la prochaine encore à jouer est éditable — pas de
+ * clic dans l'ordre d'arrivée mais un vrai placement + un nombre d'éliminations par joueur, en
+ * inputs non contrôlés lus à la validation (voir data-brsubmit) comme la saisie de score des poules. */
+function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   const f = t.finals;
   const champ = f.champion
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(f.champion)}</div></div>`
     : "";
-  const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
-  const gamesList = `<div style="display:flex;flex-direction:column;gap:8px">${f.games.map((g: Detail) => {
-    const topline = g.played ? g.ranking.slice(0, 3).map((r: Detail) => `${r.rank}. ${escHtml(r.name)}`).join(" · ") : "En attente";
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #282838;border-radius:10px;padding:10px 13px;background:${g.played ? "#14141D" : "rgba(34,211,238,.05)"}">
-      <span style="font-size:13px;font-weight:650">${escHtml(g.label)}</span>
-      <span style="font-size:12px;color:${g.played ? "#8E8FA6" : "#22D3EE"}">${topline}</span>
-    </div>`;
+  const games: Detail[] = f.games;
+  const nextGame = games.find((g: Detail) => !g.played) || null;
+  const active = games.find((g: Detail) => g.id === S.brActiveGame) || nextGame || games[games.length - 1];
+  // Barème réglé avant lancement (voir wizBrScoringStep) — rappelé ici pour que "pourquoi ce total ?"
+  // ait toujours une réponse sous les yeux, sans devoir rouvrir l'assistant.
+  const legend = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:13px 16px;border:1px solid #282838;border-radius:12px;background:#0E131B;margin-bottom:18px">
+    <span style="font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;font-weight:800;flex:none">Barème</span>
+    ${f.pointsTable.slice(0, 8).map((p: number, i: number) => `<span style="font-size:12px;color:#9aa5b1;background:rgba(255,255,255,.03);border-radius:8px;padding:5px 10px"><b style="color:#c7d0db">${i === 0 ? "1er" : i === 1 ? "2e" : `${i + 1}e`}</b> · <span style="color:#22D3EE;font-weight:700">${p} pts</span></span>`).join("")}
+    ${f.killPoints ? `<span style="font-size:12px;color:#9aa5b1;background:rgba(255,255,255,.03);border-radius:8px;padding:5px 10px"><b style="color:#c7d0db">+${f.killPoints}</b> / élimination</span>` : ""}
+  </div>`;
+  const tabs = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${games.map((g: Detail, i: number) => {
+    const on = g.id === active.id;
+    return `<button data-brgametab="${g.id}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;background:${on ? "#22D3EE" : "rgba(255,255,255,.04)"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#04141a" : g.played ? "#8E8FA6" : "#22D3EE"}">Partie ${i + 1}${!g.played && g.id === nextGame?.id ? " · à jouer" : ""}</button>`;
   }).join("")}</div>`;
-  const nextGame = f.games.find((g: Detail) => !g.played);
   const players: { id: string; name: string }[] = Array.isArray(t.players) ? t.players : [];
-  const pickPanel = manage && nextGame ? (() => {
-    const pick: string[] = S.brPick;
-    const ranked = pick.map((id, i) => ({ id, name: players.find((p) => p.id === id)?.name || "?", rank: i + 1 }));
-    const remaining = players.filter((p) => !pick.includes(p.id));
-    const canValidate = pick.length === players.length && players.length > 0;
-    return `<div class="glow" style="border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.06);padding:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;font-weight:800">Classement · ${escHtml(nextGame.label)}</span>${pick.length ? `<span data-brreset="1" style="font-size:11px;color:#8E8FA6;cursor:pointer">Réinitialiser</span>` : ""}</div>
-      ${ranked.length ? `<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">${ranked.map((r) => `<div style="display:flex;align-items:center;gap:8px;font-size:13px;background:#14141D;border:1px solid #282838;border-radius:8px;padding:6px 10px"><span style="font-family:'Bebas Neue',sans-serif;color:#FBBF24;width:20px">${r.rank}</span><span style="flex:1">${escHtml(r.name)}</span><span data-brpick="${r.id}" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 13)}</span></div>`).join("")}</div>` : ""}
-      <p style="color:#5D5E72;font-size:11px;margin:0 0 8px">Touche les joueurs dans l'ordre d'arrivée (1er en premier).</p>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${remaining.map((p) => `<span data-brpick="${p.id}" style="font-size:12px;font-weight:600;background:#1B1B27;border:1px solid #282838;color:#F4F5FB;border-radius:99px;padding:6px 12px;cursor:pointer">${escHtml(p.name)}</span>`).join("")}</div>
-      <button data-brsubmit="${nextGame.id}" ${canValidate ? "" : "disabled"} style="width:100%;background:${canValidate ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "#22222F"};color:${canValidate ? "#04222a" : "#5D5E72"};border:0;border-radius:10px;padding:11px;font-weight:750;font-size:13.5px;cursor:${canValidate ? "pointer" : "default"}">Valider le classement</button>
+  let entry: string;
+  if (active.played) {
+    const rows = (active.ranking as Detail[]).map((r: Detail) => `<div style="display:grid;grid-template-columns:44px 1fr 90px 90px;align-items:center;padding:9px 14px;border-bottom:1px solid #1B1B27">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${r.rank === 1 ? "#FBBF24" : "#5D5E72"}">${r.rank}</span>
+      <span style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</span>
+      <span style="text-align:right;font-size:12.5px;color:#8E8FA6">${r.kills} élim.</span>
+      <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:750;color:#22D3EE">${r.pts} pts</span>
+    </div>`).join("");
+    entry = `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E131B">${rows}</div>`;
+  } else if (manage) {
+    const rows = players.map((p, i) => `<div style="display:grid;grid-template-columns:1fr 110px 110px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #1B1B27">
+      <span style="font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</span>
+      <input id="br-pl-${p.id}" type="number" min="1" max="${players.length}" value="${i + 1}" style="width:100%;text-align:center;background:#141b26;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;padding:7px" />
+      <input id="br-kl-${p.id}" type="number" min="0" value="0" style="width:100%;text-align:center;background:#141b26;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;padding:7px" />
+    </div>`).join("");
+    entry = `<div style="border:1px solid #282838;border-radius:14px;overflow:hidden;background:#0E131B">
+      <div style="display:grid;grid-template-columns:1fr 110px 110px;gap:10px;padding:12px 14px 8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800"><span>Joueur</span><span style="text-align:center">Placement</span><span style="text-align:center">Élims</span></div>
+      ${rows}
+      <div style="padding:14px"><button data-brsubmit="${active.id}" style="width:100%;background:linear-gradient(135deg,#22D3EE,#0891b2);color:#04141a;border:0;border-radius:10px;padding:12px;font-weight:800;font-size:13px;letter-spacing:.4px;cursor:pointer">Valider les résultats du match</button></div>
     </div>`;
-  })() : "";
-  const left = `${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Battle Royale · ${f.games.filter((g: Detail) => g.played).length}/${f.games.length} parties</div>
-    <div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:18px;margin-bottom:18px"><div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:12px">Classement cumulé</div>${standings}</div>
-    <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#5D5E72;font-weight:800;margin-bottom:10px">Parties</div>${gamesList}`;
-  return manage
-    ? `<div class="grid2c" style="margin-top:26px;display:grid;grid-template-columns:1fr 300px;gap:22px;align-items:start"><div class="rise d1">${left}</div><div class="rise d2">${pickPanel}</div></div>`
-    : `<div class="rise" style="margin-top:26px">${left}</div>`;
+  } else {
+    entry = `<div style="border:1px dashed #282838;border-radius:14px;padding:30px;text-align:center;color:#5D5E72;font-size:13px">En attente des résultats de cette partie.</div>`;
+  }
+  // Classement : une colonne par partie (placement + points de cette partie), éliminations
+  // cumulées, total, et WWCD (nombre de victoires) — pas seulement le total, qui ne dit pas d'où
+  // viennent les points (régularité vs coup d'éclat sur une seule partie).
+  const standings = f.standings as Detail[];
+  const gridCols = `34px 1fr 62px repeat(${games.length}, 60px) 74px 56px`;
+  const headRow = `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;padding:0 14px 10px;align-items:center">
+    <div></div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Joueur</div>
+    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Élims</div>
+    ${games.map((_: Detail, i: number) => `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">M${i + 1}</div>`).join("")}
+    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Total</div>
+    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">WWCD</div>
+  </div>`;
+  const bodyRows = standings.map((r: Detail, i: number) => {
+    const top = i < 3;
+    const gameCells = (r.games as Detail[]).map((g: Detail) => g.played
+      ? `<div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:700;color:${g.rank === 1 ? "#FBBF24" : g.rank <= 3 ? "#22D3EE" : "#8E8FA6"}">#${g.rank}</div><div style="font-size:9px;color:#5D5E72">${g.pts}p</div></div>`
+      : `<div style="text-align:center;color:#33384a;font-size:12px">—</div>`).join("");
+    return `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;align-items:center;padding:9px 14px;border-top:1px solid #1B1B27;${top ? "background:rgba(34,211,238,.05);border-radius:10px;" : ""}">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${i === 0 ? "#FBBF24" : top ? "#22D3EE" : "#5D5E72"}">${i + 1}</div>
+      <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px;font-weight:600">${escHtml(r.name)}</div>
+      <div style="text-align:center;font-size:13px;font-weight:700;color:#8E8FA6">${r.kills}</div>
+      ${gameCells}
+      <div style="text-align:center;font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:700;color:#22D3EE">${r.pts}</div>
+      <div style="text-align:center;font-weight:700;color:${r.wins > 0 ? "#FBBF24" : "#4b5563"}">${r.wins}</div>
+    </div>`;
+  }).join("");
+  const leaderboard = `<div style="overflow-x:auto"><div style="min-width:${360 + games.length * 62}px">${headRow}${bodyRows}</div></div>`;
+  return `${champ}${legend}
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Saisie des résultats</div>
+    ${tabs}${entry}
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:28px 0 14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Classement général · ${games.filter((g: Detail) => g.played).length}/${games.length} parties</div>
+    ${leaderboard}`;
 }
 
 /** Affiche imprimable (résultats) : classement général, qualifiés par poule, phase finale. Données réelles uniquement (mêmes champs que le cockpit). */
@@ -3120,47 +3208,13 @@ function regieTopBanner(S: State, t: Detail): string {
   </div>`;
 }
 
-/** Centre de régie pour Battle Royale : classement cumulé en tableau + attribution de la prochaine place (Tour 5). */
+/** Centre de régie pour Battle Royale — même contenu que la page publique (battleRoyaleCenter), avec les contrôles d'organisateur. */
 function battleRoyaleRegieCenter(S: State, t: Detail): string {
-  const f = t.finals;
-  const nextGame = f.games.find((g: Detail) => !g.played);
-  const players: { id: string; name: string }[] = Array.isArray(t.players) ? t.players : [];
-  const pick: string[] = S.brPick;
-  const pickedSet = new Set(pick);
-  const nextRank = pick.length + 1;
-  const canValidate = nextGame && pick.length === players.length && players.length > 0;
-  const banner = nextGame ? `<div style="display:flex;align-items:center;gap:14px;margin:0 0 18px;border:1px solid rgba(34,211,238,.4);border-radius:12px;background:linear-gradient(90deg,rgba(34,211,238,.1),rgba(34,211,238,.02));padding:13px 16px">
-      <span style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:#22D3EE;color:#04222a;flex:none;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600">${canValidate ? "✓" : nextRank}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13.5px;font-weight:750">${canValidate ? "Classement complet — valide pour enregistrer la partie" : `Touche un joueur pour lui donner la ${nextRank}ᵉ place`}</div>
-        <div style="font-size:11.5px;color:#8E8FA6;margin-top:2px">${escHtml(nextGame.label)}</div>
-      </div>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:8px;padding:7px 11px">${pick.length}/${players.length}</span>
-      ${pick.length ? `<span data-brreset="1" style="border:1px solid #33334A;background:#14141D;color:#F4F5FB;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">Réinitialiser</span>` : ""}
-      ${canValidate ? `<button data-brsubmit="${nextGame.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:8px;padding:9px 16px;font-weight:750;font-size:13px;cursor:pointer;flex:none">Valider le classement</button>` : ""}
-    </div>` : "";
-  const standings = f.standings as { id: string; name: string; pts: number }[];
-  const rows = standings.map((r, i) => {
-    const isNext = nextGame && !pickedSet.has(r.id);
-    return `<div ${isNext ? `data-brpick="${r.id}"` : ""} style="display:grid;grid-template-columns:36px 1fr 90px;align-items:center;height:48px;padding:0 14px;border-bottom:1px solid #15151f;${isNext ? "cursor:pointer" : ""}${i === 0 ? ";background:rgba(251,191,36,.04)" : ""}">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${i === 0 ? "#FBBF24" : "#5D5E72"};font-weight:600">${i + 1}</span>
-      <span style="display:flex;align-items:center;gap:10px;min-width:0"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#22222F;font-size:10.5px;font-weight:800;color:${i === 0 ? "#FBBF24" : "#22D3EE"};flex:none">${escHtml(r.name).charAt(0).toUpperCase()}</span><b style="font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</b>${isNext ? `<span style="font-size:11px;color:#63C6DA;flex:none">toucher pour classer</span>` : ""}</span>
-      <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:${i === 0 ? "#FBBF24" : "#F4F5FB"}">${r.pts}</span>
-    </div>`;
-  }).join("");
-  const table = `<div style="border:1px solid #1B1B27;border-radius:12px;overflow:hidden">
-    <div style="display:grid;grid-template-columns:36px 1fr 90px;align-items:center;height:36px;padding:0 14px;background:#101019;border-bottom:1px solid #1B1B27;font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:#5D5E72;font-weight:800"><span>#</span><span>Joueur</span><span style="text-align:right">Total</span></div>
-    ${rows}
-  </div>`;
-  const barème = `<div style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:11.5px;color:#5D5E72;flex-wrap:wrap">
-    <span style="font-family:'JetBrains Mono',monospace">Barème</span> ${(f.pointsTable as number[]).map((p, i) => `${i + 1}${i === 0 ? "ᵉʳ" : "ᵉ"} ${p}`).join(" · ")}
-  </div>`;
-  const gamesRecap = `<div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">${f.games.map((g: Detail, i: number) => `<div style="display:flex;align-items:center;gap:10px;font-size:11.5px;color:#5D5E72;padding:6px 2px;border-top:1px solid #15151f"><span style="font-family:'JetBrains Mono',monospace;width:20px">${i + 1}</span><span style="flex:1">${escHtml(g.label)}</span><span style="color:${g.played ? "#34D399" : "#5D5E72"}">${g.played ? `1ʳᵉ : ${escHtml(g.ranking[0].name)}` : "à jouer"}</span></div>`).join("")}</div>`;
   return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
-      <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${f.games.filter((g: Detail) => g.played).length}/${f.games.length} parties jouées</div>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Classement cumulé</h2></div>
+      <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Battle Royale</div>
+      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Résultats &amp; classement</h2></div>
     </div>
-    <div style="padding:18px 28px 30px">${banner}${table}${barème}${gamesRecap}</div>`;
+    <div style="padding:18px 28px 30px">${battleRoyaleCenter(S, t, true)}</div>`;
 }
 
 /** Centre de la régie : arbre de bracket (single/double), table Round Robin/Swiss, ou poule Survival active. Battle Royale a son propre centre dédié. */
@@ -3609,7 +3663,7 @@ function pTournoi(S: State) {
 
   let finalsHtml = "";
   if (t.finals && t.finals.format === "battle_royale") {
-    finalsHtml = battleRoyalePanel(S, t, manage);
+    finalsHtml = `<div class="rise" style="margin-top:26px">${battleRoyaleCenter(S, t, manage)}</div>`;
   } else if (t.finals) {
     const champ = t.finals.champion
       ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
@@ -4141,10 +4195,10 @@ export default function Page() {
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", galleryBusy: null,
     albums: null, albumEdit: null, albumOpen: null, boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
-    editingPlayerId: null, brPick: [],
+    editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, imageUrl: null },
+    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -4159,7 +4213,7 @@ export default function Page() {
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, regiePanel: null, brPick: [], showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, regiePanel: null, brActiveGame: null, showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -5324,6 +5378,10 @@ export default function Page() {
         const raw = parseInt(val("wz-qualify"));
         d.qualifyPerPool = Math.max(1, Math.min(Number.isFinite(raw) ? raw : (d.qualifyPerPool || 2), maxQ));
       }
+    } else if (S.wizStep === 4 && d.format === "BATTLE_ROYALE") {
+      const nRanks = Math.max(4, Math.min(d.players.length || DEFAULT_BR_POINTS.length, 16));
+      d.brPoints = Array.from({ length: nRanks }, (_, i) => Math.max(0, parseInt(val(`wz-br-pts-${i}`)) || 0));
+      d.brKillPoints = Math.max(0, parseFloat(val("wz-br-kill")) || 0);
     } else if (S.wizStep === 4) {
       const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
       d.survWin = num("wz-sc-surv", 1); d.loserWin = num("wz-sc-loser", 0.5); d.poolFinalWin = num("wz-sc-poolfinal", 1.5);
@@ -5412,6 +5470,7 @@ export default function Page() {
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
       qualifyPerPool: d.qualifyPerPool,
       matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff,
+      brPointsTable: d.brPoints, brKillPoints: d.brKillPoints,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
     };
@@ -5441,7 +5500,7 @@ export default function Page() {
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
     } catch {
@@ -5465,6 +5524,7 @@ export default function Page() {
       // Les reglages de poule concernent tous les formats qui en proposent, pas seulement Survival.
       ...(wizHasPools(d.format) ? { poolFormat: d.poolFormat, qualifyPerPool: d.qualifyPerPool } : {}),
       ...(d.format === "SURVIVAL" ? { finalsFormat: d.finalsFormat, streakLength: d.streakLength } : {}),
+      ...(d.format === "BATTLE_ROYALE" ? { brPointsTable: d.brPoints, brKillPoints: d.brKillPoints } : {}),
       // Format des matchs (Bo/Ft) : concerne tous les formats, modifiable tant que le tournoi n'est
       // pas lancé (voir TournamentsService.update).
       matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff,
@@ -5505,7 +5565,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5539,9 +5599,22 @@ export default function Page() {
     else if (d.rosterShuffle) { act(`${API}/api/tournaments/${d.rosterShuffle}/roster/shuffle`); }
     else if (d.report) { const [poolId, winnerId] = d.report.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { poolId, winnerId }); }
     else if (d.reportf) { const [matchId, winnerId] = d.reportf.split("|"); act(`${API}/api/tournaments/${S.openId}/report`, { matchId, winnerId }); }
-    else if (d.brpick) setS((s) => ({ ...s, brPick: s.brPick.includes(d.brpick!) ? s.brPick.filter((x) => x !== d.brpick) : [...s.brPick, d.brpick!] }));
-    else if (d.brreset !== undefined) setS((s) => ({ ...s, brPick: [] }));
-    else if (d.brsubmit) { act(`${API}/api/tournaments/${S.openId}/battle-royale-report`, { gameId: d.brsubmit, ranking: S.brPick }); setS((s) => ({ ...s, brPick: [] })); }
+    else if (d.brgametab) setS((s) => ({ ...s, brActiveGame: d.brgametab! }));
+    else if (d.brsubmit) {
+      // Placement + éliminations lus directement sur les inputs (non contrôlés, comme le score des
+      // poules — voir battleRoyaleCenter) plutôt que depuis un état React tenu à jour à chaque frappe.
+      const players: { id: string }[] = Array.isArray(S.detail?.players) ? S.detail.players : [];
+      const ranked = players
+        .map((p) => ({ id: p.id, placement: Math.max(1, parseInt((document.getElementById(`br-pl-${p.id}`) as HTMLInputElement | null)?.value || "") || 1) }))
+        .sort((a, b) => a.placement - b.placement);
+      const kills: Record<string, number> = {};
+      players.forEach((p) => {
+        const k = Math.max(0, parseInt((document.getElementById(`br-kl-${p.id}`) as HTMLInputElement | null)?.value || "") || 0);
+        if (k > 0) kills[p.id] = k;
+      });
+      act(`${API}/api/tournaments/${S.openId}/battle-royale-report`, { gameId: d.brsubmit, ranking: ranked.map((r) => r.id), kills });
+      setS((s) => ({ ...s, brActiveGame: null }));
+    }
     else if (d.scorestep) {
       const [key, side, dir] = d.scorestep.split("|") as [string, "a" | "b", string];
       setS((s) => {
@@ -5647,6 +5720,8 @@ export default function Page() {
             matchMode: t.matchFormat?.mode === "ft" ? "ft" : "bo",
             matchValue: t.matchFormat?.value || 1,
             countGoalDiff: t.countGoalDiff ?? true,
+            brPoints: (t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : DEFAULT_BR_POINTS).slice(),
+            brKillPoints: t.brKillPoints ?? DEFAULT_BR_KILL_POINTS,
             imageUrl: t.imageUrl || null,
           },
         }));
@@ -5927,7 +6002,7 @@ export default function Page() {
       }
       setS((s) => ({
         ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, imageUrl: null },
+        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       loadRoster();
     }

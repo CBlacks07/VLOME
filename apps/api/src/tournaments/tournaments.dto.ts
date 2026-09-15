@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -43,6 +43,10 @@ export class CreateTournamentDto {
   // Départage des égalités de victoires par différence de buts/manches (Round Robin — poules et
   // phase finale). Activé par défaut ; désactivé, seules les victoires comptent.
   @IsOptional() @IsBoolean() countGoalDiff?: boolean;
+  // Battle Royale uniquement : palier de points par classement de partie (index 0 = 1er) et bonus par
+  // élimination — réglables avant lancement, valeurs par défaut du moteur sinon (Engine.DEFAULT_BR_POINTS / 1).
+  @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
+  @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
 }
 
 export class UpdateTournamentDto {
@@ -79,6 +83,10 @@ export class UpdateTournamentDto {
   @IsOptional() @IsNumber() @Min(0.25) finalsWin?: number;
   @IsOptional() @IsNumber() @Min(0) championBonus?: number;
   @IsOptional() @IsNumber() @Min(0) streakBonus?: number;
+  // Battle Royale uniquement — voir CreateTournamentDto. Modifiable comme countGoalDiff/matchMode :
+  // uniquement tant que le tournoi n'est pas lancé (TournamentsService.update).
+  @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
+  @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
 }
 
 export class AddPlayerDto {
@@ -145,4 +153,7 @@ export class RegisterDto {
 export class BattleRoyaleReportDto {
   @IsString() gameId!: string;
   @IsArray() @IsString({ each: true }) ranking!: string[];
+  // Nombre d'éliminations par joueur (clé = id joueur) — optionnel, validé plus finement côté moteur
+  // (Engine.reportBattleRoyale ignore silencieusement une valeur non numérique ou ≤ 0).
+  @IsOptional() @IsObject() kills?: Record<string, number>;
 }

@@ -2523,21 +2523,80 @@ function playersRosterPanel(S: State, t: Detail, manage: boolean): string {
 }
 
 /** Poule Survival (match courant cliquable + classement) — partagé entre pTournoi et la régie. */
+/** Calendrier round robin (méthode du cercle) : répartit n places en journées où chacune ne joue
+ * qu'une fois — pour afficher un vrai calendrier par journées (comme un championnat) plutôt qu'une
+ * liste plate de tous les face-à-face. Un effectif impair libère une place "repos" par journée,
+ * retirée du résultat (indices ≥ n). Renvoie des index (0-based) dans l'ordre de `pool.order`. */
+function roundRobinSchedule(n: number): [number, number][][] {
+  const size = n % 2 === 0 ? n : n + 1;
+  const arr = Array.from({ length: size }, (_, i) => i);
+  const rounds: [number, number][][] = [];
+  for (let r = 0; r < size - 1; r++) {
+    const round: [number, number][] = [];
+    for (let i = 0; i < size / 2; i++) {
+      const a = arr[i], b = arr[size - 1 - i];
+      if (a < n && b < n) round.push([a, b]);
+    }
+    rounds.push(round);
+    arr.splice(1, 0, arr.pop()!); // rotation : la place 0 reste fixe, les autres tournent
+  }
+  return rounds;
+}
+/** Calendrier round robin par journées — remplace la grille plate de toutes les rencontres (poules
+ * ET Round Robin de phase finale) par un vrai calendrier de championnat, groupé journée par journée,
+ * chaque rencontre cliquable si `reportAttr` en renvoie un (les poules ne savent rapporter que le
+ * prochain match jouable — Engine.currentMatch ; la phase finale accepte n'importe lequel via son
+ * matchId, donc tout y est cliquable dès qu'il est jouable). */
+function journeeCalendar(names: { id: string; name: string }[], matches: Detail[], manage: boolean, reportAttr: (m: Detail, playerId: string) => string | null): string {
+  const byPair = new Map<string, Detail>();
+  matches.forEach((m) => { if (m.aId && m.bId) byPair.set([m.aId, m.bId].sort().join("|"), m); });
+  const schedule = roundRobinSchedule(names.length);
+  const row = (m: Detail) => {
+    const nameCell = (name: string, id: string, isWin: boolean) => {
+      const attr = manage ? reportAttr(m, id) : null;
+      if (attr) return `<button ${attr} style="background:transparent;border:0;color:#F4F5FB;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:3px 6px;border-radius:6px;text-align:inherit">${escHtml(name)}</button>`;
+      return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
+    };
+    const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
+    const status = m.winnerId
+      ? hasScore ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:12.5px;color:#34D399">${m.sa}–${m.sb}</span>` : `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
+      : m.playable ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#22D3EE">À JOUER</span>` : `<span style="font-size:10px;color:#5D5E72">à venir</span>`;
+    return `<div style="display:grid;grid-template-columns:1fr 26px 1fr 68px;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #15151f;${m.playable ? "background:rgba(34,211,238,.05)" : ""}">
+      <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
+      <div style="text-align:center;color:#5D5E72;font-size:10.5px">vs</div>
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
+      <div style="text-align:right">${status}</div>
+    </div>`;
+  };
+  const calendar = schedule.map((round, ri) => {
+    const rows = round.map(([ia, ib]) => {
+      const key = [names[ia]?.id, names[ib]?.id].sort().join("|");
+      const m = byPair.get(key);
+      return m ? row(m) : "";
+    }).filter(Boolean).join("");
+    return rows ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#5D5E72;padding:6px 12px">Journée ${ri + 1}</div>${rows}</div>` : "";
+  }).join("");
+  return `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden;max-height:440px;overflow-y:auto">${calendar || `<div style="padding:16px;text-align:center;color:#5D5E72;font-size:13px">En attente…</div>`}</div>`;
+}
 function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true): string {
   let body: string;
-  if (p.current) {
-    const stageLabel: Record<string, string> = poolFormat === "roundrobin"
-      ? { survival: "Round Robin", losers: "Round Robin", poolFinal: "Round Robin" }
-      : poolFormat === "double"
+  if (poolFormat === "roundrobin") {
+    // Calendrier par journées plutôt qu'un seul "match en cours" mis en avant : les journées déjà
+    // jouées et à venir restent visibles, comme un vrai calendrier de championnat. Seul le prochain
+    // match jouable peut être rapporté ici — le moteur ne résout les poules round robin que dans
+    // l'ordre (Engine.currentMatch), les autres journées à venir restent donc en lecture seule.
+    const order: { id: string; name: string }[] = Array.isArray(p.order) ? p.order : [];
+    const calendar = journeeCalendar(order, p.rrmatches || [], manage, (m, id) => m.playable ? `data-report="${p.id}|${id}"` : null);
+    body = `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Calendrier</div>${calendar}`;
+  } else if (p.current) {
+    // Round Robin est traité plus haut (calendrier par journées) : ici poolFormat ne vaut plus que
+    // "survival" ou "double", tous deux dotés d'un vrai survivant/challenger asymétrique.
+    const stageLabel: Record<string, string> = poolFormat === "double"
       ? { survival: "Bracket vainqueurs", losers: "Bracket perdants", poolFinal: "Finale de poule" }
       : { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
     const stageTitle = `${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""}`;
-    // En round robin il n y a ni survivant ni challenger : les deux cotes sont symetriques, d ou
-    // « Joueur 1 / Joueur 2 » plutot que « Joueur / Adversaire » qui suggerait une asymetrie.
-    const subA = poolFormat === "roundrobin" ? "Joueur 1"
-      : p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
-    const subB = poolFormat === "roundrobin" ? "Joueur 2"
-      : p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
+    const subA = p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
+    const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
     if (manage) {
       const side = (id: string, name: string, cls: string, sub: string) => `<button data-report="${p.current.poolId}|${id}" style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);color:#F4F5FB;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></button>`;
       const inp = "width:64px;height:44px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;line-height:44px;padding:0";
@@ -2560,14 +2619,25 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
   } else {
     body = `<div style="color:#5D5E72;text-align:center;padding:14px 0">En attente…</div>`;
   }
-  // Diff. (différence de buts/manches) n'existe que pour le mode Round Robin — seul mode de poule où
-  // le serveur la calcule (voir TournamentsService.poolRanking, aligné sur Engine.poolRRRanking : le
-  // même classement qui décide de la qualification). En-tête ajouté pour que "V"/"Pts" soient
-  // identifiables sans deviner — même table que les classements Round Robin/Swiss de la phase finale.
-  const hasGd = poolFormat === "roundrobin" && countGoalDiff !== false;
+  // Mini-bracket de la poule (poolFormat 'double') : la grosse carte VS ci-dessus ne montre que le
+  // match du moment — sans l'arbre complet, impossible de voir où en est le groupe (qui vient du
+  // bracket perdants, combien de tours restent…). Réutilise doubleElimTree, déjà écrit pour la
+  // phase finale, le DTO de p.dbracket ayant exactement la même forme (wb/lb/gf/gf2).
+  if (poolFormat === "double" && p.dbracket) {
+    // Toujours en lecture seule ici (manage=false) : le moteur ne rapporte les poules que via le
+    // "match du moment" (Engine.currentMatch, carte VS ci-dessus, data-report) — un clic sur une
+    // case de cet arbre déclencherait à tort data-reportf, qui vise la phase finale (t.finals), pas
+    // les poules.
+    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, null, false)}</div>`;
+  }
+  // J (joués) / G (gagnés) / P (perdus) : vrai tableau de championnat, comme au football — seul le
+  // mode Round Robin produit un classement complet (voir TournamentsService.poolRanking). Diff.
+  // (différence de buts/manches) reste conditionnée au réglage "Départager par différence de buts".
+  const isRR = poolFormat === "roundrobin";
+  const hasGd = isRR && countGoalDiff !== false;
   const rank = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px">
-    <thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 4px">#</td><td style="padding:6px 4px">Joueur</td><td style="padding:6px 4px;text-align:right">V</td>${hasGd ? `<td style="padding:6px 4px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 4px;text-align:right">Pts</td></tr></thead>
-    <tbody>${p.ranking.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 4px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:15px;width:22px">${i + 1}</td><td style="padding:7px 4px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.wins}</td>${hasGd ? `<td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody>
+    <thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 4px">#</td><td style="padding:6px 4px">Joueur</td>${isRR ? `<td style="padding:6px 4px;text-align:right">J</td><td style="padding:6px 4px;text-align:right">G</td><td style="padding:6px 4px;text-align:right">P</td>` : `<td style="padding:6px 4px;text-align:right">V</td>`}${hasGd ? `<td style="padding:6px 4px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 4px;text-align:right">Pts</td></tr></thead>
+    <tbody>${p.ranking.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 4px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:15px;width:22px">${i + 1}</td><td style="padding:7px 4px;font-weight:600">${escHtml(r.name)}</td>${isRR ? `<td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.played}</td><td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.losses}</td>` : `<td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.wins}</td>`}${hasGd ? `<td style="padding:7px 4px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody>
   </table>`;
   return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:18px"><div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${p.name}</div>${body}${rank}</div>`;
 }
@@ -2607,36 +2677,6 @@ function roundCol(label: string, matches: Detail[], manage: boolean, hideByes = 
   return `<div style="display:flex;flex-direction:column;justify-content:space-around;gap:12px;min-width:180px">${label ? `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700">${escHtml(label)}</div>` : ""}${shown.map((m) => matchBox(m, manage)).join("")}</div>`;
 }
 
-/** Une ligne de match Round Robin en tableau compact — remplace la grille de mini-cartes, illisible dès qu'il y a beaucoup de joueurs (ex : 16 joueurs = 120 matchs). Clic sur un nom = victoire directe (1 manche), même sémantique que matchBox. */
-function roundRobinMatchRow(m: Detail, manage: boolean): string {
-  const nameCell = (name: string, id: string, isWin: boolean) => {
-    if (manage && m.playable) return `<button data-reportf="${m.matchId}|${id}" style="background:transparent;border:0;color:#F4F5FB;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:3px 6px;border-radius:6px;text-align:inherit">${escHtml(name)}</button>`;
-    return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
-  };
-  const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
-  const status = m.winnerId
-    ? hasScore
-      ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:12.5px;color:#34D399">${m.sa}–${m.sb}</span>`
-      : `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
-    : m.playable ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#22D3EE">À JOUER</span>` : `<span style="font-size:10px;color:#5D5E72">—</span>`;
-  return `<div style="display:grid;grid-template-columns:1fr 26px 1fr 68px;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #15151f">
-    <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
-    <div style="text-align:center;color:#5D5E72;font-size:10.5px">vs</div>
-    <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
-    <div style="text-align:right">${status}</div>
-  </div>`;
-}
-/** Liste complète des matchs Round Robin, groupée à jouer / joués (repliés), scrollable — remplace la grille de mini-cartes plate de tous les matchs. */
-function roundRobinMatchList(matches: Detail[], manage: boolean): string {
-  const todo = matches.filter((m: Detail) => !m.winnerId);
-  const done = matches.filter((m: Detail) => m.winnerId);
-  const todoList = `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden"><div style="max-height:440px;overflow-y:auto">${todo.length ? todo.map((m) => roundRobinMatchRow(m, manage)).join("") : `<div style="padding:16px;text-align:center;color:#5D5E72;font-size:13px">Tous les matchs ont été joués.</div>`}</div></div>`;
-  const doneList = done.length ? `<details style="margin-top:16px">
-      <summary style="cursor:pointer;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;padding:2px 0">Matchs joués (${done.length})</summary>
-      <div style="border:1px solid #282838;border-radius:12px;overflow:hidden;margin-top:10px"><div style="max-height:300px;overflow-y:auto">${done.map((m) => roundRobinMatchRow(m, manage)).join("")}</div></div>
-    </details>` : "";
-  return `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Matchs à jouer (${todo.length})</div>${todoList}${doneList}`;
-}
 
 /** Bouton "Lancer la phase finale" (toujours en double élimination pour Survival), une fois toutes les poules terminées. Partagé entre pTournoi et la régie. */
 function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
@@ -2673,8 +2713,8 @@ function getActiveMatch(S: State, t: Detail): ActiveMatch | null {
 
 /** Les autres matchs jouables que celui affiché dans le contrôle — "Lancer" bascule S.activeMatchId. */
 function matchQueuePanel(t: Detail, active: ActiveMatch): string {
-  // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), la liste complète du centre
-  // (roundRobinMatchList, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
+  // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), le calendrier par
+  // journées du centre (journeeCalendar, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
   if (t.finals?.format === "roundrobin") return "";
   const items: { id: string; label: string }[] = [];
   if (t.finals && t.finals.format !== "battle_royale") {
@@ -3128,7 +3168,9 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     // "Départager par différence de buts" du tournoi (voir wizInfosStep) — masqué si désactivé,
     // plutôt que d'afficher une colonne qui n'a pas influencé le classement.
     const showDiff = isSwiss || t.countGoalDiff !== false;
-    const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">V</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
+    // J/G/P (joués/gagnés/perdus) : même tableau de championnat que les poules Round Robin — le Swiss
+    // n'a pas de notion de "perdus" comparable (byes, rondes variables), il garde sa colonne V seule.
+    const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td>${isSwiss ? `<td style="padding:6px 8px;text-align:right">V</td>` : `<td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">P</td>`}${showDiff ? `<td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td>${isSwiss ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td>` : `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.played}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.losses}</td>`}${showDiff ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
     const label = isSwiss ? `Ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : `${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués`;
     const rrBackBtn = `<span data-bracketview="tree" style="font-size:11.5px;font-weight:700;color:#8E8FA6;background:transparent;border:1px solid #282838;border-radius:8px;padding:7px 12px;cursor:pointer">${isSwiss ? "Classement Swiss" : "Round Robin"}</span>`;
     if (S.bracketView === "pools" && hasPools) {
@@ -3141,7 +3183,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
     }
     const body = isSwiss
       ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.rounds[t.finals.rounds.length - 1].matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`
-      : roundRobinMatchList(t.finals.matches, manage);
+      : journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null);
     return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
         <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${label}</div>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">${isSwiss ? "Classement Swiss" : "Round Robin"}</h2></div>
@@ -3503,8 +3545,11 @@ function pTournoi(S: State) {
       fmtLabel = " · Round Robin";
       // Colonne masquée si le tournoi a désactivé le départage par différence de buts (voir wizInfosStep).
       const showDiff = t.countGoalDiff !== false;
-      const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">V</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
-      body = standings + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${t.finals.matches.map((m: Detail) => matchBox(m, manage)).join("")}</div>`;
+      const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:#5D5E72;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">P</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid #22222F"><td style="padding:7px 8px;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.played}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.losses}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:#8E8FA6">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
+      // Calendrier par journées plutôt que la grille plate de mini-cartes — même traitement que les
+      // poules Round Robin, cohérent avec "faut corriger tous les tableaux comme ça".
+      const calendar = journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m, id) => m.playable ? `data-reportf="${m.matchId}|${id}"` : null);
+      body = standings + `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Calendrier</div>${calendar}`;
     } else if (t.finals.format === "double") {
       fmtLabel = " · Double élimination";
       body = doubleElimTree(t.finals, null, manage);

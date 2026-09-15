@@ -644,7 +644,9 @@ export class TournamentsService {
     // décide de la qualification (Engine.poolRRRanking : victoires puis différence de buts/manches) —
     // sinon le tableau pouvait montrer un ordre différent de celui des badges "qualifiés" au-dessus.
     if (t.poolFormat === 'roundrobin') {
-      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: t.points[r.id] || 0, wins: r.wins, gd: r.gd }));
+      // Pts = points de championnat (3 par victoire), pas les points de récompense du tournoi
+      // (t.points) — même convention que le classement Round Robin de phase finale, voir plus bas.
+      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: r.wins * 3, wins: r.wins, played: r.played, losses: r.played - r.wins, gd: r.gd }));
     }
     const wins: Record<string, number> = {};
     t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
@@ -670,7 +672,11 @@ export class TournamentsService {
     if (!f) return null;
     const champion = t.champion ? Engine.playerName(t, t.champion) : null;
     if (f.format === 'roundrobin') {
-      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, gd: r.gd, pts: t.points[r.id] || 0 }));
+      // Pts du classement Round Robin = points de championnat (3 par victoire, convention standard
+      // de nombreux sports — pas de match nul en 1v1 donc rien à ajouter pour ça) : une notion de
+      // classement distincte des points de récompense du tournoi (t.points, barème/cagnotte), qui
+      // restent calculés et distribués séparément.
+      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, played: r.played, losses: r.played - r.wins, gd: r.gd, pts: r.wins * 3 }));
       return { format: 'roundrobin' as const, champion, matches: f.matches.map((mm) => this.serializeMatch(t, mm)), standings };
     }
     if (f.format === 'double') {
@@ -738,6 +744,15 @@ export class TournamentsService {
           winnerId: mm.winner, sa: mm.sa ?? null, sb: mm.sb ?? null,
           playable: !!(mm.a && mm.b && !mm.winner && !mm.bye),
         })),
+        // Mini-bracket double élimination de la poule (poolFormat 'double') — même forme que la
+        // phase finale en double élim, pour être rendu par le même composant (doubleElimTree) : sans
+        // ça, l'organisateur ne voit que le match du moment, sans jamais voir la progression du groupe.
+        dbracket: p.dbracket ? {
+          wb: p.dbracket.wb.map((round, r) => ({ label: 'Winners · ' + this.roundLabel(r, p.dbracket!.wb.length), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+          lb: p.dbracket.lb.map((round, r) => ({ label: 'Perdants · Round ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+          gf: this.serializeMatch(t, p.dbracket.gf),
+          gf2: p.dbracket.gf2 ? this.serializeMatch(t, p.dbracket.gf2) : null,
+        } : null,
       };
     });
     return {

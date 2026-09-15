@@ -263,10 +263,13 @@ export declare function moveInOrder(pool: Pool, index: number, dir: number): boo
  * poule (au moins 1 joueur doit y rester) et refuse hors du statut 'setup'. */
 export declare function movePlayerToPool(t: Tournament, playerId: string, poolId: string, dir: number): boolean;
 export declare function launch(t: Tournament): void;
-/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis. */
+/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
+ *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
+ *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
 export declare function poolRRRanking(t: Tournament, pool: Pool): {
     id: string;
     wins: number;
+    played: number;
     gd: number;
 }[];
 /**
@@ -306,6 +309,7 @@ export declare function qualifiers(t: Tournament): string[];
 export declare function rrRanking(t: Tournament): {
     id: string;
     wins: number;
+    played: number;
     gd: number;
 }[];
 export declare function startFinals(t: Tournament, format?: FinalsFormat): void;

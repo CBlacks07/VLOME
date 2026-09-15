@@ -495,14 +495,18 @@ function initPoolRoundRobin(pool: Pool): void {
   pool.phase = 'roundrobin';
 }
 
-/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis. */
-export function poolRRRanking(t: Tournament, pool: Pool): { id: string; wins: number; gd: number }[] {
+/** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
+ *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
+ *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
+export function poolRRRanking(t: Tournament, pool: Pool): { id: string; wins: number; played: number; gd: number }[] {
   const ids = pool.order.length ? pool.order : pool.playerIds;
-  const wins: Record<string, number> = {}, gd: Record<string, number> = {};
-  ids.forEach(id => { wins[id] = 0; gd[id] = 0; });
+  const wins: Record<string, number> = {}, played: Record<string, number> = {}, gd: Record<string, number> = {};
+  ids.forEach(id => { wins[id] = 0; played[id] = 0; gd[id] = 0; });
   (pool.rrmatches || []).forEach(m => {
     if (!m.winner || !m.a || !m.b) return;
     wins[m.winner] = (wins[m.winner] || 0) + 1;
+    played[m.a] = (played[m.a] || 0) + 1;
+    played[m.b] = (played[m.b] || 0) + 1;
     if (m.sa !== undefined && m.sb !== undefined) {
       gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
       gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
@@ -510,7 +514,7 @@ export function poolRRRanking(t: Tournament, pool: Pool): { id: string; wins: nu
   });
   return ids.slice()
     .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (t.countGoalDiff ? (gd[y] || 0) - (gd[x] || 0) : 0) || (t.points[y] || 0) - (t.points[x] || 0))
-    .map(id => ({ id, wins: wins[id] || 0, gd: gd[id] || 0 }));
+    .map(id => ({ id, wins: wins[id] || 0, played: played[id] || 0, gd: gd[id] || 0 }));
 }
 
 /** Fin d'une poule round robin : toutes les rencontres jouées — classement, qualifiés, top1/top2. */
@@ -821,15 +825,16 @@ function buildRoundRobin(ids: string[]): { players: string[]; matches: BracketMa
 }
 
 /** Classement round robin : victoires puis différence de manches puis points. */
-export function rrRanking(t: Tournament): { id: string; wins: number; gd: number }[] {
+export function rrRanking(t: Tournament): { id: string; wins: number; played: number; gd: number }[] {
   if (!t.finals || t.finals.format !== 'roundrobin') return [];
   const rr = t.finals;
-  const wins: Record<string, number> = {}, gd: Record<string, number> = {}, gf: Record<string, number> = {};
+  const wins: Record<string, number> = {}, played: Record<string, number> = {}, gd: Record<string, number> = {}, gf: Record<string, number> = {};
   const beat: Record<string, Set<string>> = {}; // qui a battu qui, pour la confrontation directe
-  rr.players.forEach(id => { wins[id] = 0; gd[id] = 0; gf[id] = 0; beat[id] = new Set(); });
+  rr.players.forEach(id => { wins[id] = 0; played[id] = 0; gd[id] = 0; gf[id] = 0; beat[id] = new Set(); });
   rr.matches.forEach(m => {
     if (!m.winner || !m.a || !m.b) return;
     wins[m.winner] = (wins[m.winner] || 0) + 1;
+    played[m.a] = (played[m.a] || 0) + 1; played[m.b] = (played[m.b] || 0) + 1;
     beat[m.winner].add(m.winner === m.a ? m.b : m.a);
     if (m.sa != null && m.sb != null) {
       gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb); gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
@@ -844,7 +849,7 @@ export function rrRanking(t: Tournament): { id: string; wins: number; gd: number
       wins[y] - wins[x]
       || (t.countGoalDiff ? gd[y] - gd[x] || gf[y] - gf[x] || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0) : 0)
       || (t.points[y] || 0) - (t.points[x] || 0))
-    .map(id => ({ id, wins: wins[id], gd: gd[id] }));
+    .map(id => ({ id, wins: wins[id], played: played[id], gd: gd[id] }));
 }
 
 function placeSlot(m: BracketMatch, slot: 0 | 1, val: string | null): boolean {

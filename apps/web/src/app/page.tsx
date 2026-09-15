@@ -2510,20 +2510,39 @@ function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   }
   // Classement : une colonne par partie (placement + points de cette partie), éliminations
   // cumulées, total, et WWCD (nombre de victoires) — pas seulement le total, qui ne dit pas d'où
-  // viennent les points (régularité vs coup d'éclat sur une seule partie).
+  // viennent les points (régularité vs coup d'éclat sur une seule partie). Extrait dans
+  // brLeaderboardTable pour être régénéré en direct à la frappe (voir brRecalcLeaderboard) sans
+  // dupliquer le rendu.
   const standings = f.standings as Detail[];
-  const gridCols = `34px 1fr 62px repeat(${games.length}, 60px) 74px 56px`;
+  const leaderboard = `<div id="br-leaderboard" style="overflow-x:auto">${brLeaderboardTable(standings, games.length)}</div>`;
+  return `${champ}${legend}
+    <div class="grid2c" style="display:grid;grid-template-columns:400px 1fr;gap:20px;align-items:start">
+      <div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Saisie des résultats</div>
+        ${tabs}${entry}
+      </div>
+      <div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Classement général · ${games.filter((g: Detail) => g.played).length}/${games.length} parties</div>
+        ${leaderboard}
+      </div>
+    </div>`;
+}
+/** Tableau de classement Battle Royale — factorisé pour être appelé à la fois par le rendu React
+ * normal (battleRoyaleCenter) et par brRecalcLeaderboard (recalcul en direct à la frappe, sans
+ * re-rendu React, voir le commentaire de cette dernière) : un seul endroit qui sait dessiner une ligne. */
+function brLeaderboardTable(standings: Detail[], gamesCount: number): string {
+  const gridCols = `34px 1fr 62px repeat(${gamesCount}, 60px) 74px 56px`;
   const headRow = `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;padding:0 14px 10px;align-items:center">
     <div></div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Joueur</div>
     <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Élims</div>
-    ${games.map((_: Detail, i: number) => `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">M${i + 1}</div>`).join("")}
+    ${Array.from({ length: gamesCount }, (_, i) => `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">M${i + 1}</div>`).join("")}
     <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">Total</div>
     <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5D5E72;font-weight:800">WWCD</div>
   </div>`;
   const bodyRows = standings.map((r: Detail, i: number) => {
     const top = i < 3;
     const gameCells = (r.games as Detail[]).map((g: Detail) => g.played
-      ? `<div style="text-align:center"><div style="font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:700;color:${g.rank === 1 ? "#FBBF24" : g.rank <= 3 ? "#22D3EE" : "#8E8FA6"}">#${g.rank}</div><div style="font-size:9px;color:#5D5E72">${g.pts}p</div></div>`
+      ? `<div style="text-align:center;${g.preview ? "opacity:.6" : ""}"><div style="font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:700;color:${g.rank === 1 ? "#FBBF24" : g.rank <= 3 ? "#22D3EE" : "#8E8FA6"}">#${g.rank}</div><div style="font-size:9px;color:#5D5E72">${g.pts}p</div></div>`
       : `<div style="text-align:center;color:#33384a;font-size:12px">—</div>`).join("");
     return `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;align-items:center;padding:9px 14px;border-top:1px solid #1B1B27;${top ? "background:rgba(34,211,238,.05);border-radius:10px;" : ""}">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${i === 0 ? "#FBBF24" : top ? "#22D3EE" : "#5D5E72"}">${i + 1}</div>
@@ -2534,12 +2553,7 @@ function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
       <div style="text-align:center;font-weight:700;color:${r.wins > 0 ? "#FBBF24" : "#4b5563"}">${r.wins}</div>
     </div>`;
   }).join("");
-  const leaderboard = `<div style="overflow-x:auto"><div style="min-width:${360 + games.length * 62}px">${headRow}${bodyRows}</div></div>`;
-  return `${champ}${legend}
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Saisie des résultats</div>
-    ${tabs}${entry}
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:28px 0 14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:20px;border-radius:3px;background:#22D3EE"></span>Classement général · ${games.filter((g: Detail) => g.played).length}/${games.length} parties</div>
-    ${leaderboard}`;
+  return `<div style="min-width:${360 + gamesCount * 62}px">${headRow}${bodyRows}</div>`;
 }
 
 /** Affiche imprimable (résultats) : classement général, qualifiés par poule, phase finale. Données réelles uniquement (mêmes champs que le cockpit). */
@@ -5212,6 +5226,18 @@ export default function Page() {
     return () => els.forEach((el) => el.removeEventListener("input", wizRecalcGauge));
   }, [S.creating, S.wizStep]);
 
+  // Classement Battle Royale en direct (saisie des résultats) : même technique que la jauge de
+  // cagnotte ci-dessus (écouteurs natifs, contenu hors réconciliation React) — recalcule
+  // #br-leaderboard à chaque frappe sur un champ placement/éliminations, sans attendre la
+  // validation du match ni perdre le focus. Ré-attaché à chaque changement de tournoi/onglet de
+  // partie puisque les ids (par joueur) sont régénérés à chaque rendu.
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLInputElement>('[id^="br-pl-"], [id^="br-kl-"]'));
+    if (!els.length) return;
+    els.forEach((el) => el.addEventListener("input", brRecalcLeaderboard));
+    return () => els.forEach((el) => el.removeEventListener("input", brRecalcLeaderboard));
+  }, [S.detail, S.brActiveGame]);
+
   // Compteur de participants + cagnotte prévisionnelle en direct (étape Participants) : même
   // raisonnement que la jauge de barème ci-dessus — sans ça, le compteur reste figé (0, ou la
   // valeur du dernier passage) tant qu'on n'a pas quitté l'étape, ce qui donne l'impression que
@@ -5426,6 +5452,37 @@ export default function Page() {
         segEl.innerHTML = pct2 >= 8 ? `<span id="wiz-gauge-seg-${key}-txt">${pct2}%</span>` : "";
       }
     }
+  }
+  /** Classement Battle Royale recalculé en direct depuis les champs de saisie (placement +
+   * éliminations de la partie active), sans re-rendu React — même technique que wizRecalcGauge.
+   * Projette les valeurs en cours de saisie sur la partie active PAR-DESSUS le classement déjà
+   * acquis (t.finals.standings, qui exclut cette partie tant qu'elle n'est pas validée), et
+   * régénère juste #br-leaderboard via brLeaderboardTable — même fonction que le rendu initial,
+   * pour ne jamais dessiner une ligne différemment ici et là. */
+  function brRecalcLeaderboard() {
+    const board = document.getElementById("br-leaderboard");
+    const t = S.detail;
+    const f = t?.finals;
+    if (!board || !f || f.format !== "battle_royale") return;
+    const games: Detail[] = f.games;
+    const active = games.find((g: Detail) => g.id === S.brActiveGame) || games.find((g: Detail) => !g.played) || games[games.length - 1];
+    if (!active || active.played) return; // partie déjà jouée (lecture seule) ou aucune partie : rien à projeter, le rendu React normal suffit.
+    const activeIdx = games.findIndex((g: Detail) => g.id === active.id);
+    const players: { id: string }[] = Array.isArray(t.players) ? t.players : [];
+    const pointsTable: number[] = f.pointsTable, killPoints: number = f.killPoints || 0;
+    const projPts = (placement: number, kills: number) => (pointsTable[placement - 1] ?? pointsTable[pointsTable.length - 1] ?? 0) + killPoints * kills;
+    const draft = new Map(players.map((p) => {
+      const placement = Math.max(1, parseInt((document.getElementById(`br-pl-${p.id}`) as HTMLInputElement | null)?.value || "") || 1);
+      const kills = Math.max(0, parseInt((document.getElementById(`br-kl-${p.id}`) as HTMLInputElement | null)?.value || "") || 0);
+      return [p.id, { placement, kills }] as const;
+    }));
+    const preview = (f.standings as Detail[]).map((r: Detail) => {
+      const d = draft.get(r.id);
+      const gp = d ? projPts(d.placement, d.kills) : 0;
+      const games2 = (r.games as Detail[]).map((g: Detail, i: number) => (i === activeIdx && d) ? { played: true, rank: d.placement, kills: d.kills, pts: gp, preview: true } : g);
+      return { ...r, pts: r.pts + gp, kills: r.kills + (d ? d.kills : 0), wins: r.wins + (d && d.placement === 1 ? 1 : 0), games: games2 };
+    }).sort((a: Detail, b: Detail) => b.pts - a.pts);
+    board.innerHTML = brLeaderboardTable(preview, games.length);
   }
   function wizGoto(next: number) {
     if (next === 0) { setS((s) => ({ ...s, creating: false, wizEditId: null, wizFullEdit: false })); return; }

@@ -111,6 +111,7 @@ type State = {
   editingPlayerId: string | null; // joueur en cours d'édition (renommer/club/ajustement) dans le panneau Joueurs
   brPick: string[]; // classement en cours de saisie (Battle Royale) — ids dans l'ordre cliqué, 1er = vainqueur de la partie
   activeMatchId: string | null; // match mis en avant dans le panneau de contrôle de la régie (null = auto : premier jouable)
+
   matchScoreA: number; matchScoreB: number; // score en cours de saisie (stepper) pour le match actif de la régie
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
@@ -2551,6 +2552,8 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
   const byPair = new Map<string, Detail>();
   matches.forEach((m) => { if (m.aId && m.bId) byPair.set([m.aId, m.bId].sort().join("|"), m); });
   const schedule = roundRobinSchedule(names.length);
+  // Noms aux deux bords, score au milieu (comme un vrai tableau de scores) plutôt que les noms
+  // resserrés autour d'un simple "vs" et le score/statut relégué à droite.
   const row = (m: Detail) => {
     const nameCell = (name: string, id: string, isWin: boolean) => {
       const attr = manage ? reportAttr(m, id) : null;
@@ -2558,14 +2561,17 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
       return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "#5D5E72" : "#F4F5FB"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
     };
     const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
-    const status = m.winnerId
-      ? hasScore ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:12.5px;color:#34D399">${m.sa}–${m.sb}</span>` : `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
-      : m.playable ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#22D3EE">À JOUER</span>` : `<span style="font-size:10px;color:#5D5E72">à venir</span>`;
-    return `<div style="display:grid;grid-template-columns:1fr 26px 1fr 68px;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid #15151f;${m.playable ? "background:rgba(34,211,238,.05)" : ""}">
-      <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
-      <div style="text-align:center;color:#5D5E72;font-size:10.5px">vs</div>
-      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
-      <div style="text-align:right">${status}</div>
+    const center = hasScore
+      ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#34D399">${m.sa}–${m.sb}</span>`
+      : m.winnerId
+        ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
+        : m.playable
+          ? `<span style="font-size:11px;font-weight:800;letter-spacing:.3px;color:#22D3EE">VS</span>`
+          : `<span style="font-size:11px;color:#5D5E72">vs</span>`;
+    return `<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #15151f;${m.playable ? "background:rgba(34,211,238,.05)" : ""}">
+      <div style="text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
+      <div style="text-align:center;min-width:40px">${center}</div>
+      <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
     </div>`;
   };
   const calendar = schedule.map((round, ri) => {
@@ -2574,7 +2580,7 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
       const m = byPair.get(key);
       return m ? row(m) : "";
     }).filter(Boolean).join("");
-    return rows ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#5D5E72;padding:6px 12px">Journée ${ri + 1}</div>${rows}</div>` : "";
+    return rows ? `<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#5D5E72;padding:6px 12px">Manche ${ri + 1}</div>${rows}</div>` : "";
   }).join("");
   return `<div style="border:1px solid #282838;border-radius:12px;overflow:hidden;max-height:440px;overflow-y:auto">${calendar || `<div style="padding:16px;text-align:center;color:#5D5E72;font-size:13px">En attente…</div>`}</div>`;
 }
@@ -2976,13 +2982,15 @@ function regieRoundStatusRows(rounds: { label: string; matches: Detail[] }[]): s
   }).join("");
 }
 /** Une ligne de statut de poule Survival dans le rail — cliquable si elle a un match en cours (bascule le panneau de contrôle dessus). */
-function regiePoolStatusRows(t: Detail, active: ActiveMatch | null): string {
+function regiePoolStatusRows(t: Detail, shownPoolId: string | null): string {
   const pools: Detail[] = Array.isArray(t.pools) ? t.pools : [];
   return pools.map((p: Detail) => {
-    const isActive = active?.kind === "pool" && active.poolId === p.id;
+    const isActive = p.id === shownPoolId;
     const statusLabel = p.done ? "terminée" : p.current ? "en cours" : "à venir";
     const color = p.done ? "#34D399" : p.current ? "#22D3EE" : "#5D5E72";
-    return `<div ${p.current ? `data-activematch="${p.id}"` : ""} style="display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;cursor:${p.current ? "pointer" : "default"};${isActive ? "background:rgba(34,211,238,.08)" : ""}">
+    // Toutes les poules sont cliquables (pas seulement celle en cours) : une poule terminée reste
+    // consultable — sans ça, impossible de revoir ses résultats une fois passée à la suivante.
+    return `<div data-viewpool="${p.id}" style="display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;cursor:pointer;${isActive ? "background:rgba(34,211,238,.08)" : ""}">
       <span style="display:grid;place-items:center;width:19px;height:19px;border-radius:50%;${p.done ? "background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);color:#34D399" : p.current ? "background:#22D3EE;color:#04222a" : "border:1px solid #33334A;color:#5D5E72"};font-size:10px;font-weight:700;flex:none">${p.done ? ic(I.plus, 9) : "•"}</span>
       <span style="font-size:12.5px;color:${p.current ? "#F4F5FB" : "#8E8FA6"};font-weight:${p.current ? 700 : 500};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</span>
       <span style="font-size:11px;color:${color};flex:none;white-space:nowrap">${statusLabel}</span>
@@ -3012,7 +3020,7 @@ function regieRail(S: State, t: Detail, manage: boolean, active: ActiveMatch | n
     body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">${heading}</div>${rounds ? regieRoundStatusRows(rounds) : `<div style="padding:8px 10px;font-size:12px;color:#8E8FA6">${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués</div>`}`;
   } else {
     // Survival : poules, puis éventuellement phase finale une fois toutes terminées.
-    body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Phase 1 · poules</div>${regiePoolStatusRows(t, active)}`;
+    body = `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#5D5E72;font-weight:800;padding:0 8px 8px">Phase 1 · poules</div>${regiePoolStatusRows(t, active?.kind === "pool" ? active.poolId || null : null)}`;
     if (t.finals) {
       const rounds = t.finals.format === "double" ? t.finals.wb : t.finals.format === "roundrobin" ? null : t.finals.rounds;
       body += `<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#7C82FF;font-weight:800;padding:12px 8px 6px">Phase 2 · finale</div>${rounds ? regieRoundStatusRows(rounds) : `<div style="padding:8px 10px;font-size:12px;color:#8E8FA6">Round Robin en cours</div>`}`;
@@ -3193,14 +3201,19 @@ function regieCenter(S: State, t: Detail, manage: boolean, active: ActiveMatch |
       <div style="padding:18px 28px 30px">${standings}${body}</div>`;
   }
 
-  // Survival, poules en cours (pas encore de phase finale) : la poule active en avant, les autres restent dans le rail.
-  const activePool = active?.kind === "pool" ? (t.pools || []).find((p: Detail) => p.id === active.poolId) : null;
+  // Survival, poules en cours (pas encore de phase finale) : toutes les poules en même temps, côte à
+  // côte (2-3 colonnes selon la largeur), chacune avec son calendrier/carte de match ET son classement
+  // en dessous — plusieurs poules peuvent avoir un match en cours simultanément, inutile de forcer à
+  // n'en regarder qu'une à la fois. Le rail (data-viewpool) fait défiler jusqu'à la carte choisie.
+  const pools: Detail[] = Array.isArray(t.pools) ? t.pools : [];
   return `<div style="padding:22px 28px 30px">
     <div style="display:flex;align-items:flex-end;gap:14px;margin-bottom:18px">
       <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Phase 1 · poules</div>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">${activePool ? escHtml(activePool.name) : "Poules"}</h2></div>
+      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Poules</h2></div>
     </div>
-    ${activePool ? poolCard(S, activePool, manage, t.poolFormat, t.countGoalDiff) : `<div style="color:#8E8FA6;text-align:center;padding:30px 0">Toutes les poules sont terminées.</div>`}
+    ${pools.length
+      ? `<div class="grid2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:start">${pools.map((p) => `<div id="poolcard-${p.id}">${poolCard(S, p, manage, t.poolFormat, t.countGoalDiff)}</div>`).join("")}</div>`
+      : `<div style="color:#8E8FA6;text-align:center;padding:30px 0">Aucune poule.</div>`}
     ${finalsStartPanel(S, t, manage)}
   </div>`;
 }
@@ -3493,6 +3506,13 @@ function pTournoi(S: State) {
         })()
       : "";
     const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
+    // Participants + répartition des poules côte à côte dès qu'il y a une vraie composition à montrer
+    // (poolsList non vide) : petite colonne fixe pour la liste des joueurs, large colonne pour les
+    // poules — plus lisible que tout empiler en pleine largeur. Sans poules réparties (bouton "Répartir
+    // en poules" seul, ou format sans poules), on garde l'empilement simple d'avant.
+    const participantsAndPools = poolsList.length
+      ? `<div class="grid2c" style="display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start">${participants}${poolsPreview}</div>`
+      : `${participants}${poolsPreview}`;
     const statTile = (label: string, value: string, color = "#F4F5FB") => `<div style="background:#14141D;padding:14px 16px"><div style="font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${label}</div><div style="font-family:'JetBrains Mono',monospace;font-size:22px;color:${color};margin-top:4px">${value}</div></div>`;
     // La cagnotte (participants × points en jeu) n'existe qu'en Survival — les autres formats
     // n'ont pas configuré pointsPerPlayer (valeur par défaut envoyée mais jamais consultée), la
@@ -3518,7 +3538,7 @@ function pTournoi(S: State) {
       <p style="color:#8E8FA6;font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participants}${pendingPanel}${poolsPreview}${seedPreview}</div>`;
+    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}${seedPreview}</div>`;
     const right = `<div class="rise d2 stack-sidebar" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     return `<main class="rise" style="width:100%"><div style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
@@ -5426,7 +5446,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brpick],[data-brreset],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5494,6 +5514,15 @@ export default function Page() {
       }
     }
     else if (d.activematch) setS((s) => ({ ...s, activeMatchId: d.activematch!, matchScoreA: 0, matchScoreB: 0 }));
+    // Choix d'une poule dans le rail : toutes les poules sont déjà affichées côte à côte dans le
+    // centre (voir regieCenter), donc on se contente d'y faire défiler jusqu'à la carte visée. Si
+    // cette poule a un match en cours, elle devient aussi la poule "active" du panneau de contrôle
+    // (même effet qu'avant) — sinon on ne touche pas au contrôle, qui reste sur la poule encore en jeu.
+    else if (d.viewpool) {
+      const p = S.detail?.pools?.find((pp: Detail) => pp.id === d.viewpool);
+      if (p?.current) setS((s) => ({ ...s, activeMatchId: d.viewpool!, matchScoreA: 0, matchScoreB: 0 }));
+      document.getElementById(`poolcard-${d.viewpool}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));
     else if (d.bracketview) setS((s) => ({ ...s, bracketView: d.bracketview as State["bracketView"] }));
     else if (d.rosterqclear !== undefined) setS((s) => ({ ...s, rosterQ: "" }));

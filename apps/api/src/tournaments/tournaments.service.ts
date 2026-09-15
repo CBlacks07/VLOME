@@ -736,13 +736,16 @@ export class TournamentsService {
         ranking: this.poolRanking(t, p),
         qualified: (p.qualified || []).map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
         // Rencontres du mini round robin de la poule (poolFormat 'roundrobin') — même forme que les
-        // matchs d'un Round Robin de phase finale, pour être rendues par le même composant.
+        // matchs d'un Round Robin de phase finale, pour être rendues par le même composant. Un seul
+        // match par poule est réellement rapportable à la fois (Engine.currentMatch/reportResult ne
+        // résout que celui-là, dans l'ordre de rrmatches) : marquer TOUT match non joué "playable"
+        // laisserait cliquer un autre match que le courant, et le résultat serait appliqué au mauvais.
         rrmatches: (p.rrmatches || []).map((mm) => ({
           matchId: mm.id, aId: mm.a, bId: mm.b,
           aName: mm.a ? Engine.playerName(t, mm.a) : null,
           bName: mm.b ? Engine.playerName(t, mm.b) : null,
           winnerId: mm.winner, sa: mm.sa ?? null, sb: mm.sb ?? null,
-          playable: !!(mm.a && mm.b && !mm.winner && !mm.bye),
+          playable: !!(m && m.matchId === mm.id && !mm.winner && !mm.bye),
         })),
         // Mini-bracket double élimination de la poule (poolFormat 'double') — même forme que la
         // phase finale en double élim, pour être rendu par le même composant (doubleElimTree) : sans

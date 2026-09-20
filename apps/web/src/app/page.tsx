@@ -592,14 +592,22 @@ const WIZ_POOL_MODES: [string, string, string][] = [
 function wizPoolModes(format: string): [string, string, string][] {
   return format === "SURVIVAL" ? WIZ_POOL_MODES : WIZ_POOL_MODES.filter(([key]) => key !== "survival");
 }
-/** Formats de phase finale proposés pour Survival — choisis à la création, jamais modifiables
- *  ensuite (voir wizScoringStep). Les autres formats pilotés-poules (Bracket simple, Double élim,
- *  Round Robin) n'ont pas ce choix : leur phase finale suit directement leur propre format. */
+/** Formats de phase finale — choisis indépendamment du mode des poules, à la création (voir
+ *  wizPoolsStep pour les formats pilotés-poules, wizScoringStep pour Survival). "Survival" suppose
+ *  des poules en Round Robin en amont (voir Engine.startFinalsSurvivalPool) : filtré ailleurs
+ *  (wizFinalsFormatOptions) quand ce n'est pas le cas. */
 const FINALS_FORMATS: [string, string, string][] = [
   ["double", "Double élimination", "Deux brackets (vainqueurs/perdants) : il faut deux défaites pour être éliminé — le format historique Survival."],
   ["single", "Bracket simple", "Élimination directe en finale : une défaite et c'est terminé."],
   ["roundrobin", "Round Robin", "Les qualifiés s'affrontent tous une fois en finale ; classement final aux victoires."],
+  ["survival", "Survival", "Tous les qualifiés dans une seule grande poule Survival : le vainqueur reste sur le terrain face aux challengers, les perdants repêchés en dessous — jusqu'au champion."],
 ];
+/** Options réellement proposables selon le mode des poules — "Survival" en finale suppose un
+ *  classement par poule (Round Robin) pour fusionner tous les qualifiés en une seule grande poule ;
+ *  sans ça (poules Survival ou double élim) il n'y a rien de cohérent à y fusionner. */
+function wizFinalsFormatOptions(poolFormat: string): [string, string, string][] {
+  return poolFormat === "roundrobin" ? FINALS_FORMATS : FINALS_FORMATS.filter(([k]) => k !== "survival");
+}
 /** Seul le Round Robin de poule produit un classement complet : les deux autres modes ne
  *  départagent qu'un vainqueur et un finaliste (miroir de Engine.maxQualifyPerPool, structurel,
  *  pas un choix produit). En Round Robin, aucun plafond arbitraire : la seule vraie limite est
@@ -911,7 +919,7 @@ function wizPoolsStep(S: State) {
     ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 && !isDoubleMerged ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Format de la phase finale</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${FINALS_FORMATS.map(([key, label]) => {
+        ${wizFinalsFormatOptions(d.poolFormat).map(([key, label]) => {
           const on = d.finalsFormat === key;
           return `<button data-wizfinalsformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
         }).join("")}
@@ -1002,7 +1010,7 @@ function wizScoringStep(S: State) {
     ? `<div style="margin-bottom:16px">
         <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Phase finale</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${FINALS_FORMATS.map(([key, label]) => {
+          ${wizFinalsFormatOptions(d.poolFormat).map(([key, label]) => {
             const on = d.finalsFormat === key;
             return `<button data-wizfinalsformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
           }).join("")}
@@ -2438,7 +2446,9 @@ function adminOrders(a: NonNullable<State["admin"]>) {
 /** Regroupe tous les matchs de la phase finale, quel que soit le format (hors battle_royale, qui n'a pas de duels 1v1). */
 function finalsMatchGroups(finals: Detail): Detail[][] {
   const pools: Detail[][] = [];
-  if (!finals || finals.format === "battle_royale") return pools;
+  // battle_royale n'a pas de duels 1v1 ; survival n'a pas de matchId (voir Engine.reportResult, tout
+  // passe par poolId) — les deux sont hors de ce regroupement, consultés via t.pools[0] à la place.
+  if (!finals || finals.format === "battle_royale" || finals.format === "survival") return pools;
   if (finals.format === "roundrobin") pools.push(finals.matches);
   else if (finals.format === "double") {
     finals.wb.forEach((r: Detail) => pools.push(r.matches));
@@ -2456,7 +2466,7 @@ function finalsMatchGroups(finals: Detail): Detail[][] {
 function finalsLabelledMatches(finals: Detail): { label: string; m: Detail }[] {
   const out: { label: string; m: Detail }[] = [];
   const push = (label: string, ms: Detail[]) => (ms || []).forEach((m) => m && out.push({ label, m }));
-  if (!finals || finals.format === "battle_royale") return out;
+  if (!finals || finals.format === "battle_royale" || finals.format === "survival") return out;
   if (finals.format === "roundrobin") push("Round Robin", finals.matches);
   else if (finals.format === "double") {
     (finals.wb || []).forEach((r: Detail) => push(r.label, r.matches));
@@ -2859,7 +2869,9 @@ function activeKey(a: ActiveMatch): string { return a.kind === "finals" ? a.matc
  * choisit lesquelles ; vide (ou plus aucune jouable) retombe sur la première trouvée, pour qu'il y ait
  * toujours quelque chose à rapporter par défaut. */
 function getActiveMatches(S: State, t: Detail): ActiveMatch[] {
-  if (t.finals && t.finals.format !== "battle_royale") {
+  // Survival en finale : t.pools[0] EST la phase finale (voir Engine.startFinalsSurvivalPool), pas de
+  // matchId à chercher — retombe sur la branche poolId ci-dessous, comme la phase de poules normale.
+  if (t.finals && t.finals.format !== "battle_royale" && t.finals.format !== "survival") {
     let chosen = S.activeMatchIds
       .map((id) => findFinalsMatchById(t.finals, id))
       .filter((m): m is Detail => !!m && m.playable);
@@ -2886,11 +2898,11 @@ function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
   if (t.finals?.format === "roundrobin") return "";
   const activeIds = new Set(actives.map(activeKey));
   const items: { id: string; label: string }[] = [];
-  if (t.finals && t.finals.format !== "battle_royale") {
+  if (t.finals && t.finals.format !== "battle_royale" && t.finals.format !== "survival") {
     for (const arr of finalsMatchGroups(t.finals)) for (const m of arr) {
       if (m && m.playable && !activeIds.has(m.matchId)) items.push({ id: m.matchId, label: `${escHtml(m.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(m.bName)}` });
     }
-  } else if (!t.finals) {
+  } else if (!t.finals || t.finals.format === "survival") {
     (t.pools || []).forEach((p: Detail) => { if (p.current && !activeIds.has(p.id)) items.push({ id: p.id, label: `${escHtml(p.name)} · ${escHtml(p.current.aName)} <span style="color:#5D5E72">vs</span> ${escHtml(p.current.bName)}` }); });
   }
   if (!items.length) return "";
@@ -3337,6 +3349,19 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
       <div style="padding:18px 28px 30px">${standings}${body}</div>`;
   }
 
+  if (t.finals && t.finals.format === "survival") {
+    // Grande poule finale (voir Engine.startFinalsSurvivalPool) : t.pools[0] EST la phase finale,
+    // réunit tous les qualifiés — même carte que n'importe quelle poule, pas de bracket à tracer.
+    const p = t.pools[0];
+    return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
+        <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Phase finale</div>
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Survival</h2></div>
+        <span style="flex:1"></span>
+      </div>
+      ${champ}
+      <div style="padding:22px 28px 30px">${p ? poolCard(S, p, manage, "survival") : ""}</div>`;
+  }
+
   // Survival, poules en cours (pas encore de phase finale) : toutes les poules en même temps, côte à
   // côte (2-3 colonnes selon la largeur), chacune avec son calendrier/carte de match ET son classement
   // en dessous — plusieurs poules peuvent avoir un match en cours simultanément, inutile de forcer à
@@ -3541,21 +3566,25 @@ function pTournoi(S: State) {
     // là que la taille réelle de chaque poule (après un rééquilibrage manuel) compte vraiment pour
     // savoir combien de joueurs elle peut effectivement envoyer en phase finale.
     const qualifyPerPool = Math.min(t.qualifyPerPool || 2, t.poolFormat === "roundrobin" ? Infinity : 2);
+    // Poules en double élimination hors Survival : un seul bracket continu (voir
+    // Engine.launchGroupedDoubleElim) — pas de "qualifiés" à départager, tout le monde y entre dès le
+    // 1er tour. Même garde que wizPoolsStep (isDoubleMerged) pour ne pas afficher un réglage sans effet.
+    const isDoubleMerged = t.mainFormat !== "survival" && t.poolFormat === "double";
     const poolsPreview = manage && t.usesPools
       ? poolsList.length
         ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Répartition des poules</h3><button data-pools-distribute="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Re-répartir au hasard</button></div>
             <p style="color:#5D5E72;font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule. Les flèches ◀ ▶ déplacent un joueur vers la poule voisine, pour rééquilibrer manuellement l'effectif.</p>
-            <div style="border:1px solid #282838;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#101019">
+            ${isDoubleMerged
+              ? `<p style="color:#5D5E72;font-size:12.5px;margin-bottom:14px">Un seul grand bracket double élimination pour tout le monde : les vainqueurs de chaque poule s'enchaînent entre eux, pareil pour les perdants, jusqu'à une grande finale unique — pas de poules indépendantes à requalifier.</p>`
+              : `<div style="border:1px solid #282838;border-radius:12px;padding:12px 14px;margin-bottom:14px;background:#101019">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="font-size:12px;color:#8E8FA6;font-weight:650">Qualifiés par poule</span>
-                ${t.poolFormat === "roundrobin"
-                  ? `<input id="pq-input-${t.id}" type="number" min="1" value="${qualifyPerPool}" style="width:76px;background:#14141D;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:6px 9px" />
-                     <button data-poolqualify-apply="${t.id}" style="font-size:12px;font-weight:700;color:#04222a;background:#22D3EE;border:0;border-radius:8px;padding:7px 13px;cursor:pointer">Appliquer</button>`
-                  : [1, 2].map((q) => `<button data-poolqualify="${t.id}|${q}" style="font-size:12.5px;font-weight:700;border-radius:9px;padding:7px 13px;cursor:pointer;background:${qualifyPerPool === q ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${qualifyPerPool === q ? "#22D3EE" : "#282838"};color:${qualifyPerPool === q ? "#22D3EE" : "#8E8FA6"}">${q === 1 ? "Le 1er" : "Les 2 premiers"}</button>`).join("")}
+                <input id="pq-input-${t.id}" type="number" min="1" ${t.poolFormat === "roundrobin" ? "" : `max="2"`} value="${qualifyPerPool}" style="width:76px;background:#14141D;border:1px solid #282838;border-radius:8px;color:#F4F5FB;font-family:inherit;font-size:13px;padding:6px 9px" />
+                <button data-poolqualify-apply="${t.id}" style="font-size:12px;font-weight:700;color:#04222a;background:#22D3EE;border:0;border-radius:8px;padding:7px 13px;cursor:pointer">Appliquer</button>
               </div>
               <p style="color:${t.poolFormat === "roundrobin" && poolsList.some((p) => p.order.length < qualifyPerPool) ? "#FBBF24" : "#5D5E72"};font-size:11.5px;margin:8px 0 0">${poolQualifyNote(poolsList.map((p) => ({ name: p.name, size: p.order.length })), qualifyPerPool, t.poolFormat === "roundrobin")}</p>
-            </div>
+            </div>`}
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p, pi) => {
               const short = t.poolFormat === "roundrobin" && p.order.length < qualifyPerPool;
               return `<div style="border:1px solid #282838;border-radius:12px;padding:14px">
@@ -3721,6 +3750,11 @@ function pTournoi(S: State) {
       const tp = t.finals.thirdPlace;
       body = bracketTree(t.finals.rounds, [], manage)
         + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage)}</div></div>` : "");
+    } else if (t.finals.format === "survival") {
+      // "Grande poule" finale (voir Engine.startFinalsSurvivalPool) : t.pools[0] EST la phase
+      // finale, réunit tous les qualifiés, rendue par le même composant que n'importe quelle poule.
+      fmtLabel = " · Survival";
+      body = t.pools[0] ? poolCard(S, t.pools[0], manage, "survival") : "";
     } else {
       body = bracketTree(t.finals.rounds, [], manage);
     }
@@ -4089,23 +4123,34 @@ function pShow(S: State) {
   type Slide = { caption: string; body: string };
   const slides: Slide[] = [];
   let phaseLabel = "";
+  // Carte de poule (style Mode Show) — partagée par la phase de poules (Survival, avant finale) et
+  // par la grande poule de la phase finale en mode Survival (voir Engine.startFinalsSurvivalPool).
+  const poolCard = (p: Detail) => {
+    let match: string;
+    if (p.current) {
+      match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
+    } else if (p.done) {
+      match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${p.top1}${p.top2 ? ", " + p.top2 : ""}</div>`;
+    } else match = `<div style="text-align:center;color:#5D5E72;padding:1vh 0">En attente du lancement…</div>`;
+    const lead = p.ranking?.[0] ? `<div style="text-align:center;color:#8E8FA6;font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:#F4F5FB">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
+    return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:#8E8FA6">${p.name}</div>${match}${lead}</div>`;
+  };
   if (!t.finals) {
     // Survival, poules en cours.
     phaseLabel = "Phase 1 · poules";
-    const poolCard = (p: Detail) => {
-      let match: string;
-      if (p.current) {
-        match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:#5D5E72">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
-      } else if (p.done) {
-        match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${p.top1}${p.top2 ? ", " + p.top2 : ""}</div>`;
-      } else match = `<div style="text-align:center;color:#5D5E72;padding:1vh 0">En attente du lancement…</div>`;
-      const lead = p.ranking?.[0] ? `<div style="text-align:center;color:#8E8FA6;font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:#F4F5FB">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
-      return `<div style="border:1px solid #282838;border-radius:18px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:#8E8FA6">${p.name}</div>${match}${lead}</div>`;
-    };
     const grid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,92vw),1fr));gap:2vh;margin-top:2.4vh">${(t.pools || []).map(poolCard).join("")}</div>`;
     slides.push({ caption: "Poules en direct", body: grid });
     const overall: Detail[] = ([] as Detail[]).concat(...(t.pools || []).map((p: Detail) => p.ranking || [])).sort((a: Detail, b: Detail) => b.pts - a.pts || b.wins - a.wins);
     if (overall.some((r) => r.pts > 0)) slides.push({ caption: "Classement général", body: showStandingsTable(overall.slice(0, 8), "Pts") });
+  } else if (t.finals.format === "survival") {
+    // Grande poule finale (voir Engine.startFinalsSurvivalPool) : t.pools[0] réunit tous les
+    // qualifiés — même carte que la phase de poules, un seul slide puisqu'il n'y a qu'une poule.
+    phaseLabel = "Phase finale · Survival";
+    const p = t.pools[0];
+    if (p) {
+      slides.push({ caption: "Grande finale", body: poolCard(p) });
+      if (p.ranking?.some((r: Detail) => r.pts > 0)) slides.push({ caption: "Classement", body: showStandingsTable(p.ranking.slice(0, 8), "Pts") });
+    }
   } else if (t.finals.format === "battle_royale") {
     phaseLabel = "Battle Royale";
     slides.push({ caption: "Classement cumulé", body: showStandingsTable(t.finals.standings.slice(0, 8), "Pts") });
@@ -5657,7 +5702,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-report],[data-finals-start],[data-reportf],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-undo],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -5680,7 +5725,6 @@ export default function Page() {
     // Endpoint dédié /pools/qualify (comme /scoring) plutôt que le PATCH générique du tournoi : ce
     // dernier renvoie la carte résumée (toCard), pas l'état complet (toState) qu'attend S.detail —
     // act() aurait sinon remplacé S.detail par un objet sans t.pools et cassé le rendu de la page.
-    else if (d.poolqualify) { const [tid, q] = d.poolqualify.split("|"); act(`${API}/api/tournaments/${tid}/pools/qualify`, { value: parseInt(q) }, "PATCH"); }
     else if (d.poolqualifyApply) {
       const tid = d.poolqualifyApply!;
       const input = document.getElementById(`pq-input-${tid}`) as HTMLInputElement | null;
@@ -5886,6 +5930,10 @@ export default function Page() {
       const captured = wizCapture();
       const nextPoolFormat = d.wizpoolformat as "survival" | "double" | "roundrobin";
       const maxQ = wizMaxQualify(nextPoolFormat, captured.players.length, captured.nbPools);
+      // Une phase finale Survival fusionne les qualifiés de poules Round Robin en une seule grande
+      // poule (voir Engine.startFinalsSurvivalPool) : en sortir invalide ce choix, retombe sur
+      // "double" comme les autres formats à poules non-Round-Robin.
+      const nextFinalsFormat = captured.finalsFormat === "survival" && nextPoolFormat !== "roundrobin" ? "double" : captured.finalsFormat;
       setS((s) => ({
         ...s,
         wizData: {
@@ -5895,6 +5943,7 @@ export default function Page() {
           // on rabaisse le nombre de qualifies en changeant de mode, sinon on enverrait une valeur
           // que le moteur bornerait en silence. Round Robin n'a rien à rabaisser.
           qualifyPerPool: Math.min(captured.qualifyPerPool || 2, maxQ),
+          finalsFormat: nextFinalsFormat,
         },
       }));
     }

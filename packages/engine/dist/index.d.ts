@@ -100,7 +100,7 @@ export interface LogEntry {
     sb?: number;
 }
 export type Status = 'setup' | 'live' | 'finished';
-export type FinalsFormat = 'single' | 'double' | 'roundrobin';
+export type FinalsFormat = 'single' | 'double' | 'roundrobin' | 'survival';
 /**
  * Format principal du tournoi (phase de poules) :
  * - survival (par défaut, rétrocompatible) : poules Survival + repêchage + finale de poule, cagnotte pilotée par le barème.
@@ -150,7 +150,14 @@ export interface BattleRoyaleFinals {
     pointsTable: number[];
     killPoints: number;
 }
-export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals | SwissFinals | BattleRoyaleFinals;
+/** Phase finale en mode Survival (poules en Round Robin uniquement — voir startFinalsSurvivalPool) :
+ *  simple marqueur, les données réelles (joueurs, matchs, classement) vivent dans t.pools[0], une
+ *  "grande poule" réunissant tous les qualifiés, jouée et rapportée exactement comme n'importe
+ *  quelle poule (reportResult, poolId). Son top1, une fois done, devient directement le champion. */
+export interface SurvivalFinals {
+    format: 'survival';
+}
+export type Finals = SingleFinals | DoubleFinals | RoundRobinFinals | SwissFinals | BattleRoyaleFinals | SurvivalFinals;
 export interface Tournament {
     id: string;
     createdAt: number;

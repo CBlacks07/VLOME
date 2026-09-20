@@ -777,6 +777,13 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
         pool.top2 = loserId;
         pool.phase = 'done';
     }
+    // Phase finale en mode Survival (voir startFinalsSurvivalPool) : cette poule EST la phase finale,
+    // contrairement aux poules de qualification normales — reportResult() ne couronne jamais de
+    // champion pour celles-ci (checkFinalsChampion() n'est appelé que par reportFinals), donc il faut
+    // le faire explicitement ici dès que cette poule particulière est résolue.
+    if (t.finals && t.finals.format === 'survival' && pool.phase === 'done' && pool.top1) {
+        finishFinals(t, pool.top1);
+    }
     return { winnerId, loserId, pts, stage: m.stage };
 }
 function startLosers(pool) {
@@ -1050,7 +1057,10 @@ function startFinals(t, format) {
     const q = qualifiers(t);
     const fmt = format || t.finalsFormat || 'single';
     t.finalsFormat = fmt;
-    if (fmt === 'roundrobin') {
+    if (fmt === 'survival') {
+        startFinalsSurvivalPool(t, q);
+    }
+    else if (fmt === 'roundrobin') {
         const rr = buildRoundRobin(q);
         t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
     }
@@ -1061,6 +1071,22 @@ function startFinals(t, format) {
         t.finals = { format: 'single', bracket: buildBracket(q) };
     }
     checkFinalsChampion(t);
+}
+/** Phase finale en mode Survival : une seule "grande poule" réunissant tous les qualifiés de toutes
+ *  les poules, jouée exactement comme une poule Survival classique (le vainqueur reste sur le
+ *  terrain, les perdants sont repêchés) — voir SurvivalFinals. t.pools est remplacé par cette poule
+ *  unique (les poules de qualification ont déjà rempli leur rôle) ; son top1, une fois la poule
+ *  "done", devient le champion du tournoi (voir checkFinalsChampion/reportResult). */
+function startFinalsSurvivalPool(t, ids) {
+    const pool = {
+        id: uid(), name: 'Grande finale', playerIds: ids.slice(), order: ids.slice(), phase: 'pending',
+        wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
+        lBracket: null, lChampion: null, top1: null, top2: null,
+        dbracket: null, streaks: {}, streakAwarded: {}, rrmatches: null, qualified: [],
+    };
+    t.pools = [pool];
+    t.finals = { format: 'survival' };
+    initSurvival(pool);
 }
 /** Toutes les rencontres de la phase finale, quel que soit le format — pour recherche/affichage générique. */
 function allFinalsMatches(t) {
@@ -1075,7 +1101,7 @@ function allFinalsMatches(t) {
         return [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
     if (f.format === 'swiss')
         return f.rounds.flat();
-    return []; // battle_royale : pas de duels 1v1, se pilote via reportBattleRoyale (classement de partie)
+    return []; // battle_royale : pas de duels 1v1 (reportBattleRoyale) ; survival : matchs de poule (reportResult/poolId), pas de matchId
 }
 function findFinalsMatch(t, matchId) {
     return allFinalsMatches(t).find(m => m.id === matchId) || null;
@@ -1144,6 +1170,13 @@ function checkFinalsChampion(t) {
             if (rk.length)
                 finishFinals(t, rk[0].id);
         }
+    }
+    else if (f.format === 'survival') {
+        // La "grande poule" finale (t.pools[0]) se résout exactement comme une poule Survival classique
+        // (voir startFinalsSurvivalPool) — son top1, une fois done, EST le champion du tournoi.
+        const p = t.pools[0];
+        if (p && p.phase === 'done' && p.top1)
+            finishFinals(t, p.top1);
     }
 }
 /* ---------- Format Swiss (rondes appariées par classement, sans poules) ---------- */
@@ -1447,7 +1480,18 @@ function cagnotte(t) {
     const perPool = Math.min(clampQualifyPerPool(t.qualifyPerPool), maxQualifyPerPool(t.poolFormat));
     const q = sizes.filter(n => n >= 2).reduce((acc, n) => acc + Math.min(perPool, n), 0)
         + sizes.filter(n => n === 1).length;
-    const finalsMatches = finalsMatchCount(q, t.finalsFormat);
+    // Phase finale en mode Survival : une "grande poule" réunissant tous les qualifiés (voir
+    // startFinalsSurvivalPool) — ses matchs passent par reportResult comme n'importe quelle poule,
+    // donc au même tarif (survWin/loserWin/poolFinalWin), pas finalsWin. On l'ajoute directement aux
+    // compteurs de poule plutôt que dans finalsMatches, et elle compte comme une poule de plus pour le
+    // pire cas du bonus striker (elle peut, elle aussi, produire un strikeur).
+    const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat);
+    if (t.finalsFormat === 'survival' && q >= 2) {
+        surv += q - 1;
+        los += Math.max(0, q - 2);
+        pf += 1;
+        nRealPools++;
+    }
     // Bonus striker : jamais garanti (dépend des performances), mais on budgète le pire cas réaliste —
     // au plus un joueur strikeur par poule — pour ne jamais sous-estimer la cagnotte nécessaire.
     const programmed = Math.round((surv * s.survWin + los * s.loserWin + pf * s.poolFinalWin + finalsMatches * s.finalsWin + s.championBonus + nRealPools * s.streakBonus) * 100) / 100;

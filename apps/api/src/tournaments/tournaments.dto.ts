@@ -25,7 +25,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
   // Mode de la phase finale (Survival uniquement) — fixé dès la création pour que le budget de
   // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
-  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
   // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
   // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
@@ -60,7 +60,7 @@ export class UpdateTournamentDto {
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
-  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) finalsFormat?: 'single' | 'double' | 'roundrobin';
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
   // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
   // un classement complet et n'a pas de plafond produit : sa seule vraie limite est l'effectif de
@@ -134,7 +134,7 @@ export class QualifyPerPoolDto {
 }
 
 export class StartFinalsDto {
-  @IsOptional() @IsIn(['single', 'double', 'roundrobin']) format?: 'single' | 'double' | 'roundrobin';
+  @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) format?: 'single' | 'double' | 'roundrobin' | 'survival';
 }
 
 export class ReportDto {

@@ -682,6 +682,10 @@ export class TournamentsService {
     const f = t.finals;
     if (!f) return null;
     const champion = t.champion ? Engine.playerName(t, t.champion) : null;
+    // Phase finale en mode Survival : simple marqueur — la "grande poule" qui contient les données
+    // réelles (joueurs, match en cours, classement) est déjà sérialisée séparément dans `pools`
+    // (voir toState), rendue par le même composant que n'importe quelle poule.
+    if (f.format === 'survival') return { format: 'survival' as const, champion };
     if (f.format === 'roundrobin') {
       // Pts du classement Round Robin = points de championnat (3 par victoire, convention standard
       // de nombreux sports — pas de match nul en 1v1 donc rien à ajouter pour ça) : une notion de

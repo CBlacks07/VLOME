@@ -577,6 +577,10 @@ export function launchTournament(t: Tournament): void {
   // explicite fait à la création ou modifié ensuite (voir TournamentsService.update).
   if (usesPools(t)) {
     if (!t.pools.length) distributePools(t);
+    // Poules en double élimination (hors Survival, qui garde son propre mécanisme de repêchage) :
+    // pas de phase de poules puis re-qualification séparée — un seul bracket continu où les poules
+    // ne servent qu'à grouper les affrontements du 1er tour (voir launchGroupedDoubleElim).
+    if (t.poolFormat === 'double') { launchGroupedDoubleElim(t); return; }
     launch(t);
     return;
   }
@@ -891,16 +895,25 @@ function resolveBye(m: BracketMatch): boolean {
   return false;
 }
 
-function buildDoubleElim(ids: string[]): DoubleFinals {
+/** @param adjacentPairing Pairage séquentiel (ids[2i]/ids[2i+1]) au lieu du placement par tête de
+ *  série habituel — utilisé pour le bracket de poules fusionné (voir groupedDoubleElimIds) : la
+ *  liste y est déjà construite pour que des voisins immédiats appartiennent à la même poule, un
+ *  placement par tête de série mélangerait les poules dès le 1er tour au lieu de les laisser se
+ *  résoudre en interne avant de se rencontrer. */
+function buildDoubleElim(ids: string[], adjacentPairing = false): DoubleFinals {
   const P = Math.max(2, nextPow2(ids.length));
   const seeds = ids.slice();
   while (seeds.length < P) seeds.push(BYE);
   const R = Math.round(Math.log2(P));
   const mk = (): BracketMatch => ({ id: uid(), a: null, b: null, winner: null, bye: false });
   const wb: BracketMatch[][] = [];
-  const slots = seedSlots(P);
   const r0: BracketMatch[] = [];
-  for (let i = 0; i < P / 2; i++) r0.push({ id: uid(), a: seeds[slots[2 * i] - 1], b: seeds[slots[2 * i + 1] - 1], winner: null, bye: false });
+  if (adjacentPairing) {
+    for (let i = 0; i < P / 2; i++) r0.push({ id: uid(), a: seeds[2 * i], b: seeds[2 * i + 1], winner: null, bye: false });
+  } else {
+    const slots = seedSlots(P);
+    for (let i = 0; i < P / 2; i++) r0.push({ id: uid(), a: seeds[slots[2 * i] - 1], b: seeds[slots[2 * i + 1] - 1], winner: null, bye: false });
+  }
   wb.push(r0);
   let size = P / 2;
   for (let r = 1; r < R; r++) { size = size / 2; wb.push(Array.from({ length: size }, mk)); }
@@ -914,6 +927,44 @@ function buildDoubleElim(ids: string[]): DoubleFinals {
   const fin: DoubleFinals = { format: 'double', wb, lb, gf: mk(), gf2: null, wbChampion: null, lbChampion: null };
   propagateDouble(fin);
   return fin;
+}
+
+/** Construit la liste de seeds (avec BYE) d'un bracket de poules en double élimination FUSIONNÉ :
+ *  chaque poule se résout d'abord entièrement en interne (uniquement ses propres joueurs), avant que
+ *  ses vainqueurs/perdants ne rencontrent ceux d'une autre poule — un seul grand bracket continu,
+ *  sans étape de qualification séparée entre "phase de poules" et "phase finale".
+ *
+ *  Principe : chaque poule est complétée à SA PROPRE puissance de 2 (elle ne peut donc jamais croiser
+ *  une autre poule avant de s'être résolue toute seule), puis toutes les poules sont alignées sur la
+ *  même taille de bloc, et leur nombre lui-même est complété à une puissance de 2 (poules 100% BYE)
+ *  si besoin — à utiliser avec buildDoubleElim(ids, true) : le pairage séquentiel (pas le placement
+ *  par tête de série habituel, qui mélangerait tout dès le 1er tour) fait le reste. */
+function groupedDoubleElimIds(pools: string[][]): string[] {
+  const blocks = pools.map(p => {
+    const size = nextPow2(Math.max(1, p.length));
+    const b = p.slice();
+    while (b.length < size) b.push(BYE);
+    return b;
+  });
+  const blockSize = Math.max(1, ...blocks.map(b => b.length));
+  blocks.forEach(b => { while (b.length < blockSize) b.push(BYE); });
+  const nSlots = nextPow2(Math.max(1, blocks.length));
+  while (blocks.length < nSlots) blocks.push(Array(blockSize).fill(BYE));
+  return ([] as string[]).concat(...blocks);
+}
+
+/** Lance un tournoi à poules en mode "double élimination fusionné" (voir groupedDoubleElimIds) :
+ *  t.finals EST le bracket, dès le lancement — pas de phase de poules distincte à faire aboutir
+ *  d'abord (t.pools ne sert plus qu'à la prévisualisation/au rééquilibrage avant lancement). */
+function launchGroupedDoubleElim(t: Tournament): void {
+  snapshot(t);
+  const poolLists = t.pools.map(p => (p.order.length ? p.order : p.playerIds));
+  t.status = 'live'; // posé avant checkFinalsChampion : un effectif minuscule peut couronner d'emblée
+  t.pools = [];
+  t.finalsFormat = 'double';
+  t.players.forEach(p => { t.points[p.id] = t.points[p.id] || 0; });
+  t.finals = buildDoubleElim(groupedDoubleElimIds(poolLists), true);
+  checkFinalsChampion(t);
 }
 
 function propagateDouble(fin: DoubleFinals): void {
@@ -1247,6 +1298,16 @@ function doublePoolMatchCounts(n: number): { wb: number; lb: number; gf: number 
 export function cagnotte(t: Tournament): { total: number; programmed: number; gap: number; valid: boolean } {
   const total = t.players.length * t.pointsPerPlayer;
   const s = t.scoring;
+  // Poules en double élimination fusionné (hors Survival) : un seul bracket continu sur l'ensemble
+  // des joueurs réels (voir launchGroupedDoubleElim), pas de phase de poules puis de finale séparée
+  // à additionner — chaque match de ce bracket passe par reportFinals, donc au tarif finalsWin
+  // uniquement (aucune des catégories de poule — survWin/loserWin/poolFinalWin — ne s'applique ici).
+  if (t.format !== 'survival' && t.poolFormat === 'double' && usesPools(t)) {
+    const c = doublePoolMatchCounts(t.players.length);
+    const finalsMatches = c.wb + c.lb + c.gf;
+    const programmed = Math.round((finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
+    return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
+  }
   let surv = 0, los = 0, pf = 0, nRealPools = 0;
   const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(t.players.length, t.nbPools);
   sizes.forEach(n => {

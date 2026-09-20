@@ -868,6 +868,12 @@ function wizPoolsStep(S: State) {
   const isSurvival = d.format === "SURVIVAL";
   const formatLabel = (WIZ_FORMATS.find(([k]) => k === d.format) || WIZ_FORMATS[0])[1];
   const isRR = d.poolFormat === "roundrobin";
+  // Poules en double élimination hors Survival : un seul bracket continu (voir
+  // Engine.launchGroupedDoubleElim) — les vainqueurs/perdants de chaque poule s'enchaînent
+  // directement dans le même bracket vainqueurs/perdants, jusqu'à une grande finale unique. Pas de
+  // "qualifiés" à départager (tout le monde y entre dès le 1er tour) ni de format de phase finale à
+  // choisir (ce sera toujours ce même bracket, jusqu'au bout).
+  const isDoubleMerged = !isSurvival && d.poolFormat === "double";
   // Le nombre de qualifiés n'est vraiment borné qu'en dehors du Round Robin (2 : vainqueur +
   // finaliste, structurel). En Round Robin, aucun plafond produit : à toi de choisir, jusqu'à
   // l'effectif de la plus petite poule.
@@ -876,6 +882,9 @@ function wizPoolsStep(S: State) {
   const qualifNote = !isRR
     ? "Ce mode ne départage qu'un vainqueur et un finaliste : 2 qualifiés au maximum. Passe en Round Robin pour en qualifier davantage."
     : `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+  const poolModeNote = isDoubleMerged
+    ? "Un seul grand bracket double élimination pour tout le monde : les vainqueurs de chaque poule s'enchaînent entre eux, pareil pour les perdants, jusqu'à une grande finale unique — pas de poules indépendantes à requalifier."
+    : (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2];
   const sizes = balancedSizesPreview(d.players.length, d.nbPools);
   return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
@@ -892,14 +901,14 @@ function wizPoolsStep(S: State) {
           return `<button data-wizpoolformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${on ? "#22D3EE" : "#282838"};color:${on ? "#22D3EE" : "#8E8FA6"}">${label}</button>`;
         }).join("")}
       </div>
-      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${(wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2]}</p>
+      <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${poolModeNote}</p>
     </div>
-    <div id="wiz-qualify-block" style="${isSurvival || d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
+    <div id="wiz-qualify-block" style="${(isSurvival || d.nbPools > 1) && !isDoubleMerged ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
       <input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />
       <p id="wiz-qualify-note" style="color:#5D5E72;font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>
-    ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
+    ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 && !isDoubleMerged ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Format de la phase finale</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${FINALS_FORMATS.map(([key, label]) => {
@@ -1046,10 +1055,14 @@ function wizValidateStep(S: State) {
   const structureRow = pooled
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
+  // Poules en double élimination fusionné (hors Survival) : ni qualifiés ni format de phase finale
+  // distincts, un seul grand bracket continu (voir Engine.launchGroupedDoubleElim) — ces deux lignes
+  // n'ont alors rien à annoncer.
+  const isDoubleMerged = pooled && !isSurvival && d.poolFormat === "double";
   const poolRows = pooled && !isSurvival
     ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1])
-      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
-      + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1])
+      + (isDoubleMerged ? "" : row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
+        + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]))
     : "";
   const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
@@ -5298,14 +5311,18 @@ export default function Page() {
         // réglage sans conséquence — change en direct avec le nombre de poules, pas seulement au
         // rechargement de l'étape.
         const isSurv = S.wizData.format === "SURVIVAL";
+        // Poules en double élimination fusionné (hors Survival) : ni "qualifiés par poule" ni
+        // "format de la phase finale" n'ont de sens (voir wizPoolsStep) — masqués aussi ici pour
+        // rester cohérent si "Nombre de poules" change après avoir déjà choisi ce mode.
+        const isDoubleMerged = !isSurv && S.wizData.poolFormat === "double";
         const warn = document.getElementById("wiz-nopool-warning");
         const modeBlock = document.getElementById("wiz-poolmode-block");
         const qualifyBlock = document.getElementById("wiz-qualify-block");
         const finalsFmtBlock = document.getElementById("wiz-finalsformat-block");
         if (warn) warn.style.display = (!isSurv && n === 1) ? "" : "none";
         if (modeBlock) modeBlock.style.display = (isSurv || n > 1) ? "" : "none";
-        if (qualifyBlock) qualifyBlock.style.display = (isSurv || n > 1) ? "" : "none";
-        if (finalsFmtBlock) finalsFmtBlock.style.display = (!isSurv && n > 1) ? "" : "none";
+        if (qualifyBlock) qualifyBlock.style.display = (isSurv || n > 1) && !isDoubleMerged ? "" : "none";
+        if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 && !isDoubleMerged ? "" : "none";
         // Le plafond "Qualifiés par poule" suit l'effectif de la plus petite poule (Round Robin) ou
         // reste à 2 (survival/double, limite structurelle) : changer le nombre de poules sans
         // repasser par l'étape le laissait figé sur l'ancien max.

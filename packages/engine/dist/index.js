@@ -128,7 +128,10 @@ function newTournament(cfg = {}) {
         qualifyPerPool: clampQualifyPerPool(cfg.qualifyPerPool),
         streakLength: cfg.streakLength || exports.DEFAULT_STREAK_LENGTH,
         status: 'setup', log: [], points: {}, finals: null,
-        finalsFormat: cfg.finalsFormat || 'single',
+        // Par défaut la phase finale suit le format principal quand celui-ci en est un (single/double/
+        // roundrobin) — l'organisateur reste libre de choisir un format de phase finale différent (voir
+        // CreateTournamentDto.finalsFormat), ce défaut ne s'applique que si rien n'est précisé.
+        finalsFormat: cfg.finalsFormat || (cfg.format === 'double' || cfg.format === 'roundrobin' ? cfg.format : 'single'),
         matchFormat: clampMatchFormat(cfg.matchFormat),
         countGoalDiff: cfg.countGoalDiff ?? true,
         brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : exports.DEFAULT_BR_POINTS.slice(),
@@ -497,12 +500,15 @@ function launchTournament(t) {
         return;
     }
     // Phase de groupes optionnelle : si l'organisateur a demandé plusieurs poules, on les joue
-    // d'abord ; les qualifiés se retrouvent ensuite en phase finale dans le format principal du
-    // tournoi (startFinals lit finalsFormat).
+    // d'abord ; les qualifiés se retrouvent ensuite en phase finale dans le format choisi par
+    // l'organisateur (t.finalsFormat — libre, indépendant du format principal : des poules en
+    // Bracket simple peuvent très bien envoyer leurs qualifiés vers une finale en Double élimination).
+    // Ne JAMAIS l'écraser ici : newTournament() le fait déjà correspondre au format principal par
+    // défaut si rien n'a été précisé, donc l'écraser reviendrait à annuler silencieusement tout choix
+    // explicite fait à la création ou modifié ensuite (voir TournamentsService.update).
     if (usesPools(t)) {
         if (!t.pools.length)
             distributePools(t);
-        t.finalsFormat = t.format;
         launch(t);
         return;
     }

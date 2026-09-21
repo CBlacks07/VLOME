@@ -279,3 +279,23 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .ev-poster { display: none !important; }
 }
 
+/* Sauts de ligne plus propres partout : titres équilibrés, paragraphes sans mot orphelin en fin de ligne. */
+h1, h2, h3, h4 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+/* Détail d'un tournoi sur téléphone : les blocs cadrés occupent toute la largeur (pas de marge, pas de bordure ni
+   de coins arrondis sur les côtés) ; le texte et les rangées de boutons gardent une gouttière de 16 px. */
+@media (max-width: 640px) {
+  .tf-head { padding-left: 0 !important; padding-right: 0 !important; padding-top: 0 !important; }
+  .tf-pad { padding-left: 0 !important; padding-right: 0 !important; padding-top: 0 !important; }
+  /* Chaque colonne occupe sa propre ligne : sans remplissage latéral, la colonne de gauche (flex:1) tenait sur la même
+     ligne que la colonne de droite (100 %) et se retrouvait à 0 px de large. */
+  .tf-col { padding-left: 0 !important; padding-right: 0 !important; flex: 1 1 100% !important; width: 100% !important; }
+  .tf-head > [style*="border:1px solid"], .tf-pad > [style*="border:1px solid"], .tf-col > [style*="border:1px solid"] {
+    border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important; margin-left: 0 !important; margin-right: 0 !important;
+  }
+  .tf-head > :not([style*="border:1px solid"]), .tf-pad > :not([style*="border:1px solid"]), .tf-col > :not([style*="border:1px solid"]) {
+    padding-left: 16px !important; padding-right: 16px !important;
+  }
+}
+

@@ -358,11 +358,11 @@ const RAIL_NAV: [string, string, string][] = [
 function railLiveBar(S: State): string {
   const live = (S.tourns ?? []).find((t) => t.live);
   if (!live) return "";
-  return `<div data-open="${live.id}" class="rise" style="display:flex;align-items:center;gap:14px;height:46px;padding:0 20px;background:#04222a;border-bottom:1px solid rgba(34,211,238,.35);cursor:pointer;flex:none">
-    <span style="display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE"><span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct</span>
-    <span style="color:#D5F6FC;font-size:13px">${escHtml(live.name)}${live.game ? " · " + escHtml(live.game) : ""}</span>
+  return `<div data-open="${live.id}" class="rise live-bar" style="display:flex;align-items:center;gap:14px;height:46px;padding:0 20px;background:#04222a;border-bottom:1px solid rgba(34,211,238,.35);cursor:pointer;flex:none;overflow:hidden">
+    <span style="display:inline-flex;align-items:center;gap:8px;flex:none;white-space:nowrap;font-size:11.5px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE"><span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct</span>
+    <span style="color:#D5F6FC;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(live.name)}${live.game ? " · " + escHtml(live.game) : ""}</span>
     <span style="flex:1"></span>
-    <span style="font-size:12.5px;color:#63C6DA;font-weight:700">Suivre →</span>
+    <span style="font-size:12.5px;color:#63C6DA;font-weight:700;white-space:nowrap;flex:none">Suivre →</span>
   </div>`;
 }
 
@@ -3597,9 +3597,9 @@ function pTournoi(S: State) {
       <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
     </div>
     <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
-      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
+      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;text-wrap:balance;overflow-wrap:break-word;${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;color:${t.imageUrl ? "#D5D6E3" : "#8E8FA6"};font-size:13px;font-weight:600">
-        <span>${[t.game, t.format, t.matchFormatLabel, t.place, t.date].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</span>
+        <span style="min-width:0">${[t.game, t.format, t.matchFormatLabel, t.place, t.date].filter(Boolean).map((v: string) => `<span style="display:inline-block;max-width:100%">${escHtml(v)}</span>`).join(`<span style="opacity:.55;padding:0 .35em">·</span>`)}</span>
         ${t.entryFeeXof ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#FBBF24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;padding:3px 10px;font-size:12px">${ic(I.cart, 12)}${money(t.entryFeeXof)}</span>` : ""}
       </div>
     </div>
@@ -3857,9 +3857,9 @@ function pTournoi(S: State) {
       <p style="color:#8E8FA6;font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1 detail-left" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
-    const right = `<div class="rise d2 stack-sidebar" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
-    return `<main class="rise" style="width:100%"><div style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
+    const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid #1B1B27">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
+    const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
+    return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
 
   const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
@@ -3935,7 +3935,7 @@ function pTournoi(S: State) {
     ? `<div style="margin-top:18px">${poolsHtml}</div>`
     : (finalsHtml || poolsHtml + finalsBtn);
 
-  return `<main class="rise" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${poolsToggle}${mainSection}</main>${wizModal}`;
+  return `<main class="rise tf tf-pad" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${poolsToggle}${mainSection}</main>${wizModal}`;
 }
 
 

@@ -2942,7 +2942,7 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
     // case de cet arbre n'a pas d'équivalent dans le moteur pour les poules, contrairement à la phase
     // finale (t.finals, data-activematch). La correction d'un match déjà joué passe par l'historique
     // ci-dessous (poolHistoryList), pas par un crayon sur cet arbre.
-    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false)}</div>`;
+    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false, {}, ["Finale de poule", "Finale de poule · 2e match"])}</div>`;
   }
   // Historique (crayon) : seuls "survival" et "double" en ont besoin ici — Round Robin l'a déjà
   // ajouté à son calendrier plus haut, l'appeler une seconde fois ferait doublon.
@@ -3192,10 +3192,10 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
  * l'arbre, reliée à la finale des vainqueurs, au lieu d'être isolée ailleurs sur la page.
  * La filiation par défaut suffit : le tour ne contient qu'une affiche, dont le seul parent
  * existant est la finale précédente. */
-function winnersRoundsWithFinal(finals: Detail): Detail[] {
+function winnersRoundsWithFinal(finals: Detail, gfLabels: [string, string] = ["Grande finale", "Grande finale · manche 2"]): Detail[] {
   const rounds: Detail[] = [...(finals.wb || [])];
-  if (finals.gf) rounds.push({ label: "Grande finale", matches: [finals.gf], accent: "#FBBF24" });
-  if (finals.gf2) rounds.push({ label: "Grande finale · manche 2", matches: [finals.gf2], accent: "#FBBF24" });
+  if (finals.gf) rounds.push({ label: gfLabels[0], matches: [finals.gf], accent: "#FBBF24" });
+  if (finals.gf2) rounds.push({ label: gfLabels[1], matches: [finals.gf2], accent: "#FBBF24" });
   return rounds;
 }
 /** Arbre de bracket avec connecteurs, disposition calculée génériquement (pas de pixels codés en dur) — élimination simple ou bracket vainqueurs d'un double élim. */
@@ -3278,8 +3278,8 @@ function bracketTree(rounds: TreeRound[], activeMatchIds: string[], manage: bool
 /** Double élimination : les deux brackets dans un seul canevas, pour tracer la liaison qui manquait
  * — la finale des perdants remonte vers la grande finale, qu’elle alimente au même titre que la
  * finale des vainqueurs. Sans ce trait, les deux arbres paraissent indépendants. */
-function doubleElimTree(finals: Detail, activeMatchIds: string[], manage: boolean, logByMatch: Record<string, string> = {}): string {
-  const wbRounds = winnersRoundsWithFinal(finals);
+function doubleElimTree(finals: Detail, activeMatchIds: string[], manage: boolean, logByMatch: Record<string, string> = {}, gfLabels?: [string, string]): string {
+  const wbRounds = winnersRoundsWithFinal(finals, gfLabels);
   const lb: TreeRound[] = finals.lb || [];
   if (!wbRounds.length) return "";
   if (!lb.length) return bracketTree(wbRounds, activeMatchIds, manage, PARENTS_ELIM, logByMatch);

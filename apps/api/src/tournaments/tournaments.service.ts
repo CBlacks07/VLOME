@@ -861,9 +861,11 @@ export class TournamentsService {
         // Mini-bracket double élimination de la poule (poolFormat 'double') — même forme que la
         // phase finale en double élim, pour être rendu par le même composant (doubleElimTree) : sans
         // ça, l'organisateur ne voit que le match du moment, sans jamais voir la progression du groupe.
+        // Colonnes nommées « Manche N » : Quarts / Demi-finales / Finale sont réservés aux brackets de la
+        // phase finale (voir plus haut), pas aux mini-brackets de poule.
         dbracket: p.dbracket ? {
-          wb: p.dbracket.wb.map((round, r) => ({ label: 'Winners · ' + this.roundLabel(r, p.dbracket!.wb.length), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
-          lb: p.dbracket.lb.map((round, r) => ({ label: 'Perdants · Round ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+          wb: p.dbracket.wb.map((round, r) => ({ label: 'Manche ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
+          lb: p.dbracket.lb.map((round, r) => ({ label: 'Manche ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
           gf: this.serializeMatch(t, p.dbracket.gf),
           gf2: p.dbracket.gf2 ? this.serializeMatch(t, p.dbracket.gf2) : null,
         } : null,

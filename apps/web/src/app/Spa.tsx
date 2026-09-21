@@ -97,6 +97,7 @@ type State = {
   myEvents: Detail[] | null; eventEdit: Detail | null; eventManage: Detail | null; eventMsg: string;
   wizEventId: string | null; // événement dans lequel l'assistant crée le tournoi (null = tournoi indépendant)
   scanOpen: boolean; // scanner de billets (check-in) ouvert par l'organisateur
+  evShow: { event: Detail; states: Record<string, Detail> } | null; // écran de diffusion d'un événement
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -4286,14 +4287,73 @@ function showBRSlide(f: Detail): string {
 }
 
 /** Mode Show : si le tournoi fait partie d'un événement, sa couverture (bannière animée ou affiche) sert de fond, assombrie pour rester lisible. */
-function pShow(S: State) {
-  const inner = pShowInner(S);
-  const ev = S.detail?.event as Detail | null | undefined;
-  if (!ev || !(ev.bannerUrl || ev.posterUrl)) return inner;
+function showBackdrop(ev: Detail | null | undefined): string {
+  if (!ev || !(ev.bannerUrl || ev.posterUrl)) return "";
   const bg = isVideoUrl(ev.bannerUrl)
     ? `<video src="${mediaUrl(ev.bannerUrl)}" muted autoplay loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`
     : `<div style="position:absolute;inset:-4%;background:url('${mediaUrl(ev.bannerUrl || ev.posterUrl)}') center/cover;${ev.bannerUrl ? "" : "filter:blur(14px);"}"></div>`;
-  return `<div style="position:fixed;inset:0;z-index:0;overflow:hidden;background:#0B0B11;pointer-events:none">${bg}<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.78),rgba(11,11,17,.9))"></div></div><div style="position:relative;z-index:1">${inner}</div>`;
+  return `<div style="position:fixed;inset:0;z-index:0;overflow:hidden;background:#0B0B11;pointer-events:none">${bg}<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.78),rgba(11,11,17,.9))"></div></div>`;
+}
+function pShow(S: State) {
+  const inner = pShowInner(S);
+  const back = showBackdrop(S.detail?.event as Detail | null | undefined);
+  return back ? `${back}<div style="position:relative;z-index:1">${inner}</div>` : inner;
+}
+
+/** Matchs en cours d'un tournoi (pour l'écran d'événement) : matchs de poule du moment, ou affiches jouables de la phase finale. */
+function evLiveMatches(st: Detail): { label: string; a: string; b: string }[] {
+  const out: { label: string; a: string; b: string }[] = [];
+  const fin = st?.finals;
+  if (!fin || fin.format === "survival") {
+    (st?.pools || []).forEach((p: Detail) => { if (p.current) out.push({ label: p.name, a: p.current.aName, b: p.current.bName }); });
+  } else {
+    finalsLabelledMatches(fin).forEach(({ label, m }) => { if (m && m.playable && m.aName && m.bName) out.push({ label, a: m.aName, b: m.bName }); });
+  }
+  return out;
+}
+
+/** Écran de diffusion d'un événement : tous ses tournois sur un seul écran, matchs en cours en direct, champions. */
+function pEvShow(S: State) {
+  const close = `<button data-evshowclose="1" style="position:absolute;top:16px;right:18px;z-index:2;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer">Fermer</button>`;
+  const d = S.evShow;
+  if (!d) return `<div style="min-height:100vh;display:grid;place-items:center;color:#8E8FA6">${close}Chargement de l'événement…</div>`;
+  const ev = d.event;
+  const accent = evAccent(ev);
+  const tourns: Detail[] = ev.tournaments || [];
+  const live = tourns.filter((t) => t.live);
+  const upcoming = tourns.filter((t) => !t.live && t.status !== "Terminé");
+  const done = tourns.filter((t) => t.status === "Terminé");
+  const meta = [fmtEventDates(ev), ev.place].filter(Boolean).map(escHtml).join(" · ");
+  const liveCard = (t: Detail) => {
+    const st = d.states[t.id];
+    const ms = st ? evLiveMatches(st).slice(0, 5) : [];
+    const phase = st ? (st.finals ? "Phase finale" : "Phase de poules") : "";
+    const rows = ms.length
+      ? ms.map((m) => `<div style="padding:1.2vh 0;border-top:1px solid #22222F"><div style="color:#8E8FA6;font-size:1.3vh;letter-spacing:1.4px;text-transform:uppercase;font-weight:800;margin-bottom:.5vh">${escHtml(m.label)}</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:1.4vw;flex-wrap:wrap"><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:${accent};letter-spacing:1px">${escHtml(m.a)}</span><span style="color:#5D5E72;font-size:1.6vh;font-weight:800">VS</span><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:#F43F7E;letter-spacing:1px">${escHtml(m.b)}</span></div></div>`).join("")
+      : `<div style="text-align:center;color:#5D5E72;padding:2vh 0;font-size:1.8vh">${st ? "En attente du prochain match…" : "Chargement…"}</div>`;
+    return `<div style="border:1px solid ${accent}55;border-radius:18px;background:linear-gradient(180deg,rgba(20,20,29,.92),rgba(14,14,22,.92));padding:2.4vh 1.8vw">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:1vw;flex-wrap:wrap"><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;letter-spacing:1.2px;line-height:1">${escHtml(t.name)}</div>${phase ? `<span style="font-size:1.3vh;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:.6vh 1.2vh;white-space:nowrap">${phase}</span>` : ""}</div>
+      <div style="color:#8E8FA6;font-size:1.5vh;margin:.6vh 0 1vh">${[t.game, t.format, `${t.players} joueurs`].filter(Boolean).map(escHtml).join(" · ")}</div>${rows}</div>`;
+  };
+  const pill = (t: Detail, extra = "") => `<span style="display:inline-flex;align-items:center;gap:.8vh;border:1px solid #33334A;background:rgba(20,20,29,.8);border-radius:99px;padding:.9vh 1.6vh;font-size:1.7vh;font-weight:700">${escHtml(t.name)}${extra}</span>`;
+  const doneRow = done.length
+    ? `<div style="margin-top:3vh;text-align:center"><div style="color:#FBBF24;font-size:1.6vh;letter-spacing:2px;text-transform:uppercase;font-weight:800;margin-bottom:1.2vh">Champions</div>
+        <div style="display:flex;gap:1.4vh;justify-content:center;flex-wrap:wrap">${done.map((t) => { const c = d.states[t.id]?.champion; return pill(t, c ? `<span style="color:#FBBF24">· ${escHtml(c)}</span>` : ""); }).join("")}</div></div>` : "";
+  const upRow = upcoming.length
+    ? `<div style="margin-top:3vh;text-align:center"><div style="color:#8E8FA6;font-size:1.6vh;letter-spacing:2px;text-transform:uppercase;font-weight:800;margin-bottom:1.2vh">À suivre</div>
+        <div style="display:flex;gap:1.4vh;justify-content:center;flex-wrap:wrap">${upcoming.map((t) => pill(t, t.date ? `<span style="color:#8E8FA6;font-weight:500">· ${escHtml(t.date)}</span>` : "")).join("")}</div></div>` : "";
+  const body = live.length
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,92vw),1fr));gap:2vh;margin-top:3vh">${live.map(liveCard).join("")}</div>`
+    : `<div style="text-align:center;color:#8E8FA6;font-size:2.2vh;margin-top:6vh">Aucun tournoi en cours pour le moment.</div>`;
+  return `${showBackdrop(ev)}<div style="position:relative;z-index:1;min-height:100vh;padding:4vh 3vw;display:flex;flex-direction:column">${close}
+    <div style="text-align:center">
+      <div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:1.6vh">${brandLogo(S, 38, 20)}<span style="font-family:'Bebas Neue',sans-serif;font-size:2.6vh;letter-spacing:2.5px;color:#8E8FA6">${escHtml(S.site?.brand?.name1 || "Miabe Esport")}</span></div>
+      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:9vh;letter-spacing:2px;line-height:.95;margin:0;text-shadow:0 6px 40px rgba(0,0,0,.6)">${escHtml(ev.name)}</h1>
+      ${ev.tagline ? `<div style="color:#C9CBDC;font-size:2.4vh;margin-top:1.2vh">${escHtml(ev.tagline)}</div>` : ""}
+      ${meta ? `<div style="color:${accent};font-size:2vh;font-weight:700;margin-top:1.2vh;letter-spacing:1px">${meta}</div>` : ""}
+      ${live.length ? `<div style="display:inline-flex;align-items:center;gap:1vh;margin-top:2vh;color:${accent};font-size:1.8vh;font-weight:800;letter-spacing:2px;text-transform:uppercase"><span style="width:1.1vh;height:1.1vh;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span>${live.length} tournoi${live.length > 1 ? "s" : ""} en direct</div>` : ""}
+    </div>${body}${upRow}${doneRow}</div>`;
 }
 function pShowInner(S: State) {
   const t = S.detail;
@@ -4563,12 +4623,14 @@ function pEvenement(S: State) {
   const live = tournaments.filter((t) => t.live);
   const meta = [fmtEventDates(ev), ev.place].filter(Boolean);
   const chips = meta.map((m, i) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;color:#E8E9F4;background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 13px;backdrop-filter:blur(6px)">${escHtml(m)}</span>`).join("");
+  const showBtn = `<button data-evshow="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.tv, 15)}Écran de diffusion</button>`;
   const actions = isOwner
-    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${showBtn}
         <button data-evedit="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Gérer l'événement</button>
         <button data-act="create-open" data-evid="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi ici</button>
         ${ev.status !== "PUBLISHED" ? `<span style="align-self:center;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FBBF24">Brouillon — non visible du public</span>` : ""}
-      </div>` : "";
+      </div>`
+    : tournaments.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${showBtn}</div>` : "";
   const hero = `<div style="position:relative;overflow:hidden;min-height:clamp(280px,38vw,440px);background:#0E0E16;border-bottom:1px solid #282838">
     ${eventMedia(ev, ev.name)}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.25) 0%,rgba(11,11,17,.55) 55%,#0B0B11 100%)"></div>
@@ -4680,6 +4742,7 @@ function clubPendingBanner(S: State): string {
 function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S); }
 function renderPageBody(S: State) {
   if (S.page === "show") return pShow(S);
+  if (S.page === "evshow") return pEvShow(S);
   // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le rail du module contenu.
   if (S.page === "profil" && canManage(S)) return consolePage(S);
   // Régie organisateur/admin pendant qu'un tournoi est en direct : écran plein cadre autonome (rail·centre·contrôle), hors du rail public — même principe que la console.
@@ -4705,7 +4768,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
-    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null, scanOpen: false,
+    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null, scanOpen: false, evShow: null,
     user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -5294,6 +5357,21 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (m.ok) { const d = await m.json(); setS((s) => ({ ...s, eventManage: d, eventEdit: { ...f, id: eventId } })); }
       loadMyEvents(); loadEvents(); loadTournaments();
     } catch { /* ignore */ }
+  }
+
+  /* ---------- Écran de diffusion d'un événement ---------- */
+  async function loadEvShow(id: string) {
+    try {
+      const r = await fetch(`${API}/api/events/${id}`);
+      if (!r.ok) return;
+      const event = await r.json();
+      const list: Detail[] = (event.tournaments || []).slice(0, 12);
+      const states: Record<string, Detail> = {};
+      await Promise.all(list.map(async (t: Detail) => {
+        try { const sr = await fetch(`${API}/api/tournaments/${t.id}/state`); if (sr.ok) states[t.id] = await sr.json(); } catch { /* ignore */ }
+      }));
+      setS((s) => (s.openEventId === id ? { ...s, evShow: { event, states } } : s));
+    } catch { /* API hors ligne */ }
   }
 
   /* ---------- Check-in ---------- */
@@ -5889,6 +5967,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     return () => clearInterval(id);
   }, [S.page, S.openId]);
 
+  // Écran de diffusion d'événement : actualisé toutes les 7 secondes (matchs en cours de chaque tournoi).
+  useEffect(() => {
+    if (S.page !== "evshow" || !S.openEventId) return;
+    const id = S.openEventId;
+    const timer = setInterval(() => loadEvShow(id), 7000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.openEventId]);
+
   // Mode Show : fait tourner automatiquement les diapositives (classement / matchs en direct / derniers résultats…).
   useEffect(() => {
     if (S.page !== "show") return;
@@ -5998,6 +6085,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page === "tournoi" && S.openId) hash = "#t=" + S.openId;
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
     else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
+    else if (S.page === "evshow" && S.openEventId) hash = "#evshow=" + S.openEventId;
     else if (S.page === "auth") hash = "#connexion";
     else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
@@ -6242,6 +6330,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
     if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
     if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
+    if (h.startsWith("#evshow=")) { const id = h.slice(8); setS((s) => ({ ...s, page: "evshow", openEventId: id, evShow: null })); loadEvShow(id); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
     if (h.startsWith("#reset=")) {
@@ -6516,7 +6605,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-evshow],[data-evshowclose],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6844,6 +6933,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
+    else if (d.evshow) window.open(window.location.pathname + "#evshow=" + d.evshow, "_blank");
+    else if (d.evshowclose !== undefined) { const id = S.openEventId; if (id) openEvent(id); else setS((s) => ({ ...s, page: "evenements" })); }
     else if (d.scanopen) setS((s) => ({ ...s, scanOpen: true }));
     else if (d.checkin) { const [tid, rid, on] = d.checkin.split("|"); toggleCheckIn(tid, rid, on === "1"); }
     else if (d.openevent) openEvent(d.openevent);

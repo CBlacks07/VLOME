@@ -316,8 +316,8 @@ export declare function launchTournament(t: Tournament): void;
  *  intermédiaire devient impair (jamais au 1er tour si l'effectif de départ est pair). Sinon (défaut),
  *  comportement historique : complété à la puissance de 2 supérieure par placement en tête de série
  *  (seedSlots), les exempts nécessaires concentrés au 1er tour. Utilisé pour le format principal
- *  Bracket simple (launchTournament/startFinals) — pas pour le bracket de repêchage Survival
- *  (pool.lBracket) ni les autres usages internes, qui gardent le comportement historique. */
+ *  Bracket simple (launchTournament/startFinals) ET pour le bracket de repêchage Survival
+ *  (pool.lBracket, voir startLosers) : dans les deux cas un maximum de joueurs joue dès le 1er tour. */
 export declare function buildBracket(ids: string[], compact?: boolean): Bracket;
 export declare function propagateBracket(bracket: Bracket): void;
 export declare function bracketChampion(bracket: Bracket | null): string | null;

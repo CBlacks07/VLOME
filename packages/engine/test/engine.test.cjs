@@ -176,3 +176,41 @@ test('finale double élimination scindée : fonctionne aussi avec des poules Sur
   playAll(t, (m) => m.a);
   assert.equal(t.status, 'finished');
 });
+
+test('Survival classique : le repêchage aligne un maximum de joueurs dès le 1er tour (pas d\'exempt si l\'effectif est pair)', () => {
+  for (let n = 3; n <= 20; n++) {
+    const t = E.newTournament({ format: 'survival', nbPools: 1, poolFormat: 'survival' });
+    for (let i = 0; i < n; i++) E.addPlayer(t, 'R' + i);
+    E.distributePools(t);
+    E.launchTournament(t);
+    const pool = t.pools[0];
+    // Phase Survival (le survivant enchaîne les challengers) jusqu'au passage au repêchage.
+    for (let g = 0; g < 200 && pool.phase === 'survival'; g++) {
+      const m = E.currentMatch(pool);
+      E.reportResult(t, pool.id, g % 3 === 0 ? m.b : m.a, 2, 0);
+    }
+    const losers = n - 1; // tous les battus du bracket Survival
+    if (losers < 2) continue;
+    assert.equal(pool.phase, 'losers', `n=${n} : la poule doit être en repêchage`);
+    const round0 = pool.lBracket.rounds[0];
+    const real = round0.filter((m) => !m.bye).length;
+    const byes = round0.filter((m) => m.bye).length;
+    assert.equal(real, Math.floor(losers / 2), `n=${n} (${losers} perdants) : ${Math.floor(losers / 2)} duels au 1er tour`);
+    assert.equal(byes, losers % 2, `n=${n} (${losers} perdants) : exempt seulement si l'effectif est impair`);
+    const inR0 = new Set(round0.flatMap((m) => [m.a, m.b]).filter((id) => id && id !== BYE));
+    assert.equal(inR0.size, losers, `n=${n} : tous les perdants sont alignés au 1er tour`);
+    // Le repêchage se joue jusqu'au bout : n-1 perdants => losers-1 matchs, puis la finale de poule.
+    let played = 0;
+    for (let g = 0; g < 200 && pool.phase === 'losers'; g++) {
+      const m = E.currentMatch(pool);
+      assert.ok(m && !isBye(m.a) && !isBye(m.b), `n=${n} : jamais de match contre un exempt`);
+      E.reportResult(t, pool.id, g % 2 ? m.b : m.a, 2, 0);
+      played++;
+    }
+    assert.equal(played, losers - 1, `n=${n} : ${losers - 1} matchs de repêchage`);
+    assert.equal(pool.phase, 'poolFinal', `n=${n} : on passe à la finale de poule`);
+    const fin = E.currentMatch(pool);
+    E.reportResult(t, pool.id, fin.a, 2, 0);
+    assert.equal(pool.phase, 'done', `n=${n} : poule terminée`);
+  }
+});

@@ -28,6 +28,20 @@ export class PaymentsService {
   private get kkiaSandbox() { return process.env.KKIAPAY_SANDBOX === 'true'; }
   private get siteUrl() { return (process.env.SITE_URL?.trim() || 'https://www.miabe-esport.community').replace(/\/$/, ''); }
 
+  /** Origine de retour : celle du navigateur si elle est de confiance (site officiel, localhost, aperçus Vercel), sinon SITE_URL. */
+  private returnBase(origin?: string): string {
+    if (origin) {
+      try {
+        const u = new URL(origin);
+        const host = u.hostname.replace(/^www\./, '');
+        const official = new URL(this.siteUrl).hostname.replace(/^www\./, '');
+        const trusted = host === official || u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname.endsWith('.vercel.app');
+        if (trusted && (u.protocol === 'https:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1')) return u.origin;
+      } catch { /* origine invalide : repli sur SITE_URL */ }
+    }
+    return this.siteUrl;
+  }
+
   publicConfig() {
     return {
       fedapay: !!this.fedaKey,
@@ -87,7 +101,7 @@ export class PaymentsService {
 
     if (!this.fedaKey) throw new ServiceUnavailableException("FedaPay n'est pas configuré.");
     const u = await this.prisma.user.findUnique({ where: { id: user.sub } });
-    const callback = `${this.siteUrl}/?pay=fedapay&kind=${dto.kind}&ref=${encodeURIComponent(dto.refId)}`;
+    const callback = `${this.returnBase(dto.returnOrigin)}/?pay=fedapay&kind=${dto.kind}&ref=${encodeURIComponent(dto.refId)}`;
     const created = await this.feda('POST', '/transactions', {
       description: target.description,
       amount: target.amountXof,

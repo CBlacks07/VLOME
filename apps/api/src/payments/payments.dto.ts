@@ -4,6 +4,9 @@ export class CheckoutDto {
   @IsIn(['fedapay', 'kkiapay']) provider!: 'fedapay' | 'kkiapay';
   @IsIn(['registration', 'order', 'credit']) kind!: 'registration' | 'order' | 'credit';
   @IsString() @MaxLength(60) refId!: string;
+  // Origine du site d'où l'utilisateur paie (ex. https://www.exemple.com). FedaPay le ramène exactement là :
+  // sur une autre origine, le navigateur n'aurait pas sa session (localStorage propre à chaque origine).
+  @IsOptional() @IsString() @MaxLength(120) returnOrigin?: string;
 }
 
 export class VerifyDto {

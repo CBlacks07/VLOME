@@ -512,9 +512,9 @@ export class TournamentsService {
   async registrationIds(user: JwtUser) {
     const regs = await this.prisma.registration.findMany({
       where: { userId: user.sub },
-      select: { tournamentId: true, paymentStatus: true, amountXof: true },
+      select: { id: true, tournamentId: true, paymentStatus: true, paymentMethod: true, amountXof: true },
     });
-    return regs.map((x) => ({ id: x.tournamentId, status: x.paymentStatus, amountXof: x.amountXof }));
+    return regs.map((x) => ({ id: x.tournamentId, regId: x.id, method: x.paymentMethod, status: x.paymentStatus, amountXof: x.amountXof }));
   }
 
   async remove(id: string, user: JwtUser) {

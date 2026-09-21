@@ -222,6 +222,8 @@ model Tournament {
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState       Json?
   createdById       String? // propriétaire (organisateur)
+  eventId           String? // événement auquel ce tournoi est rattaché (facultatif)
+  event             Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
   createdAt         DateTime         @default(now())
   matches           Match[]
   registrations     Registration[]
@@ -322,4 +324,25 @@ model OnlinePayment {
   createdAt    DateTime @default(now())
 
   @@index([kind, refId])
+}
+
+// Événement : un cadre (affiche, animation, infos) qui regroupe un ou plusieurs tournois, éventuellement
+// joués en même temps. Supprimer un événement détache ses tournois (onDelete: SetNull), ne les supprime pas.
+model Event {
+  id          String       @id @default(cuid())
+  name        String
+  tagline     String? // accroche courte
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  place       String?
+  posterUrl   String? // affiche
+  bannerUrl   String? // bannière animée : image, GIF ou vidéo
+  accentColor String? // couleur d'accent de la page (#RRGGBB)
+  status      String       @default("DRAFT") // 'DRAFT' | 'PUBLISHED'
+  createdById String?
+  createdAt   DateTime     @default(now())
+  tournaments Tournament[]
+
+  @@index([status, startDate])
 }

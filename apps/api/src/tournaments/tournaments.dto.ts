@@ -12,6 +12,8 @@ export class CreateTournamentDto {
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
+  // Événement auquel rattacher ce tournoi (l'appelant doit pouvoir gérer cet événement).
+  @IsOptional() @IsString() @MaxLength(60) eventId?: string;
   // Barème de points (facultatif — valeurs par défaut du moteur sinon).
   @IsOptional() @IsNumber() @Min(0.25) survWin?: number;
   @IsOptional() @IsNumber() @Min(0.25) loserWin?: number;

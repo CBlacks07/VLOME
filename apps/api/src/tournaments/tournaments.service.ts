@@ -39,7 +39,7 @@ export class TournamentsService {
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
-    imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean;
+    imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -62,7 +62,14 @@ export class TournamentsService {
       imageUrl: r.imageUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
+      eventId: r.eventId ?? null,
     };
+  }
+
+  /** Cartes des tournois d'un événement (les brouillons uniquement pour ceux qui le gèrent). */
+  async cardsByEvent(eventId: string) {
+    const rows = await this.prisma.tournament.findMany({ where: { eventId }, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }] });
+    return rows.map((r) => this.toCard(r));
   }
 
   async findAll() {
@@ -107,6 +114,16 @@ export class TournamentsService {
       const can = await this.credits.canHost(user.sub);
       if (!can.ok) throw new ConflictException("Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.");
     }
+    // Rattachement à un événement : l'appelant doit pouvoir gérer cet événement (propriétaire ou admin).
+    let eventIdToUse: string | null = null;
+    if (dto.eventId) {
+      const ev = await this.prisma.event.findUnique({ where: { id: dto.eventId }, select: { id: true, createdById: true } });
+      if (!ev) throw new NotFoundException('Événement introuvable.');
+      if (!user || (ev.createdById && ev.createdById !== user.sub && user.role !== 'ADMIN')) {
+        throw new ForbiddenException("Tu ne peux rattacher un tournoi qu'à tes propres événements.");
+      }
+      eventIdToUse = ev.id;
+    }
     const hasScoring = [dto.survWin, dto.loserWin, dto.poolFinalWin, dto.finalsWin, dto.championBonus, dto.streakBonus].some((v) => v !== undefined);
     const t = Engine.newTournament({
       name: dto.name, game: dto.game, place: dto.place,
@@ -140,6 +157,7 @@ export class TournamentsService {
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
+        eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });

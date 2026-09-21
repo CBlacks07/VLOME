@@ -2096,14 +2096,29 @@ function adminOverview(a: NonNullable<State["admin"]>) {
 function adminUsers(S: State) {
   const a = S.admin!;
   const q = S.adminSearch.trim().toLowerCase();
-  const users = q ? a.users.filter((u: Detail) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : a.users;
+  const all: Detail[] = a.users;
+  const users = q ? all.filter((u: Detail) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : all;
   const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "#282838"};color:${on ? ROLE_COLOR[role] : "#8E8FA6"}">${ROLE_LABEL[role]}</button>`; };
-  const rows = users.length ? users.map((usr: Detail) => `<tr style="border-top:1px solid #22222F">
-    <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(usr.displayName)}</div><div style="font-size:11.5px;color:#5D5E72">${escHtml(usr.email)}</div></div></div></td>
-    <td style="padding:10px 8px;text-align:right"><div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}${btnSm(`data-userpwd="${usr.id}"`, "Réinit. mot de passe", "#FBBF24", "rgba(251,191,36,.35)")}${usr.id === S.me?.id ? "" : btnSm(`data-userdel="${usr.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`).join("")
-    : `<tr><td colspan="2" style="color:#5D5E72;font-size:13.5px;padding:16px 0;text-align:center">Aucun utilisateur trouvé.</td></tr>`;
-  return card(`${secTitle(`Utilisateurs · rôles (${a.users.length})`)}${adminSearchBar(S, "Nom ou email…")}
-    ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tbody>${rows}</tbody></table></div>`)}`);
+  const th = (label: string, align = "left") => `<th style="text-align:${align};padding:9px 10px;font-size:10.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:#5D5E72;white-space:nowrap">${label}</th>`;
+  const date = (d?: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+  const row = (usr: Detail) => `<tr style="border-top:1px solid #22222F">
+    <td style="padding:10px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:50%;background:#22222F;border:1px solid #282838;font-size:12px;font-weight:800;color:#8E8FA6">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><span style="font-weight:650">${escHtml(usr.displayName)}${usr.id === S.me?.id ? ` <span style="font-size:10.5px;color:#22D3EE;font-weight:700">(toi)</span>` : ""}</span></div></td>
+    <td style="padding:10px;color:#8E8FA6;font-size:13px">${escHtml(usr.email)}</td>
+    <td style="padding:10px;color:#5D5E72;font-size:12.5px;white-space:nowrap">${date(usr.createdAt)}</td>
+    <td style="padding:10px"><div style="display:inline-flex;gap:6px;flex-wrap:nowrap">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div></td>
+    <td style="padding:10px;text-align:right;white-space:nowrap"><div style="display:inline-flex;gap:6px;flex-wrap:nowrap;white-space:nowrap">${btnSm(`data-userpwd="${usr.id}"`, "Réinit. mot de passe", "#FBBF24", "rgba(251,191,36,.35)")}${usr.id === S.me?.id ? "" : btnSm(`data-userdel="${usr.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`;
+  const section = (title: string, color: string, list: Detail[], emptyMsg: string) => card(`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:${color};flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">${title}</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5D5E72">${list.length}</span></div>
+    ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:980px;table-layout:fixed"><colgroup><col style="width:19%"><col style="width:19%"><col style="width:10%"><col style="width:26%"><col style="width:26%"></colgroup><thead><tr>${th("Utilisateur")}${th("E-mail")}${th("Inscrit le")}${th("Rôle")}${th("Actions", "right")}</tr></thead><tbody>${list.length ? list.map(row).join("") : `<tr><td colspan="5" style="color:#5D5E72;font-size:13px;padding:16px 0;text-align:center;border-top:1px solid #22222F">${emptyMsg}</td></tr>`}</tbody></table></div>`, 420)}`);
+  const admins = users.filter((u: Detail) => u.role === "ADMIN");
+  const organizers = users.filter((u: Detail) => u.role === "ORGANIZER");
+  const players = users.filter((u: Detail) => u.role !== "ADMIN" && u.role !== "ORGANIZER");
+  return `${card(`${secTitle(`Comptes (${all.length})`)}${adminSearchBar(S, "Nom ou email…")}<div style="margin-top:-6px;font-size:12.5px;color:#5D5E72">Administrateurs, organisateurs et utilisateurs sont listés séparément ci-dessous. Le bouton du rôle actuel est allumé ; un clic sur un autre rôle déplace le compte de tableau.</div>`)}
+    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+      ${section("Administrateurs", "#FBBF24", admins, q ? "Aucun administrateur trouvé." : "Aucun administrateur.")}
+      ${section("Organisateurs", "#7C82FF", organizers, q ? "Aucun organisateur trouvé." : "Aucun organisateur.")}
+      ${section("Utilisateurs", "#22D3EE", players, q ? "Aucun utilisateur trouvé." : "Aucun utilisateur.")}
+    </div>`;
 }
 
 /** Onglet Joueurs : base de joueurs (roster) + clubs, gérée depuis l'admin — sert aussi à pré-remplir les participants à la création d'un tournoi. */

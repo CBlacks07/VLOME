@@ -1,7 +1,11 @@
 import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @IsEmail({}, { message: 'Email invalide.' })
+  // Adresse e-mail OU pseudo (nom affiché) — le champ garde le nom « email » pour rester compatible
+  // avec les clients existants.
+  @IsString()
+  @MinLength(1, { message: 'Email ou pseudo requis.' })
+  @MaxLength(200)
   email!: string;
 
   @IsString()

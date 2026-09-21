@@ -142,11 +142,22 @@ export class AuthService implements OnModuleInit {
   }
 
   async login(dto: { email?: string; password?: string }) {
-    const email = (dto.email || '').trim().toLowerCase();
-    const u = await this.prisma.user.findUnique({ where: { email } });
-    if (!u || !(await bcrypt.compare(dto.password || '', u.passwordHash))) {
-      throw new UnauthorizedException('Identifiants invalides.');
+    const id = (dto.email || '').trim();
+    const password = dto.password || '';
+    let u: Awaited<ReturnType<typeof this.prisma.user.findUnique>> = null;
+    if (id.includes('@')) {
+      const byMail = await this.prisma.user.findUnique({ where: { email: id.toLowerCase() } });
+      if (byMail && (await bcrypt.compare(password, byMail.passwordHash))) u = byMail;
     }
+    if (!u) {
+      // Pseudo : le nom affiché n'est pas unique, on retient le compte dont le mot de passe correspond
+      // (plafonné pour ne pas transformer la route en boucle de hachages).
+      const candidates = await this.prisma.user.findMany({ where: { displayName: { equals: id, mode: 'insensitive' } }, take: 5 });
+      for (const c of candidates) {
+        if (await bcrypt.compare(password, c.passwordHash)) { u = c; break; }
+      }
+    }
+    if (!u) throw new UnauthorizedException('Identifiants invalides.');
     return { token: this.sign(u), user: this.safe(u) };
   }
 }

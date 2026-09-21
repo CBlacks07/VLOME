@@ -3937,7 +3937,7 @@ function pAuth(S: State) {
   }).join("");
 
   const loginForm = `
-    <label style="${lbl};margin-top:14px">Email<input id="a-email" type="email" placeholder="toi@exemple.com" style="${inp}" /></label>
+    <label style="${lbl};margin-top:14px">Email ou pseudo<input id="a-email" type="text" autocapitalize="none" autocomplete="username" placeholder="toi@exemple.com ou ton pseudo" style="${inp}" /></label>
     <label style="${lbl};margin-top:14px">Mot de passe<input id="a-pass" type="password" placeholder="••••••" style="${inp}" /></label>
     <div style="text-align:right;margin-top:8px"><button data-auth-tab="forgot" style="background:none;border:0;color:#8E8FA6;font-weight:600;cursor:pointer;font-size:12px;font-family:inherit;text-decoration:underline">Mot de passe oublié ?</button></div>`;
 
@@ -4576,7 +4576,7 @@ export default function Page() {
     const isLogin = S.authTab === "login";
     if (S.authTab === "forgot") { await submitForgot(email); return; }
     if (S.authTab === "reset") { await submitReset(password, val("a-pass2")); return; }
-    if (!email || !password) { setS((s) => ({ ...s, authError: "Email et mot de passe requis." })); return; }
+    if (!email || !password) { setS((s) => ({ ...s, authError: isLogin ? "Email (ou pseudo) et mot de passe requis." : "Email et mot de passe requis." })); return; }
     if (!isLogin) {
       if (!displayName) { setS((s) => ({ ...s, authError: "Choisis un nom affiché (pseudo)." })); return; }
       if (password.length < 6) { setS((s) => ({ ...s, authError: "Mot de passe : au moins 6 caractères." })); return; }

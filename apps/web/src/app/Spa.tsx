@@ -74,7 +74,7 @@ type TournCard = { id?: string; name: string; format: string; game: string; play
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
-type AuthUser = { displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean };
+type AuthUser = { id?: string; displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
@@ -90,6 +90,10 @@ type State = {
   payConfig: { fedapay: boolean; kkiapay: { publicKey: string; sandbox: boolean } | null } | null;
   // Fenêtre « Choisis ton moyen de paiement » ouverte depuis l'inscription, le panier ou l'achat de crédits.
   payModal: "reg" | "cart" | "credit" | null;
+  // Événements : liste publique, page ouverte, et gestion (console organisateur/admin).
+  events: Detail[] | null; eventDetail: Detail | null; openEventId: string | null;
+  myEvents: Detail[] | null; eventEdit: Detail | null; eventManage: Detail | null; eventMsg: string;
+  wizEventId: string | null; // événement dans lequel l'assistant crée le tournoi (null = tournoi indépendant)
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -167,7 +171,7 @@ type State = {
 
 const NAV = ["Accueil", "Tournois", "Classements", "Galerie", "Boutique", "Profil"];
 // Pages simples (sans paramètre) dont le hash d'URL correspond directement à la clé de page.
-const SIMPLE_PAGES = ["accueil", "tournois", "classements", "galerie", "boutique", "profil", "mentions-legales", "confidentialite"];
+const SIMPLE_PAGES = ["accueil", "tournois", "evenements", "classements", "galerie", "boutique", "profil", "mentions-legales", "confidentialite"];
 
 const SLIDES = [
   { tag: "Grand tournoi", title: "SURVIVAL CUP LOMÉ 2026", sub: "32 joueurs, mode Survival — le vainqueur reste sur le terrain. Cagnotte 160 points.", cta: "S'inscrire" },
@@ -344,6 +348,7 @@ function header(S: State) {
 const RAIL_NAV: [string, string, string][] = [
   ["accueil", "Accueil", I.bolt],
   ["tournois", "Tournois", I.flame],
+  ["evenements", "Événements", I.crown],
   ["classements", "Classements", I.medal],
   ["galerie", "Galerie", I.image],
   ["boutique", "Boutique", I.cart],
@@ -1805,7 +1810,7 @@ function consoleAccountHeader(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
   // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
   // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
   ["legal", "Pages légales"], ["compte", "Mon compte"],
@@ -1832,10 +1837,10 @@ function adminSearchBar(S: State, placeholder: string) {
 const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px;overflow-y:auto;padding-right:4px">${inner}</div>`;
 
 /** Jeu d'onglets réduit pour ORGANIZER (pas d'accès aux réglages site/utilisateurs/joueurs/actus/galerie/produits — réservés à ADMIN). */
-const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["credits", "Crédits"], ["compte", "Mon compte"]];
+const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["events", "Événements"], ["credits", "Crédits"], ["compte", "Mon compte"]];
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
-  apercu: I.bolt, site: I.edit, users: I.user, organisateurs: I.crown, joueurs: I.crown, news: I.flame, galerie: I.image,
+  apercu: I.bolt, events: I.crown, site: I.edit, users: I.user, organisateurs: I.crown, joueurs: I.crown, news: I.flame, galerie: I.image,
   produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, legal: I.edit, compte: I.user,
 };
 
@@ -1969,6 +1974,7 @@ function consolePage(S: State): string {
   if (isAdmin) {
     const a = S.admin;
     body = S.adminTab === "compte" ? accountBody() :
+      S.adminTab === "events" ? consoleEvents(S) :
       !a ? `<div style="color:#8E8FA6;text-align:center;padding:40px 0">Chargement…</div>` :
       S.adminTab === "site" ? adminSite(S) :
       S.adminTab === "users" ? adminUsers(S) :
@@ -1986,6 +1992,7 @@ function consolePage(S: State): string {
   } else {
     body = S.adminTab === "compte" ? accountBody()
       : S.adminTab === "credits" ? organizerCredits(S)
+      : S.adminTab === "events" ? consoleEvents(S)
       : consoleOverview(S);
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
@@ -4401,7 +4408,182 @@ function partnersMarquee(S: State) {
 }
 
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
-const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
+/* ================= Événements ================= */
+const isVideoUrl = (u?: string | null) => !!u && /\.(mp4|webm)(\?|$)/i.test(u);
+const evAccent = (ev: Detail) => (/^#[0-9a-f]{6}$/i.test(ev?.accentColor || "") ? ev.accentColor : "#22D3EE");
+const EVENT_STATE: Record<string, [string, string]> = { live: ["En direct", "#22D3EE"], upcoming: ["À venir", "#FBBF24"], ended: ["Terminé", "#8E8FA6"] };
+
+function fmtEventDates(ev: Detail): string {
+  const f = (iso: string, withYear: boolean) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
+  if (!ev.startDate) return "";
+  if (!ev.endDate || ev.endDate.slice(0, 10) === ev.startDate.slice(0, 10)) return f(ev.startDate, true);
+  return `${f(ev.startDate, false)} → ${f(ev.endDate, true)}`;
+}
+
+/** Visuel d'un événement : bannière animée (vidéo/GIF/image), sinon l'affiche, sinon un dégradé à la couleur de l'événement. */
+function eventMedia(ev: Detail, alt: string, mode: "hero" | "card" = "hero"): string {
+  const accent = evAccent(ev);
+  const fallback = `background:radial-gradient(120% 140% at 15% 0%,${accent}55,transparent 60%),linear-gradient(135deg,${accent}22,#7C82FF1A)`;
+  if (isVideoUrl(ev.bannerUrl)) {
+    return `<video src="${mediaUrl(ev.bannerUrl)}" ${ev.posterUrl ? `poster="${mediaUrl(ev.posterUrl)}"` : ""} muted autoplay loop playsinline preload="metadata" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;
+  }
+  if (ev.bannerUrl) return `<img src="${mediaUrl(ev.bannerUrl)}" alt="${escAttr(alt)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />`;
+  // Sans bannière : dégradé à la couleur de l'événement ; sur une carte, l'affiche entière est posée dessus (sur la page, elle a son propre cadre).
+  const poster = mode === "card" && ev.posterUrl ? `<img src="${mediaUrl(ev.posterUrl)}" alt="${escAttr(alt)}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:88%;width:auto;max-width:80%;object-fit:contain;border-radius:8px;box-shadow:0 12px 34px rgba(0,0,0,.5)" />` : "";
+  return `<div style="position:absolute;inset:0;${fallback}"></div>${poster}`;
+}
+
+function eventStateBadge(ev: Detail, big = false): string {
+  const [label, color] = EVENT_STATE[ev.state] || EVENT_STATE.upcoming;
+  const live = ev.state === "live";
+  return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:${big ? 12 : 10.5}px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:${live ? "#04222a" : color};background:${live ? color : "rgba(11,11,17,.72)"};border:1px solid ${live ? color : color + "66"};border-radius:99px;padding:${big ? "6px 12px" : "4px 9px"};backdrop-filter:blur(6px)">${live ? `<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>` : ""}${label}</span>`;
+}
+
+function eventCard(ev: Detail): string {
+  const accent = evAccent(ev);
+  const meta = [fmtEventDates(ev), ev.place].filter(Boolean).map(escHtml).join(" · ");
+  const count = `${ev.tournamentCount} tournoi${ev.tournamentCount > 1 ? "s" : ""}${ev.liveCount ? ` · ${ev.liveCount} en direct` : ""}`;
+  return `<div data-openevent="${ev.id}" class="hcard" style="border:1px solid #282838;border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,#14141D,#0E0E16)">
+    <div class="zoom" style="position:relative;height:170px;overflow:hidden;background:#0E0E16">${eventMedia(ev, ev.name, "card")}
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.05) 30%,rgba(11,11,17,.8))"></div>
+      <div style="position:absolute;left:14px;top:13px">${eventStateBadge(ev)}</div>
+      ${ev.posterUrl && ev.bannerUrl ? `<img src="${mediaUrl(ev.posterUrl)}" alt="" style="position:absolute;right:14px;bottom:-22px;width:70px;height:96px;object-fit:cover;border-radius:8px;border:2px solid #14141D;box-shadow:0 10px 30px rgba(0,0,0,.55)" />` : ""}
+    </div>
+    <div style="padding:16px 16px 18px">
+      <h4 style="margin:0 0 4px;font-size:19px;line-height:1.2;color:#F4F5FB">${escHtml(ev.name)}</h4>
+      ${ev.tagline ? `<div style="color:#A6A8BC;font-size:13px;margin-bottom:8px;line-height:1.45">${escHtml(ev.tagline)}</div>` : ""}
+      <div style="color:#8E8FA6;font-size:12.5px;line-height:1.7">${meta || "Dates à venir"}</div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #282838;font-size:12.5px;font-weight:700;color:${accent}">${count}</div>
+    </div></div>`;
+}
+
+/** Page publique « Événements » : tous les événements publiés, en direct d'abord. */
+function pEvenements(S: State) {
+  const list = S.events;
+  const manage = canManage(S);
+  const head = railPageHead("Événements", "Compétitions, LAN et rendez-vous de la communauté : chaque événement regroupe un ou plusieurs tournois, parfois en même temps.",
+    manage ? `<button data-admintab="events" data-go="profil" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Gérer mes événements</button>` : "");
+  const body = list === null
+    ? `<div style="color:#8E8FA6;text-align:center;padding:60px 0">Chargement des événements…</div>`
+    : list.length
+      ? `<div class="page-hpad" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px;padding:8px 44px 44px">${list.map(eventCard).join("")}</div>`
+      : `<div style="color:#5D5E72;text-align:center;padding:60px 20px;font-size:14px">Aucun événement pour le moment. Reviens bientôt !</div>`;
+  return head + body;
+}
+
+/** Page d'un événement : bannière animée, affiche, infos et tournois (plusieurs peuvent être en direct en même temps). */
+function pEvenement(S: State) {
+  const ev = S.eventDetail;
+  if (!ev) return `<div style="color:#8E8FA6;text-align:center;padding:80px 0">Chargement de l'événement…</div>`;
+  const accent = evAccent(ev);
+  const isOwner = !!S.user && canManage(S) && (S.user.role === "ADMIN" || ev.createdById === (S.me?.id ?? S.user?.id));
+  const tournaments: TournCard[] = ev.tournaments ?? [];
+  const live = tournaments.filter((t) => t.live);
+  const meta = [fmtEventDates(ev), ev.place].filter(Boolean);
+  const chips = meta.map((m, i) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;color:#E8E9F4;background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 13px;backdrop-filter:blur(6px)">${escHtml(m)}</span>`).join("");
+  const actions = isOwner
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+        <button data-evedit="${ev.id}" data-go="profil" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Gérer l'événement</button>
+        <button data-act="create-open" data-evid="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi ici</button>
+        ${ev.status !== "PUBLISHED" ? `<span style="align-self:center;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FBBF24">Brouillon — non visible du public</span>` : ""}
+      </div>` : "";
+  const hero = `<div style="position:relative;overflow:hidden;min-height:clamp(280px,38vw,440px);background:#0E0E16;border-bottom:1px solid #282838">
+    ${eventMedia(ev, ev.name)}
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.25) 0%,rgba(11,11,17,.55) 55%,#0B0B11 100%)"></div>
+    <div class="page-hpad" style="position:relative;display:flex;align-items:flex-end;gap:28px;padding:44px 44px 34px;min-height:clamp(280px,38vw,440px)">
+      <div style="flex:1;min-width:0">
+        <button data-go="evenements" style="background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);color:#E8E9F4;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:18px;backdrop-filter:blur(6px)">← Événements</button>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">${eventStateBadge(ev, true)}${ev.liveCount ? `<span style="font-size:12.5px;font-weight:700;color:${accent}">${ev.liveCount} tournoi${ev.liveCount > 1 ? "s" : ""} en direct</span>` : ""}</div>
+        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6vw,84px);letter-spacing:1.5px;margin:0;line-height:.92;text-shadow:0 6px 40px rgba(0,0,0,.6)">${escHtml(ev.name)}</h1>
+        ${ev.tagline ? `<p style="color:#D2D4E4;font-size:clamp(15px,1.6vw,19px);margin:12px 0 0;max-width:720px;line-height:1.5">${escHtml(ev.tagline)}</p>` : ""}
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">${chips}</div>
+      </div>
+      ${ev.posterUrl ? `<img class="ev-poster" src="${mediaUrl(ev.posterUrl)}" alt="Affiche ${escAttr(ev.name)}" style="flex:none;width:clamp(120px,15vw,200px);border-radius:12px;border:2px solid ${accent}55;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 40px ${accent}22" />` : ""}
+    </div></div>`;
+  const desc = ev.description
+    ? `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px 24px;margin-bottom:26px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#8E8FA6;font-weight:800;margin-bottom:10px">À propos</div><div style="color:#C9CBDC;font-size:14.5px;line-height:1.75;white-space:pre-line">${escHtml(ev.description)}</div></div>` : "";
+  const liveBox = live.length > 1
+    ? `<div style="display:flex;align-items:center;gap:12px;border:1px solid ${accent}55;background:${accent}12;border-radius:12px;padding:12px 16px;margin-bottom:22px"><span style="width:8px;height:8px;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span><span style="font-size:13.5px;color:#E8E9F4"><b>${live.length} tournois se jouent en ce moment</b> — ${live.map((t) => escHtml(t.name)).join(" · ")}</span></div>` : "";
+  const grid = tournaments.length
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px">${tournaments.map((t) => tournCard(t, false)).join("")}</div>`
+    : `<div style="color:#5D5E72;font-size:14px;padding:26px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
+  return hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}
+    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1.2px;margin:0 0 16px">Tournois de l'événement <span style="color:#5D5E72;font-size:20px">${tournaments.length}</span></h2>${grid}</div>`;
+}
+
+/** Console (organisateur/admin) : liste des événements, éditeur et tournois rattachés. */
+function consoleEvents(S: State) {
+  const list = S.myEvents;
+  const ed = S.eventEdit;
+  const lbl = "font-size:12px;color:#8E8FA6;font-weight:600";
+  const inp = "width:100%;margin-top:6px;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:inherit;font-size:14px;padding:11px 13px";
+  const thumb = (ev: Detail) => {
+    const src = ev.posterUrl || (!isVideoUrl(ev.bannerUrl) ? ev.bannerUrl : null);
+    return `<span style="display:grid;place-items:center;width:46px;height:56px;border-radius:9px;overflow:hidden;flex:none;background:${src ? `url('${mediaUrl(src)}') center/cover` : `linear-gradient(135deg,${evAccent(ev)}44,#7C82FF33)`};border:1px solid #282838;color:#5D5E72">${src ? "" : ic(I.crown, 18)}</span>`;
+  };
+  const rows = list === null
+    ? `<div style="color:#8E8FA6;text-align:center;padding:24px 0">Chargement…</div>`
+    : list.length
+      ? list.map((ev: Detail) => {
+          const [stLabel, stColor] = EVENT_STATE[ev.state] || EVENT_STATE.upcoming;
+          return `<div style="display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+            ${thumb(ev)}
+            <div style="flex:1;min-width:200px"><div style="font-weight:700;font-size:15px">${escHtml(ev.name)}</div>
+              <div style="font-size:12.5px;color:#8E8FA6;margin-top:3px">${[fmtEventDates(ev), ev.place, `${ev.tournamentCount} tournoi${ev.tournamentCount > 1 ? "s" : ""}`].filter(Boolean).map(escHtml).join(" · ")}</div></div>
+            <span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${stColor};border:1px solid ${stColor}55;border-radius:99px;padding:4px 9px">${stLabel}</span>
+            <span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${ev.status === "PUBLISHED" ? "#34D399" : "#FBBF24"};border:1px solid ${ev.status === "PUBLISHED" ? "rgba(52,211,153,.4)" : "rgba(251,191,36,.4)"};border-radius:99px;padding:4px 9px">${ev.status === "PUBLISHED" ? "Publié" : "Brouillon"}</span>
+            <div style="display:flex;gap:8px">${btnSm(`data-openevent="${ev.id}"`, "Voir")}${btnSm(`data-evedit="${ev.id}"`, "Modifier", "#22D3EE", "rgba(34,211,238,.35)")}${btnSm(`data-evdel="${ev.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`;
+        }).join("")
+      : `<div style="color:#5D5E72;font-size:13.5px;padding:18px 0;text-align:center">Aucun événement pour l'instant. Crée le premier : affiche, animation, dates et tournois.</div>`;
+  const listCard = card(`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">${secTitle(`Mes événements${list ? ` (${list.length})` : ""}`).replace("margin:0 0 14px", "margin:0")}<span style="flex:1"></span>
+      <button data-evnew="1" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouvel événement</button></div>${rows}`);
+  if (!ed) return listCard;
+
+  const val = (v: unknown) => escAttr(String(v ?? ""));
+  const date10 = (v?: string | null) => (v ? v.slice(0, 10) : "");
+  const accent = /^#[0-9a-f]{6}$/i.test(ed.accentColor || "") ? ed.accentColor : "#22d3ee";
+  const editor = `<div style="border:1px solid rgba(34,211,238,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:22px;margin-bottom:18px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px">${ed.id ? "Modifier l'événement" : "Nouvel événement"}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+      <label style="${lbl};grid-column:1/-1">Nom de l'événement<input id="ev-name" value="${val(ed.name)}" placeholder="Lomé Gaming Week" style="${inp}" /></label>
+      <label style="${lbl};grid-column:1/-1">Accroche (une phrase)<input id="ev-tagline" value="${val(ed.tagline)}" placeholder="Trois jours de compétition, un seul champion" style="${inp}" /></label>
+      <label style="${lbl}">Début<input id="ev-start" type="date" value="${date10(ed.startDate)}" style="${inp}" /></label>
+      <label style="${lbl}">Fin<input id="ev-end" type="date" value="${date10(ed.endDate)}" style="${inp}" /></label>
+      <label style="${lbl}">Lieu<input id="ev-place" value="${val(ed.place)}" placeholder="Vicenter, Lomé" style="${inp}" /></label>
+      <label style="${lbl}">Couleur de l'événement<input id="ev-color" type="color" value="${accent}" style="${inp};height:44px;padding:4px" /></label>
+      <label style="${lbl};grid-column:1/-1">Description<textarea id="ev-desc" rows="5" placeholder="Programme, règlement général, infos pratiques…" style="${inp};resize:vertical">${escHtml(ed.description)}</textarea></label>
+      <div style="${lbl}">Affiche<div style="font-weight:500;color:#5D5E72;margin-top:2px">Image verticale conseillée</div>${filePicker("ev-poster", "Choisir l'affiche", "image/*", ed.posterUrl)}</div>
+      <div style="${lbl}">Bannière animée<div style="font-weight:500;color:#5D5E72;margin-top:2px">GIF, image ou courte vidéo (mp4/webm) · 4 Mo maximum</div>${filePicker("ev-banner", "Choisir la bannière", "image/*,video/mp4,video/webm", ed.bannerUrl)}</div>
+      <label style="${lbl}">Visibilité<select id="ev-status" style="${inp}"><option value="DRAFT" ${ed.status !== "PUBLISHED" ? "selected" : ""}>Brouillon (invisible du public)</option><option value="PUBLISHED" ${ed.status === "PUBLISHED" ? "selected" : ""}>Publié</option></select></label>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap">
+      <button data-evsave="1" ${S.busy ? "disabled" : ""} style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">${S.busy ? "Enregistrement…" : ed.id ? "Enregistrer" : "Créer l'événement"}</button>
+      <button data-evcancel="1" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer">Fermer</button>
+      ${S.eventMsg ? `<span style="font-size:13px;color:#34D399;font-weight:700">${escHtml(S.eventMsg)}</span>` : ""}
+    </div></div>`;
+
+  let manage = "";
+  const m = S.eventManage;
+  if (ed.id) {
+    const ts: Detail[] = m?.tournaments ?? [];
+    const attachable: Detail[] = m?.attachable ?? [];
+    const tRows = ts.length
+      ? ts.map((t: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #22222F;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px"><div style="font-weight:650">${escHtml(t.name)}</div><div style="font-size:12.5px;color:#8E8FA6">${[t.game, t.format, `${t.players} joueurs`, t.live ? "En direct" : t.status].filter(Boolean).map(escHtml).join(" · ")}</div></div>
+          <div style="display:flex;gap:8px">${btnSm(`data-open="${t.id}"`, t.live ? "Ouvrir la régie" : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}${btnSm(`data-evdetach="${ed.id}|${t.id}"`, "Retirer de l'événement")}</div></div>`).join("")
+      : `<div style="color:#5D5E72;font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
+    const attach = attachable.length
+      ? `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid #22222F"><select id="ev-attach-sel" style="${inp};margin-top:0;max-width:340px;flex:1">${attachable.map((t: Detail) => `<option value="${t.id}">${escHtml(t.name)}${t.game ? " · " + escHtml(t.game) : ""}</option>`).join("")}</select>
+          <button data-evattach="1" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">Rattacher ce tournoi</button></div>`
+      : "";
+    manage = card(`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">${secTitle(`Tournois de l'événement (${ts.length})`).replace("margin:0 0 14px", "margin:0")}<span style="flex:1"></span>
+        <button data-act="create-open" data-evid="${ed.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi dans cet événement</button></div>
+      <p style="margin:0 0 6px;font-size:12.5px;color:#8E8FA6;line-height:1.6">Plusieurs tournois peuvent se dérouler en même temps : chacun a sa propre régie. Chaque tournoi consomme un crédit organisateur, comme d'habitude.</p>${tRows}${attach}`);
+  }
+  return editor + manage + `<div style="margin-top:18px">${listCard}</div>`;
+}
+
+const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
 
 /** Compte bloqué : le club saisi à l'inscription doit d'abord être validé par un administrateur. */
 function clubPendingBanner(S: State): string {
@@ -4420,7 +4602,7 @@ function renderPageBody(S: State) {
   // Régie organisateur/admin pendant qu'un tournoi est en direct : écran plein cadre autonome (rail·centre·contrôle), hors du rail public — même principe que la console.
   if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return regiePage(S);
   if (RAIL_PAGES[S.page]) {
-    const activeKey = S.page === "tournoi" ? "tournois" : S.page;
+    const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page;
     return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);
   }
   const body = S.page === "auth" ? pAuth(S)
@@ -4433,13 +4615,14 @@ function renderPageBody(S: State) {
 
 /* ================= Composant ================= */
 /** Application (page unique) : chaque route publique (/, /tournois, /tournois/[id]…) la monte avec sa page de départ. */
-export default function Spa({ initialPage = "accueil", initialOpenId }: { initialPage?: string; initialOpenId?: string } = {}) {
+export default function Spa({ initialPage = "accueil", initialOpenId, initialEventId }: { initialPage?: string; initialOpenId?: string; initialEventId?: string } = {}) {
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
+    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null,
     user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -4537,6 +4720,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
         });
       }).catch(() => { /* API hors ligne */ });
     }
+    loadEvents();
     fetch(`${API}/api/payments/config`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setS((s) => ({ ...s, payConfig: c })); }).catch(() => { /* API hors ligne */ });
     const q = new URLSearchParams(window.location.search);
     if (q.get("pay") !== "fedapay") return;
@@ -4858,6 +5042,93 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
       if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, creditsMe: v })); }
     } catch { /* ignore */ }
   }
+  /* ---------- Événements ---------- */
+  async function loadEvents() {
+    try {
+      const r = await fetch(`${API}/api/events`);
+      if (r.ok) { const list = await r.json(); setS((s) => ({ ...s, events: list })); }
+    } catch { /* API hors ligne */ }
+  }
+  async function loadMyEvents() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/events/mine`, { headers: authHeaders() });
+      if (r.ok) { const list = await r.json(); setS((s) => ({ ...s, myEvents: list })); }
+    } catch { /* ignore */ }
+  }
+  /** Ouvre la page publique d'un événement. Un gestionnaire voit aussi ses brouillons (route /manage, sinon route publique). */
+  async function openEvent(id: string) {
+    setS((s) => ({ ...s, page: "evenement", openEventId: id, eventDetail: null }));
+    window.scrollTo({ top: 0 });
+    try {
+      let d: Detail | null = null;
+      if (token() && (S.user?.role === "ORGANIZER" || S.user?.role === "ADMIN")) {
+        const m = await fetch(`${API}/api/events/${id}/manage`, { headers: authHeaders() });
+        if (m.ok) d = await m.json();
+      }
+      if (!d) {
+        const r = await fetch(`${API}/api/events/${id}`);
+        if (r.ok) d = await r.json();
+      }
+      setS((s) => (s.openEventId === id ? { ...s, eventDetail: d ?? { notFound: true, tournaments: [] } } : s));
+    } catch { /* ignore */ }
+  }
+  /** Ouvre l'éditeur (console) d'un événement existant avec ses tournois rattachés. */
+  async function openEventEditor(id: string) {
+    setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" }));
+    window.scrollTo({ top: 0 });
+    loadMyEvents();
+    try {
+      const r = await fetch(`${API}/api/events/${id}/manage`, { headers: authHeaders() });
+      if (!r.ok) return;
+      const d = await r.json();
+      setS((s) => ({ ...s, eventEdit: { id: d.id, name: d.name, tagline: d.tagline || "", description: d.description || "", startDate: d.startDate, endDate: d.endDate, place: d.place || "", accentColor: d.accentColor || "", status: d.status, posterUrl: d.posterUrl, bannerUrl: d.bannerUrl }, eventManage: d }));
+    } catch { /* ignore */ }
+  }
+  /** Relit les champs du formulaire (champs non contrôlés) pour ne rien perdre lors d'un rechargement de l'éditeur. */
+  function readEventForm(): Detail {
+    const v = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? "";
+    const cur = S.eventEdit || {};
+    return { ...cur, name: v("ev-name"), tagline: v("ev-tagline"), description: v("ev-desc"), startDate: v("ev-start") || null, endDate: v("ev-end") || null, place: v("ev-place"), accentColor: v("ev-color"), status: v("ev-status") || "DRAFT" };
+  }
+  async function saveEvent() {
+    const f = readEventForm();
+    if (!f.name.trim()) { alert("Donne un nom à l'événement."); return; }
+    setS((s) => ({ ...s, busy: true, eventMsg: "" }));
+    try {
+      let posterUrl: string | null = f.posterUrl ?? null, bannerUrl: string | null = f.bannerUrl ?? null;
+      const up = await uploadOrNotify("ev-poster"); if (up) posterUrl = up;
+      const ub = await uploadOrNotify("ev-banner"); if (ub) bannerUrl = ub;
+      const body = { name: f.name.trim(), tagline: f.tagline, description: f.description, startDate: f.startDate || "", endDate: f.endDate || "", place: f.place, accentColor: f.accentColor, status: f.status, posterUrl: posterUrl || "", bannerUrl: bannerUrl || "" };
+      const r = await fetch(`${API}/api/events${f.id ? "/" + f.id : ""}`, { method: f.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({} as Detail));
+      if (!r.ok) { alert(Array.isArray(d.message) ? d.message.join("\n") : d.message || "Enregistrement impossible."); setS((s) => ({ ...s, busy: false })); return; }
+      setS((s) => ({ ...s, busy: false, eventMsg: "Événement enregistré." }));
+      loadMyEvents(); loadEvents();
+      await openEventEditor(d.id);
+      setS((s) => ({ ...s, eventMsg: "Événement enregistré." }));
+    } catch { setS((s) => ({ ...s, busy: false })); }
+  }
+  async function deleteEvent(id: string) {
+    try {
+      const r = await fetch(`${API}/api/events/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Suppression impossible."); return; }
+      setS((s) => ({ ...s, eventEdit: s.eventEdit?.id === id ? null : s.eventEdit, eventManage: null }));
+      loadMyEvents(); loadEvents(); loadTournaments();
+    } catch { /* ignore */ }
+  }
+  async function eventTournamentLink(eventId: string, tournamentId: string, attach: boolean) {
+    // On garde ce qui a été saisi dans le formulaire avant de recharger l'éditeur.
+    const f = readEventForm();
+    try {
+      const r = await fetch(`${API}/api/events/${eventId}/tournaments/${tournamentId}`, { method: attach ? "POST" : "DELETE", headers: authHeaders() });
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
+      const m = await fetch(`${API}/api/events/${eventId}/manage`, { headers: authHeaders() });
+      if (m.ok) { const d = await m.json(); setS((s) => ({ ...s, eventManage: d, eventEdit: { ...f, id: eventId } })); }
+      loadMyEvents(); loadEvents(); loadTournaments();
+    } catch { /* ignore */ }
+  }
+
   /* ---------- Paiement en ligne (FedaPay / KkiaPay) ---------- */
   type PayKind = "registration" | "order" | "credit";
   /** Recharge ce qu'un paiement confirmé vient de modifier (profil, inscriptions, crédits, liste des tournois). */
@@ -5479,6 +5750,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
     }
     // Route /tournois/[id] : ouvre directement ce tournoi (un éventuel #hash explicite garde la priorité).
     if (initialOpenId && !h) openDetail(initialOpenId);
+    if (initialEventId && !h) openEvent(initialEventId);
     applyHash(h);
   }, []);
 
@@ -5528,13 +5800,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
     let hash = "";
     if (S.page === "tournoi" && S.openId) hash = "#t=" + S.openId;
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
+    else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
     else if (S.page === "auth") hash = "#connexion";
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
     else return;
     // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
     if (window.location.hash !== hash) history.pushState(null, "", hash);
-  }, [S.page, S.openId]);
+  }, [S.page, S.openId, S.openEventId]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
   // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
@@ -5769,6 +6042,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
   function applyHash(h: string) {
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
+    if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
     if (h.startsWith("#reset=")) {
@@ -5935,6 +6209,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
       brPointsTable: d.brPoints, brKillPoints: d.brKillPoints,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
+      ...(S.wizEventId ? { eventId: S.wizEventId } : {}),
     };
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     setS((s) => ({ ...s, busy: true }));
@@ -5961,10 +6236,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
       await loadTournaments();
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
-        ...s, busy: false, creating: false, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
+        ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
         wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       if (created?.id) openDetail(created.id);
+      loadEvents(); loadMyEvents();
     } catch {
       setS((s) => ({ ...s, busy: false }));
       alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");
@@ -6031,7 +6307,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-openevent],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6359,6 +6635,24 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
+    else if (d.openevent) openEvent(d.openevent);
+    else if (d.evnew) setS((s) => ({ ...s, eventEdit: { id: null, name: "", tagline: "", description: "", startDate: null, endDate: null, place: "", accentColor: "", status: "DRAFT", posterUrl: null, bannerUrl: null }, eventManage: null, eventMsg: "" }));
+    else if (d.evedit) openEventEditor(d.evedit);
+    else if (d.evcancel) setS((s) => ({ ...s, eventEdit: null, eventManage: null, eventMsg: "" }));
+    else if (d.evsave) saveEvent();
+    else if (d.evdel) {
+      const ev = (S.myEvents ?? []).find((x: Detail) => x.id === d.evdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer l'événement", message: `« ${ev?.name || "Cet événement"} » sera supprimé. Ses tournois ne sont PAS supprimés : ils redeviennent des tournois indépendants.`, okLabel: "Supprimer", action: `evdel|${d.evdel}` } }));
+    }
+    else if (d.evattach) {
+      const sel = document.getElementById("ev-attach-sel") as HTMLSelectElement | null;
+      if (sel?.value && S.eventEdit?.id) eventTournamentLink(S.eventEdit.id, sel.value, true);
+    }
+    else if (d.evdetach) {
+      const [eid, tid] = d.evdetach.split("|");
+      const t = (S.eventManage?.tournaments ?? []).find((x: Detail) => x.id === tid);
+      setS((s) => ({ ...s, confirmBox: { title: "Retirer le tournoi", message: `« ${t?.name || "Ce tournoi"} » ne fera plus partie de l'événement (il n'est pas supprimé).`, okLabel: "Retirer", action: `evdetach|${eid}|${tid}` } }));
+    }
     else if (d.clubreview) {
       const [uid, decision] = d.clubreview.split("|");
       const r = (S.admin?.clubRequests ?? []).find((x: Detail) => x.id === uid);
@@ -6387,7 +6681,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
       const u = S.admin?.users.find((x: Detail) => x.id === d.userdel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le compte", message: `« ${u?.displayName || "Ce compte"} » (${u?.email || ""}) sera définitivement supprimé, avec ses inscriptions et commandes. Les tournois créés depuis ce compte sont conservés.`, okLabel: "Supprimer", action: `userdel|${d.userdel}` } }));
     }
-    else if (d.admintab) { setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "", consoleMenuOpen: false })); if (d.admintab === "joueurs" && !S.roster) loadRoster(); }
+    else if (d.admintab) { setS((s) => ({ ...s, adminTab: d.admintab!, newsEdit: null, prodEdit: null, siteMsg: "", adminSearch: "", prodCat: "Tous", prodSort: "", consoleMenuOpen: false })); if (d.admintab === "joueurs" && !S.roster) loadRoster(); if (d.admintab === "events") loadMyEvents(); }
     else if (d.consolemenu !== undefined) setS((s) => ({ ...s, consoleMenuOpen: d.consolemenu === "1" }));
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
@@ -6505,6 +6799,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
         else if (kind === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (kind === "gallerydel") deleteGalleryItem(arg);
+        else if (kind === "evdel") deleteEvent(arg);
+        else if (kind === "evdetach") { const [eid, tid] = arg.split("|"); eventTournamentLink(eid, tid, false); }
         else if (kind === "clubreview") { const [uid, decision] = arg.split("|"); adminAct(`club-requests/${uid}/${decision}`, "POST"); }
         else if (kind === "setrole") { const [uid, role] = arg.split("|"); setRole(uid, role); }
         else if (kind === "userdel") adminAct(`users/${arg}`, "DELETE");
@@ -6557,7 +6853,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
         return;
       }
       setS((s) => ({
-        ...s, creating: true, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
+        ...s, creating: true, wizEventId: d.evid || null, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
         wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       loadRoster();

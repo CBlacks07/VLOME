@@ -17,6 +17,7 @@ export const SEARCH_TERMS = [
   "tournoi FIFA Lomé",
   "tournoi eFootball Togo",
   "tournoi EA FC 26 Togo",
+  "événement esport Togo",
   "compétition jeux vidéo Togo",
   "classement esport Togo",
   "gaming Lomé",
@@ -26,7 +27,7 @@ export const SEARCH_TERMS = [
   "inscription tournoi esport Togo",
 ];
 
-export type RouteKey = "accueil" | "tournois" | "classements" | "galerie" | "boutique" | "mentions-legales" | "confidentialite";
+export type RouteKey = "accueil" | "tournois" | "evenements" | "classements" | "galerie" | "boutique" | "mentions-legales" | "confidentialite";
 
 export const ROUTES: Record<RouteKey, { path: string; label: string; title: string; description: string; priority: number; changeFrequency: "daily" | "weekly" | "monthly" | "yearly" }> = {
   accueil: {
@@ -45,6 +46,15 @@ export const ROUTES: Record<RouteKey, { path: string; label: string; title: stri
     description:
       "Tous les tournois esport au Togo : eFootball, EA FC, FIFA, Naruto… Dates, lieux, cagnottes et inscription en ligne pour participer à un tournoi gaming à Lomé.",
     priority: 0.9,
+    changeFrequency: "daily",
+  },
+  evenements: {
+    path: "/evenements",
+    label: "Événements",
+    title: "Événements esport à Lomé et au Togo — LAN, tournois et compétitions | Miabe Esport",
+    description:
+      "Les événements esport du Togo : LAN, festivals gaming et compétitions regroupant plusieurs tournois (eFootball, EA FC, FIFA…). Dates, lieux, affiches et inscriptions.",
+    priority: 0.85,
     changeFrequency: "daily",
   },
   classements: {
@@ -115,6 +125,31 @@ export function frenchDateToIso(text?: string | null): string | null {
   if (idx < 0) return null;
   const year = m[3] ? Number(m[3]) : new Date().getFullYear();
   return `${year}-${String(idx + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+}
+
+export type PublicEvent = { id: string; name: string; tagline?: string | null; description?: string | null; startDate?: string | null; endDate?: string | null; place?: string | null; posterUrl?: string | null; bannerUrl?: string | null; state?: string; tournamentCount?: number; liveCount?: number };
+
+/** Liste publique des événements publiés (côté serveur, pour le sitemap). Silencieux si l'API est injoignable. */
+export async function fetchPublicEvents(): Promise<PublicEvent[]> {
+  try {
+    const r = await fetch(`${API_URL}/api/events`, { next: { revalidate: 3600 } });
+    if (!r.ok) return [];
+    const list = await r.json();
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchEvent(id: string): Promise<{ found: boolean; data?: PublicEvent }> {
+  try {
+    const r = await fetch(`${API_URL}/api/events/${encodeURIComponent(id)}`, { next: { revalidate: 600 } });
+    if (r.status === 404) return { found: false };
+    if (!r.ok) return { found: true };
+    return { found: true, data: await r.json() };
+  } catch {
+    return { found: true };
+  }
 }
 
 export type PublicTournament = { id: string; name: string; game?: string; place?: string; date?: string; status?: string; players?: number; imageUrl?: string | null; champion?: string | null };

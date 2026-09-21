@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { ROUTES, SITE_URL, fetchPublicTournaments, type RouteKey } from "./seo";
+import { ROUTES, SITE_URL, fetchPublicEvents, fetchPublicTournaments, type RouteKey } from "./seo";
 
 // Régénéré toutes les heures : les nouveaux tournois y apparaissent sans redéployer le site.
 export const revalidate = 3600;
@@ -17,12 +17,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: ROUTES[k].changeFrequency,
     priority: ROUTES[k].priority,
   }));
-  const tournaments = await fetchPublicTournaments();
+  const [tournaments, events] = await Promise.all([fetchPublicTournaments(), fetchPublicEvents()]);
+  const eventPages: MetadataRoute.Sitemap = events.map((e) => ({
+    url: `${SITE_URL}/evenements/${e.id}`,
+    lastModified: now,
+    changeFrequency: e.state === "ended" ? "monthly" : "daily",
+    priority: e.state === "ended" ? 0.5 : 0.8,
+  }));
   const tournamentPages: MetadataRoute.Sitemap = tournaments.map((t) => ({
     url: `${SITE_URL}/tournois/${t.id}`,
     lastModified: now,
     changeFrequency: t.status === "Terminé" ? "monthly" : "daily",
     priority: t.status === "Terminé" ? 0.4 : 0.7,
   }));
-  return [...pages, ...tournamentPages];
+  return [...pages, ...eventPages, ...tournamentPages];
 }

@@ -1718,7 +1718,7 @@ function profileEditor(S: State) {
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Mon profil</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" ${nameLocked ? "disabled" : ""} style="${inp};${nameLocked ? "opacity:.55;cursor:not-allowed" : ""}" />${nameHelp}</label>
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Club <span style="color:#5D5E72">(optionnel, modifiable librement)</span><input id="p-club" list="p-club-list" value="${esc(me.clubName)}" placeholder="Team Mawu" style="${inp}" /><datalist id="p-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Club <span style="color:#5D5E72">(optionnel, modifiable librement)</span><input id="p-club" list="p-club-list" value="${esc(me.clubName)}" placeholder="Team 228" style="${inp}" /><datalist id="p-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="p-city" value="${esc(me.city)}" placeholder="Lomé" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Jeu favori<input id="p-game" value="${esc(me.favoriteGame)}" placeholder="EA FC 26" style="${inp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Téléphone / WhatsApp<input id="p-phone" type="tel" value="${esc(me.phone)}" placeholder="+228 90 00 00 00" style="${inp}" /></label>
@@ -2170,7 +2170,7 @@ function adminClubsView(S: State) {
   const editor = e ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-bottom:16px">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le club" : "Nouveau club"}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">
-      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team Mawu" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:#8E8FA6;font-weight:600">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team 228" style="${adminInp}" /></label>
       <label style="font-size:12px;color:#8E8FA6;font-weight:600">Ville<input id="cl-city" value="${escAttr(e.city)}" placeholder="Lomé" style="${adminInp}" /></label>
     </div>
     <div style="margin-top:14px"><div style="font-size:12px;color:#8E8FA6;font-weight:600;margin-bottom:2px">Logo du club (optionnel)</div>${filePicker("cl-logo", "Choisir le logo", "image/*", e.logoUrl)}</div>
@@ -4019,7 +4019,7 @@ function pAuth(S: State) {
     </div>
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
       <label style="${lbl}">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
-      <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel · validé par l'administrateur avant activation du compte)</span><input id="a-club" list="a-club-list" placeholder="Team Mawu" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
+      <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel · validé par l'administrateur avant activation du compte)</span><input id="a-club" list="a-club-list" placeholder="Team 228" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
     </div>
     ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe Miabe)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
     <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe Miabe avant de pouvoir créer un tournoi.</p>` : ""}`;

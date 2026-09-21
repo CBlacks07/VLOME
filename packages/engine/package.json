@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test"
+    "test": "tsc -p tsconfig.json --outDir .test-dist --declaration false && node --test"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

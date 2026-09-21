@@ -27,3 +27,6 @@ apps/api/generated/
 
 # Fichiers envoyés (images produits/tournois) — stockage local de dev
 apps/api/uploads/
+
+# Sortie de compilation des tests du moteur
+.test-dist/

@@ -299,3 +299,15 @@ p { text-wrap: pretty; }
   }
 }
 
+/* Pages Tournois, Classements, Galerie, Boutique, Événements sur téléphone : un bloc cadré qui est seul sur sa ligne
+   occupe toute la largeur de l'écran (marges négatives = le remplissage de 16 px du conteneur ; plus de bordure ni de
+   coins arrondis sur les côtés). Les cartes d'une grille gardent leur cadre. */
+@media (max-width: 640px) {
+  .page-hpad-m { margin-left: 0 !important; margin-right: 0 !important; border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important; }
+  .page-hpad > [style*="border:1px solid"],
+  .page-hpad > .grid2c > [style*="border:1px solid"] {
+    margin-left: -16px !important; margin-right: -16px !important;
+    border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important;
+  }
+}
+

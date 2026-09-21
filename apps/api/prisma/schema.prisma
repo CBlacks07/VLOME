@@ -169,6 +169,7 @@ model Registration {
   paymentMethod  String? // Flooz, Mixx by Yas, Visa... (null si gratuit)
   paymentStatus  String     @default("paid") // 'paid' (gratuit ou confirmé) | 'pending' (paiement à confirmer)
   pointsRedeemed Int        @default(0) // points fidélité utilisés pour réduire amountXof
+  checkedInAt    DateTime? // présence confirmée sur place (QR code scanné ou pointage manuel) ; null = pas encore arrivé
   createdAt      DateTime   @default(now())
 
   @@unique([userId, tournamentId])

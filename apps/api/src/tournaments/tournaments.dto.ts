@@ -156,6 +156,14 @@ export class CorrectResultDto {
   @IsOptional() @IsInt() @Min(0) scoreB?: number;
 }
 
+// Pointage de présence : soit le contenu d'un QR code scanné / le code court du billet (code), soit l'inscription
+// visée directement depuis la liste (registrationId). present=false annule un pointage fait par erreur.
+export class CheckinDto {
+  @IsOptional() @IsString() @MaxLength(300) code?: string;
+  @IsOptional() @IsString() @MaxLength(60) registrationId?: string;
+  @IsOptional() @IsBoolean() present?: boolean;
+}
+
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;

@@ -492,7 +492,41 @@ export class TournamentsService {
       paymentMethod: x.paymentMethod, paymentStatus: x.paymentStatus,
       userEmail: x.user.email, userDisplayName: x.user.displayName,
       createdAt: x.createdAt,
+      checkedIn: !!x.checkedInAt, code: this.ticketCode(x.id),
     }));
+  }
+
+  /** Code court imprimé sous le QR code du billet (6 derniers caractères de l'identifiant d'inscription, en majuscules). */
+  private ticketCode(registrationId: string) {
+    return registrationId.slice(-6).toUpperCase();
+  }
+
+  /** Pointage de présence (organisateur/admin) : par QR code / code court, ou directement sur une inscription. */
+  async checkIn(tournamentId: string, dto: { code?: string; registrationId?: string; present?: boolean }, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const regs = await this.prisma.registration.findMany({ where: { tournamentId } });
+    let reg = dto.registrationId ? regs.find((x) => x.id === dto.registrationId) : undefined;
+    if (!reg && dto.code) {
+      // Le QR contient une adresse (…#ci=<tournoi>.<inscription>) ; le billet imprimé donne le code court à 6 caractères.
+      const raw = dto.code.trim();
+      const tail = raw.includes('#ci=') ? raw.split('#ci=')[1] : raw;
+      const [tid, rid] = tail.includes('.') ? tail.split('.') : [null, tail];
+      if (tid && tid !== tournamentId) throw new BadRequestException("Ce billet est celui d'un autre tournoi.");
+      const key = (rid || '').trim().toLowerCase();
+      const hits = regs.filter((x) => x.id.toLowerCase() === key || (key.length >= 6 && x.id.toLowerCase().endsWith(key)));
+      if (hits.length > 1) throw new BadRequestException('Code ambigu : saisis le code complet ou scanne le QR.');
+      reg = hits[0];
+    }
+    if (!reg) throw new NotFoundException('Aucune inscription ne correspond à ce billet pour ce tournoi.');
+    if (reg.paymentStatus !== 'paid') throw new ConflictException("L'inscription n'est pas payée : impossible de pointer ce joueur.");
+    const present = dto.present !== false;
+    const already = present && !!reg.checkedInAt;
+    const upd = await this.prisma.registration.update({ where: { id: reg.id }, data: { checkedInAt: present ? (reg.checkedInAt ?? new Date()) : null } });
+    const paid = regs.filter((x) => x.paymentStatus === 'paid');
+    const checked = paid.filter((x) => (x.id === upd.id ? !!upd.checkedInAt : !!x.checkedInAt)).length;
+    return { registrationId: upd.id, playerName: upd.playerName, checkedIn: !!upd.checkedInAt, already, count: checked, total: paid.length };
   }
 
   /** Désinscription (tant que le tournoi n'a pas démarré). */
@@ -530,9 +564,9 @@ export class TournamentsService {
   async registrationIds(user: JwtUser) {
     const regs = await this.prisma.registration.findMany({
       where: { userId: user.sub },
-      select: { id: true, tournamentId: true, paymentStatus: true, paymentMethod: true, amountXof: true },
+      select: { id: true, tournamentId: true, paymentStatus: true, paymentMethod: true, amountXof: true, checkedInAt: true },
     });
-    return regs.map((x) => ({ id: x.tournamentId, regId: x.id, method: x.paymentMethod, status: x.paymentStatus, amountXof: x.amountXof }));
+    return regs.map((x) => ({ id: x.tournamentId, regId: x.id, method: x.paymentMethod, status: x.paymentStatus, amountXof: x.amountXof, checkedIn: !!x.checkedInAt, code: this.ticketCode(x.id) }));
   }
 
   async remove(id: string, user: JwtUser) {

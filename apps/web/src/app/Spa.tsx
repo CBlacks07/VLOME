@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import qrcode from "qrcode-generator";
+import jsQR from "jsqr";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 /** URL d'un média envoyé (image/vidéo) : le stockage objet (Vercel Blob) renvoie déjà une URL absolue,
@@ -94,6 +96,7 @@ type State = {
   events: Detail[] | null; eventDetail: Detail | null; openEventId: string | null;
   myEvents: Detail[] | null; eventEdit: Detail | null; eventManage: Detail | null; eventMsg: string;
   wizEventId: string | null; // événement dans lequel l'assistant crée le tournoi (null = tournoi indépendant)
+  scanOpen: boolean; // scanner de billets (check-in) ouvert par l'organisateur
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -104,7 +107,7 @@ type State = {
   site: Detail | null; siteMsg: string;
   news: Detail[] | null;
   me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null; myResults: Detail[] | null;
-  regIds: { id: string; status: string; amountXof: number; regId?: string; method?: string | null }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
+  regIds: { id: string; status: string; amountXof: number; regId?: string; method?: string | null; code?: string; checkedIn?: boolean }[]; profileMsg: string; passMsg: string; profileEdit: boolean;
   payPick: string; // moyen de paiement choisi sur la page d'un tournoi payant
   gallery: Detail[] | null; galleryEdit: Detail | null; galleryFilter: string; galleryOpen: string | null; galleryType: "" | "video" | "image";
   galleryBusy: string | null; // progression de l'ajout en masse ("3/12"), null hors envoi
@@ -3647,7 +3650,7 @@ function pTournoi(S: State) {
     } else if (isPending) {
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#FBBF24;font-weight:750;font-size:15px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:12px;padding:12px 22px">${ic(I.warn, 17)}Paiement en attente de confirmation (${money(myReg!.amountXof)})</span>${myReg!.regId && onlinePayOn(S) && ONLINE_PAY.includes(myReg!.method || "") ? `<button data-payretry="registration|${myReg!.regId}|${myReg!.method}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14.5px;cursor:pointer">Réessayer le paiement en ligne</button>` : ""}<button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Annuler l'inscription</button></div>`;
     } else if (isReg) {
-      action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button></div>`;
+      action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button>${ticketCard(t, myReg!)}</div>`;
     } else if (fee > 0) {
       const chips = payMethods(S).map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.payPick === m ? "#22D3EE" : "#282838"};color:${S.payPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
       const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
@@ -3818,7 +3821,7 @@ function pTournoi(S: State) {
           </div>`;
         })()
       : "";
-    const pendingPanel = manage ? paymentsPanel(S, t.id) : "";
+    const pendingPanel = manage ? paymentsPanel(S, t.id) + checkinPanel(S, t) : "";
     // Participants (petite colonne fixe) + tout ce qui montre la composition de la compétition à
     // venir (large colonne) : la grille des poules une fois réparties, ou à défaut le bouton "Répartir
     // en poules" et/ou l'aperçu des oppositions du 1er tour (formats à bracket direct) — plutôt que
@@ -4437,7 +4440,57 @@ function partnersMarquee(S: State) {
 }
 
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
+/* ================= Check-in (billet QR + pointage) ================= */
+/** QR code en SVG (noir sur blanc, zone de silence comprise) — généré côté navigateur, rien n'est envoyé à un tiers. */
+function qrSvg(text: string): string {
+  const qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
+}
+
+/** Billet du joueur inscrit (paiement confirmé) : QR à présenter à l'arrivée + code court de secours. */
+function ticketCard(t: Detail, reg: { regId?: string; code?: string; checkedIn?: boolean }): string {
+  if (!reg.regId || t.status === "finished") return "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const url = `${origin}/tournois/${t.id}#ci=${t.id}.${reg.regId}`;
+  return `<div style="width:100%;max-width:320px;border:1px solid ${reg.checkedIn ? "rgba(52,211,153,.45)" : "#282838"};border-radius:16px;background:#14141D;padding:16px;text-align:center">
+    <div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#8E8FA6;font-weight:800;margin-bottom:12px">Ton billet</div>
+    <div style="display:inline-block;background:#fff;border-radius:14px;padding:12px;line-height:0"><div style="width:190px;height:190px">${qrSvg(url)}</div></div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;letter-spacing:4px;margin-top:12px">${escHtml(reg.code || "")}</div>
+    <div style="font-size:12.5px;margin-top:8px;color:${reg.checkedIn ? "#34D399" : "#8E8FA6"};font-weight:${reg.checkedIn ? 750 : 500};line-height:1.5">${reg.checkedIn ? "✓ Présence confirmée" : "Présente ce QR code (ou le code) à l'organisateur à ton arrivée."}</div>
+  </div>`;
+}
+
+/** Pointage des présences (organisateur/admin) : compteur, scanner, et liste des joueurs à pointer à la main. */
+function checkinPanel(S: State, t: Detail): string {
+  const regs: Detail[] = (S.regsPanel ?? []).filter((r: Detail) => r.paymentStatus === "paid");
+  if (!regs.length || t.status === "finished") return "";
+  const here = regs.filter((r: Detail) => r.checkedIn).length;
+  const sorted = [...regs].sort((a: Detail, b: Detail) => Number(!!a.checkedIn) - Number(!!b.checkedIn) || String(a.playerName).localeCompare(String(b.playerName)));
+  const rows = sorted.map((r: Detail) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #22222F">
+    <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.playerName)}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5D5E72;letter-spacing:1.5px">${escHtml(r.code || "")}</div></div>
+    ${r.checkedIn
+      ? `<span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#34D399;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.35);border-radius:99px;padding:4px 10px;white-space:nowrap">Présent</span>${btnSm(`data-checkin="${t.id}|${r.id}|0"`, "Annuler")}`
+      : btnSm(`data-checkin="${t.id}|${r.id}|1"`, "Marquer présent", "#22D3EE", "rgba(34,211,238,.35)")}
+  </div>`).join("");
+  return `<div style="border:1px solid #282838;border-radius:16px;background:linear-gradient(180deg,#14141D,#0E0E16);padding:20px;margin-top:18px;text-align:left">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+      <h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Présences</h3>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${here === regs.length ? "#34D399" : "#F4F5FB"}">${here} / ${regs.length}</span>
+      <span style="flex:1"></span>
+      <button data-scanopen="1" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:9px 14px;font-weight:750;font-size:13px;cursor:pointer">${ic(I.search, 14)}Scanner les billets</button>
+    </div>
+    <p style="margin:0 0 6px;font-size:12px;color:#5D5E72;line-height:1.55">Chaque joueur inscrit et payé a un billet QR sur la page du tournoi. Scanne-le ici (ou avec l'appareil photo du téléphone), ou pointe-le à la main.</p>
+    ${rows}</div>`;
+}
+
 /* ================= Événements ================= */
+/** Rôle du compte connecté, lu du navigateur : fiable même dans un écouteur enregistré au démarrage (dont l'état React est périmé). */
+function storedRole(): string | undefined {
+  try { return JSON.parse(localStorage.getItem("vlome_user") || "null")?.role; } catch { return undefined; }
+}
 const isVideoUrl = (u?: string | null) => !!u && /\.(mp4|webm)(\?|$)/i.test(u);
 const evAccent = (ev: Detail) => (/^#[0-9a-f]{6}$/i.test(ev?.accentColor || "") ? ev.accentColor : "#22D3EE");
 const EVENT_STATE: Record<string, [string, string]> = { live: ["En direct", "#22D3EE"], upcoming: ["À venir", "#FBBF24"], ended: ["Terminé", "#8E8FA6"] };
@@ -4652,7 +4705,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
-    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null,
+    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null, scanOpen: false,
     user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -4767,6 +4820,77 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Scanner de billets : une couche à part, gérée à la main. L'interface est régénérée à chaque changement d'état,
+  // ce qui détruirait l'élément <video> (et donc le flux caméra) ; ici il vit hors de ce cycle jusqu'à la fermeture.
+  useEffect(() => {
+    if (!S.scanOpen || !S.openId) return;
+    const tid = S.openId;
+    const layer = document.createElement("div");
+    layer.id = "scan-layer";
+    layer.style.cssText = "position:fixed;inset:0;z-index:330;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;background:rgba(6,6,10,.94);font-family:Inter,system-ui,sans-serif;color:#F4F5FB";
+    layer.innerHTML = `<div style="width:min(440px,100%);display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;flex:1">Scanner les billets</span><span id="scan-count" style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#8E8FA6"></span>
+        <button id="scan-close" style="background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer">Fermer</button></div>
+      <div style="position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:1/1;border:1px solid #33334A">
+        <video id="scan-video" playsinline muted style="width:100%;height:100%;object-fit:cover"></video>
+        <div style="position:absolute;inset:18%;border:3px solid rgba(34,211,238,.85);border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none"></div>
+      </div>
+      <div id="scan-msg" style="min-height:44px;border-radius:12px;padding:11px 14px;font-weight:700;font-size:14px;background:#14141D;border:1px solid #282838;color:#8E8FA6;display:flex;align-items:center">Place le QR code du joueur dans le cadre…</div>
+      <div style="display:flex;gap:8px"><input id="scan-code" placeholder="Ou saisis le code à 6 caractères" maxlength="40" style="flex:1;min-width:0;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:2px;text-transform:uppercase;padding:11px 13px" />
+        <button id="scan-go" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:0 18px;font-weight:750;font-size:14px;cursor:pointer">Valider</button></div>
+    </div>`;
+    document.body.appendChild(layer);
+    const $ = <T extends HTMLElement>(id: string) => layer.querySelector<T>("#" + id)!;
+    const msg = $("scan-msg"), count = $("scan-count"), video = $<HTMLVideoElement>("scan-video"), input = $<HTMLInputElement>("scan-code");
+    let stream: MediaStream | null = null, timer = 0, stopped = false, last = "", lastAt = 0;
+    const show = (text: string, ok: boolean | null) => {
+      msg.textContent = text;
+      msg.style.color = ok === null ? "#8E8FA6" : ok ? "#34D399" : "#FB7185";
+      msg.style.borderColor = ok === null ? "#282838" : ok ? "rgba(52,211,153,.45)" : "rgba(251,113,133,.45)";
+    };
+    const submit = async (code: string) => {
+      const res = await postCheckIn(tid, { code });
+      show(res.message, res.ok);
+      if (res.ok && res.data) { count.textContent = `${res.data.count} / ${res.data.total}`; loadRegsPanel(tid); try { navigator.vibrate?.(res.data.already ? [60, 60, 60] : 120); } catch { /* ignore */ } }
+    };
+    const close = () => { setS((s) => ({ ...s, scanOpen: false })); };
+    $("scan-close").addEventListener("click", close);
+    layer.addEventListener("click", (e) => { if (e.target === layer) close(); });
+    $("scan-go").addEventListener("click", () => { const v = input.value.trim(); if (v) { submit(v); input.value = ""; } });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { const v = input.value.trim(); if (v) { submit(v); input.value = ""; } } });
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+        video.srcObject = stream;
+        await video.play();
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        const tick = () => {
+          if (stopped) return;
+          if (ctx && video.videoWidth) {
+            const w = Math.min(640, video.videoWidth), h = Math.round((video.videoHeight * w) / video.videoWidth);
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(video, 0, 0, w, h);
+            const found = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+            // Même billet re-détecté en boucle : on l'ignore quelques secondes.
+            if (found?.data && (found.data !== last || Date.now() - lastAt > 4000)) { last = found.data; lastAt = Date.now(); submit(found.data); }
+          }
+          timer = window.setTimeout(tick, 250);
+        };
+        tick();
+      } catch {
+        show("Caméra indisponible (autorisation refusée ?). Saisis le code du billet ci-dessous.", false);
+      }
+    })();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      stream?.getTracks().forEach((t) => t.stop());
+      layer.remove();
+    };
+  }, [S.scanOpen, S.openId]);
+
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
     setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
@@ -4775,7 +4899,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); }
     } catch { /* API hors ligne */ }
-    if (token() && (S.user?.role === "ORGANIZER" || S.user?.role === "ADMIN")) loadRegsPanel(id);
+    // Arrivée directe sur /tournois/<id> : S.user n'est pas encore rempli à ce stade (il est lu du navigateur dans le même
+    // effet de démarrage) — on regarde donc aussi le compte enregistré, sinon la liste des inscrits ne se chargeait pas.
+    const role = S.user?.role ?? storedRole();
+    if (token() && (role === "ORGANIZER" || role === "ADMIN")) loadRegsPanel(id);
   }
   async function act(url: string, body?: unknown, method = "POST") {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -5167,6 +5294,36 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (m.ok) { const d = await m.json(); setS((s) => ({ ...s, eventManage: d, eventEdit: { ...f, id: eventId } })); }
       loadMyEvents(); loadEvents(); loadTournaments();
     } catch { /* ignore */ }
+  }
+
+  /* ---------- Check-in ---------- */
+  /** Pointe (ou dépointe) un joueur ; renvoie le résultat de l'API pour que l'appelant affiche le message qui convient. */
+  async function postCheckIn(tid: string, body: { code?: string; registrationId?: string; present?: boolean }): Promise<{ ok: boolean; message: string; data?: Detail }> {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/checkin`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({} as Detail));
+      if (!r.ok) return { ok: false, message: Array.isArray(d.message) ? d.message.join(" ") : d.message || "Pointage impossible." };
+      return { ok: true, message: d.already ? `${d.playerName} était déjà pointé(e)` : `✓ ${d.playerName} est présent(e)`, data: d };
+    } catch { return { ok: false, message: "API injoignable." }; }
+  }
+  async function toggleCheckIn(tid: string, regId: string, present: boolean) {
+    const res = await postCheckIn(tid, { registrationId: regId, present });
+    if (!res.ok) { alert(res.message); return; }
+    loadRegsPanel(tid);
+  }
+  /** Lien ouvert depuis l'appareil photo du téléphone (QR du billet) : pointe le joueur si le compte est organisateur/admin. */
+  async function checkInFromLink(value: string) {
+    const [tid] = value.split(".");
+    history.replaceState(null, "", window.location.pathname + "#t=" + tid);
+    await openDetail(tid);
+    const role = storedRole();
+    if (!token() || !(role === "ORGANIZER" || role === "ADMIN")) {
+      alert("Ce QR code est un billet de joueur. Connecte-toi avec le compte organisateur du tournoi, puis rescanne-le pour pointer sa présence.");
+      return;
+    }
+    const res = await postCheckIn(tid, { code: value });
+    alert(res.message);
+    if (res.ok) loadRegsPanel(tid);
   }
 
   /* ---------- Paiement en ligne (FedaPay / KkiaPay) ---------- */
@@ -6084,6 +6241,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
     if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
+    if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
     if (h.startsWith("#reset=")) {
@@ -6358,7 +6516,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6686,6 +6844,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
+    else if (d.scanopen) setS((s) => ({ ...s, scanOpen: true }));
+    else if (d.checkin) { const [tid, rid, on] = d.checkin.split("|"); toggleCheckIn(tid, rid, on === "1"); }
     else if (d.openevent) openEvent(d.openevent);
     else if (d.evlist) { setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" })); window.scrollTo({ top: 0 }); loadMyEvents(); }
     else if (d.evnew) setS((s) => ({ ...s, eventEdit: { id: null, name: "", tagline: "", description: "", startDate: null, endDate: null, place: "", accentColor: "", status: "DRAFT", posterUrl: null, bannerUrl: null }, eventManage: null, eventMsg: "" }));

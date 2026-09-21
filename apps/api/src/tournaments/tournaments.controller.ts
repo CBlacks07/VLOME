@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -104,6 +104,13 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   listRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.listRegistrations(id, user);
+  }
+
+  @Post(':id/checkin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  checkIn(@Param('id') id: string, @Body() dto: CheckinDto, @CurrentUser() user: JwtUser) {
+    return this.service.checkIn(id, dto, user);
   }
 
   @Post(':id/registrations/:regId/confirm')

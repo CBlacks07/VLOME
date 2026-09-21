@@ -2891,22 +2891,36 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
     const stageTitle = `${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""}`;
     const subA = p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
     const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
+    // Cadre d'un des deux joueurs (survivant/challenger, ou les deux côtés d'un bracket) : partagé par la
+    // version organisateur et la version lecture seule. Sans min-width:0, un cadre flex ne rétrécit
+    // jamais sous son contenu : « BRACKET VAINQUEURS » se coupait sur deux lignes dès que la carte était
+    // étroite, et le cadre pouvait même déborder de la carte. Ici : cadres de largeur égale (flex 1 1 0),
+    // une seule ligne par texte, et une taille de police qui suit la largeur du cadre (unités de
+    // conteneur, cqw — la 1re déclaration sert de repli aux navigateurs qui ne les connaissent pas) :
+    // le texte reste lisible en entier au lieu d'être tronqué. L'ellipsis (+ title au survol) ne joue
+    // plus qu'en dernier recours, pour un pseudo vraiment très long. line-height 1.2 : 1 rognerait
+    // l'accent d'une majuscule (É).
+    const vsSide = (name: string, cls: string, sub: string) => {
+      const col = cls === "surv" ? "#22D3EE" : "#F43F7E";
+      const clip = "max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      return `<div style="flex:1 1 0;min-width:0;min-height:120px;container-type:inline-size;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px 8px"><span title="${escAttr(sub)}" style="${clip};font-size:10px;font-size:clamp(7px,7.4cqw,10.5px);font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${col}">${escHtml(sub)}</span><span title="${escAttr(name)}" style="${clip};font-family:'Bebas Neue',sans-serif;font-size:30px;font-size:clamp(20px,20cqw,30px);line-height:1.2;color:${col}">${escHtml(name)}</span></div>`;
+    };
     if (manage) {
-      const side = (name: string, cls: string, sub: string) => `<div style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></div>`;
       const inp = "width:64px;height:44px;text-align:center;background:#1B1B27;border:1px solid #282838;border-radius:10px;color:#F4F5FB;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;line-height:44px;padding:0";
-      const divider = "display:flex;align-items:center;justify-content:center;width:44px;flex:none;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px";
+      // 30px/8px (et non 44/12) : plus de place pour le texte des deux cadres sur une carte étroite ;
+      // la ligne des champs de score garde les mêmes valeurs pour rester alignée sous les cadres.
+      const divider = "display:flex;align-items:center;justify-content:center;width:30px;flex:none;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px";
       body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageTitle} — saisis le score (FT)</div>
-        <div style="display:flex;align-items:stretch;gap:12px">${side(p.current.aName, "surv", subA)}<div style="${divider}">VS</div>${side(p.current.bName, "chal", subB)}</div>
-        <div style="display:flex;align-items:center;gap:12px;margin-top:14px">
+        <div style="display:flex;align-items:stretch;gap:8px">${vsSide(p.current.aName, "surv", subA)}<div style="${divider}">VS</div>${vsSide(p.current.bName, "chal", subB)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
           <div style="flex:1;display:flex;justify-content:center"><input id="sc-a-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /></div>
           <div style="${divider}">–</div>
           <div style="flex:1;display:flex;justify-content:center"><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /></div>
         </div>
         <div style="display:flex;justify-content:center;margin-top:10px"><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="height:44px;background:#22222F;border:1px solid #33334A;color:#22D3EE;border-radius:10px;padding:0 20px;font-weight:750;font-size:13px;cursor:pointer">Valider le score</button></div>`;
     } else {
-      const sideRO = (name: string, cls: string, sub: string) => `<div style="flex:1;min-height:120px;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},#14141D);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px"><span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${sub}</span><span style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${cls === "surv" ? "#22D3EE" : "#F43F7E"}">${name}</span></div>`;
       body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8E8FA6;font-weight:700;margin-bottom:10px">${stageTitle} — en direct</div>
-        <div style="display:flex;align-items:stretch;gap:12px">${sideRO(p.current.aName, "surv", subA)}<div style="display:flex;align-items:center;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div>${sideRO(p.current.bName, "chal", subB)}</div>`;
+        <div style="display:flex;align-items:stretch;gap:8px">${vsSide(p.current.aName, "surv", subA)}<div style="display:flex;align-items:center;justify-content:center;width:30px;flex:none;color:#5D5E72;font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div>${vsSide(p.current.bName, "chal", subB)}</div>`;
     }
   } else if (p.done) {
     body = `<div style="text-align:center;padding:14px 0"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#34D399;font-weight:700;margin-bottom:12px">Poule terminée — qualifiés</div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">${(Array.isArray(p.qualified) && p.qualified.length ? p.qualified.map((q: Detail) => q.name) : [p.top1, p.top2].filter(Boolean)).map((name: string, i: number) => {
@@ -3429,7 +3443,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
   // autant — troisième onglet du même sélecteur "Arbre/Liste" plutôt qu'un écran séparé à chercher.
   const hasPools = Array.isArray(t.pools) && t.pools.length > 0;
   const poolsToggleBtn = hasPools ? `<span data-bracketview="pools" style="font-size:11.5px;font-weight:${S.bracketView === "pools" ? 750 : 700};color:${S.bracketView === "pools" ? "#04222a" : "#8E8FA6"};background:${S.bracketView === "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "pools" ? "#22D3EE" : "#282838"};border-radius:8px;padding:7px 12px;cursor:pointer">Poules</span>` : "";
-  const poolsGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">${(t.pools || []).map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
+  const poolsGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">${(t.pools || []).map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
 
   const champ = t.finals?.champion
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),#14141D);padding:24px;text-align:center;margin:18px 28px 0"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
@@ -3872,7 +3886,7 @@ function pTournoi(S: State) {
     return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
 
-  const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
+  const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
 
   const finalsBtn = finalsStartPanel(S, t, manage);
 

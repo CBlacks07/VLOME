@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 
-interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; }
+interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; }
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'miabeapeto@miabe-esport.community';
 // Sans ADMIN_PASSWORD fourni, mot de passe aléatoire affiché une seule fois au démarrage : un mot
@@ -32,7 +32,7 @@ export class AuthService implements OnModuleInit {
     return this.jwt.sign({ sub: u.id, email: u.email, role: u.role });
   }
   private safe(u: UserRow) {
-    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus };
+    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus, clubStatus: u.clubStatus, clubRequested: u.clubRequested ?? null, clubBlocking: !!u.clubBlocking };
   }
 
   async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; club?: string; organizerNote?: string }) {
@@ -44,18 +44,22 @@ export class AuthService implements OnModuleInit {
     if (exists) throw new ConflictException('Cet email est déjà utilisé.');
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const role = dto.role === 'ORGANIZER' ? 'ORGANIZER' : 'PLAYER'; // ADMIN jamais auto-attribué
+    // Un club saisi à l'inscription n'est PAS enregistré tel quel : il reste une simple demande (clubRequested)
+    // que l'admin doit valider, et le compte est bloqué (clubBlocking) d'ici là.
+    const requestedClub = role === 'PLAYER' ? (dto.club || '').trim() : '';
     const u = await this.prisma.user.create({
       data: {
         email, passwordHash, displayName: (dto.displayName || '').trim() || email.split('@')[0], role,
         city: (dto.city || '').trim() || null,
         favoriteGame: (dto.favoriteGame || '').trim() || null,
         phone: (dto.phone || '').trim() || null,
+        ...(requestedClub ? { clubRequested: requestedClub, clubStatus: 'PENDING', clubBlocking: true } : {}),
         // Un compte ORGANIZER doit être validé par l'admin avant de pouvoir créer un tournoi
         // (voir TournamentsService.create) — la demande peut être accompagnée d'une note.
         ...(role === 'ORGANIZER' ? { organizerStatus: 'PENDING', organizerNote: (dto.organizerNote || '').trim() || null } : {}),
       },
     });
-    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city, dto.club);
+    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city, undefined);
     return { token: this.sign(u), user: this.safe(u) };
   }
 

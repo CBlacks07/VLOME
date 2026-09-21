@@ -85,6 +85,13 @@ model User {
   organizerMaxTournaments  Int? // plafond total de tournois créables, fixé par l'admin (null = pas de plafond)
   organizerMaxPlayers      Int? // nb max de participants par tournoi qu'il crée, fixé par l'admin (null = pas de plafond)
   organizerReviewedAt      DateTime?
+  // Club demandé à l'inscription (ou depuis le profil) : il n'entre dans le catalogue de clubs et sur la fiche
+  // joueur qu'une fois validé par un admin. clubBlocking = demande faite à l'inscription : le compte ne peut
+  // rien faire d'autre que consulter le site tant qu'elle n'est pas traitée.
+  clubRequested            String?
+  clubStatus               String    @default("NONE") // 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED'
+  clubBlocking             Boolean   @default(false)
+  clubReviewedAt           DateTime?
   createdAt           DateTime             @default(now())
   player              Player?
   registrations       Registration[]

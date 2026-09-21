@@ -40,6 +40,18 @@ export class AdminController {
     return this.admin.removeUser(id, user.sub);
   }
 
+  /* ---------- Demandes de club (validation avant entrée dans le catalogue) ---------- */
+
+  @Get('club-requests')
+  clubRequests() {
+    return this.admin.listClubRequests();
+  }
+
+  @Post('club-requests/:id/:decision')
+  reviewClub(@Param('id') id: string, @Param('decision') decision: string) {
+    return this.admin.reviewClubRequest(id, decision === 'approve' ? 'APPROVED' : 'REJECTED');
+  }
+
   /* ---------- Organisateurs (validation, plafonds) ---------- */
 
   @Get('organizers')

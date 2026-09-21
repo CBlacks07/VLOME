@@ -121,6 +121,51 @@ export class AdminService {
     return { password, email: u.email, emailed };
   }
 
+  /* ---------- Demandes de club ---------- */
+
+  listClubRequests() {
+    return this.prisma.user.findMany({
+      where: { clubStatus: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, email: true, displayName: true, city: true, createdAt: true, clubRequested: true, clubBlocking: true },
+    });
+  }
+
+  /** Valide (le club entre alors dans le catalogue et sur la fiche joueur, le compte est débloqué) ou refuse (compte débloqué, sans club). */
+  async reviewClubRequest(id: string, status: 'APPROVED' | 'REJECTED') {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u || u.clubStatus !== 'PENDING' || !u.clubRequested) throw new NotFoundException('Aucune demande de club en attente pour ce compte.');
+    const name = u.clubRequested.trim();
+    if (status === 'APPROVED') {
+      const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+      const clubId = existing ? existing.id : (await this.prisma.club.create({ data: { name } })).id;
+      const player = await this.prisma.player.findFirst({ where: { userId: id } });
+      if (player) await this.prisma.player.update({ where: { id: player.id }, data: { clubId } });
+      else if (u.role === 'PLAYER') await this.prisma.player.create({ data: { name: u.displayName, city: u.city, userId: id, clubId } });
+    }
+    await this.prisma.user.update({
+      where: { id },
+      data: { clubStatus: status, clubBlocking: false, clubRequested: null, clubReviewedAt: new Date() },
+    });
+    await this.notifyClubReviewed(u.email, u.displayName, name, status);
+    return { id, status };
+  }
+
+  /** Prévient le joueur de la décision. Best-effort : jamais bloquant. */
+  private async notifyClubReviewed(email: string, displayName: string, club: string, status: 'APPROVED' | 'REJECTED') {
+    const ok = status === 'APPROVED';
+    await this.mail.send(
+      email,
+      ok ? 'Ton club est validé — Miabe Esport' : 'Ton club n\'a pas été retenu — Miabe Esport',
+      this.mail.layout(
+        ok ? 'Club validé' : 'Club non retenu',
+        ok
+          ? `<p>Bonjour ${escapeHtml(displayName)},</p><p>Ton club <b>${escapeHtml(club)}</b> a été validé. Ton compte est maintenant actif : tu peux t'inscrire aux tournois et utiliser tout le site.</p>`
+          : `<p>Bonjour ${escapeHtml(displayName)},</p><p>Le club <b>${escapeHtml(club)}</b> n'a pas été retenu pour le moment. Ton compte est quand même actif, sans club : tu peux t'inscrire aux tournois et utiliser tout le site.</p>`,
+      ),
+    ).catch(() => { /* best-effort */ });
+  }
+
   /* ---------- Organisateurs (validation, plafonds) ---------- */
 
   async listOrganizers() {

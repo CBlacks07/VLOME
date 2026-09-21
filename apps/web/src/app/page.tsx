@@ -74,7 +74,7 @@ type TournCard = { id?: string; name: string; format: string; game: string; play
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
-type AuthUser = { displayName: string; role: string; email: string; organizerStatus?: string };
+type AuthUser = { displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
@@ -93,7 +93,7 @@ type State = {
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[]; clubRequests?: Detail[] } | null;
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
@@ -2113,7 +2113,15 @@ function adminUsers(S: State) {
   const admins = users.filter((u: Detail) => u.role === "ADMIN");
   const organizers = users.filter((u: Detail) => u.role === "ORGANIZER");
   const players = users.filter((u: Detail) => u.role !== "ADMIN" && u.role !== "ORGANIZER");
-  return `${card(`${secTitle(`Comptes (${all.length})`)}${adminSearchBar(S, "Nom ou email…")}<div style="margin-top:-6px;font-size:12.5px;color:#5D5E72">Administrateurs, organisateurs et utilisateurs sont listés séparément ci-dessous. Le bouton du rôle actuel est allumé ; un clic sur un autre rôle déplace le compte de tableau.</div>`)}
+  const clubReqs: Detail[] = a.clubRequests ?? [];
+  const clubBox = clubReqs.length ? `<div style="margin-bottom:16px">${card(`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#FBBF24;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#FBBF24;font-weight:750">Clubs à valider</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#5D5E72">${clubReqs.length}</span></div>
+    <p style="margin:0 0 12px;font-size:12.5px;color:#8E8FA6;line-height:1.5">Le club n'est ajouté à la base de données qu'après ta validation. Tant qu'il n'est pas traité, le joueur inscrit avec un club ne peut rien faire sur le site.</p>
+    ${clubReqs.map((r: Detail) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid #22222F">
+      <div style="flex:1;min-width:200px"><div style="font-weight:650">${escHtml(r.displayName)} <span style="font-size:12px;color:#5D5E72;font-weight:500">${escHtml(r.email)}</span></div><div style="font-size:13px;color:#F4F5FB;margin-top:3px">Club demandé : <b style="color:#FBBF24">${escHtml(r.clubRequested || "")}</b>${r.clubBlocking ? ` <span style="font-size:11px;color:#FB7185;font-weight:700">· compte bloqué</span>` : ""}</div></div>
+      <div style="display:flex;gap:8px">${btnSm(`data-clubreview="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-clubreview="${r.id}|approve"`, "Valider le club", "#34D399", "rgba(52,211,153,.4)")}</div>
+    </div>`).join("")}`)}</div>` : "";
+  return `${clubBox}${card(`${secTitle(`Comptes (${all.length})`)}${adminSearchBar(S, "Nom ou email…")}<div style="margin-top:-6px;font-size:12.5px;color:#5D5E72">Administrateurs, organisateurs et utilisateurs sont listés séparément ci-dessous. Le bouton du rôle actuel est allumé ; un clic sur un autre rôle déplace le compte de tableau.</div>`)}
     <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
       ${section("Administrateurs", "#FBBF24", admins, q ? "Aucun administrateur trouvé." : "Aucun administrateur.")}
       ${section("Organisateurs", "#7C82FF", organizers, q ? "Aucun organisateur trouvé." : "Aucun organisateur.")}
@@ -4011,7 +4019,7 @@ function pAuth(S: State) {
     </div>
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
       <label style="${lbl}">Téléphone / WhatsApp <span style="color:#5D5E72">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
-      <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel)</span><input id="a-club" list="a-club-list" placeholder="Team Mawu" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
+      <label style="${lbl}">Club <span style="color:#5D5E72">(optionnel · validé par l'administrateur avant activation du compte)</span><input id="a-club" list="a-club-list" placeholder="Team Mawu" style="${inp}" /><datalist id="a-club-list">${(S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
     </div>
     ${S.authRole === "ORGANIZER" ? `<label style="${lbl};margin-top:14px">Présente ta demande <span style="color:#5D5E72">(quels jeux, quelle expérience… — examinée par l'équipe Miabe)</span><textarea id="a-orgnote" rows="3" placeholder="Ex : j'organise des LAN Tekken à Lomé depuis 2 ans…" style="${inp};resize:vertical"></textarea></label>
     <p style="color:#5D5E72;font-size:11.5px;margin-top:8px">${ic(I.warn, 12)} Un compte organisateur doit être validé par l'équipe Miabe avant de pouvoir créer un tournoi.</p>` : ""}`;
@@ -4097,7 +4105,7 @@ function playerDetailModal(S: State) {
 function confirmModal(S: State) {
   const c = S.confirmBox;
   if (!c) return "";
-  const danger = c.action !== "logout" && !(c.action.startsWith("setrole|") && !c.action.endsWith("|ADMIN"));
+  const danger = c.action !== "logout" && !(c.action.startsWith("setrole|") && !c.action.endsWith("|ADMIN")) && !c.action.endsWith("|approve");
   const okColor = danger
     ? "background:linear-gradient(135deg,#FB7185,#e35065);color:#fff"
     : "background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a";
@@ -4395,7 +4403,16 @@ function partnersMarquee(S: State) {
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
 const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
 
-function renderPage(S: State) { return renderPageBody(S) + payChoiceModal(S); }
+/** Compte bloqué : le club saisi à l'inscription doit d'abord être validé par un administrateur. */
+function clubPendingBanner(S: State): string {
+  const u = S.user;
+  if (!u || !u.clubBlocking) return "";
+  return `<div style="position:sticky;top:0;z-index:240;display:flex;align-items:center;gap:12px;padding:12px 18px;background:#241c07;border-bottom:1px solid rgba(251,191,36,.4)">
+    <span style="color:#FBBF24;flex:none">${ic(I.warn, 18)}</span>
+    <div style="font-size:13px;line-height:1.5;color:#F4F5FB"><b style="color:#FBBF24">Compte en attente de validation.</b> L'administrateur doit d'abord valider ton club « ${escHtml(u.clubRequested || "")} ». D'ici là, tu peux consulter le site mais pas t'inscrire, commander ni payer. Tu seras prévenu(e) par e-mail.</div>
+  </div>`;
+}
+function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S); }
 function renderPageBody(S: State) {
   if (S.page === "show") return pShow(S);
   // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le rail du module contenu.
@@ -4508,6 +4525,17 @@ export default function Page() {
   // Passerelles de paiement en ligne disponibles + retour de FedaPay (?pay=fedapay&kind=…&ref=…&id=…) :
   // on nettoie l'URL puis on demande au serveur de vérifier la transaction.
   useEffect(() => {
+    if (token()) {
+      fetch(`${API}/api/users/me`, { headers: authHeaders() }).then((r) => (r.ok ? r.json() : null)).then((m) => {
+        if (!m) return;
+        setS((s) => {
+          if (!s.user) return s;
+          const u = { ...s.user, clubStatus: m.clubStatus, clubRequested: m.clubRequested ?? null, clubBlocking: !!m.clubBlocking };
+          try { localStorage.setItem("vlome_user", JSON.stringify(u)); } catch { /* ignore */ }
+          return { ...s, user: u };
+        });
+      }).catch(() => { /* API hors ligne */ });
+    }
     fetch(`${API}/api/payments/config`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setS((s) => ({ ...s, payConfig: c })); }).catch(() => { /* API hors ligne */ });
     const q = new URLSearchParams(window.location.search);
     if (q.get("pay") !== "fedapay") return;
@@ -4923,13 +4951,13 @@ export default function Page() {
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
-      const [ovR, usR, nwR, prR, orR, payR, crR, orgR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases"), get("organizers")]);
+      const [ovR, usR, nwR, prR, orR, payR, crR, orgR, clubR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases"), get("organizers"), get("club-requests")]);
       if (ovR.ok && usR.ok) {
-        const [overview, users, news, products, orders, payments, creditPurchases, organizers] = await Promise.all([
+        const [overview, users, news, products, orders, payments, creditPurchases, organizers, clubRequests] = await Promise.all([
           ovR.json(), usR.json(),
-          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [], orgR.ok ? orgR.json() : [],
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [], orgR.ok ? orgR.json() : [], clubR.ok ? clubR.json() : [],
         ]);
-        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases, organizers } }));
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases, organizers, clubRequests } }));
       }
     } catch { /* ignore */ }
   }
@@ -6000,7 +6028,7 @@ export default function Page() {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6328,6 +6356,18 @@ export default function Page() {
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
+    else if (d.clubreview) {
+      const [uid, decision] = d.clubreview.split("|");
+      const r = (S.admin?.clubRequests ?? []).find((x: Detail) => x.id === uid);
+      const ok = decision === "approve";
+      setS((s) => ({ ...s, confirmBox: {
+        title: ok ? "Valider le club" : "Refuser le club",
+        message: ok
+          ? `Le club « ${r?.clubRequested || ""} » sera ajouté à la base de données et rattaché à ${r?.displayName || "ce joueur"}, dont le compte sera débloqué.`
+          : `Le club « ${r?.clubRequested || ""} » ne sera pas ajouté. Le compte de ${r?.displayName || "ce joueur"} sera débloqué, sans club.`,
+        okLabel: ok ? "Valider" : "Refuser", action: `clubreview|${uid}|${decision}`,
+      } }));
+    }
     else if (d.setrole) {
       const [uid, role] = d.setrole.split("|");
       const u = S.admin?.users.find((x: Detail) => x.id === uid);
@@ -6462,6 +6502,7 @@ export default function Page() {
         else if (kind === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (kind === "gallerydel") deleteGalleryItem(arg);
+        else if (kind === "clubreview") { const [uid, decision] = arg.split("|"); adminAct(`club-requests/${uid}/${decision}`, "POST"); }
         else if (kind === "setrole") { const [uid, role] = arg.split("|"); setRole(uid, role); }
         else if (kind === "userdel") adminAct(`users/${arg}`, "DELETE");
         else if (kind === "userpwd") resetUserPassword(arg);

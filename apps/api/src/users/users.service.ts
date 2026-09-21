@@ -19,6 +19,7 @@ export class UsersService {
         id: true, email: true, displayName: true, displayNameChangedAt: true, role: true,
         bio: true, city: true, favoriteGame: true, phone: true, createdAt: true, loyaltyPoints: true,
         organizerStatus: true, organizerNote: true, organizerMaxTournaments: true, organizerMaxPlayers: true,
+        clubRequested: true, clubStatus: true, clubBlocking: true,
         player: { select: { club: { select: { id: true, name: true } } } },
       },
     });
@@ -114,11 +115,24 @@ export class UsersService {
     if (dto.city !== undefined) data.city = dto.city.trim() || null;
     if (dto.favoriteGame !== undefined) data.favoriteGame = dto.favoriteGame.trim() || null;
     if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
+    // Club : retirer le sien est immédiat ; en changer ou en choisir un est une DEMANDE, validée par un admin
+    // avant d'entrer dans le catalogue et sur la fiche joueur (le club actuel reste en place d'ici là).
+    let clubId: string | null | undefined;
+    if (dto.club !== undefined) {
+      const wanted = dto.club.trim();
+      if (!wanted) {
+        clubId = null;
+        Object.assign(data, { clubRequested: null, clubStatus: 'NONE' });
+      } else {
+        const player = await this.prisma.player.findFirst({ where: { userId }, select: { club: { select: { name: true } } } });
+        if ((player?.club?.name || '').toLowerCase() !== wanted.toLowerCase()) {
+          Object.assign(data, { clubRequested: wanted, clubStatus: 'PENDING' });
+        }
+      }
+    }
     await this.prisma.user.update({ where: { id: userId }, data });
-    // Garde la base de joueurs (Admin → Joueurs) synchro si ce compte y est relié — le club se
-    // modifie librement (pas de plafond, contrairement au pseudo ci-dessus).
-    if (data.displayName !== undefined || data.city !== undefined || dto.club !== undefined) {
-      const clubId = dto.club !== undefined ? await this.resolveClubId(dto.club.trim()) : undefined;
+    // Garde la base de joueurs (Admin → Joueurs) synchro si ce compte y est relié.
+    if (data.displayName !== undefined || data.city !== undefined || clubId !== undefined) {
       await this.prisma.player.updateMany({
         where: { userId },
         data: {

@@ -585,7 +585,7 @@ function launchTournament(t) {
         checkFinalsChampion(t); // couronne immédiatement les cas triviaux (0-1 match, ex. 1-2 joueurs)
     }
     else if (t.format === 'double') {
-        t.finals = buildDoubleElim(ids);
+        t.finals = buildDoubleElim(ids, false, true);
         checkFinalsChampion(t);
     }
     else {
@@ -1011,7 +1011,9 @@ function resolveBye(m) {
  *  liste y est déjà construite pour que des voisins immédiats appartiennent à la même poule, un
  *  placement par tête de série mélangerait les poules dès le 1er tour au lieu de les laisser se
  *  résoudre en interne avant de se rencontrer. */
-function buildDoubleElim(ids, adjacentPairing = false) {
+function buildDoubleElim(ids, adjacentPairing = false, compact = false) {
+    if (compact && ids.length >= 3)
+        return buildDoubleElimCompact(ids);
     const P = Math.max(2, nextPow2(ids.length));
     const seeds = ids.slice();
     while (seeds.length < P)
@@ -1042,6 +1044,44 @@ function buildDoubleElim(ids, adjacentPairing = false) {
         const s = Math.max(1, P / Math.pow(2, k + 2));
         lb.push(Array.from({ length: s }, mk));
     }
+    const fin = { format: 'double', wb, lb, gf: mk(), gf2: null, wbChampion: null, lbChampion: null };
+    propagateDouble(fin);
+    return fin;
+}
+/** Double élimination "compacte" (format principal Double élimination, comme buildBracket(ids, true)
+ *  pour le Bracket simple) : appariement séquentiel, tout le monde joue dès le 1er tour sauf un éventuel
+ *  exempt isolé (effectif impair), au lieu de compléter à la puissance de 2 avec une grappe d'exempts
+ *  (21 joueurs → 32 places = 11 exempts pour 5 duels). Un tour de taille impaire fait avancer son dernier
+ *  vainqueur seul (BYE en 2e case, résolu par resolveBye).
+ *
+ *  Bracket perdants : mêmes règles de routage que la version classique (propagateDouble, seeded = false)
+ *  mais dimensionné à partir des tailles réelles w[k] du bracket vainqueurs — les deux tours lb[2k] et
+ *  lb[2k+1] comptent w[k+1] matchs (le lb[0] accueille les perdants du tour 0 deux par deux, chaque
+ *  lb impair un perdant du tour k+1 par match). Un effectif impair d'un tour laisse une case BYE dans
+ *  le match suivant (dernier match du lb[0] ou d'un tour de fusion). */
+function buildDoubleElimCompact(ids) {
+    const mk = () => ({ id: uid(), a: null, b: null, winner: null, bye: false });
+    const round0 = [];
+    for (let i = 0; i < ids.length; i += 2)
+        round0.push({ id: uid(), a: ids[i], b: ids[i + 1] ?? exports.BYE, winner: null, bye: false });
+    const wb = [round0];
+    for (let size = round0.length; size > 1;) {
+        const next = Math.ceil(size / 2);
+        const round = Array.from({ length: next }, mk);
+        if (size % 2 === 1)
+            round[next - 1].b = exports.BYE;
+        wb.push(round);
+        size = next;
+    }
+    const R = wb.length;
+    const lb = [];
+    for (let e = 0; e < Math.max(0, 2 * R - 2); e++)
+        lb.push(Array.from({ length: wb[Math.floor(e / 2) + 1].length }, mk));
+    if (lb.length && round0.length % 2 === 1)
+        lb[0][lb[0].length - 1].b = exports.BYE;
+    for (let e = 1; e + 1 < lb.length; e += 2)
+        if (lb[e].length % 2 === 1)
+            lb[e + 1][lb[e + 1].length - 1].b = exports.BYE;
     const fin = { format: 'double', wb, lb, gf: mk(), gf2: null, wbChampion: null, lbChampion: null };
     propagateDouble(fin);
     return fin;

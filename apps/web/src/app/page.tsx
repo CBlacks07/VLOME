@@ -2959,13 +2959,10 @@ function getActiveMatches(S: State, t: Detail): ActiveMatch[] {
     return chosen.map((m) => ({ kind: "finals" as const, matchId: m.matchId, aId: m.aId, aName: m.aName, bId: m.bId, bName: m.bName }));
   }
   const pools: Detail[] = Array.isArray(t.pools) ? t.pools : [];
-  const withCurrent = pools.filter((p: Detail) => p.current);
-  let chosenPools = S.activeMatchIds
-    .map((id) => withCurrent.find((p: Detail) => p.id === id))
-    .filter((p): p is Detail => !!p);
-  if (!chosenPools.length && withCurrent.length) chosenPools = [withCurrent[0]];
-  const seenP = new Set<string>();
-  chosenPools = chosenPools.filter((p) => (seenP.has(p.id) ? false : (seenP.add(p.id), true)));
+  // Phase de poules : toutes les poules ont réellement un match en cours en même temps (une table par
+  // poule) — on les affiche donc toutes, sans avoir à les "lancer" une par une ; à la validation, le
+  // match suivant de la même poule prend aussitôt la place (Engine.currentMatch).
+  const chosenPools = pools.filter((p: Detail) => p.current);
   return chosenPools.map((p) => ({ kind: "pool" as const, poolId: p.id, aId: p.current.aId, aName: p.current.aName, bId: p.current.bId, bName: p.current.bName }));
 }
 
@@ -3684,32 +3681,17 @@ function pTournoi(S: State) {
     // Robin/Swiss n'ont pas un "1er tour" figé de la même façon ; masqué dès qu'il y a des poules —
     // le vrai 1er tour du bracket n'existe qu'une fois les qualifiés connus, voir startFinals).
     // Bracket simple : mime Engine.buildBracket(ids, true) — appariement séquentiel, aucun exempt au
-    // 1er tour tant que l'effectif est pair (voir buildBracket, compact). Double élimination : ce mode
-    // n'a pas encore ce traitement côté moteur (Engine.buildDoubleElim reste en placement tête de
-    // série classique), donc l'aperçu continue de le mimer tel quel. Réordonner ici change réellement
+    // 1er tour tant que l'effectif est pair (voir buildBracket, compact). Double élimination : même
+    // traitement (Engine.buildDoubleElimCompact). Réordonner ici change réellement
     // les oppositions au lancement (voir Engine.movePlayerOrder — même ordre que t.players).
     const seedPreview = manage && (t.mainFormat === "single" || t.mainFormat === "double") && !t.usesPools && roster.length >= 2
       ? (() => {
           type Cell = { id: string; name: string } | null;
           let pairs: [Cell, Cell, number, number][];
-          if (t.mainFormat === "single") {
-            pairs = [];
-            for (let i = 0; i < roster.length; i += 2) pairs.push([roster[i] ?? null, roster[i + 1] ?? null, i + 1, i + 2]);
-          } else {
-            let p = 1; while (p < roster.length) p *= 2;
-            p = Math.max(2, p);
-            let slots = [1, 2];
-            while (slots.length < p) {
-              const sum = slots.length * 2 + 1;
-              const next: number[] = [];
-              for (const seed of slots) { next.push(seed); next.push(sum - seed); }
-              slots = next;
-            }
-            pairs = [];
-            for (let i = 0; i < p / 2; i++) {
-              pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null, slots[2 * i], slots[2 * i + 1]]);
-            }
-          }
+          // Single ET double : appariement séquentiel (Engine.buildBracket(ids, true) /
+          // Engine.buildDoubleElimCompact) — tout le monde joue dès le 1er tour, un seul exempt si impair.
+          pairs = [];
+          for (let i = 0; i < roster.length; i += 2) pairs.push([roster[i] ?? null, roster[i + 1] ?? null, i + 1, i + 2]);
           const nDuels = pairs.filter(([a, b]) => a && b).length;
           const nByes = pairs.length - nDuels;
           const seedNum = (n: number) => `<span style="flex:none;width:19px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:10px;color:#3F4054">${n}</span>`;

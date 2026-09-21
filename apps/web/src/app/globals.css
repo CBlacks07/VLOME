@@ -272,3 +272,10 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .home-main > :not(section):not([style*="border:1px solid"]) { padding-left: 16px !important; padding-right: 16px !important; }
   .home-main > [style*="border:1px solid"] { margin-left: 0 !important; margin-right: 0 !important; }
 }
+
+/* Page d'un événement sur téléphone : l'affiche du bandeau prenait la moitié de la largeur et forçait le titre
+   à se couper sur 4 lignes — on la retire du bandeau (elle reste visible sur les cartes d'événement). */
+@media (max-width: 640px) {
+  .ev-poster { display: none !important; }
+}
+

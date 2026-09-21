@@ -446,7 +446,7 @@ function railPageHead(title: string, sub: string, actions = ""): string {
 
 /* ================= Composants ================= */
 function tournCard(t: TournCard, big: boolean) {
-  const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
+  const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
   const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:#8E8FA6;font-weight:600">${t.status}</span>`;
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
   // Bandeau : image du tournoi si fournie, sinon dégradé par défaut.
@@ -597,7 +597,7 @@ function pAccueil(S: State) {
     : "";
 
   const partnerList = normPartners(S);
-  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div><div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:12px;height:68px;padding:0 22px;border:1px solid #282838;border-radius:13px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="width:42px;height:42px;object-fit:contain;border-radius:8px" />` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
+  const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div><div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:12px;height:76px;padding:0 18px;border:1px solid #282838;border-radius:13px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:52px;padding:6px 14px;border-radius:10px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="height:40px;width:auto;max-width:150px;object-fit:contain" /></span>` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
 
   return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
@@ -1261,7 +1261,7 @@ function pTournois(S: State) {
       ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.6)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
       : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
     const statusBadge = t.live
-      ? `<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
+      ? `<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
       : `<span style="position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${t.status === "Terminé" ? "#FBBF24" : "#7C82FF"};background:rgba(11,11,17,.7);border:1px solid ${t.status === "Terminé" ? "rgba(251,191,36,.4)" : "rgba(124,130,255,.45)"};border-radius:99px;padding:4px 9px">${escHtml(t.status)}</span>`;
     const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
     return `<div ${openAttr} class="fcell" style="padding:20px ${isRight ? "0" : "24px"} 24px ${i % 3 === 0 ? "0" : "24px"};${isRight ? "" : "border-right:1px solid #1B1B27;"}${isLastRow ? "" : "border-bottom:1px solid #1B1B27;"}cursor:pointer">
@@ -4430,10 +4430,10 @@ function partnersMarquee(S: State) {
   const items = partners.map((p) => {
     const showLogo = !!p.logoUrl && p.display !== "name";
     const showName = p.display !== "logo" || !p.logoUrl;
-    const icon = showLogo ? `<img src="${mediaUrl(p.logoUrl)}" alt="${showName ? "" : escAttr(p.name)}" style="width:16px;height:16px;object-fit:contain;border-radius:4px" />` : p.display === "name" ? "" : ic(I.crown, 12);
-    return `<span style="display:inline-flex;align-items:center;gap:8px;margin:0 22px;font-size:12px;font-weight:700;color:#5D5E72;letter-spacing:.4px" title="${escAttr(p.name)}">${icon}${showName ? escHtml(p.name) : ""}</span>`;
+    const icon = showLogo ? `<span style="display:inline-flex;align-items:center;justify-content:center;flex:none;height:50px;padding:7px 16px;border-radius:12px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${showName ? "" : escAttr(p.name)}" style="height:36px;width:auto;max-width:140px;object-fit:contain" /></span>` : p.display === "name" ? "" : ic(I.crown, 16);
+    return `<span style="display:inline-flex;align-items:center;gap:12px;margin:0 22px;font-size:14px;font-weight:700;color:#A6A8BC;letter-spacing:.4px" title="${escAttr(p.name)}">${icon}${showName ? escHtml(p.name) : ""}</span>`;
   }).join("");
-  return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:7px 0"><div class="marquee-track">${items}${items}</div></div>`;
+  return `<div class="marquee" style="border-bottom:1px solid #1B1B27;background:#0B0B11;padding:12px 0"><div class="marquee-track">${items}${items}</div></div>`;
 }
 
 /** Pages du module contenu : shell rail (barre live + rail d'icônes) au lieu du header public. */
@@ -4465,7 +4465,7 @@ function eventMedia(ev: Detail, alt: string, mode: "hero" | "card" = "hero"): st
 function eventStateBadge(ev: Detail, big = false): string {
   const [label, color] = EVENT_STATE[ev.state] || EVENT_STATE.upcoming;
   const live = ev.state === "live";
-  return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:${big ? 12 : 10.5}px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:${live ? "#04222a" : color};background:${live ? color : "rgba(11,11,17,.72)"};border:1px solid ${live ? color : color + "66"};border-radius:99px;padding:${big ? "6px 12px" : "4px 9px"};backdrop-filter:blur(6px)">${live ? `<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>` : ""}${label}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap;font-size:${big ? 12 : 10.5}px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:${live ? "#04222a" : color};background:${live ? color : "rgba(11,11,17,.72)"};border:1px solid ${live ? color : color + "66"};border-radius:99px;padding:${big ? "6px 12px" : "4px 9px"};backdrop-filter:blur(6px)">${live ? `<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>` : ""}${label}</span>`;
 }
 
 function eventCard(ev: Detail): string {
@@ -4522,8 +4522,8 @@ function pEvenement(S: State) {
     <div class="page-hpad" style="position:relative;display:flex;align-items:flex-end;gap:28px;padding:44px 44px 34px;min-height:clamp(280px,38vw,440px)">
       <div style="flex:1;min-width:0">
         <button data-go="evenements" style="background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);color:#E8E9F4;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:18px;backdrop-filter:blur(6px)">← Événements</button>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">${eventStateBadge(ev, true)}${ev.liveCount ? `<span style="font-size:12.5px;font-weight:700;color:${accent}">${ev.liveCount} tournoi${ev.liveCount > 1 ? "s" : ""} en direct</span>` : ""}</div>
-        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6vw,84px);letter-spacing:1.5px;margin:0;line-height:.92;text-shadow:0 6px 40px rgba(0,0,0,.6)">${escHtml(ev.name)}</h1>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-bottom:12px">${eventStateBadge(ev, true)}${ev.liveCount ? `<span style="font-size:12.5px;font-weight:700;color:${accent};white-space:nowrap">${ev.liveCount} tournoi${ev.liveCount > 1 ? "s" : ""} en direct</span>` : ""}</div>
+        <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,8.2vw,84px);letter-spacing:1.2px;margin:0;line-height:.96;text-wrap:balance;overflow-wrap:break-word;text-shadow:0 6px 40px rgba(0,0,0,.6)">${escHtml(ev.name)}</h1>
         ${ev.tagline ? `<p style="color:#D2D4E4;font-size:clamp(15px,1.6vw,19px);margin:12px 0 0;max-width:720px;line-height:1.5">${escHtml(ev.tagline)}</p>` : ""}
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">${chips}</div>
       </div>
@@ -4560,8 +4560,8 @@ function consoleEvents(S: State) {
             ${thumb(ev)}
             <div style="flex:1;min-width:200px"><div style="font-weight:700;font-size:15px">${escHtml(ev.name)}</div>
               <div style="font-size:12.5px;color:#8E8FA6;margin-top:3px">${[fmtEventDates(ev), ev.place, `${ev.tournamentCount} tournoi${ev.tournamentCount > 1 ? "s" : ""}`].filter(Boolean).map(escHtml).join(" · ")}</div></div>
-            <span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${stColor};border:1px solid ${stColor}55;border-radius:99px;padding:4px 9px">${stLabel}</span>
-            <span style="font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${ev.status === "PUBLISHED" ? "#34D399" : "#FBBF24"};border:1px solid ${ev.status === "PUBLISHED" ? "rgba(52,211,153,.4)" : "rgba(251,191,36,.4)"};border-radius:99px;padding:4px 9px">${ev.status === "PUBLISHED" ? "Publié" : "Brouillon"}</span>
+            <span style="white-space:nowrap;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${stColor};border:1px solid ${stColor}55;border-radius:99px;padding:4px 9px">${stLabel}</span>
+            <span style="white-space:nowrap;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${ev.status === "PUBLISHED" ? "#34D399" : "#FBBF24"};border:1px solid ${ev.status === "PUBLISHED" ? "rgba(52,211,153,.4)" : "rgba(251,191,36,.4)"};border-radius:99px;padding:4px 9px">${ev.status === "PUBLISHED" ? "Publié" : "Brouillon"}</span>
             <div style="display:flex;gap:8px">${btnSm(`data-openevent="${ev.id}"`, "Voir")}${btnSm(`data-evedit="${ev.id}"`, "Modifier", "#22D3EE", "rgba(34,211,238,.35)")}${btnSm(`data-evdel="${ev.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`;
         }).join("")
       : `<div style="color:#5D5E72;font-size:13.5px;padding:18px 0;text-align:center">Aucun événement pour l'instant. Crée le premier : affiche, animation, dates et tournois.</div>`;

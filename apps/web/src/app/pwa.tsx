@@ -99,7 +99,7 @@ export default function PwaSetup() {
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: 11, flex: "none", border: "1px solid #282838" }} />
+      <img src="/pwa-icon/192" alt="" width={44} height={44} style={{ borderRadius: 11, flex: "none", border: "1px solid #282838" }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 750, fontSize: 14 }}>Installer Miabe Esport</div>
         <div style={{ fontSize: 12, color: "#8E8FA6", lineHeight: 1.45, marginTop: 2 }}>

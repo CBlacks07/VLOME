@@ -5536,9 +5536,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId }: { initia
     if (window.location.hash !== hash) history.pushState(null, "", hash);
   }, [S.page, S.openId]);
 
-  // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le fichier icon.jpg livré
-  // avec l'application ne sert plus que de repli tant qu'aucun logo n'a été envoyé : sans ça, changer
-  // le logo laissait l'ancienne icône dans l'onglet du navigateur.
+  // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
+  // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
+  // changement de logo se voie tout de suite dans l'onglet sans attendre le cache.
   useEffect(() => {
     const logo = S.site?.brand?.logoUrl;
     if (typeof document === "undefined" || !logo) return;

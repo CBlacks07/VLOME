@@ -3,13 +3,13 @@
  * Volontairement prudent : il ne touche JAMAIS à l'API (autre origine) ni aux requêtes qui modifient
  * quelque chose (POST/PATCH/DELETE). Les pages se chargent d'abord depuis le réseau (donc toujours à
  * jour) ; le cache ne sert que de filet quand le réseau est coupé. Les fichiers statiques versionnés de
- * Next (/_next/static, hachés, immuables) et les icônes sont servis depuis le cache.
+ * Next (/_next/static, hachés, immuables) sont servis depuis le cache.
  * Changer VERSION invalide tous les anciens caches. */
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = "miabe-static-" + VERSION;
 const PAGES_CACHE = "miabe-pages-" + VERSION;
 const OFFLINE_URL = "/offline.html";
-const PRECACHE = [OFFLINE_URL, "/icon-192.png", "/icon-512.png"];
+const PRECACHE = [OFFLINE_URL];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -48,8 +48,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Fichiers statiques hachés de Next et icônes : cache d'abord.
-  if (url.pathname.startsWith("/_next/static/") || /^\/(icon|apple-touch-icon)[^/]*\.png$/.test(url.pathname)) {
+  // Fichiers statiques hachés de Next : cache d'abord. Les icônes (/pwa-icon) ne sont volontairement pas
+  // mises en cache ici : elles suivent le logo choisi dans l'admin.
+  if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
       caches.match(req).then(
         (hit) =>

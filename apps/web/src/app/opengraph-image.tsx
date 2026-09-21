@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { absoluteMedia, fetchBrand, fetchLogoDataUri } from "./site-logo";
 
 // Aperçu affiché quand un lien du site est partagé (WhatsApp, Facebook, X…).
 // Généré ici plutôt que servi comme fichier : pas d'image à maintenir, et le rendu
@@ -7,7 +8,10 @@ export const alt = "Miabe Esport — le hub de l'esport togolais et ouest-africa
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function Image() {
+export default async function Image() {
+  // Logo défini dans l'admin (jamais un fichier livré) ; à défaut, la pastille de couleur.
+  const logoUrl = absoluteMedia((await fetchBrand()).logoUrl);
+  const logo = logoUrl ? await fetchLogoDataUri(logoUrl) : null;
   return new ImageResponse(
     (
       <div
@@ -24,15 +28,22 @@ export default function Image() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 34 }}>
-          <div
-            style={{
-              display: "flex",
-              width: 54,
-              height: 54,
-              borderRadius: 16,
-              background: "linear-gradient(140deg,#22D3EE,#7C82FF)",
-            }}
-          />
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <div style={{ display: "flex", width: 96, height: 96, borderRadius: 22, background: "#F4F5FB", alignItems: "center", justifyContent: "center" }}>
+              <img src={logo} width={84} height={84} style={{ width: 84, height: 84, objectFit: "contain" }} alt="" />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                width: 54,
+                height: 54,
+                borderRadius: 16,
+                background: "linear-gradient(140deg,#22D3EE,#7C82FF)",
+              }}
+            />
+          )}
           {/* Satori impose display:flex dès qu'un élément a plusieurs enfants. */}
           <div style={{ display: "flex", gap: 12, fontSize: 34, fontWeight: 800, letterSpacing: 4 }}>
             <span style={{ color: "#8E8FA6" }}>Miabe</span>

@@ -1,19 +1,20 @@
 import Spa from "./Spa";
 import SeoLinks from "./SeoLinks";
 import { ROUTES, SITE_URL, routeMetadata } from "./seo";
+import { fetchBrand, absoluteMedia } from "./site-logo";
 
 export const metadata = routeMetadata("accueil");
 
 // Données structurées : disent à Google qui est ce site (organisation esport basée à Lomé) et le rattachent
 // à son adresse officielle. N'affichent rien : elles servent aux résultats enrichis et au nom du site.
-const JSON_LD = [
+const buildJsonLd = (logo: string | null) => [
   {
     "@context": "https://schema.org",
     "@type": "SportsOrganization",
     name: "Miabe Esport",
     alternateName: ["Miabe Esport Togo", "VLOME"],
     url: SITE_URL,
-    logo: `${SITE_URL}/icon-512.png`,
+    ...(logo ? { logo } : {}),
     description: ROUTES.accueil.description,
     sport: "Esport",
     areaServed: { "@type": "Country", name: "Togo" },
@@ -29,7 +30,8 @@ const JSON_LD = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const JSON_LD = buildJsonLd(absoluteMedia((await fetchBrand()).logoUrl));
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />

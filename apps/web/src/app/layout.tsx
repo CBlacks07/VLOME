@@ -1,13 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import PwaSetup from "./pwa";
+import { fetchBrand, logoVersion } from "./site-logo";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.miabe-esport.community";
 const TITLE = "Miabe Esport — Le hub de l'esport togolais";
 const DESCRIPTION =
   "Compétitions, classements, communauté et boutique — la plateforme de référence de l'esport au Togo et en Afrique de l'Ouest.";
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
+  // Icône d'onglet et d'écran d'accueil = logo défini dans l'admin (voir /pwa-icon), jamais un fichier livré.
+  const v = logoVersion((await fetchBrand()).logoUrl);
+  return {
   // metadataBase rend absolues les URL d'image et canonique : sans lui, l'aperçu de partage
   // (WhatsApp, Facebook…) reçoit un chemin relatif et n'affiche aucune image.
   metadataBase: new URL(SITE_URL),
@@ -24,10 +28,11 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
   // iOS : icône d'écran d'accueil + affichage plein écran une fois ajouté à l'écran d'accueil.
-  icons: { apple: "/apple-touch-icon.png" },
+  icons: { icon: [{ url: `/pwa-icon/192?v=${v}`, sizes: "192x192", type: "image/png" }], apple: `/pwa-icon/180?v=${v}` },
   appleWebApp: { capable: true, title: "Miabe Esport", statusBarStyle: "black-translucent" },
   applicationName: "Miabe Esport",
-};
+  };
+}
 
 // Couleur de la barre d'état / de la fenêtre de l'application installée.
 export const viewport: Viewport = {

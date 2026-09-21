@@ -4282,10 +4282,27 @@ function showBRSlide(f: Detail): string {
   return `<div style="text-align:center">${status}${podium}</div>`;
 }
 
+/** Mode Show : si le tournoi fait partie d'un événement, sa couverture (bannière animée ou affiche) sert de fond, assombrie pour rester lisible. */
 function pShow(S: State) {
+  const inner = pShowInner(S);
+  const ev = S.detail?.event as Detail | null | undefined;
+  if (!ev || !(ev.bannerUrl || ev.posterUrl)) return inner;
+  const bg = isVideoUrl(ev.bannerUrl)
+    ? `<video src="${mediaUrl(ev.bannerUrl)}" muted autoplay loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`
+    : `<div style="position:absolute;inset:-4%;background:url('${mediaUrl(ev.bannerUrl || ev.posterUrl)}') center/cover;${ev.bannerUrl ? "" : "filter:blur(14px);"}"></div>`;
+  return `<div style="position:fixed;inset:0;z-index:0;overflow:hidden;background:#0B0B11;pointer-events:none">${bg}<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.78),rgba(11,11,17,.9))"></div></div><div style="position:relative;z-index:1">${inner}</div>`;
+}
+function pShowInner(S: State) {
   const t = S.detail;
   const close = `<button data-showclose="1" style="position:absolute;top:16px;right:18px;background:#1B1B27;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;z-index:5">Fermer</button>`;
-  const brand = `<div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:2vh">${brandLogo(S, 38, 20)}<span style="font-family:'Bebas Neue',sans-serif;font-size:3vh;letter-spacing:2.5px;color:#8E8FA6">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>`;
+  const brand0 = `<div style="display:flex;align-items:center;justify-content:center;gap:1.4vh;margin-bottom:2vh">${brandLogo(S, 38, 20)}<span style="font-family:'Bebas Neue',sans-serif;font-size:3vh;letter-spacing:2.5px;color:#8E8FA6">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>`;
+  // Tournoi rattaché à un événement : le Mode Show l'annonce (et reprend sa couverture en fond, voir pShow).
+  const showEv = t?.event as Detail | null | undefined;
+  const evAcc = showEv ? evAccent(showEv) : "#22D3EE";
+  const eventLine = showEv
+    ? `<div style="text-align:center;margin:-0.6vh 0 2.4vh"><span style="display:inline-flex;align-items:center;gap:1vh;font-size:1.9vh;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:${evAcc};border:1px solid ${evAcc}66;background:${evAcc}14;border-radius:99px;padding:.9vh 2vh">Événement · ${escHtml(showEv.name)}</span>${showEv.tagline ? `<div style="color:#A6A8BC;font-size:1.8vh;margin-top:1vh">${escHtml(showEv.tagline)}</div>` : ""}</div>`
+    : "";
+  const brand = brand0 + eventLine;
   if (!t) return `<div style="min-height:100vh;display:grid;place-items:center;color:#8E8FA6">${close}Chargement de l'affichage…</div>`;
   if (t.status === "finished" && t.champion) {
     return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
@@ -5105,13 +5122,23 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     return { ...cur, name: v("ev-name"), tagline: v("ev-tagline"), description: v("ev-desc"), startDate: v("ev-start") || null, endDate: v("ev-end") || null, place: v("ev-place"), accentColor: v("ev-color"), status: v("ev-status") || "DRAFT" };
   }
   async function saveEvent() {
+    // Les fichiers choisis sont lus AVANT tout changement d'état : l'interface est régénérée à chaque rendu,
+    // ce qui vide les champs de fichier — lire après « busy: true » ne trouvait plus rien à envoyer.
+    const posterFile = (document.getElementById("ev-poster") as HTMLInputElement | null)?.files?.[0] ?? null;
+    const bannerFile = (document.getElementById("ev-banner") as HTMLInputElement | null)?.files?.[0] ?? null;
     const f = readEventForm();
     if (!f.name.trim()) { alert("Donne un nom à l'événement."); return; }
-    setS((s) => ({ ...s, busy: true, eventMsg: "" }));
+    setS((s) => ({ ...s, busy: true, eventMsg: posterFile || bannerFile ? "Envoi des fichiers…" : "" }));
     try {
       let posterUrl: string | null = f.posterUrl ?? null, bannerUrl: string | null = f.bannerUrl ?? null;
-      const up = await uploadOrNotify("ev-poster"); if (up) posterUrl = up;
-      const ub = await uploadOrNotify("ev-banner"); if (ub) bannerUrl = ub;
+      try {
+        if (posterFile) posterUrl = await uploadOne(posterFile);
+        if (bannerFile) bannerUrl = await uploadOne(bannerFile);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Échec de l'envoi du fichier.");
+        setS((s) => ({ ...s, busy: false, eventMsg: "" }));
+        return;
+      }
       const body = { name: f.name.trim(), tagline: f.tagline, description: f.description, startDate: f.startDate || "", endDate: f.endDate || "", place: f.place, accentColor: f.accentColor, status: f.status, posterUrl: posterUrl || "", bannerUrl: bannerUrl || "" };
       const r = await fetch(`${API}/api/events${f.id ? "/" + f.id : ""}`, { method: f.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({} as Detail));

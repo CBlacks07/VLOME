@@ -68,8 +68,19 @@ export class UploadsController {
     if (USE_CLOUDINARY) {
       const ext = extname(file.originalname).toLowerCase();
       const publicId = randomFilename(file.originalname).slice(0, -ext.length);
-      const url = await uploadToCloudinary(file.buffer, publicId, VIDEO_EXT.includes(ext) ? 'video' : 'image');
-      return { url };
+      const isVideo = VIDEO_EXT.includes(ext);
+      try {
+        const url = await uploadToCloudinary(file.buffer, publicId, isVideo ? 'video' : 'image');
+        return { url };
+      } catch (e) {
+        // Le stockage refuse le fichier (format illisible, vidéo corrompue…) : message clair plutôt qu'un « 500 ».
+        const reason = (e as { message?: string } | null)?.message || 'fichier refusé';
+        throw new BadRequestException(
+          isVideo
+            ? `La vidéo n'a pas pu être enregistrée (${reason}). Utilise un fichier .mp4 (H.264) ou .webm valide de 4 Mo maximum.`
+            : `L'image n'a pas pu être enregistrée (${reason}).`,
+        );
+      }
     }
     return { url: `/uploads/${file.filename}` };
   }

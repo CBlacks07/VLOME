@@ -627,7 +627,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
@@ -886,7 +886,19 @@ export class TournamentsService {
 
   async getState(id: string) {
     const l = await this.loadEngine(id);
-    return l ? this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint) : null;
+    if (!l) return null;
+    const state = this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+    // Événement auquel le tournoi appartient (seulement s'il est publié) : le Mode Show l'annonce et
+    // reprend sa couverture en arrière-plan.
+    let event: { id: string; name: string; tagline: string | null; posterUrl: string | null; bannerUrl: string | null; accentColor: string | null } | null = null;
+    if (l.record.eventId) {
+      const ev = await this.prisma.event.findUnique({
+        where: { id: l.record.eventId },
+        select: { id: true, name: true, tagline: true, posterUrl: true, bannerUrl: true, accentColor: true, status: true },
+      });
+      if (ev && ev.status === 'PUBLISHED') event = { id: ev.id, name: ev.name, tagline: ev.tagline, posterUrl: ev.posterUrl, bannerUrl: ev.bannerUrl, accentColor: ev.accentColor };
+    }
+    return { ...state, event };
   }
 
   async launch(id: string, user: JwtUser) {

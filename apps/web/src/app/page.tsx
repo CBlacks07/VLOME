@@ -3681,24 +3681,34 @@ function pTournoi(S: State) {
           : ""
       : "";
     // Aperçu des oppositions du 1er tour (formats à bracket : single/double élim uniquement — Round
-    // Robin/Swiss n'ont pas un "1er tour" figé de la même façon). Le calcul mime exactement
-    // Engine.buildBracket (placement par têtes de série) : réordonner ici change réellement les
-    // oppositions au lancement (voir Engine.movePlayerOrder — même ordre que t.players).
-    const seedPreview = manage && (t.mainFormat === "single" || t.mainFormat === "double") && roster.length >= 2
+    // Robin/Swiss n'ont pas un "1er tour" figé de la même façon ; masqué dès qu'il y a des poules —
+    // le vrai 1er tour du bracket n'existe qu'une fois les qualifiés connus, voir startFinals).
+    // Bracket simple : mime Engine.buildBracket(ids, true) — appariement séquentiel, aucun exempt au
+    // 1er tour tant que l'effectif est pair (voir buildBracket, compact). Double élimination : ce mode
+    // n'a pas encore ce traitement côté moteur (Engine.buildDoubleElim reste en placement tête de
+    // série classique), donc l'aperçu continue de le mimer tel quel. Réordonner ici change réellement
+    // les oppositions au lancement (voir Engine.movePlayerOrder — même ordre que t.players).
+    const seedPreview = manage && (t.mainFormat === "single" || t.mainFormat === "double") && !t.usesPools && roster.length >= 2
       ? (() => {
-          let p = 1; while (p < roster.length) p *= 2;
-          p = Math.max(2, p);
-          let slots = [1, 2];
-          while (slots.length < p) {
-            const sum = slots.length * 2 + 1;
-            const next: number[] = [];
-            for (const seed of slots) { next.push(seed); next.push(sum - seed); }
-            slots = next;
-          }
           type Cell = { id: string; name: string } | null;
-          const pairs: [Cell, Cell, number, number][] = [];
-          for (let i = 0; i < p / 2; i++) {
-            pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null, slots[2 * i], slots[2 * i + 1]]);
+          let pairs: [Cell, Cell, number, number][];
+          if (t.mainFormat === "single") {
+            pairs = [];
+            for (let i = 0; i < roster.length; i += 2) pairs.push([roster[i] ?? null, roster[i + 1] ?? null, i + 1, i + 2]);
+          } else {
+            let p = 1; while (p < roster.length) p *= 2;
+            p = Math.max(2, p);
+            let slots = [1, 2];
+            while (slots.length < p) {
+              const sum = slots.length * 2 + 1;
+              const next: number[] = [];
+              for (const seed of slots) { next.push(seed); next.push(sum - seed); }
+              slots = next;
+            }
+            pairs = [];
+            for (let i = 0; i < p / 2; i++) {
+              pairs.push([roster[slots[2 * i] - 1] ?? null, roster[slots[2 * i + 1] - 1] ?? null, slots[2 * i], slots[2 * i + 1]]);
+            }
           }
           const nDuels = pairs.filter(([a, b]) => a && b).length;
           const nByes = pairs.length - nDuels;
@@ -3740,7 +3750,10 @@ function pTournoi(S: State) {
               <button data-roster-shuffle="${t.id}" style="flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.28);border-radius:9px;padding:6px 12px;cursor:pointer">${ic(I.arrow, 13)}Rebrasser</button>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:9px">${matchups}</div>
-            ${nByes ? `<p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0;max-width:62ch">${roster.length} participants pour un arbre de ${p} places : ${nByes} ${nByes > 1 ? "joueurs passent" : "joueur passe"} le 1er tour sans jouer, c'est imposé par l'effectif. Une phase de groupes les supprime.</p>` : ""}
+            ${nByes ? `<p style="color:#5D5E72;font-size:11.5px;margin:12px 0 0;max-width:62ch">${t.mainFormat === "single"
+                ? `${roster.length} participants (effectif impair) : ${nByes} ${nByes > 1 ? "joueurs passent" : "joueur passe"} le 1er tour sans jouer, le temps que les autres s'affrontent — c'est imposé par l'effectif, inévitable avec un nombre impair. Une phase de groupes les supprime.`
+                : `${roster.length} participants pour un arbre de ${pairs.length * 2} places : ${nByes} ${nByes > 1 ? "joueurs passent" : "joueur passe"} le 1er tour sans jouer, c'est imposé par l'effectif. Une phase de groupes les supprime.`
+              }</p>` : ""}
             <details style="margin-top:16px">
               <summary style="cursor:pointer;font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:#8E8FA6;font-weight:750">Réordonner les participants</summary>
               <p style="color:#5D5E72;font-size:11.5px;margin:8px 0 10px;max-width:62ch">Cet ordre est celui du tirage : le 1er est tête de série 1. C'est lui qui sera utilisé au lancement.</p>

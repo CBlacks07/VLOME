@@ -313,7 +313,14 @@ export declare const POOLED_FORMATS: TournamentFormat[];
  *  finale en ont une dès que l'organisateur demande plus d'une poule. */
 export declare function usesPools(t: Tournament): boolean;
 export declare function launchTournament(t: Tournament): void;
-export declare function buildBracket(ids: string[]): Bracket;
+/** @param compact Si vrai, personne n'est exempt au 1er tour tant que l'effectif de CE tour est pair
+ *  — appariement séquentiel (1v2, 3v4…), un seul exempt tournant au tour suivant dès qu'un effectif
+ *  intermédiaire devient impair (jamais au 1er tour si l'effectif de départ est pair). Sinon (défaut),
+ *  comportement historique : complété à la puissance de 2 supérieure par placement en tête de série
+ *  (seedSlots), les exempts nécessaires concentrés au 1er tour. Utilisé pour le format principal
+ *  Bracket simple (launchTournament/startFinals) — pas pour le bracket de repêchage Survival
+ *  (pool.lBracket) ni les autres usages internes, qui gardent le comportement historique. */
+export declare function buildBracket(ids: string[], compact?: boolean): Bracket;
 export declare function propagateBracket(bracket: Bracket): void;
 export declare function bracketChampion(bracket: Bracket | null): string | null;
 export declare function nextBracketMatch(bracket: Bracket | null): {

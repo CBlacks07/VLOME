@@ -654,7 +654,7 @@ export function launchTournament(t: Tournament): void {
     t.finals = buildDoubleElim(ids);
     checkFinalsChampion(t);
   } else {
-    t.finals = { format: 'single', bracket: buildBracket(ids) };
+    t.finals = { format: 'single', bracket: buildBracket(ids, true) };
     checkFinalsChampion(t);
   }
 }
@@ -679,25 +679,51 @@ function seedSlots(size: number): number[] {
   return arr;
 }
 
-export function buildBracket(ids: string[]): Bracket {
+/** @param compact Si vrai, personne n'est exempt au 1er tour tant que l'effectif de CE tour est pair
+ *  — appariement séquentiel (1v2, 3v4…), un seul exempt tournant au tour suivant dès qu'un effectif
+ *  intermédiaire devient impair (jamais au 1er tour si l'effectif de départ est pair). Sinon (défaut),
+ *  comportement historique : complété à la puissance de 2 supérieure par placement en tête de série
+ *  (seedSlots), les exempts nécessaires concentrés au 1er tour. Utilisé pour le format principal
+ *  Bracket simple (launchTournament/startFinals) — pas pour le bracket de repêchage Survival
+ *  (pool.lBracket) ni les autres usages internes, qui gardent le comportement historique. */
+export function buildBracket(ids: string[], compact = false): Bracket {
   const q = ids.slice();
-  // Minimum 2 places : à un seul participant, nextPow2 renvoie 1 et le tour initial appariait le
-  // joueur avec lui-même au lieu de le déclarer exempt.
-  const P = Math.max(2, nextPow2(q.length));
-  const slots = seedSlots(P); // le n-ième participant de la liste est la tête de série n
-  const round0: BracketMatch[] = [];
-  for (let i = 0; i < P / 2; i++) {
-    const a = q[slots[2 * i] - 1] ?? null;
-    const b = q[slots[2 * i + 1] - 1] ?? null;
-    const m: BracketMatch = { id: uid(), a, b, winner: null, bye: !a || !b };
-    if (m.bye) m.winner = a || b;
-    round0.push(m);
+  let round0: BracketMatch[];
+  if (compact) {
+    round0 = [];
+    for (let i = 0; i < q.length; i += 2) {
+      const a = q[i] ?? null;
+      const b = q[i + 1] ?? null;
+      const m: BracketMatch = { id: uid(), a, b, winner: null, bye: !a || !b };
+      if (m.bye) m.winner = a || b;
+      round0.push(m);
+    }
+  } else {
+    // Minimum 2 places : à un seul participant, nextPow2 renvoie 1 et le tour initial appariait le
+    // joueur avec lui-même au lieu de le déclarer exempt.
+    const P = Math.max(2, nextPow2(q.length));
+    const slots = seedSlots(P); // le n-ième participant de la liste est la tête de série n
+    round0 = [];
+    for (let i = 0; i < P / 2; i++) {
+      const a = q[slots[2 * i] - 1] ?? null;
+      const b = q[slots[2 * i + 1] - 1] ?? null;
+      const m: BracketMatch = { id: uid(), a, b, winner: null, bye: !a || !b };
+      if (m.bye) m.winner = a || b;
+      round0.push(m);
+    }
   }
   const rounds: BracketMatch[][] = [round0];
-  let size = P / 2;
+  let size = round0.length;
   while (size > 1) {
-    size = size / 2;
-    rounds.push(Array.from({ length: size }, () => ({ id: uid(), a: null, b: null, winner: null, bye: false })));
+    const nextSize = Math.ceil(size / 2);
+    const round: BracketMatch[] = Array.from({ length: nextSize }, () => ({ id: uid(), a: null, b: null, winner: null, bye: false }));
+    // Effectif impair (compact uniquement, jamais en historique où chaque tour est déjà une
+    // puissance de 2) : le dernier match du tour précédent n'a pas de "partenaire" pour ce tour-ci —
+    // son vainqueur avance seul, exempt structurel résolu dès qu'il est connu (voir resolveBye,
+    // appelé par propagateBracket).
+    if (size % 2 === 1) round[nextSize - 1].b = BYE;
+    rounds.push(round);
+    size = nextSize;
   }
   // Une demi-finale n'existe que si le round precedant la finale compte deux matchs (P >= 4) —
   // a P = 2 il n'y a que la finale, personne a departager pour la 3e place.
@@ -714,11 +740,17 @@ export function buildBracket(ids: string[]): Bracket {
 
 export function propagateBracket(bracket: Bracket): void {
   const rounds = bracket.rounds;
-  for (let r = 0; r < rounds.length - 1; r++) {
+  // resolveBye avant de propager : un tour compact (voir buildBracket) peut avoir un match pré-câblé
+  // exempt (b: BYE, vainqueur inconnu à la construction) — résolu dès que son unique participant réel
+  // arrive du tour précédent. Traité tour par tour, dans l'ordre : chaque tour ne peut recevoir un
+  // gagnant que du précédent, déjà traité, donc une seule passe suffit à tout faire cascader.
+  for (let r = 0; r < rounds.length; r++) {
+    rounds[r].forEach((m) => resolveBye(m));
+    if (r + 1 >= rounds.length) continue;
     rounds[r].forEach((m, i) => {
       if (m.winner) {
         const target = rounds[r + 1][Math.floor(i / 2)];
-        if (i % 2 === 0) target.a = m.winner; else target.b = m.winner;
+        if (i % 2 === 0) placeSlot(target, 0, m.winner); else placeSlot(target, 1, m.winner);
       }
     });
   }
@@ -1069,7 +1101,7 @@ export function startFinals(t: Tournament, format?: FinalsFormat): void {
   } else if (fmt === 'double') {
     t.finals = buildDoubleElim(q);
   } else {
-    t.finals = { format: 'single', bracket: buildBracket(q) };
+    t.finals = { format: 'single', bracket: buildBracket(q, true) };
   }
   checkFinalsChampion(t);
 }

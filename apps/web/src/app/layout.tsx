@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import PwaSetup from "./pwa";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.miabe-esport.community";
 const TITLE = "Miabe Esport — Le hub de l'esport togolais";
@@ -22,6 +23,16 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
   },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION },
+  // iOS : icône d'écran d'accueil + affichage plein écran une fois ajouté à l'écran d'accueil.
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Miabe Esport", statusBarStyle: "black-translucent" },
+  applicationName: "Miabe Esport",
+};
+
+// Couleur de la barre d'état / de la fenêtre de l'application installée.
+export const viewport: Viewport = {
+  themeColor: "#0B0B11",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
@@ -37,7 +48,10 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaSetup />
+      </body>
     </html>
   );
 }

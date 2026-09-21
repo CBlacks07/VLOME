@@ -435,7 +435,8 @@ function initPoolDouble(pool) {
         pool.phase = 'done';
         return;
     }
-    pool.dbracket = buildDoubleElim(pool.order);
+    // Compact : un maximum de joueurs alignés dès le 1er tour du bracket vainqueurs (pas d’exempt tant que l’effectif est pair), comme le format principal Double élimination.
+    pool.dbracket = buildDoubleElim(pool.order, false, true);
     pool.phase = 'double';
     checkPoolDoubleChampion(pool); // couronne immédiatement les cas triviaux (2 joueurs : grande finale déjà en bye)
 }
@@ -1662,11 +1663,11 @@ function finalsMatchCount(q, format) {
 }
 /** Nombre de rencontres réelles (hors bye) d'un mini-bracket double élim de n joueurs, par catégorie —
  * simulé pour de vrai (comme finalsMatchCount) : jamais de sous-estimation, reset de grande finale inclus. */
-function doublePoolMatchCounts(n) {
+function doublePoolMatchCounts(n, compact = false) {
     if (n < 2)
         return { wb: 0, lb: 0, gf: 0 };
     const ids = Array.from({ length: n }, (_, i) => 'p' + i);
-    const f = buildDoubleElim(ids);
+    const f = buildDoubleElim(ids, false, compact); // compact = poules Survival en double élim (initPoolDouble) ; sinon bracket fusionné (launchGroupedDoubleElim)
     return {
         wb: f.wb.flat().filter(m => !m.bye).length,
         lb: f.lb.flat().filter(m => !m.bye).length,
@@ -1697,7 +1698,7 @@ function cagnotte(t) {
             surv += (n * (n - 1)) / 2;
         }
         else if (t.poolFormat === 'double') {
-            const c = doublePoolMatchCounts(n);
+            const c = doublePoolMatchCounts(n, true);
             surv += c.wb;
             los += c.lb;
             pf += c.gf;

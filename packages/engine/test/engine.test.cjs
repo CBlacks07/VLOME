@@ -214,3 +214,48 @@ test('Survival classique : le repêchage aligne un maximum de joueurs dès le 1e
     assert.equal(pool.phase, 'done', `n=${n} : poule terminée`);
   }
 });
+
+test('Poules en double élimination : un maximum de joueurs alignés au 1er tour du bracket vainqueurs, jusqu\'à la fin de la poule', () => {
+  const strategies = [(m) => m.a, (m) => m.b, (m, g) => (g % 3 === 0 ? m.b : m.a)];
+  for (const pick of strategies) {
+    for (let n = 3; n <= 20; n++) {
+      const t = E.newTournament({ format: 'survival', nbPools: 1, poolFormat: 'double' });
+      for (let i = 0; i < n; i++) E.addPlayer(t, 'D' + i);
+      E.distributePools(t);
+      E.launchTournament(t);
+      const pool = t.pools[0];
+      const round0 = pool.dbracket.wb[0];
+      const real = round0.filter((m) => !m.bye && !isBye(m.a) && !isBye(m.b)).length;
+      assert.equal(real, Math.floor(n / 2), `n=${n} : ${Math.floor(n / 2)} duels au 1er tour`);
+      assert.equal(round0.filter((m) => m.bye).length, n % 2, `n=${n} : exempt seulement si l'effectif est impair`);
+      const inR0 = new Set(round0.flatMap((m) => [m.a, m.b]).filter((id) => !isBye(id)));
+      assert.equal(inR0.size, n, `n=${n} : tous les joueurs sont alignés au 1er tour`);
+      for (let g = 0; g < 500 && pool.phase !== 'done'; g++) {
+        const m = E.currentMatch(pool);
+        assert.ok(m && !isBye(m.a) && !isBye(m.b), `n=${n} : jamais de match contre un exempt`);
+        E.reportResult(t, pool.id, pick(m, g), 2, 0);
+      }
+      assert.equal(pool.phase, 'done', `n=${n} : la poule doit se terminer`);
+      assert.ok(pool.top1 && pool.top2 && pool.top1 !== pool.top2, `n=${n} : deux finalistes distincts`);
+    }
+  }
+});
+
+test('Poules en double élimination : la cagnotte prévue ne sous-estime jamais les points réellement distribués', () => {
+  for (let n = 6; n <= 24; n += 2) {
+    for (const finalsFormat of ['single', 'double']) {
+      const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat: 'double', qualifyPerPool: 2, finalsFormat });
+      for (let i = 0; i < n; i++) E.addPlayer(t, 'C' + i);
+      E.distributePools(t);
+      E.launchTournament(t);
+      playPools(t);
+      assert.ok(t.pools.every((p) => p.phase === 'done'), `n=${n} : poules terminées`);
+      E.startFinals(t, finalsFormat);
+      playAll(t, (m, i) => (i % 3 === 0 ? m.b : m.a));
+      assert.equal(t.status, 'finished', `n=${n} finale ${finalsFormat} : terminé`);
+      const distributed = Object.values(t.points).reduce((a, b) => a + b, 0);
+      const programmed = E.cagnotte(t).programmed;
+      assert.ok(distributed <= programmed + 0.01, `n=${n} finale ${finalsFormat} : distribué ${distributed} <= prévu ${programmed}`);
+    }
+  }
+});

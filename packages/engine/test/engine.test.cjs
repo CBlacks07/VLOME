@@ -259,3 +259,35 @@ test('Poules en double élimination : la cagnotte prévue ne sous-estime jamais 
     }
   }
 });
+
+test('bracket simple : la petite finale n\'existe que si elle peut réellement se jouer (jamais de match fantôme)', () => {
+  for (let n = 2; n <= 40; n++) {
+    const t = launched('single', n);
+    playAll(t, (m) => m.a);
+    assert.equal(t.status, 'finished', `n=${n} : terminé`);
+    const tp = t.finals.bracket.thirdPlace;
+    if (!tp) continue;
+    assert.ok(!isBye(tp.a) && !isBye(tp.b), `n=${n} : la petite finale doit opposer deux vrais joueurs`);
+    assert.ok(E.reportFinals(t, tp.id, tp.a, 1, 0), `n=${n} : la petite finale doit pouvoir être jouée`);
+    assert.equal(tp.winner, tp.a);
+  }
+  // 12 joueurs : le tour 3 contient un exempt, donc un seul perdant de demi-finale -> pas de petite finale.
+  for (const n of [3, 5, 6, 10, 12]) assert.equal(launched('single', n).finals.bracket.thirdPlace, null, `n=${n} : pas de petite finale`);
+  // Effectifs dont les deux demi-finales sont de vrais matchs : la petite finale reste proposée.
+  for (const n of [4, 7, 8, 16]) assert.ok(launched('single', n).finals.bracket.thirdPlace, `n=${n} : petite finale conservée`);
+});
+
+test('phase finale en bracket simple après 2 poules de 6 qualifiés : 11 matchs, pas de petite finale, champion couronné', () => {
+  const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat: 'survival', qualifyPerPool: 6, finalsFormat: 'single' });
+  for (let i = 0; i < 24; i++) E.addPlayer(t, 'F' + i);
+  E.distributePools(t);
+  E.launchTournament(t);
+  playPools(t);
+  E.startFinals(t, 'single');
+  assert.equal(E.qualifiers(t).length, 12);
+  assert.equal(t.finals.bracket.thirdPlace, null);
+  assert.equal(t.finals.bracket.rounds[0].filter((m) => !m.bye).length, 6, 'six duels au 1er tour');
+  const played = playAll(t, (m) => m.a);
+  assert.equal(played, 11);
+  assert.ok(t.champion);
+});

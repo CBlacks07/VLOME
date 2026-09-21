@@ -667,7 +667,11 @@ function buildBracket(ids, compact = false) {
     // Egalement absente si l'une des deux demi-finales est un bye (ex. 3 participants -> P=4, une
     // demi n'a qu'un seul vrai joueur) : il n'y aurait alors qu'un seul perdant reel a en departager,
     // jamais deux -> mieux vaut ne pas creer un match qui resterait pour toujours injouable.
-    const thirdPlace = semis && semis.length === 2 && !semis[0].bye && !semis[1].bye
+    // Bracket compact : l’exempt d’un tour de taille impaire n’est pas encore marque `bye` a ce stade
+    // (il ne l’est qu’a la propagation, quand son unique joueur arrive) mais son 2e emplacement vaut deja
+    // BYE : sans ce test, une « petite finale » fantome etait creee pour 6, 10, 12 joueurs…
+    const isByeMatch = (m) => m.bye || m.a === exports.BYE || m.b === exports.BYE;
+    const thirdPlace = semis && semis.length === 2 && !isByeMatch(semis[0]) && !isByeMatch(semis[1])
         ? { id: uid(), a: null, b: null, winner: null, bye: false } : null;
     const bracket = { rounds, thirdPlace };
     propagateBracket(bracket);

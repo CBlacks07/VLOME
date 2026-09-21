@@ -1165,6 +1165,12 @@ function wizValidateStep(S: State) {
  * clic accidentel ; seule la croix ferme explicitement. */
 /** Libellé court de l'étape active, pour l'indicateur compact affiché à la place de la liste complète sous 1024px. */
 const WIZ_STEP_LABELS: Record<number, string> = { 1: "Infos générales", 2: "Participants", 3: "Poules", 4: "Barème des points", 5: "Validation" };
+/** « Événement : X » — rappelle dans quel événement le tournoi va être créé (vide pour un tournoi indépendant). */
+function wizEventNote(S: State): string {
+  if (!S.wizEventId || S.wizEditId) return "";
+  const ev = [S.eventDetail, S.eventManage, ...(S.myEvents ?? [])].find((e: Detail) => e && e.id === S.wizEventId);
+  return `<div style="margin-bottom:8px;color:#22D3EE;font-weight:700">Événement : ${escHtml(ev?.name || "sélectionné")}</div>`;
+}
 function tournamentWizard(S: State) {
   const editing = !!S.wizEditId;
   const body = [wizInfosStep, wizParticipantsStep, wizPoolsStep, wizScoringStep, wizValidateStep][S.wizStep - 1](S);
@@ -1186,7 +1192,7 @@ function tournamentWizard(S: State) {
         </div>
         ${wizSteps(S)}
         <div style="flex:1"></div>
-        <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">Format : <b style="color:#8E8FA6">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : ""}</div>
+        <div style="padding:14px 18px 18px;border-top:1px solid #1B1B27;font-size:11px;color:#5D5E72;line-height:1.6">${wizEventNote(S)}Format : <b style="color:#8E8FA6">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : ""}</div>
       </div>
       <div class="wiz-body" style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
     </div>
@@ -4462,7 +4468,7 @@ function pEvenements(S: State) {
   const list = S.events;
   const manage = canManage(S);
   const head = railPageHead("Événements", "Compétitions, LAN et rendez-vous de la communauté : chaque événement regroupe un ou plusieurs tournois, parfois en même temps.",
-    manage ? `<button data-admintab="events" data-go="profil" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Gérer mes événements</button>` : "");
+    manage ? `<button data-evlist="1" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Gérer mes événements</button>` : "");
   const body = list === null
     ? `<div style="color:#8E8FA6;text-align:center;padding:60px 0">Chargement des événements…</div>`
     : list.length
@@ -4483,7 +4489,7 @@ function pEvenement(S: State) {
   const chips = meta.map((m, i) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;color:#E8E9F4;background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 13px;backdrop-filter:blur(6px)">${escHtml(m)}</span>`).join("");
   const actions = isOwner
     ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-        <button data-evedit="${ev.id}" data-go="profil" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Gérer l'événement</button>
+        <button data-evedit="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Gérer l'événement</button>
         <button data-act="create-open" data-evid="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi ici</button>
         ${ev.status !== "PUBLISHED" ? `<span style="align-self:center;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FBBF24">Brouillon — non visible du public</span>` : ""}
       </div>` : "";
@@ -4507,7 +4513,8 @@ function pEvenement(S: State) {
   const grid = tournaments.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px">${tournaments.map((t) => tournCard(t, false)).join("")}</div>`
     : `<div style="color:#5D5E72;font-size:14px;padding:26px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
-  return hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}
+  const wizard = S.creating && canManage(S) ? tournamentWizard(S) : "";
+  return wizard + hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1.2px;margin:0 0 16px">Tournois de l'événement <span style="color:#5D5E72;font-size:20px">${tournaments.length}</span></h2>${grid}</div>`;
 }
 
@@ -5802,12 +5809,13 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
     else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
     else if (S.page === "auth") hash = "#connexion";
+    else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
     else return;
     // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
     if (window.location.hash !== hash) history.pushState(null, "", hash);
-  }, [S.page, S.openId, S.openEventId]);
+  }, [S.page, S.openId, S.openEventId, S.adminTab]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
   // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
@@ -6053,6 +6061,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h === "#connexion") { setS((s) => ({ ...s, page: "auth", authTab: "login" })); return; }
     if (h === "#inscription") { setS((s) => ({ ...s, page: "auth", authTab: "register" })); return; }
     if (h === "#panier") { setS((s) => ({ ...s, cartOpen: true, cartItems: [{ name: "Maillot officiel Miabe", price: 15000 }, { name: "Casquette Miabe", price: 8000 }] })); return; }
+    // Console : #profil/<onglet> rouvre directement l'onglet où l'on était (un rechargement ne renvoie plus à l'aperçu).
+    if (h.startsWith("#profil/")) {
+      const tab = decodeURIComponent(h.slice(8));
+      setS((s) => ({ ...s, page: "profil", adminTab: tab }));
+      if (tab === "joueurs") loadRoster();
+      if (tab === "events") loadMyEvents();
+      return;
+    }
     const key = h.replace(/^#/, "");
     if (SIMPLE_PAGES.includes(key)) setS((s) => ({ ...s, page: key }));
   }
@@ -6233,14 +6249,16 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         return;
       }
       const created = await r.json();
+      const backToEvent = S.wizEventId ? { id: S.wizEventId, publicPage: S.page === "evenement" } : null;
       await loadTournaments();
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
         wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
-      if (created?.id) openDetail(created.id);
       loadEvents(); loadMyEvents();
+      if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
+      else if (created?.id) openDetail(created.id);
     } catch {
       setS((s) => ({ ...s, busy: false }));
       alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");
@@ -6307,7 +6325,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-openevent],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6636,6 +6654,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.openevent) openEvent(d.openevent);
+    else if (d.evlist) { setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" })); window.scrollTo({ top: 0 }); loadMyEvents(); }
     else if (d.evnew) setS((s) => ({ ...s, eventEdit: { id: null, name: "", tagline: "", description: "", startDate: null, endDate: null, place: "", accentColor: "", status: "DRAFT", posterUrl: null, bannerUrl: null }, eventManage: null, eventMsg: "" }));
     else if (d.evedit) openEventEditor(d.evedit);
     else if (d.evcancel) setS((s) => ({ ...s, eventEdit: null, eventManage: null, eventMsg: "" }));

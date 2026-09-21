@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 /** URL d'un média envoyé (image/vidéo) : le stockage objet (Vercel Blob) renvoie déjà une URL absolue,
@@ -4419,6 +4419,62 @@ export default function Page() {
   const pageChanged = prevPage.current !== S.page;
   useEffect(() => { prevPage.current = S.page; });
 
+  // Le HTML injecté est entièrement recréé à chaque rendu : les zones défilantes internes (bracket,
+  // centre de la régie, listes) retomberaient en haut. On mémorise donc leur dernière position (écoute
+  // des événements scroll, pas une lecture au rendu qui peut tomber entre deux remplacements du DOM)
+  // puis on la rétablit après chaque remplacement, tant qu'on reste sur la même page.
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Éléments repérés par id / classe / style (+ rang parmi les identiques), pas par position dans le
+  // DOM : le nombre d'éléments qui les précèdent change d'un rendu à l'autre (rail, bannière…).
+  const scrollKey = (el: HTMLElement) => el.id || el.getAttribute("class") || `${el.tagName}|${(el.getAttribute("style") || "").slice(0, 60)}`;
+  const scrollMem = useRef<{ page: string; win: number; pos: Map<string, [number, number]> }>({ page: S.page, win: 0, pos: new Map() });
+  if (scrollMem.current.page !== S.page) scrollMem.current = { page: S.page, win: 0, pos: new Map() };
+  useEffect(() => {
+    let raf = 0;
+    const record = () => {
+      raf = 0;
+      const root = rootRef.current;
+      if (!root) return;
+      const pos = new Map<string, [number, number]>();
+      const seen: Record<string, number> = {};
+      root.querySelectorAll<HTMLElement>("*").forEach((el) => {
+        const k = scrollKey(el);
+        const n = (seen[k] = (seen[k] ?? -1) + 1);
+        if (el.scrollTop > 0 || el.scrollLeft > 0) pos.set(`${k} ${n}`, [el.scrollTop, el.scrollLeft]);
+      });
+      scrollMem.current.pos = pos;
+      scrollMem.current.win = window.scrollY;
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(record); };
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => { window.removeEventListener("scroll", onScroll, true); if (raf) cancelAnimationFrame(raf); };
+  }, []);
+  const restoreScroll = () => {
+    const mem = scrollMem.current;
+    if (!rootRef.current || mem.page !== S.page) return;
+    const seen: Record<string, number> = {};
+    rootRef.current.querySelectorAll<HTMLElement>("*").forEach((el) => {
+      const k = scrollKey(el);
+      const n = (seen[k] = (seen[k] ?? -1) + 1);
+      const v = mem.pos.get(`${k} ${n}`);
+      if (v && (el.scrollTop !== v[0] || el.scrollLeft !== v[1])) { el.scrollTop = v[0]; el.scrollLeft = v[1]; }
+    });
+    // Sur mobile c'est la page entière qui défile (panneaux « Match en cours » empilés) : idem.
+    if (mem.win > 0 && Math.abs(window.scrollY - mem.win) > 1) window.scrollTo({ top: mem.win, behavior: "instant" as ScrollBehavior });
+  };
+  const restoreScrollRef = useRef(restoreScroll);
+  restoreScrollRef.current = restoreScroll;
+  useLayoutEffect(() => { restoreScrollRef.current(); }, [html]);
+  // Filet : le contenu peut aussi être remplacé hors d'un rendu de ce composant (recréation du DOM par
+  // React lui-même) ; on rétablit alors la position dès que les enfants de la racine changent.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const mo = new MutationObserver(() => restoreScrollRef.current());
+    mo.observe(root, { childList: true });
+    return () => mo.disconnect();
+  }, []);
+
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
     setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
@@ -6458,6 +6514,7 @@ export default function Page() {
 
   return (
     <div
+      ref={rootRef}
       style={{
         minHeight: "100vh",
         background:

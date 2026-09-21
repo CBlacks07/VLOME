@@ -882,6 +882,11 @@ function wizPoolsStep(S: State) {
   // "qualifiés" à départager (tout le monde y entre dès le 1er tour) ni de format de phase finale à
   // choisir (ce sera toujours ce même bracket, jusqu'au bout).
   const isDoubleMerged = !isSurvival && d.poolFormat === "double";
+  // Round Robin et Double élim, choisis comme format principal à l'étape 1, SONT eux-mêmes des modes
+  // de poule valides (voir wizFormat côté clic) : redemander "Mode des poules" ici serait une
+  // question redondante — seul Bracket simple garde un vrai choix indépendant (poules Round Robin ou
+  // Double élim menant à une finale Bracket simple, le besoin d'origine de cette indépendance).
+  const poolModeImplied = !isSurvival && (d.format === "ROUND_ROBIN" || d.format === "DOUBLE_ELIM");
   // Le nombre de qualifiés n'est vraiment borné qu'en dehors du Round Robin (2 : vainqueur +
   // finaliste, structurel). En Round Robin, aucun plafond produit : à toi de choisir, jusqu'à
   // l'effectif de la plus petite poule.
@@ -901,7 +906,7 @@ function wizPoolsStep(S: State) {
     <p style="color:#8E8FA6;font-size:13px;line-height:1.7">Répartition automatique équilibrée : <b id="wiz-pools-sizes" style="color:#F4F5FB">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}. L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
     <div id="wiz-pools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${poolSizeBoxesHtml(sizes)}</div>
     <p id="wiz-nopool-warning" style="${!isSurvival && d.nbPools === 1 ? "" : "display:none;"}color:#FBBF24;font-size:11.5px;margin-top:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${ic(I.warn, 12)} Avec une seule poule il n'y a pas de phase de groupes : tous les participants vont directement en <span id="wiz-nopool-format">${escHtml(formatLabel)}</span>, opposés au hasard. Choisis plusieurs poules ci-dessus pour ajouter une phase de groupes avant.</p>
-    <div id="wiz-poolmode-block" style="${isSurvival || d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
+    <div id="wiz-poolmode-block" style="${(isSurvival || d.nbPools > 1) && !poolModeImplied ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:#8E8FA6;font-weight:650;margin-bottom:8px">Mode des poules</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${wizPoolModes(d.format).map(([key, label]) => {
@@ -1067,8 +1072,11 @@ function wizValidateStep(S: State) {
   // distincts, un seul grand bracket continu (voir Engine.launchGroupedDoubleElim) — ces deux lignes
   // n'ont alors rien à annoncer.
   const isDoubleMerged = pooled && !isSurvival && d.poolFormat === "double";
+  // Round Robin/Double élim : le mode de poule est déjà le format principal affiché plus haut (voir
+  // wizPoolsStep, poolModeImplied) — redondant à répéter ici.
+  const poolModeImplied = pooled && !isSurvival && (d.format === "ROUND_ROBIN" || d.format === "DOUBLE_ELIM");
   const poolRows = pooled && !isSurvival
-    ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1])
+    ? (poolModeImplied ? "" : row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]))
       + (isDoubleMerged ? "" : row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.poolFormat, d.players.length, d.nbPools))))
         + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]))
     : "";
@@ -5360,12 +5368,16 @@ export default function Page() {
         // "format de la phase finale" n'ont de sens (voir wizPoolsStep) — masqués aussi ici pour
         // rester cohérent si "Nombre de poules" change après avoir déjà choisi ce mode.
         const isDoubleMerged = !isSurv && S.wizData.poolFormat === "double";
+        // Round Robin/Double élim comme format principal impliquent eux-mêmes le mode de poule (voir
+        // wizPoolsStep, poolModeImplied) : le picker "Mode des poules" reste masqué même si "Nombre
+        // de poules" repasse au-dessus de 1.
+        const poolModeImplied = !isSurv && (S.wizData.format === "ROUND_ROBIN" || S.wizData.format === "DOUBLE_ELIM");
         const warn = document.getElementById("wiz-nopool-warning");
         const modeBlock = document.getElementById("wiz-poolmode-block");
         const qualifyBlock = document.getElementById("wiz-qualify-block");
         const finalsFmtBlock = document.getElementById("wiz-finalsformat-block");
         if (warn) warn.style.display = (!isSurv && n === 1) ? "" : "none";
-        if (modeBlock) modeBlock.style.display = (isSurv || n > 1) ? "" : "none";
+        if (modeBlock) modeBlock.style.display = (isSurv || n > 1) && !poolModeImplied ? "" : "none";
         if (qualifyBlock) qualifyBlock.style.display = (isSurv || n > 1) && !isDoubleMerged ? "" : "none";
         if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 && !isDoubleMerged ? "" : "none";
         // Le plafond "Qualifiés par poule" suit l'effectif de la plus petite poule (Round Robin) ou
@@ -5895,13 +5907,17 @@ export default function Page() {
     else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => {
-      // Choisir un format autre que Survival ne doit jamais laisser poolFormat bloqué sur "survival"
-      // (défaut initial du formulaire) : ce mode de poule est masqué hors Survival (voir
-      // wizPoolModes), donc aucun bouton "Mode des poules" ne serait actif et "Qualifiés par poule"
-      // resterait coincé sur l'UI à 2 maximum — exactement le bug qui empêchait de qualifier 5
-      // joueurs sur 10 par poule pour une finale Double élimination. Round Robin devient le mode de
-      // poule par défaut dès qu'on quitte Survival : c'est le seul à qualifier plus de 2 par poule.
-      const nextPoolFormat = d.wizformat === "SURVIVAL" ? s.wizData.poolFormat : (s.wizData.poolFormat === "survival" ? "roundrobin" : s.wizData.poolFormat);
+      // Round Robin et Double élim SONT eux-mêmes des modes de poule valides : redemander "Mode des
+      // poules" séparément serait une question redondante (voir wizPoolsStep, poolModeImplied) — le
+      // mode de poule suit alors automatiquement le format choisi ici, sans repasser par ce picker.
+      // Bracket simple n'a pas cette correspondance directe : il garde un vrai choix de mode de poule
+      // (jamais "survival", masqué hors Survival — voir wizPoolModes) — Round Robin par défaut, seul
+      // mode à qualifier plus de 2 par poule (c'était le bug qui empêchait de qualifier 5 joueurs sur
+      // 10 par poule pour une finale Double élimination).
+      const nextPoolFormat = d.wizformat === "SURVIVAL" ? s.wizData.poolFormat
+        : d.wizformat === "ROUND_ROBIN" ? "roundrobin"
+        : d.wizformat === "DOUBLE_ELIM" ? "double"
+        : (s.wizData.poolFormat === "survival" ? "roundrobin" : s.wizData.poolFormat);
       const nextNbPools = d.wizformat === "SURVIVAL" ? 2 : d.wizformat === "BATTLE_ROYALE" ? s.wizData.nbPools : 1;
       const maxQ = wizMaxQualify(nextPoolFormat, s.wizData.players.length, nextNbPools);
       // Format de la phase finale : par défaut celui du format principal (même règle que le moteur,

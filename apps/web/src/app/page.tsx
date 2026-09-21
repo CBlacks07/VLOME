@@ -2933,7 +2933,27 @@ function getActiveMatches(S: State, t: Detail): ActiveMatch[] {
     let chosen = S.activeMatchIds
       .map((id) => findFinalsMatchById(t.finals, id))
       .filter((m): m is Detail => !!m && m.playable);
-    if (!chosen.length) { const m = findPlayableFinalsMatch(t.finals); if (m) chosen = [m]; }
+    if (t.finals.format === "double") {
+      // Bracket vainqueurs et bracket perdants avancent réellement en parallèle (voir
+      // Engine.buildDoubleElim) : un défaut PAR bracket, pas un seul défaut global qui masquerait
+      // les perdants tant qu'il reste un match jouable côté vainqueurs (et vice-versa) — sinon
+      // rapporter un match du bas retombe sur un match du haut au lieu du suivant en bas.
+      // t.finals.wb/lb : [{label, matches}, ...] (voir TournamentsService.serializeFinals) — pas
+      // directement un tableau de matchs, il faut descendre par .matches.
+      const findIn = (rounds: Detail[]): Detail | null => {
+        for (const round of rounds || []) for (const m of round.matches || []) if (m && m.playable) return m;
+        return null;
+      };
+      const inWb = (id: string) => (t.finals.wb || []).some((round: Detail) => (round.matches || []).some((m: Detail) => m.matchId === id));
+      const inLb = (id: string) => (t.finals.lb || []).some((round: Detail) => (round.matches || []).some((m: Detail) => m.matchId === id));
+      if (!chosen.some((m) => inWb(m.matchId))) { const m = findIn(t.finals.wb); if (m) chosen.push(m); }
+      if (!chosen.some((m) => inLb(m.matchId))) { const m = findIn(t.finals.lb); if (m) chosen.push(m); }
+      // Aucun des deux (les deux brackets sont épuisés) : ne reste que la grande finale, couverte
+      // par le repli générique ci-dessous.
+      if (!chosen.length) { const m = findPlayableFinalsMatch(t.finals); if (m) chosen = [m]; }
+    } else if (!chosen.length) {
+      const m = findPlayableFinalsMatch(t.finals); if (m) chosen = [m];
+    }
     const seen = new Set<string>();
     chosen = chosen.filter((m) => (seen.has(m.matchId) ? false : (seen.add(m.matchId), true)));
     return chosen.map((m) => ({ kind: "finals" as const, matchId: m.matchId, aId: m.aId, aName: m.aName, bId: m.bId, bName: m.bName }));
@@ -4248,11 +4268,24 @@ function pShow(S: State) {
     if (playable.length) slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Match en direct", body: showMatchesFocus(playable.slice(0, 3)) });
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
+  } else if (t.finals.format === "double") {
+    // Bracket vainqueurs et bracket perdants avancent réellement en parallèle (voir
+    // Engine.buildDoubleElim, régie : getActiveMatches) : on montre TOUS les duels actuellement
+    // jouables des deux côtés à la fois, pas seulement trois au hasard de l'ordre de construction —
+    // sinon un round à plusieurs matchs simultanés côté vainqueurs pouvait masquer entièrement le
+    // seul match en cours côté perdants (et inversement).
+    phaseLabel = "Double élimination";
+    // finalsLabelledMatches distingue déjà vainqueurs/perdants dans le libellé (ex. "Winners ·
+    // Demi-finales" vs "Perdants · Round 2") : conservé tel quel, pas besoin de le recalculer.
+    const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable)
+      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label }));
+    slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable) });
+    const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
+    if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
   } else {
-    // single / double élimination.
-    phaseLabel = t.finals.format === "double" ? "Double élimination" : "Élimination simple";
-    // Les affiches décisives (grande finale, finales de bracket) passent devant : elles arrivent en
-    // fin de liste, or seules les trois premières sont affichées.
+    // single élimination : un seul bracket, pas de section à équilibrer — les trois affiches les
+    // plus décisives (les plus tardives dans l'arbre) suffisent.
+    phaseLabel = "Élimination simple";
     const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable).reverse()
       .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label }));
     slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable.slice(0, 3)) });

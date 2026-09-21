@@ -257,3 +257,18 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .pa-bracketwrap { overflow: visible; width: 100%; }
   .pa-foot { text-align: center; color: #5D5E72; font-size: 10px; margin-top: 18px; border-top: 1px solid #282838; padding-top: 8px; }
 }
+
+/* Accueil sur téléphone : une section qui est seule sur sa ligne occupe toute la largeur de l'écran — pas de
+   marge latérale, pas de bordure ni de coins arrondis sur les côtés. Le contenu des sections garde son propre
+   remplissage ; les éléments sans cadre (titres, grilles de cartes) gardent une gouttière de 16 px. */
+@media (max-width: 640px) {
+  .home-main { padding-left: 0 !important; padding-right: 0 !important; padding-top: 0 !important; }
+  .home-main > [style*="border:1px solid"],
+  .home-main > section > [style*="border:1px solid"] {
+    border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important;
+  }
+  .home-main > section.grid2 { gap: 0 !important; }
+  .home-main > section.grid2b { gap: 0 !important; }
+  .home-main > :not(section):not([style*="border:1px solid"]) { padding-left: 16px !important; padding-right: 16px !important; }
+  .home-main > [style*="border:1px solid"] { margin-left: 0 !important; margin-right: 0 !important; }
+}

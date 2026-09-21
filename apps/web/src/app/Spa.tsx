@@ -402,9 +402,9 @@ function railMobileBars(S: State, activeKey: string): string {
   </div>`;
   const tabs = RAIL_NAV.map(([key, label, icon]) => {
     const on = key === activeKey;
-    return `<button data-go="${key}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1;height:100%;border:0;background:transparent;cursor:pointer">
+    return `<button data-go="${key}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;height:100%;border:0;background:transparent;cursor:pointer;padding:0 1px">
       <span style="color:${on ? "#22D3EE" : "#8E8FA6"}">${ic(icon, 19)}</span>
-      <span style="font-size:9px;font-weight:${on ? 800 : 700};letter-spacing:.3px;color:${on ? "#22D3EE" : "#8E8FA6"};text-transform:uppercase">${label}</span>
+      <span style="font-size:8.5px;font-weight:${on ? 800 : 700};letter-spacing:0;color:${on ? "#22D3EE" : "#8E8FA6"};text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
     </button>`;
   }).join("");
   const bottom = `<div class="rail-mobile-bottom" style="position:fixed;left:0;right:0;bottom:0;z-index:45;height:64px;border-top:1px solid #1B1B27;background:rgba(11,11,17,.96);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">${tabs}</div>`;
@@ -593,7 +593,7 @@ function pAccueil(S: State) {
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid #282838;border-radius:16px;background:#0E0E16;padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#8E8FA6;font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div><div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:12px;height:68px;padding:0 22px;border:1px solid #282838;border-radius:13px;background:#14141D;color:#8E8FA6;font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="width:42px;height:42px;object-fit:contain;border-radius:8px" />` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
+  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
 
 /* ================= Assistant de création de tournoi (5 étapes) ================= */

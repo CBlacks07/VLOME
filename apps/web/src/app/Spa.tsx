@@ -288,12 +288,17 @@ function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: num
     else if (poolFormat === "double") { surv += n - 1; los += Math.max(0, n - 2); pf += 2; }
     else { surv += n - 1; los += Math.max(0, n - 2); pf += 1; }
   });
-  // Qualifiés : N par poule, borné par ce que le mode sait départager et par l effectif de la poule
-  // (miroir de Engine.cagnotte) — auparavant figé à 2, ce qui sous-estimait la phase finale.
-  const perPool = Math.min(qualifyPerPool || 2, poolFormat === "roundrobin" ? 4 : 2);
+  // Qualifiés : N par poule, borné seulement par l effectif de la poule, quel que soit le mode de
+  // poule (miroir de Engine.cagnotte) — auparavant figé à 2 (ou 4 en Round Robin), ce qui sous-estimait
+  // la phase finale dès qu'on en qualifiait davantage.
+  const perPool = qualifyPerPool || 2;
   const q = sizes.filter((n) => n >= 2).reduce((acc, n) => acc + Math.min(perPool, n), 0)
     + sizes.filter((n) => n === 1).length;
-  const finalsMatches = finalsMatchesPreview(q, finalsFormat);
+  // Phase finale en Survival : une grande poule Survival réunissant tous les qualifiés (voir
+  // Engine.startFinalsSurvivalPool) — ses matchs se paient aux tarifs de poule (survWin/loserWin/
+  // poolFinalWin), pas au tarif finalsWin, et elle compte comme une poule de plus pour le bonus striker.
+  const finalsMatches = finalsFormat === "survival" ? 0 : finalsMatchesPreview(q, finalsFormat);
+  if (finalsFormat === "survival" && q >= 2) { surv += q - 1; los += Math.max(0, q - 2); pf += 1; nRealPools++; }
   const streakBonus = scoring.streakBonus ?? 0;
   const breakdown = {
     survWin: { matches: surv, pts: Math.round(surv * scoring.survWin * 100) / 100 },
@@ -1126,7 +1131,11 @@ function wizValidateStep(S: State) {
       + (isDoubleMerged ? "" : row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools))))
         + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]))
     : "";
-  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", "Top 1 + Top 2 de chaque poule → phase finale") : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
+  // Nombre de qualifiés réellement choisi (étape Poules), borné comme à la saisie — et non plus
+  // "Top 1 + Top 2" écrit en dur, faux dès qu'on en qualifie un autre nombre.
+  const qualifN = Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools));
+  const qualifSurvivalLabel = `${qualifN === 1 ? "Le 1er" : `Les ${qualifN} premiers`} de chaque poule (${qualifN * d.nbPools} qualifié${qualifN * d.nbPools > 1 ? "s" : ""} au total) → phase finale`;
+  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).

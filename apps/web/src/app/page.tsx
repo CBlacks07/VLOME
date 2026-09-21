@@ -4097,7 +4097,7 @@ function playerDetailModal(S: State) {
 function confirmModal(S: State) {
   const c = S.confirmBox;
   if (!c) return "";
-  const danger = c.action !== "logout";
+  const danger = c.action !== "logout" && !(c.action.startsWith("setrole|") && !c.action.endsWith("|ADMIN"));
   const okColor = danger
     ? "background:linear-gradient(135deg,#FB7185,#e35065);color:#fff"
     : "background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a";
@@ -6328,7 +6328,14 @@ export default function Page() {
     else if (d.authTab) setS((s) => ({ ...s, authTab: d.authTab as State["authTab"], authError: "", authNotice: "" }));
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
-    else if (d.setrole) { const [uid, role] = d.setrole.split("|"); setRole(uid, role); }
+    else if (d.setrole) {
+      const [uid, role] = d.setrole.split("|");
+      const u = S.admin?.users.find((x: Detail) => x.id === uid);
+      if (!u || u.role === role) return; // rôle déjà actif : rien à confirmer
+      const who = `« ${u.displayName || "Ce compte"} » (${u.email || ""})`;
+      const extra = role === "ADMIN" ? " Il aura accès à toute l'administration du site (utilisateurs, paiements, commandes…)." : u.role === "ADMIN" ? " Il perdra l'accès à l'administration." : "";
+      setS((s) => ({ ...s, confirmBox: { title: "Changer le rôle", message: `${who} passera de ${ROLE_LABEL[u.role] || u.role} à ${ROLE_LABEL[role] || role}.${extra}`, okLabel: "Confirmer le changement", action: `setrole|${uid}|${role}` } }));
+    }
     else if (d.userpwd) {
       const u = S.admin?.users.find((x: Detail) => x.id === d.userpwd);
       setS((s) => ({ ...s, confirmBox: { title: "Réinitialiser le mot de passe", message: `Un mot de passe temporaire sera généré pour « ${u?.displayName || "ce compte"} » (${u?.email || ""}). Son ancien mot de passe cessera immédiatement de fonctionner.`, okLabel: "Réinitialiser", action: `userpwd|${d.userpwd}` } }));
@@ -6455,6 +6462,7 @@ export default function Page() {
         else if (kind === "newsdel") adminAct(`news/${arg}`, "DELETE");
         else if (kind === "proddel") adminAct(`products/${arg}`, "DELETE");
         else if (kind === "gallerydel") deleteGalleryItem(arg);
+        else if (kind === "setrole") { const [uid, role] = arg.split("|"); setRole(uid, role); }
         else if (kind === "userdel") adminAct(`users/${arg}`, "DELETE");
         else if (kind === "userpwd") resetUserPassword(arg);
         else if (kind === "albumdel") deleteAlbum(arg);

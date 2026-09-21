@@ -130,6 +130,7 @@ export interface DoubleFinals {
     gf2: BracketMatch | null;
     wbChampion: string | null;
     lbChampion: string | null;
+    seeded?: boolean;
 }
 /** Une ronde = les matchs de cette ronde (appariements). Les rondes précédentes sont conservées pour l'historique/l'affiche. */
 export interface SwissFinals {
@@ -342,6 +343,20 @@ export declare function reportResult(t: Tournament, poolId: string, winnerId: st
 } | null;
 export declare function allPoolsDone(t: Tournament): boolean;
 export declare function qualifiers(t: Tournament): string[];
+/** Comme qualifiers(), mais scindé en deux moitiés — voir startFinals (finalsFormat 'double') et
+ *  buildDoubleElimSeeded : les mieux classés de chaque poule ("top", moitié supérieure arrondie au-
+ *  dessus si effectif impair) entrent dans le bracket vainqueurs comme d'habitude ; les moins bien
+ *  classés ("bottom") entrent DIRECTEMENT dans le bracket perdants, comme s'ils avaient déjà perdu
+ *  une fois — évite de rejouer d'entrée les confrontations déjà vues en poule, et récompense la
+ *  meilleure moitié de poule par un vrai avantage (une défaite de plus en réserve) plutôt qu'un
+ *  simple ordre de tête de série. Chaque moitié est ordonnée poule par poule, rang par rang (A,B,C,D,
+ *  A,B,C,D…) avant le placement en tête de série (seedSlots, dans buildDoubleElimSeeded) : deux
+ *  qualifiés d'une même poule ne peuvent donc jamais se retrouver l'un contre l'autre au 1er tour de
+ *  leur moitié. */
+export declare function qualifiersSplit(t: Tournament): {
+    top: string[];
+    bottom: string[];
+};
 /** Classement round robin : victoires puis différence de manches puis points. */
 export declare function rrRanking(t: Tournament): {
     id: string;

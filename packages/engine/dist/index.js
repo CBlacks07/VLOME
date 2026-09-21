@@ -47,6 +47,7 @@ exports.currentMatch = currentMatch;
 exports.reportResult = reportResult;
 exports.allPoolsDone = allPoolsDone;
 exports.qualifiers = qualifiers;
+exports.qualifiersSplit = qualifiersSplit;
 exports.rrRanking = rrRanking;
 exports.startFinals = startFinals;
 exports.allFinalsMatches = allFinalsMatches;
@@ -906,6 +907,37 @@ function qualifiers(t) {
     }
     return out.filter(id => !t.disqualified.includes(id));
 }
+/** Comme qualifiers(), mais scindé en deux moitiés — voir startFinals (finalsFormat 'double') et
+ *  buildDoubleElimSeeded : les mieux classés de chaque poule ("top", moitié supérieure arrondie au-
+ *  dessus si effectif impair) entrent dans le bracket vainqueurs comme d'habitude ; les moins bien
+ *  classés ("bottom") entrent DIRECTEMENT dans le bracket perdants, comme s'ils avaient déjà perdu
+ *  une fois — évite de rejouer d'entrée les confrontations déjà vues en poule, et récompense la
+ *  meilleure moitié de poule par un vrai avantage (une défaite de plus en réserve) plutôt qu'un
+ *  simple ordre de tête de série. Chaque moitié est ordonnée poule par poule, rang par rang (A,B,C,D,
+ *  A,B,C,D…) avant le placement en tête de série (seedSlots, dans buildDoubleElimSeeded) : deux
+ *  qualifiés d'une même poule ne peuvent donc jamais se retrouver l'un contre l'autre au 1er tour de
+ *  leur moitié. */
+function qualifiersSplit(t) {
+    const n = clampQualifyPerPool(t.qualifyPerPool);
+    const perPool = t.pools.map(p => (p.qualified && p.qualified.length
+        ? p.qualified
+        : [p.top1, p.top2].filter(Boolean)).slice(0, n));
+    const topPerPool = perPool.map(q => q.slice(0, Math.ceil(q.length / 2)));
+    const bottomPerPool = perPool.map(q => q.slice(Math.ceil(q.length / 2)));
+    const interleave = (rows) => {
+        const cap = rows.reduce((m, r) => Math.max(m, r.length), 0);
+        const out = [];
+        for (let rank = 0; rank < cap; rank++)
+            rows.forEach(row => { if (row[rank])
+                out.push(row[rank]); });
+        return out;
+    };
+    const isQualified = (id) => !t.disqualified.includes(id);
+    return {
+        top: interleave(topPerPool).filter(isQualified),
+        bottom: interleave(bottomPerPool).filter(isQualified),
+    };
+}
 function buildRoundRobin(ids) {
     const matches = [];
     for (let i = 0; i < ids.length; i++)
@@ -1014,6 +1046,58 @@ function buildDoubleElim(ids, adjacentPairing = false) {
     propagateDouble(fin);
     return fin;
 }
+/** Double élimination à entrée scindée (voir qualifiersSplit) : `topIds` entre dans le bracket
+ *  vainqueurs comme d'habitude, `bottomIds` entre DIRECTEMENT dans le bracket perdants (1er tour),
+ *  comme s'ils avaient déjà perdu une fois.
+ *
+ *  Le bracket perdants est dimensionné exactement comme celui d'une double élimination classique à
+ *  2×Ptop participants (Ptop = puissance de 2 du bracket vainqueurs), sauf que son tout premier tour
+ *  — qui recevrait normalement les perdants d'un "tour -1" fictif du bracket vainqueurs — est peuplé
+ *  directement par les qualifiés "bottom". propagateDouble(fin, true) route alors chaque tour réel du
+ *  bracket vainqueurs un cran plus loin dans le bracket perdants (voir son commentaire) pour laisser
+ *  la place à ce tour supplémentaire. Dégénère naturellement en double élimination classique quand
+ *  `bottomIds` est vide (tous les matchs du 1er tour perdants sont alors des exempts BYE vs BYE,
+ *  résolus instantanément par resolveBye — les perdants du bracket vainqueurs s'y retrouvent alors
+ *  entre eux exactement comme avant). */
+function buildDoubleElimSeeded(topIds, bottomIds) {
+    const Ptop = Math.max(2, nextPow2(topIds.length));
+    const seedsTop = topIds.slice();
+    while (seedsTop.length < Ptop)
+        seedsTop.push(exports.BYE);
+    const R = Math.round(Math.log2(Ptop));
+    const mk = () => ({ id: uid(), a: null, b: null, winner: null, bye: false });
+    const wb = [];
+    const slotsTop = seedSlots(Ptop);
+    const r0 = [];
+    for (let i = 0; i < Ptop / 2; i++)
+        r0.push({ id: uid(), a: seedsTop[slotsTop[2 * i] - 1], b: seedsTop[slotsTop[2 * i + 1] - 1], winner: null, bye: false });
+    wb.push(r0);
+    let size = Ptop / 2;
+    for (let r = 1; r < R; r++) {
+        size = size / 2;
+        wb.push(Array.from({ length: size }, mk));
+    }
+    const lb = [];
+    const lbCount = Math.max(0, 2 * (R + 1) - 2);
+    for (let e = 0; e < lbCount; e++) {
+        const k = Math.floor(e / 2);
+        const s = Math.max(1, (Ptop * 2) / Math.pow(2, k + 2));
+        lb.push(Array.from({ length: s }, mk));
+    }
+    if (lb.length) {
+        const seedsBottom = bottomIds.slice();
+        while (seedsBottom.length < Ptop)
+            seedsBottom.push(exports.BYE);
+        const slotsBottom = seedSlots(Ptop);
+        lb[0].forEach((m, i) => {
+            m.a = seedsBottom[slotsBottom[2 * i] - 1];
+            m.b = seedsBottom[slotsBottom[2 * i + 1] - 1];
+        });
+    }
+    const fin = { format: 'double', wb, lb, gf: mk(), gf2: null, wbChampion: null, lbChampion: null, seeded: true };
+    propagateDouble(fin, true);
+    return fin;
+}
 /** Construit la liste de seeds (avec BYE) d'un bracket de poules en double élimination FUSIONNÉ :
  *  chaque poule se résout d'abord entièrement en interne (uniquement ses propres joueurs), avant que
  *  ses vainqueurs/perdants ne rencontrent ceux d'une autre poule — un seul grand bracket continu,
@@ -1053,7 +1137,11 @@ function launchGroupedDoubleElim(t) {
     t.finals = buildDoubleElim(groupedDoubleElimIds(poolLists), true);
     checkFinalsChampion(t);
 }
-function propagateDouble(fin) {
+/** @param seeded Si vrai (voir buildDoubleElimSeeded), le bracket perdants a un tour "-1" fictif déjà
+ *  peuplé (les qualifiés "bottom", entrés directement en perdants) : chaque tour du bracket vainqueurs
+ *  route donc un cran plus loin (tour r → lb[2r+1], jamais le lb[0] spécial "les deux perdants d'un
+ *  même tour s'affrontent") que la routine historique (tour r → lb[2r-1], tour 0 → lb[0]). */
+function propagateDouble(fin, seeded = false) {
     let changed = true, guard = 0;
     while (changed && guard++ < 1000) {
         changed = false;
@@ -1079,13 +1167,16 @@ function propagateDouble(fin) {
                     drop = loser ?? null;
                 }
                 if (drop != null && fin.lb.length) {
-                    if (r === 0) {
+                    if (!seeded && r === 0) {
                         if (placeSlot(fin.lb[0][Math.floor(i / 2)], (i % 2), drop))
                             changed = true;
                     }
-                    else if (2 * r - 1 < fin.lb.length) {
-                        if (placeSlot(fin.lb[2 * r - 1][i], 1, drop))
-                            changed = true;
+                    else {
+                        const target = seeded ? 2 * r + 1 : 2 * r - 1;
+                        if (target < fin.lb.length) {
+                            if (placeSlot(fin.lb[target][i], 1, drop))
+                                changed = true;
+                        }
                     }
                 }
             });
@@ -1139,7 +1230,10 @@ function startFinals(t, format) {
         t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
     }
     else if (fmt === 'double') {
-        t.finals = buildDoubleElim(q);
+        // Entrée scindée par moitié de poule (voir qualifiersSplit) plutôt qu'un bracket vainqueurs
+        // unique pour tout le monde : évite de rejouer d'entrée les confrontations déjà vues en poule.
+        const { top, bottom } = qualifiersSplit(t);
+        t.finals = buildDoubleElimSeeded(top, bottom);
     }
     else {
         t.finals = { format: 'single', bracket: buildBracket(q, true) };
@@ -1205,7 +1299,7 @@ function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
     if (f.format === 'single')
         propagateBracket(f.bracket);
     else if (f.format === 'double')
-        propagateDouble(f);
+        propagateDouble(f, !!f.seeded);
     checkFinalsChampion(t);
     return { winnerId, pts };
 }

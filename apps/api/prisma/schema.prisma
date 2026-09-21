@@ -298,3 +298,21 @@ model Order {
   user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())
 }
+
+// Transaction de paiement en ligne (FedaPay / KkiaPay) rattachée à une inscription, une commande ou un
+// achat de crédits. providerTxId est unique : une même transaction approuvée ne peut servir qu'une fois
+// (sinon un seul paiement pourrait valider plusieurs commandes). Le montant attendu vient toujours de
+// la base, jamais du navigateur.
+model OnlinePayment {
+  id           String   @id @default(cuid())
+  provider     String // 'fedapay' | 'kkiapay'
+  kind         String // 'registration' | 'order' | 'credit'
+  refId        String
+  userId       String?
+  amountXof    Int
+  providerTxId String?  @unique
+  status       String   @default("pending") // 'pending' | 'paid' | 'failed'
+  createdAt    DateTime @default(now())
+
+  @@index([kind, refId])
+}

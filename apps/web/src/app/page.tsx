@@ -86,6 +86,8 @@ type State = {
   loyaltyHistory: Detail[] | null; loyaltyBalance: number;
   creditsMe: { balance: number; freeTournamentsUsed: number; freeTournaments: number; priceXof: number; history: Detail[]; purchases: Detail[] } | null;
   creditBuyQty: number; creditBuyPay: string; creditBuyBusy: boolean;
+  // Passerelles de paiement en ligne activées côté API (GET /api/payments/config) — null tant que non chargé.
+  payConfig: { fedapay: boolean; kkiapay: { publicKey: string; sandbox: boolean } | null } | null;
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
@@ -174,6 +176,14 @@ const SLIDES = [
 const PARTNERS = ["Gaming Arena Lomé", "Yas Togo", "Moov Africa", "Université de Lomé", "CIC Lomé", "Togocom"];
 
 const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espèces"];
+/** Moyens de paiement en ligne (passerelles) — le libellé est aussi la valeur enregistrée dans paymentMethod côté API. */
+const ONLINE_PAY = ["FedaPay", "KkiaPay"];
+/** Moyens proposés à l'utilisateur : paiement en ligne (seulement les passerelles configurées) puis moyens manuels. */
+function payMethods(S: State): string[] {
+  const c = S.payConfig;
+  const online = [...(c?.fedapay ? ["FedaPay"] : []), ...(c?.kkiapay ? ["KkiaPay"] : [])];
+  return [...online, ...PAYMENTS];
+}
 
 const FORMATS = ["Tous", "Survival", "Bracket simple", "Double élim", "Swiss", "Round Robin", "Poules", "Battle Royale"];
 
@@ -1608,7 +1618,7 @@ function organizerCredits(S: State) {
   `);
   const qty = Math.max(1, S.creditBuyQty || 1);
   const total = qty * c.priceXof;
-  const payChips = PAYMENTS.map((m) => `<button data-creditbuypay="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.creditBuyPay === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.creditBuyPay === m ? "#22D3EE" : "#282838"};color:${S.creditBuyPay === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
+  const payChips = payMethods(S).map((m) => `<button data-creditbuypay="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.creditBuyPay === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.creditBuyPay === m ? "#22D3EE" : "#282838"};color:${S.creditBuyPay === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
   const canBuy = !!S.creditBuyPay && !S.creditBuyBusy;
   const buyCard = card(`
     ${secTitle("Acheter des crédits")}
@@ -3575,7 +3585,7 @@ function pTournoi(S: State) {
     } else if (isReg) {
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid #33334A;color:#8E8FA6;border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button></div>`;
     } else if (fee > 0) {
-      const chips = PAYMENTS.map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.payPick === m ? "#22D3EE" : "#282838"};color:${S.payPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
+      const chips = payMethods(S).map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.payPick === m ? "#22D3EE" : "#282838"};color:${S.payPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("");
       const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
       const maxXof = Math.floor((fee * ly.maxRedeemPercent) / 100);
       const maxPoints = Math.max(0, Math.min(S.loyaltyBalance, Math.floor(maxXof / ly.pointValueXof)));
@@ -4128,7 +4138,7 @@ function cartDrawer(S: State) {
     : `<div style="color:#5D5E72;font-size:14px;text-align:center;padding:40px 0">Ton panier est vide.<br>Ajoute des articles depuis la boutique.</div>`;
   const payChips = S.cartItems.length ? `<div style="margin-bottom:14px">
     <div style="color:#8E8FA6;font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap">${PAYMENTS.map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "#282838"};color:${S.cartPayPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("")}</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${payMethods(S).map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "#1B1B27"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "#282838"};color:${S.cartPayPick === m ? "#22D3EE" : "#8E8FA6"}">${m}</button>`).join("")}</div>
   </div>` : "";
   // Réduction en points fidélité : uniquement sur la part du panier composée d'articles éligibles (choix admin).
   const eligibleSubtotal = S.cartItems.reduce((a, i) => {
@@ -4373,7 +4383,7 @@ export default function Page() {
     tourns: null, creating: false, busy: false, leaderboard: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
-    creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false,
+    creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null,
     user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -4455,6 +4465,20 @@ export default function Page() {
     const mo = new MutationObserver(() => restoreScrollRef.current());
     mo.observe(root, { childList: true });
     return () => mo.disconnect();
+  }, []);
+
+  // Passerelles de paiement en ligne disponibles + retour de FedaPay (?pay=fedapay&kind=…&ref=…&id=…) :
+  // on nettoie l'URL puis on demande au serveur de vérifier la transaction.
+  useEffect(() => {
+    fetch(`${API}/api/payments/config`).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c) setS((s) => ({ ...s, payConfig: c })); }).catch(() => { /* API hors ligne */ });
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("pay") !== "fedapay") return;
+    const kind = q.get("kind") as PayKind | null, ref = q.get("ref"), tx = q.get("id");
+    window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    if (!kind || !ref) return;
+    if (!token()) { alert("Reconnecte-toi pour finaliser la vérification de ton paiement."); return; }
+    void verifyOnlinePayment("fedapay", kind, ref, tx || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------- Pilotage d'un tournoi ---------- */
@@ -4762,6 +4786,50 @@ export default function Page() {
       if (r.ok) { const v = await r.json(); setS((s) => ({ ...s, creditsMe: v })); }
     } catch { /* ignore */ }
   }
+  /* ---------- Paiement en ligne (FedaPay / KkiaPay) ---------- */
+  type PayKind = "registration" | "order" | "credit";
+  /** Recharge ce qu'un paiement confirmé vient de modifier (profil, inscriptions, crédits, liste des tournois). */
+  async function refreshAfterPayment() {
+    setS((s) => ({ ...s, me: null, myRegs: null, myOrders: null, myResults: null }));
+    await Promise.all([loadRegIds(), loadCreditsMe(), loadTournaments()]);
+  }
+  /** Demande au serveur de vérifier la transaction auprès du prestataire : c'est lui qui valide, jamais le navigateur. */
+  async function verifyOnlinePayment(provider: "fedapay" | "kkiapay", kind: PayKind, refId: string, transactionId?: string): Promise<boolean> {
+    try {
+      const r = await fetch(`${API}/api/payments/verify`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ provider, kind, refId, transactionId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.message || "Vérification du paiement impossible."); return false; }
+      if (d.paid) { await refreshAfterPayment(); alert("Paiement confirmé. Merci !"); return true; }
+      alert("Le paiement n'est pas encore confirmé. S'il a abouti, il sera validé automatiquement dans quelques instants.");
+      return false;
+    } catch { alert("Vérification du paiement impossible pour le moment."); return false; }
+  }
+  /** Lance le paiement en ligne d'un élément déjà créé « en attente » : FedaPay redirige vers sa page, KkiaPay ouvre son widget. */
+  async function startOnlinePay(kind: PayKind, refId: string, method: string) {
+    const provider = method === "KkiaPay" ? "kkiapay" : "fedapay";
+    try {
+      const r = await fetch(`${API}/api/payments/checkout`, {
+        method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ provider, kind, refId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d.message || "Paiement en ligne impossible. Ta demande reste enregistrée, l'équipe peut la confirmer manuellement."); return; }
+      if (d.provider === "fedapay") { window.location.href = d.url; return; }
+      await new Promise<void>((resolve, reject) => {
+        if ((window as unknown as Detail).openKkiapayWidget) { resolve(); return; }
+        const sc = document.createElement("script");
+        sc.src = "https://cdn.kkiapay.me/k.js"; sc.onload = () => resolve(); sc.onerror = () => reject(new Error("kkiapay"));
+        document.head.appendChild(sc);
+      });
+      const w = window as unknown as Detail;
+      w.removeKkiapayListener?.("success");
+      w.addKkiapayListener("success", (resp: { transactionId?: string }) => { void verifyOnlinePayment("kkiapay", kind, refId, resp?.transactionId); });
+      w.openKkiapayWidget({ amount: d.amountXof, api_key: d.publicKey, sandbox: !!d.sandbox, name: S.user?.displayName || "", email: S.user?.email || "", data: d.paymentId });
+    } catch { alert("Impossible d'ouvrir le paiement en ligne. Ta demande reste enregistrée, l'équipe peut la confirmer manuellement."); }
+  }
   async function buyCredits() {
     if (S.creditBuyQty < 1 || !S.creditBuyPay) return;
     setS((s) => ({ ...s, creditBuyBusy: true }));
@@ -4775,6 +4843,7 @@ export default function Page() {
       if (!r.ok) { alert(data.message || "Demande impossible."); setS((s) => ({ ...s, creditBuyBusy: false })); return; }
       await loadCreditsMe();
       setS((s) => ({ ...s, creditBuyBusy: false, creditBuyQty: 1, creditBuyPay: "" }));
+      if (ONLINE_PAY.includes(data.paymentMethod)) { await startOnlinePay("credit", data.id, data.paymentMethod); return; }
       alert(`Demande enregistrée · ${money(data.amountXof)} via ${data.paymentMethod}.\nTes crédits seront ajoutés dès confirmation par l'équipe Miabe.`);
     } catch { setS((s) => ({ ...s, creditBuyBusy: false })); }
   }
@@ -4799,7 +4868,9 @@ export default function Page() {
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null, cartBusy: false })); return; }
       if (r.ok) {
         const o = await r.json();
+        const payOnline = ONLINE_PAY.includes(o.paymentMethod) && o.totalXof > 0;
         setS((s) => ({ ...s, cartItems: [], cartPayPick: "", cartBusy: false, cartPointsToRedeem: 0, me: null, myOrders: null, loyaltyHistory: null, lastOrder: { reference: o.reference, totalXof: o.totalXof, paymentMethod: o.paymentMethod } }));
+        if (payOnline) await startOnlinePay("order", o.id, o.paymentMethod);
       } else setS((s) => ({ ...s, cartBusy: false }));
     } catch { setS((s) => ({ ...s, cartBusy: false })); }
   }
@@ -5147,6 +5218,7 @@ export default function Page() {
     const pointsToRedeem = Math.min(S.regPointsToRedeem, maxPoints);
     const netFee = Math.max(0, fee - pointsToRedeem * ly.pointValueXof);
     if (register && netFee > 0 && !S.payPick) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
+    const payMethod = S.payPick;
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/register`, {
         method: register ? "POST" : "DELETE",
@@ -5164,6 +5236,7 @@ export default function Page() {
         const st = await fetch(`${API}/api/tournaments/${id}/state`);
         if (st.ok) { const d = await st.json(); setS((s) => ({ ...s, detail: d })); }
       }
+      if (register && data.pending && data.registrationId && ONLINE_PAY.includes(payMethod)) { await startOnlinePay("registration", data.registrationId, payMethod); return; }
       if (register && data.pending) alert(`Inscription enregistrée · ${money(data.amountXof)} via ${S.payPick}.\nElle sera confirmée par l'organisateur dès réception du paiement.`);
     } catch { /* ignore */ }
   }

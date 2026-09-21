@@ -8,5 +8,6 @@ import { CreditsModule } from '../credits/credits.module';
   imports: [LoyaltyModule, CreditsModule],
   controllers: [TournamentsController],
   providers: [TournamentsService],
+  exports: [TournamentsService],
 })
 export class TournamentsModule {}

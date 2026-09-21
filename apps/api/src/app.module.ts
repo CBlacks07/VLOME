@@ -15,9 +15,10 @@ import { GalleryModule } from './gallery/gallery.module';
 import { RosterModule } from './roster/roster.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { CreditsModule } from './credits/credits.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule, RosterModule, LoyaltyModule, CreditsModule],
+  imports: [PrismaModule, MailModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule, RosterModule, LoyaltyModule, CreditsModule, PaymentsModule],
   controllers: [AppController, HealthController],
   providers: [AppService],
 })

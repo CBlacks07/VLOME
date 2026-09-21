@@ -390,7 +390,7 @@ export class TournamentsService {
       }
     }
     await this.notifyRegistration(user.sub, r.name, playerName, netFee, true, r.date, r.place);
-    return { registered: true, pending: true, playerName, amountXof: netFee, pointsRedeemed: pointsUsed };
+    return { registered: true, pending: true, registrationId: reg.id, playerName, amountXof: netFee, pointsRedeemed: pointsUsed };
   }
 
   /** Confirmation d'inscription. Best-effort : une inscription valide ne doit pas échouer sur un e-mail. */
@@ -435,6 +435,28 @@ export class TournamentsService {
       await this.loyalty.award(reg.userId, 1, LoyaltyReason.PARTICIPATION, { registrationId: reg.id, note: r.name });
     }
     return { confirmed: true, playerName: reg.playerName, players: t.players.length };
+  }
+
+  /** Confirmation d'une inscription par la passerelle de paiement en ligne (aucun droit de gestion requis :
+   * l'appelant a déjà vérifié la transaction auprès du prestataire). Idempotente : un second appel
+   * (retour navigateur + webhook) ne réinscrit pas le joueur. */
+  async confirmRegistrationPaidOnline(registrationId: string) {
+    const reg = await this.prisma.registration.findUnique({ where: { id: registrationId } });
+    if (!reg) throw new NotFoundException('Inscription introuvable');
+    if (reg.paymentStatus === 'paid') return { confirmed: true, already: true };
+    const r = await this.prisma.tournament.findUnique({ where: { id: reg.tournamentId } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    if (r.status !== 'DRAFT') throw new ConflictException('Le tournoi a déjà démarré.');
+    const t = (r.engineState ?? Engine.newTournament({ name: r.name })) as Engine.Tournament;
+    t.players.push({ id: Engine.uid(), name: reg.playerName, club: '' });
+    await this.prisma.$transaction([
+      this.prisma.registration.update({ where: { id: reg.id }, data: { paymentStatus: 'paid' } }),
+      this.prisma.tournament.update({ where: { id: r.id }, data: { engineState: JSON.parse(JSON.stringify(t)) } }),
+    ]);
+    if (r.givesLoyaltyPoint) {
+      await this.loyalty.award(reg.userId, 1, LoyaltyReason.PARTICIPATION, { registrationId: reg.id, note: r.name });
+    }
+    return { confirmed: true, already: false };
   }
 
   /** Liste des inscriptions (payées + en attente) — organisateur/admin, pour le cockpit. */

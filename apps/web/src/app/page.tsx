@@ -36,7 +36,7 @@ export default async function Home() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
       <Spa initialPage="accueil" />
-      <SeoLinks intro="Miabe Esport organise des tournois esport à Lomé et partout au Togo (eFootball, EA FC, FIFA…), avec inscriptions en ligne, classements des joueurs et des clubs, galerie et boutique gaming." />
+      <SeoLinks intro="Miabe Esport organise des tournois esport à Lomé et partout au Togo, avec inscriptions en ligne, classements des joueurs et des clubs, galerie et boutique gaming." />
     </>
   );
 }

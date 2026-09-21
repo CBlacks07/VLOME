@@ -33,9 +33,9 @@ export const ROUTES: Record<RouteKey, { path: string; label: string; title: stri
   accueil: {
     path: "/",
     label: "Accueil",
-    title: "Miabe Esport — Tournois esport au Togo (Lomé) : eFootball, EA FC, FIFA",
+    title: "Miabe Esport — Tournois et compétitions esport au Togo (Lomé)",
     description:
-      "Miabe Esport, le hub de l'esport au Togo : tournois à Lomé (eFootball, EA FC, FIFA…), inscriptions en ligne, classements des joueurs et des clubs, galerie et boutique gaming.",
+      "Miabe Esport, le hub de l'esport au Togo : tournois et compétitions à Lomé, inscriptions en ligne, classements des joueurs et des clubs, galerie et boutique gaming.",
     priority: 1,
     changeFrequency: "daily",
   },
@@ -44,7 +44,7 @@ export const ROUTES: Record<RouteKey, { path: string; label: string; title: stri
     label: "Tournois",
     title: "Tournois esport à Lomé et au Togo — inscriptions ouvertes | Miabe Esport",
     description:
-      "Tous les tournois esport au Togo : eFootball, EA FC, FIFA, Naruto… Dates, lieux, cagnottes et inscription en ligne pour participer à un tournoi gaming à Lomé.",
+      "Tous les tournois esport au Togo : dates, lieux, cagnottes et inscription en ligne pour participer à un tournoi gaming à Lomé.",
     priority: 0.9,
     changeFrequency: "daily",
   },
@@ -53,7 +53,7 @@ export const ROUTES: Record<RouteKey, { path: string; label: string; title: stri
     label: "Événements",
     title: "Événements esport à Lomé et au Togo — LAN, tournois et compétitions | Miabe Esport",
     description:
-      "Les événements esport du Togo : LAN, festivals gaming et compétitions regroupant plusieurs tournois (eFootball, EA FC, FIFA…). Dates, lieux, affiches et inscriptions.",
+      "Les événements esport du Togo : LAN, festivals gaming et compétitions regroupant plusieurs tournois. Dates, lieux, affiches et inscriptions.",
     priority: 0.85,
     changeFrequency: "daily",
   },

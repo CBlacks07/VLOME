@@ -47,15 +47,12 @@ export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'doubl
  * 'survival' et 'double' restent les deux modes historiques du format Survival. */
 export type PoolFormat = 'survival' | 'double' | 'roundrobin';
 export declare const DEFAULT_QUALIFY_PER_POOL = 2;
-/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Pas de plafond arbitraire ici :
- * chaque appelant re-borne déjà par l'effectif réel d'une poule (slice()/Math.min() naturellement
- * sans dépassement), donc le seul cap produit vient de maxQualifyPerPool selon le mode de poule. */
+/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Aucun plafond selon le mode de
+ * poule : Round Robin, Survival classique et Double élimination produisent tous un classement
+ * complet de la poule (voir poolFinishOrder pour les deux derniers) — la seule vraie limite est
+ * l'effectif de chaque poule, que chaque appelant applique déjà (slice()/Math.min() sans
+ * dépassement). */
 export declare function clampQualifyPerPool(v?: number): number;
-/** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
- * vainqueurs et vainqueur du bracket perdants) : structurellement borné à 2, quel que soit
- * l'effectif. Le mode 'roundrobin' produit un classement complet — rien ne le borne ici, sa seule
- * limite réelle est l'effectif de la poule (appliqué par l'appelant, poule par poule). */
-export declare function maxQualifyPerPool(poolFormat: PoolFormat): number;
 export interface Pool {
     id: string;
     name: string;
@@ -179,8 +176,8 @@ export interface Tournament {
     /** Mode des poules (phase 1) — ne concerne que le format 'survival'. Absent sur d'anciennes données : traiter comme 'survival'. */
     poolFormat: PoolFormat;
     /** Nombre de joueurs qualifiés par poule pour la phase finale — au moins 1, borné en pratique par
-     *  l'effectif de la plus petite poule (voir maxQualifyPerPool). Absent sur d'anciennes données :
-     *  traiter comme 2 (top1 + top2, comportement historique). */
+     *  l'effectif de la plus petite poule, quel que soit le mode de poule (voir poolQualified). Absent
+     *  sur d'anciennes données : traiter comme 2 (top1 + top2, comportement historique). */
     qualifyPerPool: number;
     /** Longueur de série pour le bonus striker (3 ou 5 victoires d'affilée) — un seul palier actif par
      * tournoi. Absent sur d'anciennes données : traiter comme DEFAULT_STREAK_LENGTH (5). */
@@ -342,6 +339,20 @@ export declare function reportResult(t: Tournament, poolId: string, winnerId: st
     stage: Stage;
 } | null;
 export declare function allPoolsDone(t: Tournament): boolean;
+/** Ordre d'arrivée complet d'une poule Survival classique ou Double élimination terminée : les deux
+ *  finalistes d'abord (top1 puis top2, désignés par la finale de poule / la grande finale), puis tous
+ *  les autres par points gagnés DANS cette poule (journal : survWin/loserWin/poolFinalWin, bonus
+ *  striker compris — jamais t.points, qui continue de bouger en phase finale), puis victoires, puis
+ *  ordre de passage. Même critère que le tableau de classement affiché (poolRanking côté API) : on ne
+ *  voit pas un ordre et n'en qualifie pas un autre. Sert à qualifier plus de deux joueurs par poule
+ *  dans ces deux modes (le Round Robin a son propre classement, voir poolRRRanking). */
+export declare function poolFinishOrder(t: Tournament, pool: Pool): string[];
+/** Qualifiés d'une poule pour la phase finale, dans l'ordre de classement, au plus qualifyPerPool
+ *  (borné par l'effectif de la poule). Round Robin : liste posée à la fin de la poule
+ *  (checkPoolRoundRobinDone). Survival classique / Double élimination : dérivée à la demande de
+ *  l'ordre d'arrivée (poolFinishOrder), donc valable aussi pour d'anciennes poules déjà terminées.
+ *  Un joueur disqualifié est passé et remplacé par le suivant du classement. */
+export declare function poolQualified(t: Tournament, pool: Pool): string[];
 export declare function qualifiers(t: Tournament): string[];
 /** Comme qualifiers(), mais scindé en deux moitiés — voir startFinals (finalsFormat 'double') et
  *  buildDoubleElimSeeded : les mieux classés de chaque poule ("top", moitié supérieure arrondie au-

@@ -7,7 +7,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.DEFAULT_MATCH_FORMAT = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
 exports.clampQualifyPerPool = clampQualifyPerPool;
-exports.maxQualifyPerPool = maxQualifyPerPool;
 exports.clampMatchFormat = clampMatchFormat;
 exports.winsNeeded = winsNeeded;
 exports.matchFormatLabel = matchFormatLabel;
@@ -46,6 +45,8 @@ exports.nextBracketMatch = nextBracketMatch;
 exports.currentMatch = currentMatch;
 exports.reportResult = reportResult;
 exports.allPoolsDone = allPoolsDone;
+exports.poolFinishOrder = poolFinishOrder;
+exports.poolQualified = poolQualified;
 exports.qualifiers = qualifiers;
 exports.qualifiersSplit = qualifiersSplit;
 exports.rrRanking = rrRanking;
@@ -65,18 +66,13 @@ exports.ratings = ratings;
 exports.BYE = '__bye__';
 exports.DEFAULT_STREAK_LENGTH = 5;
 exports.DEFAULT_QUALIFY_PER_POOL = 2;
-/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Pas de plafond arbitraire ici :
- * chaque appelant re-borne déjà par l'effectif réel d'une poule (slice()/Math.min() naturellement
- * sans dépassement), donc le seul cap produit vient de maxQualifyPerPool selon le mode de poule. */
+/** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Aucun plafond selon le mode de
+ * poule : Round Robin, Survival classique et Double élimination produisent tous un classement
+ * complet de la poule (voir poolFinishOrder pour les deux derniers) — la seule vraie limite est
+ * l'effectif de chaque poule, que chaque appelant applique déjà (slice()/Math.min() sans
+ * dépassement). */
 function clampQualifyPerPool(v) {
     return Math.max(1, Math.round(Number(v) || exports.DEFAULT_QUALIFY_PER_POOL));
-}
-/** Une poule ne désigne que deux finalistes en mode 'survival'/'double' (vainqueur du bracket
- * vainqueurs et vainqueur du bracket perdants) : structurellement borné à 2, quel que soit
- * l'effectif. Le mode 'roundrobin' produit un classement complet — rien ne le borne ici, sa seule
- * limite réelle est l'effectif de la poule (appliqué par l'appelant, poule par poule). */
-function maxQualifyPerPool(poolFormat) {
-    return poolFormat === 'roundrobin' ? Infinity : 2;
 }
 exports.DEFAULT_MATCH_FORMAT = { mode: 'bo', value: 1 };
 /** Borne un format de manche : Bo1/3/5/7/9 pour "bo", 1 à 99 pour "ft". */
@@ -885,13 +881,45 @@ function startLosers(pool) {
 function allPoolsDone(t) {
     return t.pools.length > 0 && t.pools.every(p => p.phase === 'done');
 }
-function qualifiers(t) {
+/** Ordre d'arrivée complet d'une poule Survival classique ou Double élimination terminée : les deux
+ *  finalistes d'abord (top1 puis top2, désignés par la finale de poule / la grande finale), puis tous
+ *  les autres par points gagnés DANS cette poule (journal : survWin/loserWin/poolFinalWin, bonus
+ *  striker compris — jamais t.points, qui continue de bouger en phase finale), puis victoires, puis
+ *  ordre de passage. Même critère que le tableau de classement affiché (poolRanking côté API) : on ne
+ *  voit pas un ordre et n'en qualifie pas un autre. Sert à qualifier plus de deux joueurs par poule
+ *  dans ces deux modes (le Round Robin a son propre classement, voir poolRRRanking). */
+function poolFinishOrder(t, pool) {
+    const ids = pool.order.length ? pool.order : pool.playerIds;
+    const pts = {}, wins = {};
+    t.log.forEach(l => {
+        if (l.poolId !== pool.id)
+            return;
+        pts[l.winner] = (pts[l.winner] || 0) + l.pts;
+        if (l.a && l.b)
+            wins[l.winner] = (wins[l.winner] || 0) + 1;
+    });
+    const finalists = [pool.top1, pool.top2].filter((id) => !!id);
+    const rest = ids.filter(id => !finalists.includes(id))
+        .map((id, i) => ({ id, i }))
+        .sort((x, y) => (pts[y.id] || 0) - (pts[x.id] || 0) || (wins[y.id] || 0) - (wins[x.id] || 0) || x.i - y.i)
+        .map(x => x.id);
+    return [...finalists, ...rest];
+}
+/** Qualifiés d'une poule pour la phase finale, dans l'ordre de classement, au plus qualifyPerPool
+ *  (borné par l'effectif de la poule). Round Robin : liste posée à la fin de la poule
+ *  (checkPoolRoundRobinDone). Survival classique / Double élimination : dérivée à la demande de
+ *  l'ordre d'arrivée (poolFinishOrder), donc valable aussi pour d'anciennes poules déjà terminées.
+ *  Un joueur disqualifié est passé et remplacé par le suivant du classement. */
+function poolQualified(t, pool) {
     const n = clampQualifyPerPool(t.qualifyPerPool);
-    // Compat : poules antérieures au champ qualified, et modes survival/double qui ne désignent
-    // que deux finalistes — on retombe sur top1/top2, naturellement borné à 2 par le slice.
-    const perPool = t.pools.map(p => (p.qualified && p.qualified.length
-        ? p.qualified
-        : [p.top1, p.top2].filter(Boolean)).slice(0, n));
+    if (pool.qualified && pool.qualified.length)
+        return pool.qualified.slice(0, n);
+    if (pool.phase !== 'done')
+        return [];
+    return poolFinishOrder(t, pool).filter(id => !t.disqualified.includes(id)).slice(0, n);
+}
+function qualifiers(t) {
+    const perPool = t.pools.map(p => poolQualified(t, p));
     // Un joueur disqualifié ne doit jamais accéder à la phase finale, même s'il a
     // terminé top1/top2 de sa poule via un forfait adverse antérieur.
     // Serpentin : les 1ers dans l'ordre des poules, les 2es en ordre inverse, etc. — évite que deux
@@ -918,10 +946,7 @@ function qualifiers(t) {
  *  qualifiés d'une même poule ne peuvent donc jamais se retrouver l'un contre l'autre au 1er tour de
  *  leur moitié. */
 function qualifiersSplit(t) {
-    const n = clampQualifyPerPool(t.qualifyPerPool);
-    const perPool = t.pools.map(p => (p.qualified && p.qualified.length
-        ? p.qualified
-        : [p.top1, p.top2].filter(Boolean)).slice(0, n));
+    const perPool = t.pools.map(p => poolQualified(t, p));
     const topPerPool = perPool.map(q => q.slice(0, Math.ceil(q.length / 2)));
     const bottomPerPool = perPool.map(q => q.slice(Math.ceil(q.length / 2)));
     const interleave = (rows) => {
@@ -1682,10 +1707,10 @@ function cagnotte(t) {
             pf += 1;
         }
     });
-    // Qualifiés : N par poule (borné par ce que le mode de poule sait départager, et par l'effectif
-    // réel de la poule) — auparavant figé à 2, ce qui sous-estimait la phase finale dès qu'on en
-    // qualifiait davantage, donc sous-budgétait la cagnotte.
-    const perPool = Math.min(clampQualifyPerPool(t.qualifyPerPool), maxQualifyPerPool(t.poolFormat));
+    // Qualifiés : N par poule, borné par l'effectif réel de chaque poule (Math.min ci-dessous), quel
+    // que soit le mode de poule — auparavant figé à 2, ce qui sous-estimait la phase finale dès qu'on
+    // en qualifiait davantage, donc sous-budgétait la cagnotte.
+    const perPool = clampQualifyPerPool(t.qualifyPerPool);
     const q = sizes.filter(n => n >= 2).reduce((acc, n) => acc + Math.min(perPool, n), 0)
         + sizes.filter(n => n === 1).length;
     // Phase finale en mode Survival : une "grande poule" réunissant tous les qualifiés (voir

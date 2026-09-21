@@ -113,3 +113,66 @@ test('les identifiants de match sont uniques dans un bracket', () => {
   const ids = E.allFinalsMatches(t).map((m) => m.id);
   assert.equal(new Set(ids).size, ids.length);
 });
+
+/** Joue toutes les poules jusqu'au bout (le gagnant alterne pour ne pas avoir un scénario trop uniforme). */
+function playPools(t) {
+  for (const pool of t.pools) {
+    for (let g = 0; g < 500; g++) {
+      const m = E.currentMatch(pool);
+      if (!m) break;
+      E.reportResult(t, pool.id, g % 3 === 0 ? m.b : m.a, 2, 0);
+    }
+  }
+}
+
+for (const poolFormat of ['survival', 'double']) {
+  test(`poules ${poolFormat} : plus de 2 qualifiés par poule (2 poules de 10, 5 qualifiés)`, () => {
+    const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat, qualifyPerPool: 5, finalsFormat: 'single' });
+    for (let i = 0; i < 20; i++) E.addPlayer(t, 'S' + i);
+    E.distributePools(t);
+    E.launchTournament(t);
+    playPools(t);
+    assert.ok(t.pools.every((p) => p.phase === 'done'));
+    for (const p of t.pools) {
+      const q = E.poolQualified(t, p);
+      assert.equal(q.length, 5, 'cinq qualifiés par poule, pas deux');
+      assert.deepEqual(q.slice(0, 2), [p.top1, p.top2], 'les deux finalistes sont en tête');
+      assert.equal(new Set(q).size, 5);
+      assert.ok(q.every((id) => p.playerIds.includes(id)));
+    }
+    assert.equal(E.qualifiers(t).length, 10);
+    E.startFinals(t, 'single');
+    playAll(t, (m) => m.a);
+    assert.equal(t.status, 'finished');
+  });
+}
+
+test('qualifiés par poule : jamais plus que l\'effectif de la poule, et un disqualifié est remplacé par le suivant', () => {
+  const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat: 'survival', qualifyPerPool: 50, finalsFormat: 'single' });
+  for (let i = 0; i < 8; i++) E.addPlayer(t, 'Q' + i);
+  E.distributePools(t);
+  E.launchTournament(t);
+  playPools(t);
+  assert.equal(E.qualifiers(t).length, 8, 'poules de 4 : au plus 4 qualifiés chacune');
+  t.qualifyPerPool = 3;
+  const p = t.pools[0];
+  const before = E.poolQualified(t, p);
+  t.disqualified.push(before[0]);
+  const after = E.poolQualified(t, p);
+  assert.equal(after.length, 3);
+  assert.ok(!after.includes(before[0]));
+});
+
+test('finale double élimination scindée : fonctionne aussi avec des poules Survival classique à 4 qualifiés', () => {
+  const t = E.newTournament({ format: 'survival', nbPools: 4, poolFormat: 'survival', qualifyPerPool: 4, finalsFormat: 'double' });
+  for (let i = 0; i < 24; i++) E.addPlayer(t, 'D' + i);
+  E.distributePools(t);
+  E.launchTournament(t);
+  playPools(t);
+  const { top, bottom } = E.qualifiersSplit(t);
+  assert.equal(top.length, 8);
+  assert.equal(bottom.length, 8);
+  E.startFinals(t, 'double');
+  playAll(t, (m) => m.a);
+  assert.equal(t.status, 'finished');
+});

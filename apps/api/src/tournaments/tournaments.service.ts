@@ -845,7 +845,7 @@ export class TournamentsService {
           : null,
         order: p.order.map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
         ranking: this.poolRanking(t, p),
-        qualified: (p.qualified || []).map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
+        qualified: Engine.poolQualified(t, p).map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })),
         // Rencontres du mini round robin de la poule (poolFormat 'roundrobin') — même forme que les
         // matchs d'un Round Robin de phase finale, pour être rendues par le même composant. Un seul
         // match par poule est réellement rapportable à la fois (Engine.currentMatch/reportResult ne

@@ -30,10 +30,8 @@ export class CreateTournamentDto {
   @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
   // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
-  // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
-  // un classement complet et n'a pas de plafond produit : sa seule vraie limite est l'effectif de
-  // la poule, appliqué par le moteur (voir Engine.maxQualifyPerPool). 'survival'/'double' ne
-  // départagent que deux finalistes, le moteur borne donc à 2 dans ces modes quoi qu'on envoie ici.
+  // Nombre de qualifiés par poule pour la phase finale, quel que soit le mode de poule : sa seule
+  // vraie limite est l'effectif de la poule, appliqué par le moteur (voir Engine.poolQualified).
   // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
   @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
   // Format de manche appliqué à tous les matchs du tournoi (poules et phase finale) — 'bo' (Best of,
@@ -64,11 +62,8 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
   @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
-  // Nombre de qualifiés par poule pour la phase finale. Seul le mode de poule 'roundrobin' produit
-  // un classement complet et n'a pas de plafond produit : sa seule vraie limite est l'effectif de
-  // la poule, appliqué par le moteur (voir Engine.maxQualifyPerPool). 'survival'/'double' ne
-  // départagent que deux finalistes, le moteur borne donc à 2 dans ces modes quoi qu'on envoie ici.
-  // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
+  // Nombre de qualifiés par poule pour la phase finale (voir CreateTournamentDto) : borné par
+  // l'effectif de la poule, pas par son mode.
   @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;
   @IsOptional() @IsIn([3, 5]) streakLength?: 3 | 5;
   // Format de manche (voir CreateTournamentDto) — modifiable tant que le tournoi n'est pas lancé.

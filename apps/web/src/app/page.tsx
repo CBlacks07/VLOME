@@ -5467,12 +5467,18 @@ export default function Page() {
     const logo = S.site?.brand?.logoUrl;
     if (typeof document === "undefined" || !logo) return;
     const href = mediaUrl(logo);
-    document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]').forEach((l) => l.remove());
+    // On ne SUPPRIME jamais les <link> existants : Next/React les gère (métadonnées) et tenterait ensuite
+    // de les retirer d'un parent devenu null → "Cannot read properties of null (reading 'removeChild')"
+    // qui plantait la page. On réécrit leur href, ou on crée les nôtres s'il n'y en a pas.
     for (const rel of ["icon", "apple-touch-icon"]) {
-      const link = document.createElement("link");
-      link.rel = rel;
-      link.href = href;
-      document.head.appendChild(link);
+      const existing = document.head.querySelectorAll<HTMLLinkElement>(`link[rel~="${rel}"]`);
+      if (existing.length) existing.forEach((l) => { l.href = href; l.removeAttribute("type"); l.removeAttribute("sizes"); });
+      else {
+        const link = document.createElement("link");
+        link.rel = rel;
+        link.href = href;
+        document.head.appendChild(link);
+      }
     }
   }, [S.site?.brand?.logoUrl]);
 

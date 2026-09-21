@@ -24,6 +24,7 @@ exports.renamePlayer = renamePlayer;
 exports.setPlayerClub = setPlayerClub;
 exports.playerName = playerName;
 exports.undo = undo;
+exports.correctResult = correctResult;
 exports.resetTournament = resetTournament;
 exports.scoringBounds = scoringBounds;
 exports.recomputePoints = recomputePoints;
@@ -255,6 +256,43 @@ function undo(t) {
     const snap = JSON.parse(t._undo.pop());
     snap._undo = t._undo;
     return snap;
+}
+/** Corrige le résultat d'un match DÉJÀ joué, identifié par l'id de son entrée de journal (t.log) —
+ *  score et/ou vainqueur erronés saisis par erreur. Contrairement à undo() (annule seulement la toute
+ *  dernière action), une correction peut viser n'importe quel match du journal : elle restaure le
+ *  tournoi dans l'état exact d'avant CE match précis (via la pile d'annulation), puis y réapplique le
+ *  résultat corrigé à sa place. Tout ce qui s'est joué après ce match dans l'ancien déroulé disparaît
+ *  avec — remis à "à rejouer", en cascade, sans logique de dépendances à maintenir par format : la
+ *  pile d'annulation capture déjà l'état complet, quel que soit le format.
+ *  Repose sur la même pile que undo() (25 actions au maximum) : au-delà, retourne null (trop ancien).
+ *  L'appelant doit remplacer sa référence par la valeur retournée, comme pour undo(). */
+function correctResult(t, logEntryId, newWinnerId, newSa = 0, newSb = 0) {
+    const idx = t.log.findIndex(l => l.id === logEntryId);
+    if (idx < 0)
+        return null;
+    const entry = t.log[idx];
+    if (!entry.a || !entry.b)
+        return null; // pas un vrai duel (bonus striker, championBonus, ajustement admin…) : rien à corriger
+    if (newWinnerId !== entry.a && newWinnerId !== entry.b)
+        return null;
+    const stack = t._undo || [];
+    // Plusieurs instantanés consécutifs peuvent partager la même longueur de journal (une action qui ne
+    // journalise rien entre deux matchs, ex. launchTournament) : il faut le DERNIER qui correspond, pas
+    // le premier — celui immédiatement avant que ce match précis soit poussé au journal.
+    let foundIdx = -1;
+    for (let i = 0; i < stack.length; i++) {
+        const len = JSON.parse(stack[i]).log.length;
+        if (len === idx)
+            foundIdx = i;
+    }
+    if (foundIdx < 0)
+        return null; // trop ancien : hors de portée de la pile d'annulation
+    const snap = JSON.parse(stack[foundIdx]);
+    snap._undo = stack.slice(0, foundIdx); // tout ce qui suit (y compris ce match) est réécrit à partir d'ici
+    const ok = entry.poolId === 'finals'
+        ? (snap.finals?.format === 'swiss' ? reportSwiss(snap, entry.matchId || '', newWinnerId, newSa, newSb) : reportFinals(snap, entry.matchId || '', newWinnerId, newSa, newSb))
+        : reportResult(snap, entry.poolId, newWinnerId, newSa, newSb);
+    return ok ? snap : null;
 }
 /** Remet le tournoi à l'état "à lancer" (garde joueurs, config des poules et barème). */
 function resetTournament(t) {
@@ -706,7 +744,7 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
     const loserId = winnerId === m.a ? m.b : m.a;
     const pts = stagePoints(t, m.stage);
     award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(m.matchId ? { matchId: m.matchId } : {}), ...(reason ? { reason } : {}) });
     // Bonus striker : série de t.streakLength (3 OU 5, un seul palier actif par tournoi) victoires
     // d'affilée sur le "bracket vainqueurs" de la poule (stage 'survival', que la poule soit en mode
     // classique ou double élim) — une seule fois par joueur dans la poule.
@@ -1127,7 +1165,7 @@ function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
     }
     const pts = t.scoring.finalsWin;
     award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
     if (f.format === 'single')
         propagateBracket(f.bracket);
     else if (f.format === 'double')
@@ -1291,7 +1329,7 @@ function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason) {
     }
     const pts = t.scoring.finalsWin;
     award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(reason ? { reason } : {}) });
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
     advanceSwissIfRoundDone(t);
     return { winnerId, pts };
 }

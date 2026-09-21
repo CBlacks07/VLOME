@@ -98,6 +98,7 @@ export interface LogEntry {
     reason?: string;
     sa?: number;
     sb?: number;
+    matchId?: string;
 }
 export type Status = 'setup' | 'live' | 'finished';
 export type FinalsFormat = 'single' | 'double' | 'roundrobin' | 'survival';
@@ -257,6 +258,16 @@ export declare function setPlayerClub(t: Tournament, id: string, club: string): 
 export declare function playerName(t: Tournament, id: string | null): string;
 /** Restaure l'état précédent (dernier résultat, ajustement, changement de barème…) — l'appelant doit remplacer sa référence par la valeur retournée. */
 export declare function undo(t: Tournament): Tournament | null;
+/** Corrige le résultat d'un match DÉJÀ joué, identifié par l'id de son entrée de journal (t.log) —
+ *  score et/ou vainqueur erronés saisis par erreur. Contrairement à undo() (annule seulement la toute
+ *  dernière action), une correction peut viser n'importe quel match du journal : elle restaure le
+ *  tournoi dans l'état exact d'avant CE match précis (via la pile d'annulation), puis y réapplique le
+ *  résultat corrigé à sa place. Tout ce qui s'est joué après ce match dans l'ancien déroulé disparaît
+ *  avec — remis à "à rejouer", en cascade, sans logique de dépendances à maintenir par format : la
+ *  pile d'annulation capture déjà l'état complet, quel que soit le format.
+ *  Repose sur la même pile que undo() (25 actions au maximum) : au-delà, retourne null (trop ancien).
+ *  L'appelant doit remplacer sa référence par la valeur retournée, comme pour undo(). */
+export declare function correctResult(t: Tournament, logEntryId: string, newWinnerId: string, newSa?: number, newSb?: number): Tournament | null;
 /** Remet le tournoi à l'état "à lancer" (garde joueurs, config des poules et barème). */
 export declare function resetTournament(t: Tournament): void;
 export declare function scoringBounds(key: keyof Scoring): {

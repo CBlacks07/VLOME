@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -136,6 +136,16 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async report(@Param('id') id: string, @Body() dto: ReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.report(id, dto, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  /** Corrige un match déjà joué (crayon) — voir TournamentsService.correctResult. */
+  @Post(':id/correct')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async correctResult(@Param('id') id: string, @Body() dto: CorrectResultDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.correctResult(id, dto, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

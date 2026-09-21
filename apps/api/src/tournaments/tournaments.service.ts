@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
-import { CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
+import { CorrectResultDto, CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtUser } from '../common/jwt-auth.guard';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreditsService } from '../credits/credits.service';
@@ -828,6 +828,14 @@ export class TournamentsService {
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
       pools, finals: this.serializeFinals(t),
+      // Historique des vrais duels déjà joués (bonus/ajustements exclus, voir Engine.correctResult) —
+      // utilisé pour la correction d'un match précis (crayon) : la poule Survival classique n'a pas
+      // d'autre trace consultable de ses matchs passés (Engine.currentMatch ne garde que le courant).
+      log: t.log.filter((l) => l.a && l.b).map((l) => ({
+        id: l.id, poolId: l.poolId, matchId: l.matchId ?? null,
+        aId: l.a, aName: Engine.playerName(t, l.a), bId: l.b, bName: Engine.playerName(t, l.b),
+        winnerId: l.winner, sa: l.sa ?? null, sb: l.sb ?? null, ts: l.ts,
+      })),
     };
   }
 
@@ -879,6 +887,20 @@ export class TournamentsService {
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
+  }
+
+  /** Corrige un match déjà joué (score/vainqueur saisi par erreur) — voir Engine.correctResult :
+   * remet le tournoi dans l'état d'avant CE match précis puis y réapplique le résultat corrigé, en
+   * cascade (tout ce qui s'est joué après est remis à rejouer). Repose sur la pile d'annulation
+   * (25 actions) : au-delà, la correction n'est plus possible. */
+  async correctResult(id: string, dto: CorrectResultDto, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    const corrected = Engine.correctResult(l.t, dto.logId, dto.winnerId, dto.scoreA ?? 0, dto.scoreB ?? 0);
+    if (!corrected) throw new ConflictException('Correction impossible : match introuvable, vainqueur invalide, ou trop ancien pour être corrigé.');
+    await this.persist(id, corrected);
+    return this.toState(id, corrected, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint);
   }
 
   /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier), et optionnellement le nombre d'éliminations par joueur. */

@@ -145,6 +145,15 @@ export class ReportDto {
   @IsOptional() @IsInt() @Min(0) scoreB?: number;
 }
 
+// Corrige un match DÉJÀ joué, identifié par l'id de son entrée de journal (voir Engine.correctResult)
+// — remplace le tap "cliquer un nom = valider" par une correction ciblée, cascade comprise.
+export class CorrectResultDto {
+  @IsString() logId!: string;
+  @IsString() winnerId!: string;
+  @IsOptional() @IsInt() @Min(0) scoreA?: number;
+  @IsOptional() @IsInt() @Min(0) scoreB?: number;
+}
+
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;

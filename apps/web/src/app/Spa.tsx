@@ -97,6 +97,7 @@ type State = {
   myEvents: Detail[] | null; eventEdit: Detail | null; eventManage: Detail | null; eventMsg: string;
   wizEventId: string | null; // événement dans lequel l'assistant crée le tournoi (null = tournoi indépendant)
   scanOpen: boolean; // scanner de billets (check-in) ouvert par l'organisateur
+  shareTarget: { url: string; title: string; copied?: boolean } | null; // fenêtre de partage (lien public d'un tournoi/événement)
   evShow: { event: Detail; states: Record<string, Detail> } | null; // écran de diffusion d'un événement
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
@@ -190,6 +191,34 @@ const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espè
 const ONLINE_PAY = ["FedaPay", "KkiaPay"];
 /** Moyens proposés à l'utilisateur : paiement en ligne (seulement les passerelles configurées) puis moyens manuels. */
 function onlinePayOn(S: State): boolean { const c = S.payConfig; return !!(c && (c.fedapay || c.kkiapay)); }
+/** Fenêtre de partage d'un tournoi ou d'un événement — le lien pointe vers sa page publique (/tournois/<id>
+ * ou /evenements/<id>), consultable par n'importe qui sans compte, comme un lien de partage Challonge. */
+function shareModal(S: State): string {
+  const s = S.shareTarget;
+  if (!s) return "";
+  const enc = encodeURIComponent(s.url);
+  const text = encodeURIComponent(s.title);
+  const row = (href: string, color: string, label: string, icon: string) =>
+    `<a href="${href}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#14141D;border:1px solid #282838;border-radius:14px;padding:14px 16px;cursor:pointer;font-family:inherit;color:#F4F5FB;text-decoration:none">
+      <span style="flex:none;width:8px;align-self:stretch;border-radius:99px;background:${color}"></span>
+      <span style="flex:1;min-width:0;font-weight:750;font-size:14.5px">${label}</span>
+      <span style="flex:none;color:${color};font-weight:800">${icon}</span></a>`;
+  return `<div data-shareclose="1" style="position:fixed;inset:0;z-index:320;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
+    <div data-stop="1" style="width:min(440px,100%);background:#0E0E16;border:1px solid #282838;border-radius:18px;padding:22px 22px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">Partager</span><span data-shareclose="1" style="color:#8E8FA6;cursor:pointer">${ic(I.x, 18)}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;border:1px solid #282838;border-radius:11px;background:#14141D;padding:9px 10px;margin-bottom:14px">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:#8E8FA6;font-family:'JetBrains Mono',monospace">${escHtml(s.url)}</span>
+        <button data-sharecopy="1" style="flex:none;background:${s.copied ? "#34D399" : "#22D3EE"};color:#04222a;border:0;border-radius:9px;padding:8px 13px;font-weight:750;font-size:12.5px;cursor:pointer">${s.copied ? "Copié !" : "Copier"}</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${row(`https://wa.me/?text=${text}%20${enc}`, "#25D366", "WhatsApp", ic(I.share, 15))}
+        ${row(`https://www.facebook.com/sharer/sharer.php?u=${enc}`, "#1877F2", "Facebook", ic(I.share, 15))}
+        ${row(`https://twitter.com/intent/tweet?text=${text}&url=${enc}`, "#F4F5FB", "X (Twitter)", ic(I.share, 15))}
+      </div>
+      <p style="margin:14px 0 0;font-size:12px;color:#5D5E72;line-height:1.6">Ce lien est public : n'importe qui peut le consulter sans se connecter.</p>
+    </div></div>`;
+}
+
 function payChoiceModal(S: State): string {
   if (!S.payModal) return "";
   const c = S.payConfig;
@@ -3631,6 +3660,7 @@ function pTournoi(S: State) {
   </div>`;
   const head = `${cover}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
+    <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
     ${manage ? `<button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
     ${t.status !== "setup" ? `<button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
@@ -4644,13 +4674,14 @@ function pEvenement(S: State) {
   const meta = [fmtEventDates(ev), ev.place].filter(Boolean);
   const chips = meta.map((m, i) => `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;color:#E8E9F4;background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 13px;backdrop-filter:blur(6px)">${escHtml(m)}</span>`).join("");
   const showBtn = `<button data-evshow="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.tv, 15)}Écran de diffusion</button>`;
+  const shareEvBtn = `<button data-share="evenement|${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.share, 15)}Partager</button>`;
   const actions = isOwner
-    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${showBtn}
+    ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${shareEvBtn}${showBtn}
         <button data-evedit="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:#1B1B27;border:1px solid #33334A;color:#F4F5FB;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.edit, 15)}Gérer l'événement</button>
         <button data-act="create-open" data-evid="${ev.id}" style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi ici</button>
         ${ev.status !== "PUBLISHED" ? `<span style="align-self:center;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FBBF24">Brouillon — non visible du public</span>` : ""}
       </div>`
-    : tournaments.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${showBtn}</div>` : "";
+    : `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">${shareEvBtn}${tournaments.length ? showBtn : ""}</div>`;
   const hero = `<div style="position:relative;overflow:hidden;min-height:clamp(280px,38vw,440px);background:#0E0E16;border-bottom:1px solid #282838">
     ${eventMedia(ev, ev.name)}
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.25) 0%,rgba(11,11,17,.55) 55%,#0B0B11 100%)"></div>
@@ -4759,7 +4790,7 @@ function clubPendingBanner(S: State): string {
     <div style="font-size:13px;line-height:1.5;color:#F4F5FB"><b style="color:#FBBF24">Compte en attente de validation.</b> L'administrateur doit d'abord valider ton club « ${escHtml(u.clubRequested || "")} ». D'ici là, tu peux consulter le site mais pas t'inscrire, commander ni payer. Tu seras prévenu(e) par e-mail.</div>
   </div>`;
 }
-function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S); }
+function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S); }
 function renderPageBody(S: State) {
   if (S.page === "show") return pShow(S);
   if (S.page === "evshow") return pEvShow(S);
@@ -4788,7 +4819,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
-    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null, scanOpen: false, evShow: null,
+    events: null, eventDetail: null, openEventId: null, myEvents: null, eventEdit: null, eventManage: null, eventMsg: "", wizEventId: null, scanOpen: false, evShow: null, shareTarget: null,
     user: null, authTab: "login", authBusy: false, authError: "", authNotice: "", resetToken: "", authRole: "PLAYER",
     q: "",
     openId: null, detail: null, detailBusy: false, editing: false, admin: null,
@@ -5392,6 +5423,33 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }));
       setS((s) => (s.openEventId === id ? { ...s, evShow: { event, states } } : s));
     } catch { /* API hors ligne */ }
+  }
+
+  /* ---------- Partage ---------- */
+  /** Lien public d'un tournoi/événement : essaie le partage natif du téléphone, sinon ouvre la fenêtre de partage. */
+  async function openShare(kind: "tournoi" | "evenement", id: string, title: string) {
+    const url = `${window.location.origin}/${kind === "tournoi" ? "tournois" : "evenements"}/${id}`;
+    const nav = navigator as Navigator & { share?: (data: { title?: string; url?: string }) => Promise<void>; canShare?: (data?: { url?: string }) => boolean };
+    if (nav.share && (!nav.canShare || nav.canShare({ url }))) {
+      try { await nav.share({ title, url }); return; } catch { /* annulé ou indisponible : repli sur la fenêtre */ }
+    }
+    setS((s) => ({ ...s, shareTarget: { url, title } }));
+  }
+  async function copyShareLink() {
+    const s = S.shareTarget;
+    if (!s) return;
+    try {
+      await navigator.clipboard.writeText(s.url);
+    } catch {
+      // Contexte non sécurisé ou permission refusée : repli sur la sélection + copie classique.
+      const ta = document.createElement("textarea");
+      ta.value = s.url; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      ta.remove();
+    }
+    setS((st) => (st.shareTarget ? { ...st, shareTarget: { ...st.shareTarget, copied: true } } : st));
+    setTimeout(() => setS((st) => (st.shareTarget?.copied ? { ...st, shareTarget: { ...st.shareTarget, copied: false } } : st)), 2000);
   }
 
   /* ---------- Check-in ---------- */
@@ -6618,7 +6676,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-evshow],[data-evshowclose],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -6942,6 +7000,13 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.evshow) window.open(window.location.pathname + "#evshow=" + d.evshow, "_blank");
     else if (d.evshowclose !== undefined) { const id = S.openEventId; if (id) openEvent(id); else setS((s) => ({ ...s, page: "evenements" })); }
+    else if (d.share) {
+      const [kind, id] = d.share.split("|") as ["tournoi" | "evenement", string];
+      const title = kind === "tournoi" ? S.detail?.name : S.eventDetail?.name;
+      void openShare(kind, id, title || "Miabe Esport");
+    }
+    else if (d.shareclose !== undefined) setS((s) => ({ ...s, shareTarget: null }));
+    else if (d.sharecopy) copyShareLink();
     else if (d.scanopen) setS((s) => ({ ...s, scanOpen: true }));
     else if (d.checkin) { const [tid, rid, on] = d.checkin.split("|"); toggleCheckIn(tid, rid, on === "1"); }
     else if (d.openevent) openEvent(d.openevent);

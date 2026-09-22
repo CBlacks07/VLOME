@@ -3588,7 +3588,6 @@ function regieTopBanner(S: State, t: Detail): string {
     </div>
     <span style="flex:1"></span>
     ${cagnotteBlock}
-    ${themeToggleBtn(S, 40, 17)}
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
@@ -4965,7 +4964,10 @@ function renderPageBody(S: State) {
   // Organisateur/admin sur « Mon espace » : shell console (sidebar) autonome, pas le rail du module contenu.
   if (S.page === "profil" && canManage(S)) return consolePage(S);
   // Régie organisateur/admin pendant qu'un tournoi est en direct : écran plein cadre autonome (rail·centre·contrôle), hors du rail public — même principe que la console.
-  if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return regiePage(S);
+  // Sa coque (bandeau, rail, colonne de contrôle) est en dur sur fond sombre (régie "salle de contrôle") :
+  // sans forcer le thème sombre sur tout le sous-arbre, les cartes du centre (bracket, poules) suivaient
+  // le thème clair/sombre choisi pour le reste du site et devenaient des pavés blancs sur fond noir.
+  if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return `<div data-force-theme="dark">${regiePage(S)}</div>`;
   if (RAIL_PAGES[S.page]) {
     const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page;
     return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);

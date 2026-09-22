@@ -52,6 +52,14 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
+        {/* Sombre par défaut : ce script pose le thème clair AVANT le premier rendu si l'utilisateur l'a choisi
+            la dernière fois, pour éviter un flash sombre→clair. Rien à faire si le choix est sombre (ou absent) :
+            c'est déjà la valeur par défaut des variables CSS (voir globals.css). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("vlome_theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}`,
+          }}
+        />
       </head>
       <body>
         {children}

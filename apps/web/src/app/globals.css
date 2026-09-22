@@ -1,12 +1,52 @@
 @import "tailwindcss";
 
-:root { color-scheme: dark; }
+/* ===== Thème clair/sombre =====
+ * Seule la palette NEUTRE (fonds, surfaces, bordures, texte) change d'un thème à l'autre — les couleurs
+ * de marque et de statut (cyan/violet/vert/jaune/rouge/rose) restent identiques dans les deux thèmes,
+ * comme le texte blanc posé sur un bouton coloré : elles fonctionnent aussi bien sur fond clair que sombre.
+ * Sombre par défaut (:root, sans attribut) ; [data-theme="light"] sur <html> bascule en clair, posé par
+ * le petit script du layout (avant l'affichage, pour éviter un flash) puis par le bouton de bascule.
+ * [data-force-theme="dark"] force le sombre pour un sous-arbre précis (Mode Show, écran d'événement,
+ * affiche imprimable) quel que soit le thème choisi pour le reste du site. */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0B0B11;
+  --surface: #14141D; --surface-2: #0E0E16; --surface-3: #1B1B27; --surface-4: #22222F;
+  --surface-5: #101019; --surface-6: #191922; --surface-7: #0d0d14; --surface-8: #0E131B;
+  --border: #282838; --border-strong: #33334A;
+  --text: #F4F5FB; --text-muted: #8E8FA6; --text-faint: #5D5E72;
+  --hover-1: rgba(255,255,255,.025); --hover-2: rgba(255,255,255,.015);
+  /* Fonds translucides des barres de navigation fixes (verre dépoli) — teinte de --bg, pas de --surface :
+     à ne jamais utiliser pour les dégradés posés sur une image (légende de carte…), qui restent sombres
+     dans les deux thèmes pour garder le texte blanc lisible. */
+  --bar-bg-1: rgba(11,11,17,.82); --bar-bg-2: rgba(11,11,17,.92); --bar-bg-3: rgba(11,11,17,.96);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F1F3F8;
+  --surface: #FFFFFF; --surface-2: #F8F9FC; --surface-3: #EEF0F6; --surface-4: #E5E8F0;
+  --surface-5: #FFFFFF; --surface-6: #F5F6FA; --surface-7: #FFFFFF; --surface-8: #F5F7FA;
+  --border: #E1E4EC; --border-strong: #C7CBDA;
+  --text: #14141B; --text-muted: #565875; --text-faint: #9294A8;
+  --hover-1: rgba(20,20,30,.035); --hover-2: rgba(20,20,30,.025);
+  --bar-bg-1: rgba(241,243,248,.82); --bar-bg-2: rgba(241,243,248,.92); --bar-bg-3: rgba(241,243,248,.96);
+}
+[data-force-theme="dark"] {
+  --bg: #0B0B11;
+  --surface: #14141D; --surface-2: #0E0E16; --surface-3: #1B1B27; --surface-4: #22222F;
+  --surface-5: #101019; --surface-6: #191922; --surface-7: #0d0d14; --surface-8: #0E131B;
+  --border: #282838; --border-strong: #33334A;
+  --text: #F4F5FB; --text-muted: #8E8FA6; --text-faint: #5D5E72;
+  --hover-1: rgba(255,255,255,.025); --hover-2: rgba(255,255,255,.015);
+  --bar-bg-1: rgba(11,11,17,.82); --bar-bg-2: rgba(11,11,17,.92); --bar-bg-3: rgba(11,11,17,.96);
+  color-scheme: dark;
+}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: #0B0B11;
-  color: #F4F5FB;
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -16,7 +56,7 @@ a { color: #22D3EE; text-decoration: none; }
 a:hover { color: #7C82FF; }
 ::-webkit-scrollbar { height: 9px; width: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #282838; border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 @keyframes slideIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
@@ -36,7 +76,7 @@ a:hover { color: #7C82FF; }
 }
 .hcard:hover {
   transform: translateY(-5px);
-  border-color: #3a3a52 !important;
+  border-color: var(--border-strong) !important;
   box-shadow: 0 16px 44px rgba(0, 0, 0, .5), 0 0 24px rgba(34, 211, 238, .07);
 }
 .hcard .zoom { transition: transform .45s ease; }
@@ -44,7 +84,7 @@ a:hover { color: #7C82FF; }
 
 /* ---- Cellules "filet" (grille bordée sans gap, ex. liste des tournois) : pas de lift, juste zoom + fond léger ---- */
 .fcell { transition: background-color .2s ease; }
-.fcell:hover { background-color: rgba(255, 255, 255, .025); }
+.fcell:hover { background-color: var(--hover-1); }
 .fcell .zoom { transition: transform .45s ease; }
 .fcell:hover .zoom { transform: scale(1.05); }
 
@@ -55,12 +95,12 @@ a:hover { color: #7C82FF; }
 /* ---- Boutons & puces ---- */
 button { transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease, background .2s ease, border-color .2s ease, color .2s ease; }
 button:active { transform: scale(.97); }
-.chip:hover { border-color: #3a3a52 !important; color: #F4F5FB !important; }
-.hbtn:hover span { color: #F4F5FB !important; }
+.chip:hover { border-color: var(--border-strong) !important; color: var(--text) !important; }
+.hbtn:hover span { color: var(--text) !important; }
 
 /* ---- Lignes de tableaux / listes ---- */
 tr { transition: background .2s ease; }
-tr:hover td { background: rgba(255, 255, 255, .015); }
+tr:hover td { background: var(--hover-2); }
 
 /* ---- Mouvement d'ambiance (héro, carrousel, bandeau live) ---- */
 @keyframes kenburns { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.14) translate(-1.5%, 1.5%); } }
@@ -105,7 +145,7 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
    à la ligne (sa taille hypothétique de 0 "tient" toujours sur la même ligne que le rail) et il s'écrase à
    une largeur de 0 au lieu de passer dessous. ---- */
 @media (max-width: 1024px) {
-  .page-filter-rail { width: 100% !important; border-right: 0 !important; border-bottom: 1px solid #1B1B27; padding: 20px 24px !important; }
+  .page-filter-rail { width: 100% !important; border-right: 0 !important; border-bottom: 1px solid var(--surface-3); padding: 20px 24px !important; }
   .page-filter-rail + div { flex: 1 1 100% !important; }
 }
 /* ---- Mosaïque Galerie : 4 colonnes fixes → moins de colonnes en dessous des points de rupture. ---- */
@@ -134,8 +174,8 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
    1 colonne plutôt que de laisser le rythme d'origine se désaligner. ---- */
 @media (max-width: 1024px) {
   .tourn-grid { grid-template-columns: repeat(2, 1fr) !important; }
-  .tourn-grid .fcell { padding-left: 16px !important; padding-right: 16px !important; border-right: 0 !important; border-bottom: 1px solid #1B1B27 !important; }
-  .tourn-grid .fcell:nth-child(odd) { border-right: 1px solid #1B1B27 !important; }
+  .tourn-grid .fcell { padding-left: 16px !important; padding-right: 16px !important; border-right: 0 !important; border-bottom: 1px solid var(--surface-3) !important; }
+  .tourn-grid .fcell:nth-child(odd) { border-right: 1px solid var(--surface-3) !important; }
 }
 @media (max-width: 640px) {
   .tourn-grid { grid-template-columns: 1fr !important; }
@@ -208,7 +248,7 @@ tr:hover td { background: rgba(255, 255, 255, .015); }
   .regie-page-outer { height: auto !important; overflow: visible !important; min-height: 100vh; }
   .regie-banner { height: auto !important; min-height: 70px; flex-wrap: wrap; padding: 12px 16px !important; row-gap: 10px; }
   .regie-grid { grid-template-columns: 1fr !important; }
-  .regie-rail, .regie-center, .regie-control { overflow-y: visible !important; max-height: none !important; border-left: 0 !important; border-right: 0 !important; border-top: 1px solid #1B1B27; width: 100% !important; }
+  .regie-rail, .regie-center, .regie-control { overflow-y: visible !important; max-height: none !important; border-left: 0 !important; border-right: 0 !important; border-top: 1px solid var(--surface-3); width: 100% !important; }
   /* Empilée, la colonne de contrôle ne doit pas s’étirer sur toute la largeur : les cibles
      tactiles se retrouveraient aux deux extrémités de l’écran. */
   .regie-control { order: 1 !important; border-top: 0; max-width: 760px; margin: 0 auto; }

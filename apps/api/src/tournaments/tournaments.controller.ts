@@ -21,7 +21,12 @@ export class TournamentsController {
     return this.service.findAll();
   }
 
+  // Réservé à l'admin : n'insère les 7 tournois de démo que si la table est vide (voir
+  // TournamentsService.seed), mais reste une écriture en base — jamais accessible sans authentification,
+  // et jamais appelé depuis le site (outil de mise en route uniquement).
   @Post('seed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   seed() {
     return this.service.seed();
   }

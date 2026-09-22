@@ -665,23 +665,26 @@ export class TournamentsService {
    * régie et sur les écrans publics (voir toState). key = activeKey côté web (matchId ou poolId) ;
    * label vide ou omis efface l'assignation. */
   async setStation(tournamentId: string, key: string, label: string | undefined, user: JwtUser) {
-    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
-    if (!r) throw new NotFoundException('Tournoi introuvable');
-    this.assertCanManage(r, user);
-    const stations = { ...((r.stations as Record<string, string>) || {}) };
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const stations = { ...((l.record.stations as Record<string, string>) || {}) };
     const clean = (label || '').trim();
     if (clean) stations[key] = clean.slice(0, 40); else delete stations[key];
     await this.prisma.tournament.update({ where: { id: tournamentId }, data: { stations } });
-    return { stations };
+    // Renvoie l'état complet du tournoi (comme toute autre action de régie) — sans quoi le front,
+    // qui remplace tout S.detail par la réponse, se retrouverait avec un objet tronqué à { stations }.
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, stations, l.record.streamMatchKey);
   }
 
   /** Marque (ou démarque) le match "à l'antenne" — un seul à la fois par tournoi (voir setStation pour la clé). */
   async setStreamMatch(tournamentId: string, key: string, on: boolean, user: JwtUser) {
-    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
-    if (!r) throw new NotFoundException('Tournoi introuvable');
-    this.assertCanManage(r, user);
-    await this.prisma.tournament.update({ where: { id: tournamentId }, data: { streamMatchKey: on ? key : null } });
-    return { streamMatchKey: on ? key : null };
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const streamMatchKey = on ? key : null;
+    await this.prisma.tournament.update({ where: { id: tournamentId }, data: { streamMatchKey } });
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey);
   }
 
   /** Pointage de présence (organisateur/admin) : par QR code / code court, ou directement sur une inscription. */

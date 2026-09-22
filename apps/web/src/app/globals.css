@@ -23,13 +23,15 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #F1F3F8;
-  --surface: #FFFFFF; --surface-2: #F8F9FC; --surface-3: #EEF0F6; --surface-4: #E5E8F0;
-  --surface-5: #FFFFFF; --surface-6: #F5F6FA; --surface-7: #FFFFFF; --surface-8: #F5F7FA;
-  --border: #E1E4EC; --border-strong: #C7CBDA;
-  --text: #14141B; --text-muted: #565875; --text-faint: #9294A8;
-  --hover-1: rgba(20,20,30,.035); --hover-2: rgba(20,20,30,.025);
-  --bar-bg-1: rgba(241,243,248,.82); --bar-bg-2: rgba(241,243,248,.92); --bar-bg-3: rgba(241,243,248,.96);
+  /* Fond nettement plus soutenu que les cartes (blanches) : sans cet écart, tout se fond en un même
+     aplat blanchâtre et la page paraît « trop blanche », sans relief. */
+  --bg: #E7EAF2;
+  --surface: #FFFFFF; --surface-2: #F5F6FA; --surface-3: #ECEEF4; --surface-4: #E1E4ED;
+  --surface-5: #FFFFFF; --surface-6: #F2F3F8; --surface-7: #FFFFFF; --surface-8: #F2F4F8;
+  --border: #D6DAE4; --border-strong: #B7BCCE;
+  --text: #14141B; --text-muted: #565875; --text-faint: #8B8DA0;
+  --hover-1: rgba(20,20,30,.04); --hover-2: rgba(20,20,30,.028);
+  --bar-bg-1: rgba(231,234,242,.82); --bar-bg-2: rgba(231,234,242,.92); --bar-bg-3: rgba(231,234,242,.96);
 }
 [data-force-theme="dark"] {
   --bg: #0B0B11;

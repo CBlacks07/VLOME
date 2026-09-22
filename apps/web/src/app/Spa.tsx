@@ -515,7 +515,7 @@ function filePicker(id: string, label = "Choisir une image", accept = "image/*",
 function chips(list: string[], active: string, attr: string, color = "#22D3EE") {
   return list.map((l) => {
     const on = l === active;
-    return `<button class="chip" data-${attr}="${l}" style="font-family:inherit;font-size:12.5px;font-weight:${on ? 700 : 600};color:${on ? color : "#8E8FA6"};background:${on ? "rgba(34,211,238,.08)" : "#14141D"};border:1px solid ${on ? color : "#282838"};border-radius:999px;padding:8px 15px;cursor:pointer">${l}</button>`;
+    return `<button class="chip" data-${attr}="${l}" style="font-family:inherit;font-size:12.5px;font-weight:${on ? 700 : 600};color:${on ? color : "#8E8FA6"};background:${on ? "rgba(34,211,238,.08)" : "#14141D"};border:1px solid ${on ? color : "#282838"};border-radius:999px;padding:8px 15px;cursor:pointer;flex:none;white-space:nowrap">${l}</button>`;
   }).join("");
 }
 
@@ -1267,7 +1267,7 @@ function pTournois(S: State) {
     const on = S.tournStatus === st;
     return `<span data-tournstatus="${st}" style="padding:8px 15px;font-size:12.5px;font-weight:${on ? 750 : 600};cursor:pointer;background:${on ? "#22D3EE" : "transparent"};color:${on ? "#04222a" : "#8E8FA6"};transition:background .2s ease,color .2s ease;white-space:nowrap;flex:none;${i > 0 ? "border-left:1px solid #282838" : ""}">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1};color:${on ? "#04222a" : "#5D5E72"}">${n}</span></span>`;
   }).join("")}</div>`;
-  const filt = `<div class="rise d1 page-hpad" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:#22222F"></span><div style="display:flex;gap:7px;flex-wrap:wrap">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
+  const filt = `<div class="rise d1 page-hpad" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid #1B1B27;flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:#22222F;flex:none"></span><div style="display:flex;gap:7px;overflow-x:auto;max-width:100%">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
 
   const head = railPageHead("Tournois", `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${searchBox}${createBtn}`);
 

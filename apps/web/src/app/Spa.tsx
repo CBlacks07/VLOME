@@ -98,6 +98,7 @@ type AuthUser = { id?: string; displayName: string; role: string; email: string;
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
+  playerProfile: Detail | null; h2hOpponent: string; h2hData: Detail | null; h2hBusy: boolean;
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -1367,11 +1368,11 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
     podiumHtml = `<div class="podium-row" style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
       const rank = list.indexOf(r);
       const [plColor, avA, h] = podiumColors[rank];
-      return `<div class="podium-item" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+      return `<div data-playerprofile="${escAttr(r.name)}" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px;cursor:pointer"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--border)"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const table = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
   return podiumHtml + table;
 }
@@ -1459,6 +1460,71 @@ function pClassements(S: State) {
     ${S.classementView === "joueurs" ? sidePanel : ""}
   </div></div>`;
   return `${head}${tabs}${body}`;
+}
+
+/** Fiche joueur (comme le profil joueur de start.gg) : stats globales/par jeu, historique des matchs,
+ * et confrontations directes contre un adversaire choisi. Identifiée par nom seul (voir leaderboard()
+ * côté API) — accessible en cliquant un nom dans le classement, sans compte requis. */
+function pPlayerProfile(S: State) {
+  const p: Detail = S.playerProfile;
+  if (!p) return `<div style="min-height:60vh;display:grid;place-items:center;color:var(--text-muted)">Chargement…</div>`;
+  const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:30px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:6px">${k}</div></div>`;
+  const t = p.totals || {};
+  const head = `<div class="rise page-hpad" style="display:flex;align-items:center;gap:18px;padding:32px 44px 20px;flex-wrap:wrap">
+    <button data-back="1" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);flex:none;cursor:pointer">${icBack(14)}</button>
+    <div style="display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:26px;color:#04222a;flex:none">${escHtml(p.name).charAt(0).toUpperCase()}</div>
+    <div style="min-width:0">
+      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,40px);letter-spacing:1px;margin:0;line-height:1">${escHtml(p.name)}</h1>
+      <div style="font-size:12.5px;color:var(--text-muted);margin-top:5px">${[p.club, p.city].filter(Boolean).map((v: string) => escHtml(v)).join(" · ") || "Aucune info de club ou de ville"}</div>
+    </div>
+  </div>`;
+  const stats = `<div class="page-hpad" style="padding:0 44px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    ${stat(t.points ?? 0, "Points cumulés", "#22D3EE")}${stat(`${t.wins ?? 0}-${t.losses ?? 0}`, "Victoires-Défaites")}${stat(`${t.winrate ?? 0}%`, "Winrate", "#34D399")}${stat(t.tournamentsPlayed ?? 0, "Tournois joués")}${stat(t.championships ?? 0, "Titres", "#FBBF24")}
+  </div>`;
+  const byGame: Detail[] = p.byGame || [];
+  const gameRows = byGame.length ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));overflow:hidden">
+    <table style="width:100%;border-collapse:collapse;font-size:13.5px"><tr><th style="text-align:left;padding:10px 16px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Jeu</th><th style="text-align:right;padding:10px 16px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">V-D</th><th style="text-align:right;padding:10px 16px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Titres</th><th style="text-align:right;padding:10px 16px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Points</th></tr>
+    ${byGame.map((g) => `<tr style="border-top:1px solid var(--surface-3)"><td style="padding:10px 16px;font-weight:650">${escHtml(g.game)}</td><td style="padding:10px 16px;text-align:right;color:var(--text-muted)">${g.wins}-${g.losses}</td><td style="padding:10px 16px;text-align:right;color:#FBBF24">${g.championships || 0}</td><td style="padding:10px 16px;text-align:right;font-weight:750;color:#22D3EE">${g.points}</td></tr>`).join("")}</table>
+  </div>` : "";
+  const history: Detail[] = p.history || [];
+  const historyList = history.length ? `<div style="display:flex;flex-direction:column;gap:2px">
+    ${history.map((h) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--surface-3)">
+      <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:${h.won ? "#34D399" : "#FB7185"};background:${h.won ? "rgba(52,211,153,.1)" : "rgba(251,113,133,.1)"};border:1px solid ${h.won ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:6px;padding:3px 7px;flex:none">${h.won ? "V" : "D"}</span>
+      <span style="font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">contre ${escHtml(h.opponent)}</span>
+      ${h.sa !== null && h.sb !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text-muted);flex:none">${h.sa}–${h.sb}</span>` : ""}
+      <span style="font-size:11.5px;color:var(--text-faint);flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.tournamentName)}</span>
+    </div>`).join("")}
+  </div>` : `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:16px 0">Aucun match joué pour l'instant.</div>`;
+
+  const h2h = S.h2hData;
+  const h2hBody = S.h2hBusy ? `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:12px 0">Recherche…</div>`
+    : h2h ? (h2h.aWins + h2h.bWins === 0
+      ? `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:12px 0">${escHtml(p.name)} et ${escHtml(h2h.b)} ne se sont jamais affrontés.</div>`
+      : `<div style="text-align:center;margin:10px 0 14px"><span style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1px">${h2h.aWins}<span style="color:var(--text-faint);font-size:22px"> – </span>${h2h.bWins}</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${escHtml(p.name)} vs ${escHtml(h2h.b)}</div></div>
+        <div style="display:flex;flex-direction:column;gap:2px">${h2h.matches.slice(0, 10).map((m: Detail) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--surface-3)">
+          <span style="font-size:10px;font-weight:800;color:${m.winner === "a" ? "#34D399" : "#FB7185"}">${m.winner === "a" ? escHtml(p.name) : escHtml(h2h.b)}</span>
+          ${m.sa !== null && m.sb !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted)">${m.sa}–${m.sb}</span>` : ""}
+          <span style="flex:1"></span><span style="font-size:11px;color:var(--text-faint)">${escHtml(m.tournamentName)}</span></div>`).join("")}</div>`)
+    : "";
+  const h2hCard = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px">
+    <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:12px">Confrontations directes</div>
+    <div style="display:flex;gap:8px"><input id="h2h-opponent" value="${escAttr(S.h2hOpponent)}" placeholder="Nom de l'adversaire" style="flex:1;background:var(--surface-3);border:1px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:13px;padding:9px 12px" /><button data-h2h="${escAttr(p.name)}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:9px 16px;font-weight:750;font-size:13px;cursor:pointer">Comparer</button></div>
+    ${h2hBody}
+  </div>`;
+
+  return `${head}<div class="rise d2 page-hpad" style="padding:20px 44px 44px;display:flex;flex-direction:column;gap:22px">
+    ${stats}
+    <div class="grid2c" style="display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:22px">
+        ${gameRows}
+        <div>
+          <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:8px">Matchs récents</div>
+          ${historyList}
+        </div>
+      </div>
+      ${h2hCard}
+    </div>
+  </div>`;
 }
 
 function pGalerie(S: State) {
@@ -4845,7 +4911,7 @@ function consoleEvents(S: State) {
   return editor + manage + `<div style="margin-top:18px">${listCard}</div>`;
 }
 
-const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
+const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, joueur: pPlayerProfile, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
 
 /** Compte bloqué : le club saisi à l'inscription doit d'abord être validé par un administrateur. */
 function clubPendingBanner(S: State): string {
@@ -4884,6 +4950,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5491,6 +5558,27 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }));
       setS((s) => (s.openEventId === id ? { ...s, evShow: { event, states } } : s));
     } catch { /* API hors ligne */ }
+  }
+
+  /** Fiche joueur (nom seul, comme leaderboard() — aucun compte requis) : stats + historique des matchs. */
+  async function openPlayerProfile(name: string) {
+    setS((s) => ({ ...s, page: "joueur", playerProfile: null, h2hOpponent: "", h2hData: null }));
+    window.scrollTo({ top: 0 });
+    try {
+      const r = await fetch(`${API}/api/tournaments/players/profile?name=${encodeURIComponent(name)}`);
+      if (r.ok) { const d = await r.json(); setS((s) => (s.page === "joueur" ? { ...s, playerProfile: d } : s)); }
+    } catch { /* API hors ligne */ }
+  }
+
+  /** Confrontations directes entre le joueur de la fiche ouverte et un adversaire choisi. */
+  async function loadHeadToHead(a: string, b: string) {
+    if (!b.trim() || b.trim().toLowerCase() === a.toLowerCase()) return;
+    setS((s) => ({ ...s, h2hBusy: true }));
+    try {
+      const r = await fetch(`${API}/api/tournaments/players/head-to-head?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b.trim())}`);
+      const d = r.ok ? await r.json() : null;
+      setS((s) => ({ ...s, h2hData: d, h2hBusy: false }));
+    } catch { setS((s) => ({ ...s, h2hBusy: false })); }
   }
 
   /* ---------- Partage ---------- */
@@ -6242,6 +6330,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
     else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
     else if (S.page === "evshow" && S.openEventId) hash = "#evshow=" + S.openEventId;
+    else if (S.page === "joueur" && S.playerProfile?.name) hash = "#joueur=" + encodeURIComponent(S.playerProfile.name);
     else if (S.page === "auth") hash = "#connexion";
     else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
@@ -6249,7 +6338,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
     if (window.location.hash !== hash) history.pushState(null, "", hash);
-  }, [S.page, S.openId, S.openEventId, S.adminTab]);
+  }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
   // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
@@ -6481,6 +6570,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
     if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
     if (h.startsWith("#evshow=")) { const id = h.slice(8); setS((s) => ({ ...s, page: "evshow", openEventId: id, evShow: null })); loadEvShow(id); return; }
+    if (h.startsWith("#joueur=")) { openPlayerProfile(decodeURIComponent(h.slice(8))); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
     if (h.startsWith("#reset=")) {
@@ -6754,7 +6844,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7104,6 +7194,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.exportresults) downloadCsv(`${API}/api/tournaments/${d.exportresults}/results/export`);
     else if (d.exportregs) downloadCsv(`${API}/api/tournaments/${d.exportregs}/registrations/export`);
+    else if (d.playerprofile) openPlayerProfile(d.playerprofile);
+    else if (d.h2h) {
+      const opponent = (document.getElementById("h2h-opponent") as HTMLInputElement | null)?.value ?? "";
+      setS((s) => ({ ...s, h2hOpponent: opponent }));
+      loadHeadToHead(d.h2h, opponent);
+    }
     else if (d.openevent) openEvent(d.openevent);
     else if (d.evlist) { setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" })); window.scrollTo({ top: 0 }); loadMyEvents(); }
     else if (d.evnew) setS((s) => ({ ...s, eventEdit: { id: null, name: "", tagline: "", description: "", startDate: null, endDate: null, place: "", accentColor: "", status: "DRAFT", posterUrl: null, bannerUrl: null }, eventManage: null, eventMsg: "" }));

@@ -316,6 +316,95 @@ export class TournamentsService {
       .slice(0, 300);
   }
 
+  /** Ville/club best-effort pour un nom de joueur — même rapprochement que leaderboard() (inscription/roster). */
+  private async cityAndClubForName(name: string): Promise<{ city: string | null; club: string | null }> {
+    const [reg, rosterPlayer] = await Promise.all([
+      this.prisma.registration.findFirst({ where: { playerName: name }, include: { user: { select: { city: true } } } }),
+      this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' } }, include: { club: { select: { name: true } } } }),
+    ]);
+    return { city: reg?.user.city || null, club: rosterPlayer?.club?.name || null };
+  }
+
+  /**
+   * Fiche publique d'un joueur (comme le profil joueur de start.gg) : stats globales et par jeu,
+   * historique des matchs joués — identifié par son nom (pas de compte requis, comme leaderboard()).
+   */
+  async playerProfile(name: string) {
+    const tournaments = await this.prisma.tournament.findMany({
+      select: { id: true, name: true, game: true, status: true, date: true, engineState: true },
+    });
+    let points = 0, wins = 0, losses = 0, championships = 0, tournamentsPlayed = 0;
+    const byGameMap = new Map<string, { game: string; points: number; wins: number; losses: number; championships: number; tournamentsPlayed: number }>();
+    const history: Array<{ tournamentId: string; tournamentName: string; game: string; opponent: string; sa: number | null; sb: number | null; won: boolean; ts: number }> = [];
+    for (const t of tournaments) {
+      const st = t.engineState as unknown as Engine.Tournament | null;
+      if (!st) continue;
+      const me = st.players?.find((p) => p.name === name);
+      if (!me) continue;
+      const game = t.game || 'Autre';
+      const tPoints = st.points?.[me.id] || 0;
+      const logs = st.log.filter((l) => l.a && l.b && (l.a === me.id || l.b === me.id));
+      const tWins = logs.filter((l) => l.winner === me.id).length;
+      const tLosses = logs.length - tWins;
+      const champion = st.champion === me.id;
+      points += tPoints; wins += tWins; losses += tLosses; tournamentsPlayed++;
+      if (champion) championships++;
+      const g = byGameMap.get(game) || { game, points: 0, wins: 0, losses: 0, championships: 0, tournamentsPlayed: 0 };
+      g.points += tPoints; g.wins += tWins; g.losses += tLosses; g.tournamentsPlayed++;
+      if (champion) g.championships++;
+      byGameMap.set(game, g);
+      for (const l of logs) {
+        if (!l.winner) continue;
+        const oppId = l.a === me.id ? l.b : l.a;
+        const opponent = Engine.playerName(st, oppId!);
+        const won = l.winner === me.id;
+        history.push({
+          tournamentId: t.id, tournamentName: t.name, game,
+          opponent, sa: l.a === me.id ? (l.sa ?? null) : (l.sb ?? null), sb: l.a === me.id ? (l.sb ?? null) : (l.sa ?? null),
+          won, ts: l.ts,
+        });
+      }
+    }
+    const { city, club } = await this.cityAndClubForName(name);
+    return {
+      name, city, club,
+      totals: { points: Math.round(points * 10) / 10, wins, losses, matches: wins + losses, winrate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : 0, championships, tournamentsPlayed },
+      byGame: Array.from(byGameMap.values()).sort((a, b) => b.points - a.points),
+      history: history.sort((a, b) => b.ts - a.ts).slice(0, 50),
+    };
+  }
+
+  /**
+   * Confrontations directes entre deux joueurs (comme le head-to-head de start.gg) — parcourt tous
+   * les tournois où les deux noms apparaissent et compte les victoires l'un contre l'autre.
+   */
+  async headToHead(nameA: string, nameB: string) {
+    const tournaments = await this.prisma.tournament.findMany({
+      select: { id: true, name: true, game: true, engineState: true },
+    });
+    let aWins = 0, bWins = 0;
+    const matches: Array<{ tournamentId: string; tournamentName: string; game: string; sa: number | null; sb: number | null; winner: 'a' | 'b'; ts: number }> = [];
+    for (const t of tournaments) {
+      const st = t.engineState as unknown as Engine.Tournament | null;
+      if (!st) continue;
+      const pa = st.players?.find((p) => p.name === nameA);
+      const pb = st.players?.find((p) => p.name === nameB);
+      if (!pa || !pb) continue;
+      const logs = st.log.filter((l) => l.a && l.b && l.winner && ((l.a === pa.id && l.b === pb.id) || (l.a === pb.id && l.b === pa.id)));
+      for (const l of logs) {
+        const aIsA = l.a === pa.id;
+        const winner: 'a' | 'b' = l.winner === pa.id ? 'a' : 'b';
+        if (winner === 'a') aWins++; else bWins++;
+        matches.push({
+          tournamentId: t.id, tournamentName: t.name, game: t.game || 'Autre',
+          sa: aIsA ? (l.sa ?? null) : (l.sb ?? null), sb: aIsA ? (l.sb ?? null) : (l.sa ?? null),
+          winner, ts: l.ts,
+        });
+      }
+    }
+    return { a: nameA, b: nameB, aWins, bWins, matches: matches.sort((x, y) => y.ts - x.ts) };
+  }
+
   /**
    * Inscription d'un joueur connecté à un tournoi non lancé.
    * Gratuit (entryFeeXof = 0) : ajouté immédiatement au moteur.

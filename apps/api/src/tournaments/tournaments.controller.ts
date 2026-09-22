@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
@@ -50,6 +50,18 @@ export class TournamentsController {
   @Get('leaderboard')
   leaderboard() {
     return this.service.leaderboard();
+  }
+
+  @Get('players/profile')
+  playerProfile(@Query('name') name: string) {
+    if (!name?.trim()) throw new NotFoundException('Joueur introuvable');
+    return this.service.playerProfile(name.trim());
+  }
+
+  @Get('players/head-to-head')
+  headToHead(@Query('a') a: string, @Query('b') b: string) {
+    if (!a?.trim() || !b?.trim()) throw new NotFoundException('Joueurs introuvables');
+    return this.service.headToHead(a.trim(), b.trim());
   }
 
   @Get(':id')

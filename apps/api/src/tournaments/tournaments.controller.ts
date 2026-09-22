@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
   AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto,
@@ -109,6 +110,24 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   listRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.listRegistrations(id, user);
+  }
+
+  @Get(':id/registrations/export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async exportRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
+    const { filename, csv } = await this.service.exportRegistrationsCsv(id, user);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(csv);
+  }
+
+  @Get(':id/results/export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async exportResults(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
+    const { filename, csv } = await this.service.exportResultsCsv(id, user);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(csv);
   }
 
   @Post(':id/checkin')

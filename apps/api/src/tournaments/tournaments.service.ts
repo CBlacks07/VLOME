@@ -501,6 +501,60 @@ export class TournamentsService {
     return registrationId.slice(-6).toUpperCase();
   }
 
+  /** Une cellule CSV — échappée (guillemets doublés) et entre guillemets dès qu'elle contient une
+   * virgule, un guillemet ou un retour à la ligne, comme l'exigent Excel/LibreOffice/Google Sheets. */
+  private csvCell(v: string | number | null | undefined): string {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  private csvRow(cells: (string | number | null | undefined)[]): string {
+    return cells.map((c) => this.csvCell(c)).join(',') + '\r\n';
+  }
+  /** Nom de tournoi → nom de fichier sûr (accents conservés, tout le reste réduit à des tirets). */
+  private csvFilename(prefix: string, tournamentName: string): string {
+    const slug = tournamentName.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'tournoi';
+    return `${prefix}-${slug}.csv`;
+  }
+
+  /** Export CSV des inscriptions (organisateur/admin) — même contenu que listRegistrations, à plat pour
+   * un tableur. Le BOM UTF-8 en tête évite les accents mal interprétés à l'ouverture dans Excel. */
+  async exportRegistrationsCsv(tournamentId: string, user: JwtUser): Promise<{ filename: string; csv: string }> {
+    const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const regs = await this.prisma.registration.findMany({
+      where: { tournamentId },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { email: true, displayName: true } } },
+    });
+    let csv = '﻿' + this.csvRow(['Joueur', 'Compte', 'Email', 'Montant (XOF)', 'Méthode', 'Statut', 'Pointé', 'Code billet', 'Inscrit le']);
+    for (const x of regs) {
+      csv += this.csvRow([
+        x.playerName, x.user.displayName, x.user.email, x.amountXof,
+        x.paymentMethod || '', x.paymentStatus === 'paid' ? 'Payé' : 'En attente',
+        x.checkedInAt ? 'Oui' : 'Non', this.ticketCode(x.id),
+        x.createdAt.toLocaleString('fr-FR'),
+      ]);
+    }
+    return { filename: this.csvFilename('inscriptions', r.name), csv };
+  }
+
+  /** Export CSV du classement final (organisateur/admin) — un tableur pour archiver/partager les
+   * résultats hors de l'appli, comme le permettent Challonge/start.gg. */
+  async exportResultsCsv(tournamentId: string, user: JwtUser): Promise<{ filename: string; csv: string }> {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const t = l.t;
+    const clubById = new Map(t.players.map((p) => [p.id, p.club || '']));
+    const ranking = Engine.overallRanking(t);
+    let csv = '﻿' + this.csvRow(['Rang', 'Joueur', 'Club', 'Points', 'Victoires', 'Défaites']);
+    ranking.forEach((row, i) => {
+      csv += this.csvRow([i + 1, row.name, clubById.get(row.id) || '', row.pts, row.wins, row.losses]);
+    });
+    return { filename: this.csvFilename('resultats', t.name), csv };
+  }
+
   /** Poste/table assigné à un match en cours (LAN à plusieurs postes) — purement indicatif, affiché en
    * régie et sur les écrans publics (voir toState). key = activeKey côté web (matchId ou poolId) ;
    * label vide ou omis efface l'assignation. */

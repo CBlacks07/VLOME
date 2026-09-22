@@ -265,7 +265,21 @@ export class TournamentsService {
    * un point en Tekken 8).
    */
   async leaderboard() {
+    return this.computeLeaderboard({});
+  }
+
+  /**
+   * Classement cumulé d'un événement (comme un "circuit" start.gg) : même agrégation que leaderboard(),
+   * restreinte aux tournois rattachés à cet événement — pour voir qui domine sur l'ensemble de ses
+   * étapes, pas seulement sur un tournoi isolé.
+   */
+  async eventStandings(eventId: string) {
+    return this.computeLeaderboard({ eventId });
+  }
+
+  private async computeLeaderboard(where: { eventId?: string }) {
     const tournaments = await this.prisma.tournament.findMany({
+      where,
       select: { id: true, game: true, engineState: true },
     });
     type Agg = { name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
@@ -278,8 +292,11 @@ export class TournamentsService {
         const key = `${p.name}||${game}`;
         const entry = agg.get(key) ?? { name: p.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
         const points = st.points?.[p.id] || 0;
-        const matches = st.log.filter((l) => l.a === p.id || l.b === p.id).length;
-        const wins = st.log.filter((l) => l.winner === p.id).length;
+        // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
+        // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
+        const realMatches = st.log.filter((l) => l.a && l.b);
+        const matches = realMatches.filter((l) => l.a === p.id || l.b === p.id).length;
+        const wins = realMatches.filter((l) => l.winner === p.id).length;
         entry.points += points; entry.wins += wins; entry.matches += matches;
         if (st.champion === p.id) entry.championships++;
         if (matches > 0) entry.tournaments.add(t.id);

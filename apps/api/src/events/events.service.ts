@@ -67,6 +67,13 @@ export class EventsService {
     return { ...this.view(ev, cards), tournaments: cards };
   }
 
+  /** Classement cumulé de l'événement (toutes ses étapes confondues) — public, comme le reste de la fiche. */
+  async standings(id: string) {
+    const ev = await this.prisma.event.findUnique({ where: { id }, select: { status: true } });
+    if (!ev || ev.status !== 'PUBLISHED') throw new NotFoundException('Événement introuvable.');
+    return this.tournaments.eventStandings(id);
+  }
+
   async mine(user: JwtUser) {
     const rows = await this.prisma.event.findMany({
       where: user.role === 'ADMIN' ? {} : { createdById: user.sub },

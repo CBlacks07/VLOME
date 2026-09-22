@@ -99,6 +99,7 @@ type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
   playerProfile: Detail | null; h2hOpponent: string; h2hData: Detail | null; h2hBusy: boolean;
+  eventStandings: Detail[] | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -4834,8 +4835,21 @@ function pEvenement(S: State) {
   const grid = tournaments.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px">${tournaments.map((t) => tournCard(t, false)).join("")}</div>`
     : `<div style="color:var(--text-faint);font-size:14px;padding:26px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
+  // Classement cumulé (circuit) : toutes les étapes déjà jouées de l'événement confondues — n'apparaît
+  // qu'une fois chargé (voir openEvent, chargé seulement à partir de 2 tournois rattachés).
+  const standings: Detail[] = S.eventStandings || [];
+  const standingsByGame = new Map<string, Detail[]>();
+  for (const r of standings) { const g = r.game || "Autre"; if (!standingsByGame.has(g)) standingsByGame.set(g, []); standingsByGame.get(g)!.push(r); }
+  const standingsBlock = standingsByGame.size ? `<div style="margin-bottom:26px">
+    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0 0 6px">Classement du circuit</h2>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px">Résultats cumulés sur toutes les étapes de cet événement déjà jouées.</p>
+    <div style="display:flex;flex-direction:column;gap:22px">${Array.from(standingsByGame.entries()).map(([game, rows]) => `<div>
+      ${standingsByGame.size > 1 ? `<div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${accent};margin-bottom:8px">${escHtml(game)}</div>` : ""}
+      ${gameLeaderboardBlock(rows, { podium: false, limit: 10 })}
+    </div>`).join("")}</div>
+  </div>` : "";
   const wizard = S.creating && canManage(S) ? tournamentWizard(S) : "";
-  return wizard + hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}
+  return wizard + hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}${standingsBlock}
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1.2px;margin:0 0 16px">Tournois de l'événement <span style="color:var(--text-faint);font-size:20px">${tournaments.length}</span></h2>${grid}</div>`;
 }
 
@@ -4950,7 +4964,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5464,7 +5478,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
   /** Ouvre la page publique d'un événement. Un gestionnaire voit aussi ses brouillons (route /manage, sinon route publique). */
   async function openEvent(id: string) {
-    setS((s) => ({ ...s, page: "evenement", openEventId: id, eventDetail: null }));
+    setS((s) => ({ ...s, page: "evenement", openEventId: id, eventDetail: null, eventStandings: null }));
     window.scrollTo({ top: 0 });
     try {
       let d: Detail | null = null;
@@ -5477,6 +5491,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (r.ok) d = await r.json();
       }
       setS((s) => (s.openEventId === id ? { ...s, eventDetail: d ?? { notFound: true, tournaments: [] } } : s));
+      // Classement cumulé (circuit) : n'a d'intérêt qu'avec au moins deux tournois rattachés.
+      if (d && (d.tournaments || []).length > 1) {
+        const sr = await fetch(`${API}/api/events/${id}/standings`);
+        if (sr.ok) { const standings = await sr.json(); setS((s) => (s.openEventId === id ? { ...s, eventStandings: standings } : s)); }
+      }
     } catch { /* ignore */ }
   }
   /** Ouvre l'éditeur (console) d'un événement existant avec ses tournois rattachés. */

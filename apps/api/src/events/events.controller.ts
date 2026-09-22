@@ -32,6 +32,11 @@ export class EventsController {
     return this.events.detailPublic(id);
   }
 
+  @Get(':id/standings')
+  standings(@Param('id') id: string) {
+    return this.events.standings(id);
+  }
+
   /* ---------- Gestion (organisateur propriétaire ou admin) ---------- */
 
   @Get(':id/manage')

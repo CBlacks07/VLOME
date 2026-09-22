@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -116,6 +116,20 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   checkIn(@Param('id') id: string, @Body() dto: CheckinDto, @CurrentUser() user: JwtUser) {
     return this.service.checkIn(id, dto, user);
+  }
+
+  @Post(':id/station')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  setStation(@Param('id') id: string, @Body() dto: StationDto, @CurrentUser() user: JwtUser) {
+    return this.service.setStation(id, dto.key, dto.label, user);
+  }
+
+  @Post(':id/stream-match')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  setStreamMatch(@Param('id') id: string, @Body() dto: StreamMatchDto, @CurrentUser() user: JwtUser) {
+    return this.service.setStreamMatch(id, dto.key, dto.on, user);
   }
 
   @Post(':id/registrations/:regId/confirm')

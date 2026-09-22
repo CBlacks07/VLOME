@@ -3133,7 +3133,11 @@ function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
   if (!items.length) return "";
   return `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;margin-top:16px">
     <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid var(--surface-4)"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted)">File d'attente</span><span style="flex:1"></span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${items.length}</span></div>
-    <div style="padding:6px 12px 12px">${items.map((it) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--surface-3)"><span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span><span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`).join("")}</div>
+    <div style="padding:6px 12px 12px">${[...items].sort((a, b) => Number(b.id === t.streamMatchKey) - Number(a.id === t.streamMatchKey)).map((it) => {
+      const station = t.stations?.[it.id];
+      const onStream = it.id === t.streamMatchKey;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--surface-3)">${onStream ? `<span title="À l'antenne" style="color:#F43F7E;flex:none">${ic(I.tv, 13)}</span>` : ""}<span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span>${station ? `<span style="font-size:10px;font-weight:750;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;flex:none">${escHtml(station)}</span>` : ""}<span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`;
+    }).join("")}</div>
   </div>`;
 }
 
@@ -3175,11 +3179,18 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       <span style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;min-width:22px;text-align:center">${score}</span>
       <button data-scorestep="${key}|${k}|1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#22D3EE;color:#04222a;font-size:15px;font-weight:800;border:0;cursor:pointer;flex:none">+</button>
     </div>`;
-  return `<div style="border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
-    <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid rgba(34,211,238,.22)">
+  const stationVal = (t.stations && t.stations[key]) || "";
+  const stationField = `<input id="station-${key}" value="${escAttr(stationVal)}" placeholder="Poste" title="Table/poste physique où se joue ce match (indicatif, affiché sur l'écran de diffusion)" style="width:64px;flex:none;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:5px 6px;text-align:center" />
+      <button data-stationsave="${t.id}|${key}" title="Enregistrer le poste" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>`;
+  const onStream = t.streamMatchKey === key;
+  const streamBtn = `<button data-streammatch="${t.id}|${key}|${onStream ? "0" : "1"}" title="${onStream ? "Retirer de l'antenne" : "Marquer à l'antenne (mis en avant sur l'écran de diffusion)"}" style="display:inline-flex;align-items:center;gap:5px;flex:none;background:${onStream ? "#F43F7E" : "transparent"};border:1px solid ${onStream ? "#F43F7E" : "var(--border-strong)"};color:${onStream ? "#fff" : "var(--text-muted)"};border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer">${ic(I.tv, 12)}${onStream ? "À l'antenne" : "Stream"}</button>`;
+  return `<div style="border:1px solid ${onStream ? "#F43F7E" : "rgba(34,211,238,.4)"};border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid rgba(34,211,238,.22);flex-wrap:wrap">
       <span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;flex:1">Match en cours</span>
       ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
+      ${streamBtn}
+      ${stationField}
       <button data-matchclose="${key}" title="Retirer de la régie (reste jouable, revient dans la file d'attente)" style="display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:transparent;border:0;color:var(--text-faint);cursor:pointer;flex:none">${ic(I.x, 12)}</button>
     </div>
     <div style="padding:14px">
@@ -4374,15 +4385,17 @@ function pShow(S: State) {
 }
 
 /** Matchs en cours d'un tournoi (pour l'écran d'événement) : matchs de poule du moment, ou affiches jouables de la phase finale. */
-function evLiveMatches(st: Detail): { label: string; a: string; b: string }[] {
-  const out: { label: string; a: string; b: string }[] = [];
+function evLiveMatches(st: Detail): { label: string; a: string; b: string; station?: string; onStream?: boolean }[] {
+  const out: { label: string; a: string; b: string; station?: string; onStream?: boolean }[] = [];
+  const stations: Record<string, string> = st?.stations || {};
+  const streamKey = st?.streamMatchKey;
   const fin = st?.finals;
   if (!fin || fin.format === "survival") {
-    (st?.pools || []).forEach((p: Detail) => { if (p.current) out.push({ label: p.name, a: p.current.aName, b: p.current.bName }); });
+    (st?.pools || []).forEach((p: Detail) => { if (p.current) out.push({ label: p.name, a: p.current.aName, b: p.current.bName, station: stations[p.id], onStream: p.id === streamKey }); });
   } else {
-    finalsLabelledMatches(fin).forEach(({ label, m }) => { if (m && m.playable && m.aName && m.bName) out.push({ label, a: m.aName, b: m.bName }); });
+    finalsLabelledMatches(fin).forEach(({ label, m }) => { if (m && m.playable && m.aName && m.bName) out.push({ label, a: m.aName, b: m.bName, station: stations[m.matchId], onStream: m.matchId === streamKey }); });
   }
-  return out;
+  return out.sort((a, b) => Number(!!b.onStream) - Number(!!a.onStream));
 }
 
 /** Écran de diffusion d'un événement : tous ses tournois sur un seul écran, matchs en cours en direct, champions. */
@@ -4400,12 +4413,13 @@ function pEvShow(S: State) {
   const liveCard = (t: Detail) => {
     const st = d.states[t.id];
     const ms = st ? evLiveMatches(st).slice(0, 5) : [];
+    const streamed = ms.find((m) => m.onStream);
     const phase = st ? (st.finals ? "Phase finale" : "Phase de poules") : "";
     const rows = ms.length
-      ? ms.map((m) => `<div style="padding:1.2vh 0;border-top:1px solid var(--surface-4)"><div style="color:var(--text-muted);font-size:1.3vh;letter-spacing:1.4px;text-transform:uppercase;font-weight:800;margin-bottom:.5vh">${escHtml(m.label)}</div>
+      ? ms.map((m) => `<div style="padding:1.2vh 0;border-top:1px solid var(--surface-4)"><div style="display:flex;align-items:center;justify-content:space-between;gap:1vh;margin-bottom:.5vh"><span style="color:var(--text-muted);font-size:1.3vh;letter-spacing:1.4px;text-transform:uppercase;font-weight:800">${escHtml(m.label)}</span><span style="display:flex;align-items:center;gap:.6vh">${m.onStream ? `<span style="display:inline-flex;align-items:center;gap:.4vh;font-size:1.2vh;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:.3vh 1vh;white-space:nowrap">${ic(I.tv, 10)}Sur le stream</span>` : ""}${m.station ? `<span style="font-size:1.3vh;font-weight:800;color:#04222a;background:${accent};border-radius:99px;padding:.3vh 1vh;white-space:nowrap">${escHtml(m.station)}</span>` : ""}</span></div>
           <div style="display:flex;align-items:baseline;justify-content:center;gap:1.4vw;flex-wrap:wrap"><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:${accent};letter-spacing:1px">${escHtml(m.a)}</span><span style="color:var(--text-faint);font-size:1.6vh;font-weight:800">VS</span><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:#F43F7E;letter-spacing:1px">${escHtml(m.b)}</span></div></div>`).join("")
       : `<div style="text-align:center;color:var(--text-faint);padding:2vh 0;font-size:1.8vh">${st ? "En attente du prochain match…" : "Chargement…"}</div>`;
-    return `<div style="border:1px solid ${accent}55;border-radius:18px;background:linear-gradient(180deg,rgba(20,20,29,.92),rgba(14,14,22,.92));padding:2.4vh 1.8vw">
+    return `<div style="border:1px solid ${streamed ? "#F43F7E" : accent + "55"};border-radius:18px;background:linear-gradient(180deg,rgba(20,20,29,.92),rgba(14,14,22,.92));padding:2.4vh 1.8vw">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:1vw;flex-wrap:wrap"><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;letter-spacing:1.2px;line-height:1">${escHtml(t.name)}</div>${phase ? `<span style="font-size:1.3vh;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:.6vh 1.2vh;white-space:nowrap">${phase}</span>` : ""}</div>
       <div style="color:var(--text-muted);font-size:1.5vh;margin:.6vh 0 1vh">${[t.game, t.format, `${t.players} joueurs`].filter(Boolean).map(escHtml).join(" · ")}</div>${rows}</div>`;
   };
@@ -6066,14 +6080,19 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     return () => clearInterval(id);
   }, [S.page, S.site]);
 
-  // Mode Show : rafraîchit l'état en direct.
+  // Mode Show et page publique d'un tournoi en direct : rafraîchit l'état tout seul, comme un spectateur
+  // Challonge/start.gg qui voit le bracket avancer sans recharger. Sur la page publique, seulement pour un
+  // tournoi vraiment en direct (rien à rafraîchir sur un tournoi à venir ou terminé), et jamais pendant
+  // qu'un formulaire d'édition est ouvert (organisateur qui modifie le tournoi, correction d'un match).
   useEffect(() => {
-    if (S.page !== "show" || !S.openId) return;
+    const isShow = S.page === "show" && !!S.openId;
+    const isLiveDetail = S.page === "tournoi" && !!S.openId && S.detail?.status === "live" && !S.editing && !S.correctingId;
+    if (!isShow && !isLiveDetail) return;
     const id = setInterval(async () => {
       try { const r = await fetch(`${API}/api/tournaments/${S.openId}/state`); if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); } } catch { /* ignore */ }
     }, 2500);
     return () => clearInterval(id);
-  }, [S.page, S.openId]);
+  }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId]);
 
   // Écran de diffusion d'événement : actualisé toutes les 7 secondes (matchs en cours de chaque tournoi).
   useEffect(() => {
@@ -6711,7 +6730,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-scanopen],[data-checkin],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7050,6 +7069,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.scanopen) setS((s) => ({ ...s, scanOpen: true }));
     else if (d.checkin) { const [tid, rid, on] = d.checkin.split("|"); toggleCheckIn(tid, rid, on === "1"); }
+    else if (d.stationsave) {
+      const [tid, key] = d.stationsave.split("|");
+      const label = (document.getElementById(`station-${key}`) as HTMLInputElement | null)?.value ?? "";
+      act(`${API}/api/tournaments/${tid}/station`, { key, label });
+    }
+    else if (d.streammatch) {
+      const [tid, key, on] = d.streammatch.split("|");
+      act(`${API}/api/tournaments/${tid}/stream-match`, { key, on: on === "1" });
+    }
     else if (d.openevent) openEvent(d.openevent);
     else if (d.evlist) { setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" })); window.scrollTo({ top: 0 }); loadMyEvents(); }
     else if (d.evnew) setS((s) => ({ ...s, eventEdit: { id: null, name: "", tagline: "", description: "", startDate: null, endDate: null, place: "", accentColor: "", status: "DRAFT", posterUrl: null, bannerUrl: null }, eventManage: null, eventMsg: "" }));

@@ -159,6 +159,18 @@ export class CheckinDto {
   @IsOptional() @IsBoolean() present?: boolean;
 }
 
+// Poste/table assigné à un match en cours (voir TournamentsService.setStation) — key = activeKey côté web.
+export class StationDto {
+  @IsString() @MaxLength(60) key!: string;
+  @IsOptional() @IsString() @MaxLength(40) label?: string;
+}
+
+// Match "à l'antenne" (voir TournamentsService.setStreamMatch) — key = activeKey côté web.
+export class StreamMatchDto {
+  @IsString() @MaxLength(60) key!: string;
+  @IsBoolean() on!: boolean;
+}
+
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;

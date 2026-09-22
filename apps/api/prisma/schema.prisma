@@ -229,6 +229,13 @@ model Tournament {
   matches           Match[]
   registrations     Registration[]
   galleryItems      GalleryItem[]
+  // Poste/table assigné à chaque match en cours (LAN à plusieurs postes) — clé = activeKey côté web
+  // (matchId de phase finale, poolId de poule), valeur = libellé libre ("Table 3", "PC 7"…). Purement
+  // indicatif : ne change rien au déroulé du tournoi, juste affiché en régie et sur les écrans publics.
+  stations          Json?
+  // Match actuellement "à l'antenne" (un seul à la fois) — même clé (activeKey) que stations. Mis en
+  // avant dans la file d'attente de la régie et signalé sur l'écran de diffusion.
+  streamMatchKey    String?
 }
 
 model Match {

@@ -3287,8 +3287,11 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       <button data-scorestep="${key}|${k}|1" style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#22D3EE;color:#04222a;font-size:15px;font-weight:800;border:0;cursor:pointer;flex:none">+</button>
     </div>`;
   const stationVal = (t.stations && t.stations[key]) || "";
-  const stationField = `<input id="station-${key}" value="${escAttr(stationVal)}" placeholder="Poste" title="Table/poste physique où se joue ce match (indicatif, affiché sur l'écran de diffusion)" style="width:64px;flex:none;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:5px 6px;text-align:center" />
-      <button data-stationsave="${t.id}|${key}" title="Enregistrer le poste" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>`;
+  const stationField = `<span style="display:inline-flex;align-items:center;gap:6px;flex:none">
+      <span style="font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase;color:var(--text-faint)">Poste</span>
+      <input id="station-${key}" value="${escAttr(stationVal)}" placeholder="Ex. Table 3" title="Table/poste physique où se joue ce match (indicatif, affiché sur l'écran de diffusion Mode Show)" style="width:78px;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:5px 6px;text-align:center" />
+      <button data-stationsave="${t.id}|${key}" title="Enregistrer le poste" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>
+    </span>`;
   const onStream = t.streamMatchKey === key;
   const streamBtn = `<button data-streammatch="${t.id}|${key}|${onStream ? "0" : "1"}" title="${onStream ? "Retirer de l'antenne" : "Marquer à l'antenne (mis en avant sur l'écran de diffusion)"}" style="display:inline-flex;align-items:center;gap:5px;flex:none;background:${onStream ? "#F43F7E" : "transparent"};border:1px solid ${onStream ? "#F43F7E" : "var(--border-strong)"};color:${onStream ? "#fff" : "var(--text-muted)"};border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer">${ic(I.tv, 12)}${onStream ? "À l'antenne" : "Stream"}</button>`;
   return `<div style="border:1px solid ${onStream ? "#F43F7E" : "rgba(34,211,238,.4)"};border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
@@ -4450,16 +4453,22 @@ function showStandingsTable(rows: { name: string; pts: number }[], ptsLabel: str
   </table></div>`;
 }
 /** Un à trois duels en gros plan (Mode Show) — phase finale single/double/round robin/swiss, ou file d'attente Survival. */
-function showMatchesFocus(matches: { aName: string; bName: string; label?: string }[]): string {
+function showMatchesFocus(matches: { aName: string; bName: string; label?: string; station?: string; onStream?: boolean }[]): string {
   if (!matches.length) return `<div style="text-align:center;color:var(--text-faint);font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
-  const box = (m: { aName: string; bName: string; label?: string }) => `<div>
-    ${m.label ? `<div style="text-align:center;color:#FBBF24;font-size:1.5vh;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;margin-bottom:.8vh">${escHtml(m.label)}</div>` : ""}
+  // Le match "à l'antenne" (voir setStreamMatch) passe en tête de la liste, comme la file d'attente de la régie.
+  const sorted = [...matches].sort((a, b) => Number(!!b.onStream) - Number(!!a.onStream));
+  const box = (m: { aName: string; bName: string; label?: string; station?: string; onStream?: boolean }) => `<div>
+    ${m.label || m.station || m.onStream ? `<div style="display:flex;align-items:center;justify-content:center;gap:1vh;margin-bottom:.8vh">
+      ${m.label ? `<span style="color:#FBBF24;font-size:1.5vh;font-weight:800;letter-spacing:1.6px;text-transform:uppercase">${escHtml(m.label)}</span>` : ""}
+      ${m.onStream ? `<span style="display:inline-flex;align-items:center;gap:.5vh;font-size:1.3vh;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:.4vh 1.2vh">${ic(I.tv, 11)}À l'antenne</span>` : ""}
+      ${m.station ? `<span style="font-size:1.3vh;font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:.4vh 1.2vh">${escHtml(m.station)}</span>` : ""}
+    </div>` : ""}
     <div style="display:flex;align-items:center;justify-content:center;gap:2vw;flex-wrap:wrap">
     <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#22D3EE;line-height:1">${escHtml(m.aName)}</div></div>
     <div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 2 : 3.4}vh;color:var(--text-faint);flex:none">VS</div>
     <div style="text-align:center;flex:1;min-width:0"><div style="font-family:'Bebas Neue',sans-serif;font-size:${matches.length > 1 ? 5.5 : 8}vh;color:#F43F7E;line-height:1">${escHtml(m.bName)}</div></div>
     </div></div>`;
-  return `<div style="display:flex;flex-direction:column;gap:${matches.length > 1 ? 2.6 : 0}vh;margin-top:3vh;max-width:82vw;margin-left:auto;margin-right:auto">${matches.map(box).join("")}</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:${matches.length > 1 ? 2.6 : 0}vh;margin-top:3vh;max-width:82vw;margin-left:auto;margin-right:auto">${sorted.map(box).join("")}</div>`;
 }
 /** Derniers résultats (Mode Show) — vainqueur mis en avant, une ligne par match. */
 function showRecentResults(matches: Detail[]): string {
@@ -4579,13 +4588,19 @@ function pShowInner(S: State) {
   // par la grande poule de la phase finale en mode Survival (voir Engine.startFinalsSurvivalPool).
   const poolCard = (p: Detail) => {
     let match: string;
+    const station: string | undefined = t.stations?.[p.id];
+    const onStream = p.id === t.streamMatchKey;
+    const badges = p.current && (station || onStream) ? `<div style="display:flex;align-items:center;justify-content:center;gap:1vh;margin-bottom:1vh">
+      ${onStream ? `<span style="display:inline-flex;align-items:center;gap:.5vh;font-size:1.3vh;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:.4vh 1.2vh">${ic(I.tv, 11)}À l'antenne</span>` : ""}
+      ${station ? `<span style="font-size:1.3vh;font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:.4vh 1.2vh">${escHtml(station)}</span>` : ""}
+    </div>` : "";
     if (p.current) {
-      match = `<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:var(--text-faint)">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
+      match = `${badges}<div style="display:flex;align-items:center;justify-content:center;gap:2.2vw;flex-wrap:wrap"><div style="text-align:center"><div style="color:#22D3EE;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Survivant${p.current.streak > 1 ? " · série " + p.current.streak : ""}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#22D3EE;line-height:1;margin-top:.4vh">${p.current.aName}</div></div><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;color:var(--text-faint)">VS</div><div style="text-align:center"><div style="color:#F43F7E;font-size:1.4vh;font-weight:800;text-transform:uppercase;letter-spacing:1px">Challenger</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;color:#F43F7E;line-height:1;margin-top:.4vh">${p.current.bName}</div></div></div>`;
     } else if (p.done) {
       match = `<div style="text-align:center;color:#34D399;font-weight:700;font-size:2vh;padding:1vh 0">Qualifiés : ${(Array.isArray(p.qualified) && p.qualified.length ? p.qualified.map((q: Detail) => q.name) : [p.top1, p.top2].filter(Boolean)).join(", ")}</div>`;
     } else match = `<div style="text-align:center;color:var(--text-faint);padding:1vh 0">En attente du lancement…</div>`;
     const lead = p.ranking?.[0] ? `<div style="text-align:center;color:var(--text-muted);font-size:1.5vh;margin-top:1.4vh">Leader : <b style="color:var(--text)">${p.ranking[0].name}</b> · ${p.ranking[0].pts} pts</div>` : "";
-    return `<div style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:var(--text-muted)">${p.name}</div>${match}${lead}</div>`;
+    return `<div style="border:1px solid ${onStream ? "#F43F7E" : "var(--border)"};border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:2.6vh 2vw"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.4vh;letter-spacing:1.5px;text-align:center;margin-bottom:1.6vh;color:var(--text-muted)">${p.name}</div>${match}${lead}</div>`;
   };
   if (!t.finals) {
     // Survival, poules en cours.
@@ -4610,7 +4625,8 @@ function pShowInner(S: State) {
   } else if (t.finals.format === "roundrobin" || t.finals.format === "swiss") {
     phaseLabel = t.finals.format === "swiss" ? `Swiss · ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : "Round Robin";
     slides.push({ caption: "Classement", body: showStandingsTable(t.finals.standings.slice(0, 8), "Pts") });
-    const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable);
+    const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable)
+      .map((m: Detail) => ({ aName: m.aName, bName: m.bName, station: t.stations?.[m.matchId], onStream: m.matchId === t.streamMatchKey }));
     if (playable.length) slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Match en direct", body: showMatchesFocus(playable.slice(0, 3)) });
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
@@ -4624,7 +4640,7 @@ function pShowInner(S: State) {
     // finalsLabelledMatches distingue déjà vainqueurs/perdants dans le libellé (ex. "Winners ·
     // Demi-finales" vs "Perdants · Round 2") : conservé tel quel, pas besoin de le recalculer.
     const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable)
-      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label }));
+      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label, station: t.stations?.[x.m.matchId], onStream: x.m.matchId === t.streamMatchKey }));
     slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable) });
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
@@ -4633,7 +4649,7 @@ function pShowInner(S: State) {
     // plus décisives (les plus tardives dans l'arbre) suffisent.
     phaseLabel = "Élimination simple";
     const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable).reverse()
-      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label }));
+      .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label, station: t.stations?.[x.m.matchId], onStream: x.m.matchId === t.streamMatchKey }));
     slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable.slice(0, 3)) });
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
@@ -6259,15 +6275,17 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // Challonge/start.gg qui voit le bracket avancer sans recharger. Sur la page publique, seulement pour un
   // tournoi vraiment en direct (rien à rafraîchir sur un tournoi à venir ou terminé), et jamais pendant
   // qu'un formulaire d'édition est ouvert (organisateur qui modifie le tournoi, correction d'un match).
+  // Jamais non plus en régie (canManage) : S.page reste "tournoi" là aussi, et un remplacement périodique
+  // de S.detail y effacerait la saisie en cours (ex. le champ "poste" perdait ce qu'on venait de taper).
   useEffect(() => {
     const isShow = S.page === "show" && !!S.openId;
-    const isLiveDetail = S.page === "tournoi" && !!S.openId && S.detail?.status === "live" && !S.editing && !S.correctingId;
+    const isLiveDetail = S.page === "tournoi" && !!S.openId && S.detail?.status === "live" && !S.editing && !S.correctingId && !canManage(S);
     if (!isShow && !isLiveDetail) return;
     const id = setInterval(async () => {
       try { const r = await fetch(`${API}/api/tournaments/${S.openId}/state`); if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); } } catch { /* ignore */ }
     }, 2500);
     return () => clearInterval(id);
-  }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId]);
+  }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId, S.user?.role]);
 
   // Écran de diffusion d'événement : actualisé toutes les 7 secondes (matchs en cours de chaque tournoi).
   useEffect(() => {

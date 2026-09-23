@@ -4564,6 +4564,29 @@ function pEvShow(S: State) {
       ${live.length ? `<div style="display:inline-flex;align-items:center;gap:1vh;margin-top:2vh;color:${accent};font-size:1.8vh;font-weight:800;letter-spacing:2px;text-transform:uppercase"><span style="width:1.1vh;height:1.1vh;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span>${live.length} tournoi${live.length > 1 ? "s" : ""} en direct</div>` : ""}
     </div>${body}${upRow}${doneRow}</div>`;
 }
+/** Découpe les matchs actuellement jouables en plusieurs diapositives (Mode Show) au lieu d'en
+ * tronquer l'affichage à quelques-uns — sur une LAN à plusieurs postes, chaque match compte (il
+ * faut pouvoir repérer sa table). Les diapositives tournent avec les autres (voir showSlide) ; le
+ * sous-titre indique la tranche affichée dès qu'il y en a plusieurs. */
+function pushLiveMatchSlides(
+  slides: { caption: string; body: string }[],
+  playable: { aName: string; bName: string; label?: string; station?: string; onStream?: boolean }[],
+  singleLabel: string,
+  chunkSize = 4,
+) {
+  if (!playable.length) return;
+  // Le match "à l'antenne" passe en tête (donc dans la première diapositive) plutôt que d'atterrir
+  // au hasard dans une tranche tardive — showMatchesFocus le re-signale déjà en tête de sa tranche.
+  const sorted = [...playable].sort((a, b) => Number(!!b.onStream) - Number(!!a.onStream));
+  if (sorted.length <= chunkSize) {
+    slides.push({ caption: sorted.length > 1 ? `${sorted.length} matchs en direct` : singleLabel, body: showMatchesFocus(sorted) });
+    return;
+  }
+  for (let i = 0; i < sorted.length; i += chunkSize) {
+    const part = sorted.slice(i, i + chunkSize);
+    slides.push({ caption: `Matchs en direct (${i + 1}-${i + part.length}/${sorted.length})`, body: showMatchesFocus(part) });
+  }
+}
 function pShowInner(S: State) {
   const t = S.detail;
   const close = `<button data-showclose="1" style="position:absolute;top:16px;right:18px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text-muted);border-radius:10px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer;z-index:5">Fermer</button>`;
@@ -4630,7 +4653,7 @@ function pShowInner(S: State) {
     slides.push({ caption: "Classement", body: showStandingsTable(t.finals.standings.slice(0, 8), "Pts") });
     const playable = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && m.playable)
       .map((m: Detail) => ({ aName: m.aName, bName: m.bName, station: t.stations?.[m.matchId], onStream: m.matchId === t.streamMatchKey }));
-    if (playable.length) slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Match en direct", body: showMatchesFocus(playable.slice(0, 3)) });
+    pushLiveMatchSlides(slides, playable, "Match en direct");
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
   } else if (t.finals.format === "double") {
@@ -4644,16 +4667,16 @@ function pShowInner(S: State) {
     // Demi-finales" vs "Perdants · Round 2") : conservé tel quel, pas besoin de le recalculer.
     const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable)
       .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label, station: t.stations?.[x.m.matchId], onStream: x.m.matchId === t.streamMatchKey }));
-    slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable) });
+    pushLiveMatchSlides(slides, playable, "Phase finale");
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
   } else {
-    // single élimination : un seul bracket, pas de section à équilibrer — les trois affiches les
-    // plus décisives (les plus tardives dans l'arbre) suffisent.
+    // single élimination : un seul bracket — tous les matchs jouables défilent (voir
+    // pushLiveMatchSlides), les plus tardifs dans l'arbre (donc les plus décisifs) en premier.
     phaseLabel = "Élimination simple";
     const playable = finalsLabelledMatches(t.finals).filter((x) => x.m.playable).reverse()
       .map((x) => ({ aName: x.m.aName, bName: x.m.bName, label: x.label, station: t.stations?.[x.m.matchId], onStream: x.m.matchId === t.streamMatchKey }));
-    slides.push({ caption: playable.length > 1 ? `${playable.length} matchs en direct` : "Phase finale", body: showMatchesFocus(playable.slice(0, 3)) });
+    pushLiveMatchSlides(slides, playable, "Phase finale");
     const played = finalsMatchGroups(t.finals).flat().filter((m): m is Detail => !!m && !!m.winnerId && !m.bye).slice(-4).reverse();
     if (played.length) slides.push({ caption: "Derniers résultats", body: showRecentResults(played) });
   }

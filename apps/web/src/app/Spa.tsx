@@ -4472,9 +4472,12 @@ function showMatchesFocus(matches: { aName: string; bName: string; label?: strin
 }
 /** Derniers résultats (Mode Show) — vainqueur mis en avant, une ligne par match. */
 function showRecentResults(matches: Detail[]): string {
+  const hasScore = (m: Detail) => m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
   return `<div style="max-width:min(760px,66vw);margin:2.6vh auto 0;display:flex;flex-direction:column;gap:1.6vh">${matches.map((m: Detail) => {
-    const win = m.winnerId === m.aId ? m.aName : m.bName, lose = m.winnerId === m.aId ? m.bName : m.aName;
-    return `<div style="display:flex;align-items:center;justify-content:center;gap:1.2vw;font-size:2.4vh;border-bottom:1px solid var(--surface-3);padding-bottom:1.4vh">${ic(I.crown, 18)}<span style="color:#22D3EE;font-weight:800">${escHtml(win)}</span><span style="color:var(--text-faint);font-size:1.9vh">a battu</span><span style="color:var(--text-faint)">${escHtml(lose)}</span></div>`;
+    const aWon = m.winnerId === m.aId;
+    const win = aWon ? m.aName : m.bName, lose = aWon ? m.bName : m.aName;
+    const score = hasScore(m) ? `<span style="color:#22D3EE;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:2vh">${aWon ? m.sa : m.sb}–${aWon ? m.sb : m.sa}</span>` : "";
+    return `<div style="display:flex;align-items:center;justify-content:center;gap:1.2vw;font-size:2.4vh;border-bottom:1px solid var(--surface-3);padding-bottom:1.4vh">${ic(I.crown, 18)}<span style="color:#22D3EE;font-weight:800">${escHtml(win)}</span><span style="color:var(--text-faint);font-size:1.9vh">a battu</span><span style="color:var(--text-faint)">${escHtml(lose)}</span>${score}</div>`;
   }).join("")}</div>`;
 }
 /** Battle Royale (Mode Show) — partie à venir, ou podium de la dernière partie jouée. */
@@ -4659,8 +4662,10 @@ function pShowInner(S: State) {
   const active = slides[idx];
   const dots = slides.length > 1 ? `<div style="display:flex;gap:.9vh;justify-content:center;margin-top:4vh">${slides.map((_, i) => `<span style="display:inline-block;width:${i === idx ? "2.6vh" : "1vh"};height:.6vh;border-radius:99px;background:${i === idx ? "#22D3EE" : "var(--border-strong)"};transition:width .3s"></span>`).join("")}</div>` : "";
 
+  // Format des manches (Bo3, Ft10…) — n'a pas de sens en Battle Royale (pas de duels 1 contre 1).
+  const formatBadge = t.matchFormatLabel && t.finals?.format !== "battle_royale" ? ` · ${t.matchFormatLabel}` : "";
   const title = `<div style="text-align:center;margin-bottom:1vh"><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;letter-spacing:2px;line-height:1">${escHtml(t.name)}</div>
-    <div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "var(--text-muted)"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>` : ""}${phaseLabel}</div></div>`;
+    <div style="display:inline-flex;align-items:center;gap:.8vh;color:${t.status === "live" ? "#22D3EE" : "var(--text-muted)"};font-weight:800;letter-spacing:2px;font-size:1.7vh;text-transform:uppercase;margin-top:1vh">${t.status === "live" ? `<span style="width:1vh;height:1vh;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>` : ""}${phaseLabel}${escHtml(formatBadge)}</div></div>`;
   const caption = active.caption ? `<div style="text-align:center;color:var(--text-faint);font-size:1.6vh;letter-spacing:1.5px;text-transform:uppercase;font-weight:750;margin-top:2.4vh">${escHtml(active.caption)}</div>` : "";
   return `<div style="min-height:100vh;padding:4vh 3vw 6vh;position:relative;display:flex;flex-direction:column;justify-content:center">${close}${brand}${title}
     <div class="slidein">${caption}${active.body}</div>

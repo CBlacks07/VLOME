@@ -128,18 +128,18 @@ export class TournamentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
   async exportRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
-    const { filename, csv } = await this.service.exportRegistrationsCsv(id, user);
-    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
-    res.send(csv);
+    const { filename, buffer } = await this.service.exportRegistrationsXlsx(id, user);
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Get(':id/results/export')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
   async exportResults(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
-    const { filename, csv } = await this.service.exportResultsCsv(id, user);
-    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
-    res.send(csv);
+    const { filename, buffer } = await this.service.exportResultsXlsx(id, user);
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Post(':id/checkin')

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as Engine from '@vlome/engine';
+import * as ExcelJS from 'exceljs';
 import { CorrectResultDto, CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
 import { JwtUser } from '../common/jwt-auth.guard';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -607,24 +608,48 @@ export class TournamentsService {
     return registrationId.slice(-6).toUpperCase();
   }
 
-  /** Une cellule CSV — échappée (guillemets doublés) et entre guillemets dès qu'elle contient une
-   * virgule, un guillemet ou un retour à la ligne, comme l'exigent Excel/LibreOffice/Google Sheets. */
-  private csvCell(v: string | number | null | undefined): string {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  }
-  private csvRow(cells: (string | number | null | undefined)[]): string {
-    return cells.map((c) => this.csvCell(c)).join(',') + '\r\n';
-  }
   /** Nom de tournoi → nom de fichier sûr (accents conservés, tout le reste réduit à des tirets). */
-  private csvFilename(prefix: string, tournamentName: string): string {
+  private xlsxFilename(prefix: string, tournamentName: string): string {
     const slug = tournamentName.trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'tournoi';
-    return `${prefix}-${slug}.csv`;
+    return `${prefix}-${slug}.xlsx`;
   }
 
-  /** Export CSV des inscriptions (organisateur/admin) — même contenu que listRegistrations, à plat pour
-   * un tableur. Le BOM UTF-8 en tête évite les accents mal interprétés à l'ouverture dans Excel. */
-  async exportRegistrationsCsv(tournamentId: string, user: JwtUser): Promise<{ filename: string; csv: string }> {
+  /** Classeur Excel à une feuille, mis en forme (en-tête colorée, colonnes ajustées à leur contenu,
+   * lignes zébrées) — un vrai tableur plutôt qu'un CSV brut, qu'Excel/WPS en paramètres régionaux
+   * français ouvre de toute façon en une seule colonne (le séparateur y est le point-virgule). */
+  private async buildSheet(sheetName: string, columns: { header: string; width?: number }[], rows: (string | number)[][]): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Miabe Esport';
+    const ws = wb.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+    ws.columns = columns.map((c) => ({ header: c.header, width: c.width ?? Math.max(12, c.header.length + 4) }));
+    const header = ws.getRow(1);
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0EA5B8' } };
+    header.alignment = { vertical: 'middle', horizontal: 'center' };
+    header.height = 22;
+    rows.forEach((r, i) => {
+      const row = ws.addRow(r);
+      if (i % 2 === 1) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F6F8' } };
+    });
+    ws.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E5EA' } } };
+      });
+    });
+    // Colonnes numériques (points, victoires, montants…) : ajuste la largeur au contenu réel et
+    // centre — sans quoi les chiffres restent collés au bord gauche comme du texte.
+    columns.forEach((c, i) => {
+      const col = ws.getColumn(i + 1);
+      const longest = Math.max(c.header.length, ...rows.map((r) => String(r[i] ?? '').length));
+      col.width = Math.min(48, Math.max(10, longest + 3));
+      if (rows.every((r) => typeof r[i] === 'number')) col.alignment = { horizontal: 'center' };
+    });
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  /** Export Excel des inscriptions (organisateur/admin) — même contenu que listRegistrations, mis en
+   * forme pour un tableur. */
+  async exportRegistrationsXlsx(tournamentId: string, user: JwtUser): Promise<{ filename: string; buffer: Buffer }> {
     const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });
     if (!r) throw new NotFoundException('Tournoi introuvable');
     this.assertCanManage(r, user);
@@ -633,32 +658,34 @@ export class TournamentsService {
       orderBy: { createdAt: 'asc' },
       include: { user: { select: { email: true, displayName: true } } },
     });
-    let csv = '﻿' + this.csvRow(['Joueur', 'Compte', 'Email', 'Montant (XOF)', 'Méthode', 'Statut', 'Pointé', 'Code billet', 'Inscrit le']);
-    for (const x of regs) {
-      csv += this.csvRow([
-        x.playerName, x.user.displayName, x.user.email, x.amountXof,
-        x.paymentMethod || '', x.paymentStatus === 'paid' ? 'Payé' : 'En attente',
-        x.checkedInAt ? 'Oui' : 'Non', this.ticketCode(x.id),
-        x.createdAt.toLocaleString('fr-FR'),
-      ]);
-    }
-    return { filename: this.csvFilename('inscriptions', r.name), csv };
+    const rows = regs.map((x) => [
+      x.playerName, x.user.displayName, x.user.email, x.amountXof,
+      x.paymentMethod || '', x.paymentStatus === 'paid' ? 'Payé' : 'En attente',
+      x.checkedInAt ? 'Oui' : 'Non', this.ticketCode(x.id),
+      x.createdAt.toLocaleString('fr-FR'),
+    ]);
+    const buffer = await this.buildSheet('Inscriptions', [
+      { header: 'Joueur' }, { header: 'Compte' }, { header: 'Email', width: 26 }, { header: 'Montant (XOF)' },
+      { header: 'Méthode' }, { header: 'Statut' }, { header: 'Pointé' }, { header: 'Code billet' }, { header: 'Inscrit le', width: 18 },
+    ], rows);
+    return { filename: this.xlsxFilename('inscriptions', r.name), buffer };
   }
 
-  /** Export CSV du classement final (organisateur/admin) — un tableur pour archiver/partager les
+  /** Export Excel du classement final (organisateur/admin) — un tableur pour archiver/partager les
    * résultats hors de l'appli, comme le permettent Challonge/start.gg. */
-  async exportResultsCsv(tournamentId: string, user: JwtUser): Promise<{ filename: string; csv: string }> {
+  async exportResultsXlsx(tournamentId: string, user: JwtUser): Promise<{ filename: string; buffer: Buffer }> {
     const l = await this.loadEngine(tournamentId);
     if (!l) throw new NotFoundException('Tournoi introuvable');
     this.assertCanManage(l.record, user);
     const t = l.t;
     const clubById = new Map(t.players.map((p) => [p.id, p.club || '']));
     const ranking = Engine.overallRanking(t);
-    let csv = '﻿' + this.csvRow(['Rang', 'Joueur', 'Club', 'Points', 'Victoires', 'Défaites']);
-    ranking.forEach((row, i) => {
-      csv += this.csvRow([i + 1, row.name, clubById.get(row.id) || '', row.pts, row.wins, row.losses]);
-    });
-    return { filename: this.csvFilename('resultats', t.name), csv };
+    const rows = ranking.map((row, i) => [i + 1, row.name, clubById.get(row.id) || '', row.pts, row.wins, row.losses]);
+    const buffer = await this.buildSheet('Résultats', [
+      { header: 'Rang', width: 8 }, { header: 'Joueur' }, { header: 'Club' },
+      { header: 'Points' }, { header: 'Victoires' }, { header: 'Défaites' },
+    ], rows);
+    return { filename: this.xlsxFilename('resultats', t.name), buffer };
   }
 
   /** Poste/table assigné à un match en cours (LAN à plusieurs postes) — purement indicatif, affiché en

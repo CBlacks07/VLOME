@@ -70,10 +70,10 @@ async function optimizeImage(file: File): Promise<File> {
 function token(): string | null { return typeof window !== "undefined" ? localStorage.getItem("vlome_token") : null; }
 function authHeaders(): Record<string, string> { const t = token(); return t ? { Authorization: "Bearer " + t } : {}; }
 
-/** Télécharge un export CSV protégé par le token de l'organisateur (le navigateur ne peut pas
+/** Télécharge un export (Excel) protégé par le token de l'organisateur (le navigateur ne peut pas
  * envoyer d'en-tête Authorization sur un simple lien) : on récupère le fichier en mémoire, puis on
  * déclenche le téléchargement via une ancre <a download> jetable, avant de libérer l'URL objet. */
-async function downloadCsv(url: string): Promise<void> {
+async function downloadExport(url: string): Promise<void> {
   try {
     const r = await fetch(url, { headers: authHeaders() });
     if (!r.ok) return;
@@ -82,7 +82,7 @@ async function downloadCsv(url: string): Promise<void> {
     const blob = await r.blob();
     const objUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = objUrl; a.download = m ? m[1] : "export.csv";
+    a.href = objUrl; a.download = m ? m[1] : "export.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(objUrl);
   } catch { /* ignore */ }
@@ -1948,7 +1948,7 @@ function paymentsPanel(S: State, tournamentId: string) {
   return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-top:18px;text-align:left">
     <div style="display:flex;align-items:center;gap:10px">
       <h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;flex:1">Paiements des inscriptions${pending.length ? ` · ${pending.length} en attente` : ""}</h3>
-      <button data-exportregs="${tournamentId}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:8px;padding:6px 10px;font-weight:700;font-size:11.5px;cursor:pointer">${ic(I.download, 12)}CSV</button>
+      <button data-exportregs="${tournamentId}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:8px;padding:6px 10px;font-weight:700;font-size:11.5px;cursor:pointer">${ic(I.download, 12)}Excel</button>
     </div>
     ${pending.map((r: Detail) => row(r, true)).join("")}${paid.map((r: Detail) => row(r, false)).join("")}</div>`;
 }
@@ -3594,7 +3594,7 @@ function regieTopBanner(S: State, t: Detail): string {
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
-    <button data-exportresults="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.download, 15)}Résultats CSV</button>
+    <button data-exportresults="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.download, 15)}Résultats Excel</button>
     <button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(251,191,36,.35);background:transparent;color:#FBBF24;border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>
   </div>`;
 }
@@ -3808,7 +3808,7 @@ function pTournoi(S: State) {
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
-    ${manage ? `<button data-exportresults="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.download, 15)}Résultats CSV</button>
+    ${manage ? `<button data-exportresults="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.download, 15)}Résultats Excel</button>
     <button data-edit="1" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.edit || I.plus, 15)}Modifier</button>
     ${t.status !== "setup" ? `<button data-reset="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,191,36,.35);color:#FBBF24;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.warn, 15)}Réinitialiser</button>` : ""}
     <button data-del="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(251,113,133,.35);color:#FB7185;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.trash, 15)}Supprimer</button>` : ""}
@@ -7304,8 +7304,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const [tid, key, on] = d.streammatch.split("|");
       act(`${API}/api/tournaments/${tid}/stream-match`, { key, on: on === "1" });
     }
-    else if (d.exportresults) downloadCsv(`${API}/api/tournaments/${d.exportresults}/results/export`);
-    else if (d.exportregs) downloadCsv(`${API}/api/tournaments/${d.exportregs}/registrations/export`);
+    else if (d.exportresults) downloadExport(`${API}/api/tournaments/${d.exportresults}/results/export`);
+    else if (d.exportregs) downloadExport(`${API}/api/tournaments/${d.exportregs}/registrations/export`);
     else if (d.playerprofile) openPlayerProfile(d.playerprofile);
     else if (d.h2h) {
       const opponent = (document.getElementById("h2h-opponent") as HTMLInputElement | null)?.value ?? "";

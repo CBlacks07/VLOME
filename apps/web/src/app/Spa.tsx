@@ -265,21 +265,24 @@ function payChoiceModal(S: State): string {
       <span style="flex:none;width:8px;align-self:stretch;border-radius:99px;background:${color}"></span>
       <span style="flex:1;min-width:0"><span style="display:block;font-weight:750;font-size:15px">${title}</span><span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">${sub}</span></span>
       <span style="flex:none;color:#22D3EE;font-weight:800">›</span></button>`;
+  // KkiaPay retiré de la sélection (option désactivée à la demande — l'intégration reste en place,
+  // voir startOnlinePay/verifyOnlinePayment, pour une réactivation future sans tout reconstruire).
   const options = [
     c?.fedapay ? opt("FedaPay", "FedaPay", "Paiement mobile de la sous-région (Mobile Money : Flooz, Mixx by Yas, MTN, Moov…).", "#22D3EE") : "",
-    c?.kkiapay ? opt("KkiaPay", "KkiaPay", "Paiement mobile de la sous-région (Mobile Money), depuis ton téléphone.", "#FBBF24") : "",
     c?.fedapay ? opt("Visa", "Visa · carte bancaire", "Carte Visa ou Mastercard, réglée sur la page sécurisée de FedaPay.", "#34D399") : "",
   ].join("");
   return `<div data-payclose="1" style="position:fixed;inset:0;z-index:320;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
     <div data-stop="1" style="width:min(460px,100%);background:var(--surface-2);border:1px solid var(--border);border-radius:18px;padding:22px 22px 20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px">Choisis ton moyen de paiement</span><span data-payclose="1" style="color:var(--text-muted);cursor:pointer">${ic(I.x, 18)}</span></div>
-      <p style="color:var(--text-muted);font-size:12.5px;line-height:1.6;margin:0 0 16px"><b style="color:var(--text)">FedaPay</b> et <b style="color:var(--text)">KkiaPay</b> correspondent aux paiements mobiles de la sous-région. Tu es redirigé(e) vers une page sécurisée, puis ton paiement est confirmé automatiquement.</p>
+      <p style="color:var(--text-muted);font-size:12.5px;line-height:1.6;margin:0 0 16px"><b style="color:var(--text)">FedaPay</b> correspond aux paiements mobiles de la sous-région (Mobile Money) et carte bancaire. Tu es redirigé(e) vers une page sécurisée, puis ton paiement est confirmé automatiquement.</p>
       <div style="display:flex;flex-direction:column;gap:10px">${options}</div>
     </div></div>`;
 }
 function payMethods(S: State): string[] {
   const c = S.payConfig;
-  const online = [...(c?.fedapay ? ["FedaPay"] : []), ...(c?.kkiapay ? ["KkiaPay"] : [])];
+  // KkiaPay retiré de la sélection (option désactivée à la demande — l'intégration reste en place,
+  // voir startOnlinePay/verifyOnlinePayment, pour une réactivation future sans tout reconstruire).
+  const online = c?.fedapay ? ["FedaPay"] : [];
   return [...online, ...PAYMENTS];
 }
 

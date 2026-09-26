@@ -655,7 +655,7 @@ function pAccueil(S: State) {
     : "";
   const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>`;
   const tournGrid = tourns.length
-    ? `<div class="rise d2" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => tournCard(t, false)).join("")}</div>`
+    ? `<div class="rise d2" style="display:flex;flex-wrap:wrap;justify-content:center;gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => `<div style="flex:1 1 280px;max-width:380px;min-width:0">${tournCard(t, false)}</div>`).join("")}</div>`
     : `<div class="rise d2" style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:36px 24px;text-align:center;color:var(--text-muted);margin-bottom:40px">Aucun tournoi pour l'instant — reviens bientôt !</div>`;
 
   // Teaser d'accueil : la meilleure performance de chaque joueur (un seul jeu à la fois, jamais de points additionnés entre jeux).

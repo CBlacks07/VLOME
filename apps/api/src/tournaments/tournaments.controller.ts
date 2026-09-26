@@ -47,6 +47,12 @@ export class TournamentsController {
     return this.service.registrationIds(user);
   }
 
+  @Get('my-next-matches')
+  @UseGuards(JwtAuthGuard)
+  myNextMatches(@CurrentUser() user: JwtUser) {
+    return this.service.myNextMatches(user.sub);
+  }
+
   @Get('leaderboard')
   leaderboard() {
     return this.service.leaderboard();

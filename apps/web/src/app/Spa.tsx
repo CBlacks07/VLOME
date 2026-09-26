@@ -103,6 +103,7 @@ type State = {
   embedTarget: { code: string; copied?: boolean } | null;
   productOpen: string | null;
   toast: string | null;
+  myNext: Detail[] | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -1778,7 +1779,7 @@ function pDashboard(S: State) {
   const editor = S.profileEdit ? profileEditor(S) : "";
   // ADMIN/ORGANIZER passent par la console (sidebar) — voir renderPage(). Cette page ne sert plus qu'aux PLAYER.
   const body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
-  return wrap(header + editor + statTiles + statsByGameCard(me) + body + loyaltyCard(S));
+  return wrap(header + editor + nextMatchCard(S) + statTiles + statsByGameCard(me) + body + loyaltyCard(S));
 }
 
 /** Répartition des points/victoires par jeu — tout ce à quoi le joueur est rattaché sur le
@@ -1925,6 +1926,20 @@ function profileEditor(S: State) {
   </div>`;
 }
 
+/** « Mon prochain match » : visible seulement quand un match est prêt pour le joueur dans un tournoi en direct. */
+function nextMatchCard(S: State): string {
+  const list: Detail[] = S.myNext ?? [];
+  if (!list.length) return "";
+  return list.map((m) => `<div data-open="${m.tournamentId}" style="cursor:pointer;border:1px solid #22D3EE88;border-radius:16px;background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(124,130,255,.08));padding:18px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;font-weight:800;display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>Ton prochain match · ${escHtml(m.tournamentName)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;margin-top:4px;line-height:1.1">${escHtml(m.playerName)} <span style="color:var(--text-faint);font-size:20px">vs</span> ${escHtml(m.opponent)}</div>
+    </div>
+    ${m.station
+      ? `<div style="text-align:center"><div style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Rends-toi à</div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;color:#22D3EE;line-height:1.1">${escHtml(m.station)}</div></div>`
+      : `<div style="text-align:center"><div style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Poste</div><div style="font-size:14px;font-weight:700;margin-top:3px">${m.waitingAhead > 0 ? `${m.waitingAhead} match${m.waitingAhead > 1 ? "s" : ""} avant toi` : "Tu es le prochain — poste bientôt annoncé"}</div></div>`}
+  </div>`).join("");
+}
 function regsCard(S: State) {
   const regs = S.myRegs ?? [];
   const rows = regs.length
@@ -5076,7 +5091,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null, myNext: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -6211,6 +6226,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (tR.ok) myTourns = await tR.json();
       }
       setS((s) => ({ ...s, me, myRegs, myOrders, myTourns, myResults }));
+      void loadMyNext();
+    } catch { /* ignore */ }
+  }
+  /** « Mon prochain match » (membre inscrit à un tournoi en direct). */
+  async function loadMyNext() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/tournaments/my-next-matches`, { headers: authHeaders() });
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, myNext: Array.isArray(d) ? d : [] })); }
     } catch { /* ignore */ }
   }
   async function loadRegIds() {
@@ -6400,6 +6424,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }, 2500);
     return () => clearInterval(id);
   }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId, S.user?.role]);
+
+  // « Mon prochain match » : se remet à jour tout seul tant qu'un match attend le joueur (poste attribué, file qui avance).
+  const hasNext = (S.myNext?.length ?? 0) > 0;
+  useEffect(() => {
+    if (S.page !== "profil" || !hasNext) return;
+    const id = setInterval(() => { void loadMyNext(); }, 8000);
+    return () => clearInterval(id);
+  }, [S.page, hasNext]);
 
   // Écran de diffusion d'événement : actualisé toutes les 7 secondes (matchs en cours de chaque tournoi).
   useEffect(() => {

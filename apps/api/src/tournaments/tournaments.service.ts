@@ -714,6 +714,48 @@ export class TournamentsService {
     return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey);
   }
 
+  /** Matchs jouables d'un état de tournoi (poules : match courant ; phase finale : tout match prêt à lancer). */
+  private playableMatches(st: Record<string, any>): { key: string; a: string; b: string }[] {
+    const out: { key: string; a: string; b: string }[] = [];
+    (st.pools || []).forEach((p: any) => { if (p.current) out.push({ key: p.id, a: p.current.aName, b: p.current.bName }); });
+    const walk = (n: any): void => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.matchId && n.playable && n.aName && n.bName) { out.push({ key: n.matchId, a: n.aName, b: n.bName }); return; }
+      Object.values(n).forEach(walk);
+    };
+    walk(st.finals);
+    return out;
+  }
+
+  /** « Mon prochain match » : pour chaque tournoi EN DIRECT où le membre est inscrit (payé), son match prêt
+   * à jouer (adversaire, poste s'il est déjà attribué) et le nombre d'autres matchs qui attendent encore un poste. */
+  async myNextMatches(userId: string) {
+    const regs = await this.prisma.registration.findMany({
+      where: { userId, paymentStatus: 'paid', tournament: { status: 'LIVE' } },
+      select: { playerName: true, tournamentId: true },
+    });
+    const out: { tournamentId: string; tournamentName: string; playerName: string; opponent: string; station: string | null; waitingAhead: number }[] = [];
+    for (const reg of regs) {
+      const l = await this.loadEngine(reg.tournamentId);
+      if (!l) continue;
+      const st = this.toState(reg.tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey) as Record<string, any>;
+      const stations = (l.record.stations as Record<string, string>) || {};
+      const playable = this.playableMatches(st);
+      const mine = playable.find((m) => m.a === reg.playerName || m.b === reg.playerName);
+      if (!mine) continue;
+      const waiting = playable.filter((m) => !stations[m.key]);
+      const idx = waiting.findIndex((m) => m.key === mine.key);
+      out.push({
+        tournamentId: reg.tournamentId, tournamentName: st.name, playerName: reg.playerName,
+        opponent: mine.a === reg.playerName ? mine.b : mine.a,
+        station: stations[mine.key] || null,
+        waitingAhead: stations[mine.key] ? 0 : Math.max(0, idx),
+      });
+    }
+    return out;
+  }
+
   /** Prévient par e-mail les joueurs d'un match que celui-ci démarre (avec leur poste s'il en a un).
    * Seuls les joueurs inscrits avec un compte (Registration, rapprochée par pseudo) sont joignables ;
    * les autres (saisis à la main par l'organisateur) sont listés dans `unreachable` pour être appelés à voix haute. */

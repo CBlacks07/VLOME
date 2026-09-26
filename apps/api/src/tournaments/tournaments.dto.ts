@@ -171,6 +171,15 @@ export class StreamMatchDto {
   @IsBoolean() on!: boolean;
 }
 
+export class MatchStartDto {
+  @IsString() @MaxLength(60) key!: string;
+  @IsBoolean() on!: boolean;
+}
+
+export class MatchMinutesDto {
+  @IsOptional() @IsInt() @Min(0) @Max(240) minutes?: number;
+}
+
 export class NotifyMatchDto {
   @IsString() @MaxLength(60) key!: string;
 }

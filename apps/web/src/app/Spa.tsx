@@ -3351,6 +3351,10 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       <input id="station-${key}" value="${escAttr(stationVal)}" placeholder="Ex. Table 3" title="Table/poste physique où se joue ce match (indicatif, affiché sur l'écran de diffusion Mode Show)" style="width:78px;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:5px 6px;text-align:center" />
       <button data-stationsave="${t.id}|${key}" title="Enregistrer le poste" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>
     </span>`;
+  const startedAt: number | undefined = t.matchStarts?.[key];
+  const timerChip = startedAt
+    ? `<span data-timer="${startedAt}" data-limit="${t.matchMinutes || 0}" title="Durée du match${t.matchMinutes ? ` (prévue : ${t.matchMinutes} min)` : ""}" style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;border:1px solid var(--border-strong);border-radius:7px;padding:4px 8px;color:var(--text-muted)">00:00</span>`
+    : `<button data-matchstart="${t.id}|${key}" title="Démarrer le chronomètre de ce match" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">▶ Chrono</button>`;
   const onStream = t.streamMatchKey === key;
   const streamBtn = `<button data-streammatch="${t.id}|${key}|${onStream ? "0" : "1"}" title="${onStream ? "Retirer de l'antenne" : "Marquer à l'antenne (mis en avant sur l'écran de diffusion)"}" style="display:inline-flex;align-items:center;gap:5px;flex:none;background:${onStream ? "#F43F7E" : "transparent"};border:1px solid ${onStream ? "#F43F7E" : "var(--border-strong)"};color:${onStream ? "#fff" : "var(--text-muted)"};border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer">${ic(I.tv, 12)}${onStream ? "À l'antenne" : "Stream"}</button>`;
   return `<div style="border:1px solid ${onStream ? "#F43F7E" : "rgba(34,211,238,.4)"};border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
@@ -3360,6 +3364,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
       ${streamBtn}
       ${stationField}
+      ${timerChip}
       <button data-notifymatch="${t.id}|${key}" title="Prévenir les deux joueurs par e-mail (avec leur poste)" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">Prévenir</button>
       <button data-matchclose="${key}" title="Retirer de la régie (reste jouable, revient dans la file d'attente)" style="display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:transparent;border:0;color:var(--text-faint);cursor:pointer;flex:none">${ic(I.x, 12)}</button>
     </div>
@@ -3619,6 +3624,11 @@ function regieRail(S: State, t: Detail, manage: boolean, actives: ActiveMatch[])
   // régler une fois lancés (finalsWin/championBonus restent aux valeurs figées à la création) — le
   // bouton n'a pas lieu d'exister, comme pour l'étape équivalente de l'assistant.
   const nav = `<div style="margin-top:16px;border-top:1px solid var(--surface-3);padding-top:12px;display:flex;flex-direction:column;gap:2px">
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;font-size:12px;color:var(--text-muted)" title="Au-delà de cette durée, le chronomètre d'un match passe en rouge (0 = pas d'alerte)">
+      <span style="flex:1">Durée prévue / match</span>
+      <input id="match-minutes" type="number" min="0" max="240" value="${t.matchMinutes || ""}" placeholder="min" style="width:52px;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11.5px;padding:4px 6px;text-align:center" />
+      <button data-matchminutes="${t.id}" style="background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:4px 7px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>
+    </div>
     <div data-regiepanel="joueurs" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:var(--text-muted)">${ic(I.user, 15)}</span><span style="font-size:12.5px;color:var(--text-muted);flex:1">Joueurs</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-faint)">${(t.players || []).length}</span></div>
     <div data-regiepanel="paiements" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:var(--text-muted)">${ic(I.cart, 15)}</span><span style="font-size:12.5px;color:var(--text-muted);flex:1">Paiements</span></div>
     ${t.mainFormat === "survival" ? `<div data-regiepanel="reglages" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer"><span style="color:var(--text-muted)">${ic(I.warn, 15)}</span><span style="font-size:12.5px;color:var(--text-muted);flex:1">Réglages &amp; barème</span></div>` : ""}
@@ -5790,6 +5800,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       while (used.has(`${prefix}${n}`)) n++;
       await act(`${API}/api/tournaments/${tid}/station`, { key: next.id, label: `${prefix}${n}` });
     }
+    await act(`${API}/api/tournaments/${tid}/match-start`, { key: next.id, on: true });
     await notifyMatch(tid, next.id);
   }
 
@@ -6424,6 +6435,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }, 2500);
     return () => clearInterval(id);
   }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId, S.user?.role]);
+
+  // Chronomètres de la régie : mis à jour à la seconde directement dans le DOM (sans re-rendu, pour ne pas
+  // perdre une saisie en cours) ; rouge une fois la durée prévue dépassée.
+  useEffect(() => {
+    const tick = () => {
+      document.querySelectorAll<HTMLElement>("[data-timer]").forEach((el) => {
+        const start = Number(el.dataset.timer), limit = Number(el.dataset.limit || 0) * 60000;
+        const ms = Math.max(0, Date.now() - start);
+        const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000);
+        el.textContent = `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+        const over = limit > 0 && ms > limit;
+        el.style.color = over ? "#fff" : "var(--text-muted)";
+        el.style.background = over ? "#F43F7E" : "transparent";
+        el.style.borderColor = over ? "#F43F7E" : "var(--border-strong)";
+      });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [S.detail, S.activeMatchIds]);
 
   // « Mon prochain match » : se remet à jour tout seul tant qu'un match attend le joueur (poste attribué, file qui avance).
   const hasNext = (S.myNext?.length ?? 0) > 0;
@@ -7073,7 +7104,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7164,6 +7195,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const currentKeys = getActiveMatches(S, t).map(activeKey);
         const next = currentKeys.includes(d.activematch!) ? currentKeys : [...currentKeys, d.activematch!];
         setS((s) => ({ ...s, activeMatchIds: next }));
+        if (!t.matchStarts?.[d.activematch!]) act(`${API}/api/tournaments/${t.id}/match-start`, { key: d.activematch!, on: true });
       }
     }
     // Retirer une carte du panneau de contrôle sans rapporter de résultat : le match reste jouable et
@@ -7408,6 +7440,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.sharecopy) copyShareLink();
     else if (d.embed) openEmbed(d.embed);
     else if (d.launchnext) launchNext(d.launchnext);
+    else if (d.matchstart) { const [tid, key] = d.matchstart.split("|"); act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true }); }
+    else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }
     else if (d.notifymatch) { const [tid, key] = d.notifymatch.split("|"); notifyMatch(tid, key); }
     else if (d.embedclose !== undefined) setS((s) => ({ ...s, embedTarget: null }));
     else if (d.embedcopy) copyEmbedCode();

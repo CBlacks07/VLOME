@@ -701,7 +701,7 @@ export class TournamentsService {
     await this.prisma.tournament.update({ where: { id: tournamentId }, data: { stations } });
     // Renvoie l'état complet du tournoi (comme toute autre action de régie) — sans quoi le front,
     // qui remplace tout S.detail par la réponse, se retrouverait avec un objet tronqué à { stations }.
-    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, stations, l.record.streamMatchKey);
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, stations, l.record.streamMatchKey, l.record);
   }
 
   /** Marque (ou démarque) le match "à l'antenne" — un seul à la fois par tournoi (voir setStation pour la clé). */
@@ -711,7 +711,28 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     const streamMatchKey = on ? key : null;
     await this.prisma.tournament.update({ where: { id: tournamentId }, data: { streamMatchKey } });
-    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey);
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey, l.record);
+  }
+
+  /** Démarre (ou arrête) le chronomètre d'un match lancé en régie. key = activeKey côté web. */
+  async setMatchStart(tournamentId: string, key: string, on: boolean, user: JwtUser) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const starts = { ...((l.record.matchStarts as Record<string, number>) || {}) };
+    if (on) { if (!starts[key]) starts[key] = Date.now(); } else delete starts[key];
+    await this.prisma.tournament.update({ where: { id: tournamentId }, data: { matchStarts: starts } });
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, matchStarts: starts });
+  }
+
+  /** Durée prévue d'un match en minutes (0 ou vide = pas d'alerte). */
+  async setMatchMinutes(tournamentId: string, minutes: number | undefined, user: JwtUser) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const matchMinutes = minutes && minutes > 0 ? Math.min(Math.round(minutes), 240) : null;
+    await this.prisma.tournament.update({ where: { id: tournamentId }, data: { matchMinutes } });
+    return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, matchMinutes });
   }
 
   /** Matchs jouables d'un état de tournoi (poules : match courant ; phase finale : tout match prêt à lancer). */
@@ -739,7 +760,7 @@ export class TournamentsService {
     for (const reg of regs) {
       const l = await this.loadEngine(reg.tournamentId);
       if (!l) continue;
-      const st = this.toState(reg.tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey) as Record<string, any>;
+      const st = this.toState(reg.tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record) as Record<string, any>;
       const stations = (l.record.stations as Record<string, string>) || {};
       const playable = this.playableMatches(st);
       const mine = playable.find((m) => m.a === reg.playerName || m.b === reg.playerName);
@@ -763,7 +784,7 @@ export class TournamentsService {
     const l = await this.loadEngine(tournamentId);
     if (!l) throw new NotFoundException('Tournoi introuvable');
     this.assertCanManage(l.record, user);
-    const st = this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey) as Record<string, any>;
+    const st = this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record) as Record<string, any>;
     // Le match : une poule (clé = id de poule, match courant) ou un match de phase finale (clé = matchId).
     let pair: { a: string; b: string } | null = null;
     const pool = (st.pools || []).find((p: any) => p.id === key);
@@ -965,7 +986,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
@@ -1138,6 +1159,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
+    extra: { matchStarts?: unknown; matchMinutes?: number | null } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1209,6 +1231,9 @@ export class TournamentsService {
       stations: (stations as Record<string, string>) || {},
       // Match actuellement à l'antenne (un seul à la fois) — voir setStreamMatch.
       streamMatchKey,
+      // Chronomètre par match : heure de début (ms) par activeKey, et durée prévue (minutes) — voir setMatchStart.
+      matchStarts: (extra.matchStarts as Record<string, number>) || {},
+      matchMinutes: extra.matchMinutes ?? null,
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
@@ -1232,7 +1257,7 @@ export class TournamentsService {
   async getState(id: string) {
     const l = await this.loadEngine(id);
     if (!l) return null;
-    const state = this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    const state = this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
     // Événement auquel le tournoi appartient (seulement s'il est publié) : le Mode Show l'annonce et
     // reprend sa couverture en arrière-plan.
     let event: { id: string; name: string; tagline: string | null; posterUrl: string | null; bannerUrl: string | null; accentColor: string | null } | null = null;
@@ -1259,7 +1284,7 @@ export class TournamentsService {
       Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
     }
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   async startFinals(id: string, user: JwtUser, format?: Engine.FinalsFormat) {
@@ -1268,7 +1293,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     Engine.startFinals(l.t, format);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   async report(id: string, dto: ReportDto, user: JwtUser) {
@@ -1283,7 +1308,16 @@ export class TournamentsService {
     }
     else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    // Le match est joué : son chronomètre s'arrête (une clé de poule sert à des matchs successifs).
+    let record = l.record;
+    const key = dto.matchId || dto.poolId;
+    const starts = { ...((l.record.matchStarts as Record<string, number>) || {}) };
+    if (key && starts[key]) {
+      delete starts[key];
+      await this.prisma.tournament.update({ where: { id }, data: { matchStarts: starts } });
+      record = { ...l.record, matchStarts: starts };
+    }
+    return this.toState(id, t, record.entryFeeXof, record.imageUrl, record.format, record.place, record.date, record.givesLoyaltyPoint, record.stations, record.streamMatchKey, record);
   }
 
   /** Corrige un match déjà joué (score/vainqueur saisi par erreur) — voir Engine.correctResult :
@@ -1297,7 +1331,7 @@ export class TournamentsService {
     const corrected = Engine.correctResult(l.t, dto.logId, dto.winnerId, dto.scoreA ?? 0, dto.scoreB ?? 0);
     if (!corrected) throw new ConflictException('Correction impossible : match introuvable, vainqueur invalide, ou trop ancien pour être corrigé.');
     await this.persist(id, corrected);
-    return this.toState(id, corrected, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, corrected, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier), et optionnellement le nombre d'éliminations par joueur. */
@@ -1310,7 +1344,7 @@ export class TournamentsService {
     const res = Engine.reportBattleRoyale(t, gameId, ranking, kills);
     if (!res.ok) throw new BadRequestException('Partie introuvable, déjà rapportée, ou classement invalide.');
     await this.persist(id, t);
-    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Ajout manuel d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
@@ -1328,7 +1362,7 @@ export class TournamentsService {
     const p = Engine.addPlayer(l.t, name);
     if (!p) throw new BadRequestException('Nom invalide ou déjà utilisé dans ce tournoi.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Retrait d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
@@ -1339,7 +1373,7 @@ export class TournamentsService {
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible de retirer un joueur.');
     if (!Engine.removePlayer(l.t, playerId)) throw new NotFoundException('Joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Disqualification en direct — forfait immédiat, l'adversaire est déclaré vainqueur. */
@@ -1354,7 +1388,7 @@ export class TournamentsService {
       throw new NotFoundException('Joueur introuvable.');
     }
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Annule la dernière action mutante (résultat, ajustement, changement de barème, reset…). */
@@ -1365,7 +1399,7 @@ export class TournamentsService {
     const restored = Engine.undo(l.t);
     if (!restored) throw new ConflictException('Rien à annuler.');
     await this.persist(id, restored);
-    return this.toState(id, restored, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, restored, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Remet un tournoi lancé par erreur à l'état "à lancer" (garde joueurs, poules-config, barème). */
@@ -1376,7 +1410,7 @@ export class TournamentsService {
     if (l.t.status === 'setup') throw new ConflictException('Ce tournoi n\'a pas encore été lancé.');
     Engine.resetTournament(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Renomme un joueur (coquille repérée après coup) — à tout moment. */
@@ -1391,7 +1425,7 @@ export class TournamentsService {
       throw new BadRequestException('Le nom ne peut pas être vide.');
     }
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Modifie le club affiché d'un joueur — à tout moment. */
@@ -1401,7 +1435,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.setPlayerClub(l.t, playerId, club)) throw new NotFoundException('Joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Bonus/pénalité manuel avec motif, tracé dans le journal. */
@@ -1411,7 +1445,7 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     if (!Engine.manualAdjust(l.t, playerId, delta, reason)) throw new BadRequestException('Ajustement invalide (montant nul ou joueur introuvable).');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Modifie une valeur du barème (à tout moment) — resynchronise automatiquement les points déjà distribués,
@@ -1423,7 +1457,7 @@ export class TournamentsService {
     if (!Engine.setScoring(l.t, key as keyof Engine.Scoring, value)) throw new BadRequestException('Clé de barème invalide.');
     if (l.t.format === 'survival' && !Engine.cagnotte(l.t).valid) Engine.autoFitScoring(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Répartit les joueurs en poules avant le lancement, pour prévisualiser/réordonner l'ordre de passage. */
@@ -1436,7 +1470,7 @@ export class TournamentsService {
     Engine.distributePools(l.t);
     l.t.pools.forEach((p) => (p.order = p.playerIds.slice()));
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Rebrasse l'ordre de passage d'une poule (avant lancement). */
@@ -1449,7 +1483,7 @@ export class TournamentsService {
     if (!pool) throw new NotFoundException('Poule introuvable.');
     Engine.shuffleOrder(pool);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Déplace un joueur dans l'ordre de passage d'une poule (avant lancement). */
@@ -1462,7 +1496,7 @@ export class TournamentsService {
     if (!pool) throw new NotFoundException('Poule introuvable.');
     Engine.moveInOrder(pool, index, dir);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Change le nombre de qualifiés par poule (avant lancement) — endpoint dédié (même principe que
@@ -1476,7 +1510,7 @@ export class TournamentsService {
     l.t.qualifyPerPool = Engine.clampQualifyPerPool(value);
     if (l.t.format === 'survival' && !Engine.cagnotte(l.t).valid) Engine.autoFitScoring(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Déplace un joueur vers la poule adjacente (avant lancement) — rééquilibre manuellement l'effectif
@@ -1490,7 +1524,7 @@ export class TournamentsService {
     if (!pool) throw new NotFoundException('Poule introuvable.');
     if (!Engine.movePlayerToPool(l.t, playerId, poolId, dir)) throw new BadRequestException('Déplacement impossible (poule de destination inexistante, ou poule d’origine réduite à un seul joueur).');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Déplace un joueur dans l'ordre du roster (formats sans poules : single/double/roundrobin/swiss) —
@@ -1502,7 +1536,7 @@ export class TournamentsService {
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
     if (!Engine.movePlayerOrder(l.t, playerId, dir === -1 ? -1 : 1)) throw new BadRequestException('Déplacement impossible.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Rebrasse aléatoirement l'ordre du roster (formats sans poules, avant lancement). */
@@ -1513,7 +1547,7 @@ export class TournamentsService {
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a déjà démarré.');
     Engine.shufflePlayerOrder(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 }
 

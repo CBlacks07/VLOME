@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Q
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, MatchStartDto, MatchMinutesDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -160,6 +160,20 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   setStation(@Param('id') id: string, @Body() dto: StationDto, @CurrentUser() user: JwtUser) {
     return this.service.setStation(id, dto.key, dto.label, user);
+  }
+
+  @Post(':id/match-start')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  setMatchStart(@Param('id') id: string, @Body() dto: MatchStartDto, @CurrentUser() user: JwtUser) {
+    return this.service.setMatchStart(id, dto.key, dto.on, user);
+  }
+
+  @Post(':id/match-minutes')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  setMatchMinutes(@Param('id') id: string, @Body() dto: MatchMinutesDto, @CurrentUser() user: JwtUser) {
+    return this.service.setMatchMinutes(id, dto.minutes, user);
   }
 
   @Post(':id/notify-match')

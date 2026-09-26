@@ -236,6 +236,10 @@ model Tournament {
   // Match actuellement "à l'antenne" (un seul à la fois) — même clé (activeKey) que stations. Mis en
   // avant dans la file d'attente de la régie et signalé sur l'écran de diffusion.
   streamMatchKey    String?
+  // Heure de début (ms) de chaque match lancé en régie, par activeKey — sert au chronomètre par match.
+  matchStarts       Json?
+  // Durée prévue d'un match (minutes) : au-delà, le chronomètre passe en alerte. Facultatif.
+  matchMinutes      Int?
 }
 
 model Match {

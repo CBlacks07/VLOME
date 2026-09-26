@@ -5037,7 +5037,7 @@ function pEvenement(S: State) {
   const liveBox = live.length > 1
     ? `<div style="display:flex;align-items:center;gap:12px;border:1px solid ${accent}55;background:${accent}12;border-radius:12px;padding:12px 16px;margin-bottom:22px"><span style="width:8px;height:8px;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span><span style="font-size:13.5px;color:#E8E9F4"><b>${live.length} tournois se jouent en ce moment</b> — ${live.map((t) => escHtml(t.name)).join(" · ")}</span></div>` : "";
   const grid = tournaments.length
-    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px">${tournaments.map((t) => tournCard(t, false)).join("")}</div>`
+    ? evTournamentsView(S, tournaments as Detail[], null)
     : `<div style="color:var(--text-faint);font-size:14px;padding:26px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
   // Classement cumulé (circuit) : toutes les étapes déjà jouées de l'événement confondues — n'apparaît
   // qu'une fois chargé (voir openEvent, chargé seulement à partir de 2 tournois rattachés).
@@ -5058,6 +5058,41 @@ function pEvenement(S: State) {
 }
 
 /** Console (organisateur/admin) : liste des événements, éditeur et tournois rattachés. */
+/** Tournois d'un événement : résumé chiffré, filtre par jeu et grille de cartes — même vue dans la console
+ * (evId renseigné : menu « Retirer de l'événement ») et sur la page publique de l'événement (evId = null). */
+function evTournamentsView(S: State, ts: Detail[], evId: string | null): string {
+    // Filtre par jeu (puces) + résumé chiffré : un événement de plus d'une dizaine de tournois devient vite illisible en liste plate.
+    const games = Array.from(new Set(ts.map((t: Detail) => t.game || "Autre")));
+    const gameFilter = games.includes(S.evGame) ? S.evGame : "Tous";
+    const shown = gameFilter === "Tous" ? ts : ts.filter((t: Detail) => (t.game || "Autre") === gameFilter);
+    const totalPlayers = ts.reduce((n: number, t: Detail) => n + (Number(t.players) || 0), 0);
+    const liveCount = ts.filter((t: Detail) => t.live).length;
+    const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:10px 16px;min-width:110px"><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:4px">${k}</div></div>`;
+    const summary = ts.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 14px">${stat(ts.length, "Tournois")}${stat(totalPlayers, "Joueurs inscrits", "#22D3EE")}${stat(liveCount, "En direct", liveCount ? "#22D3EE" : "var(--text-faint)")}${stat(games.length, games.length > 1 ? "Jeux" : "Jeu")}</div>` : "";
+    const chip = (g: string, n: number) => `<span data-evgame="${escAttr(g)}" style="cursor:pointer;white-space:nowrap;font-size:12px;font-weight:${gameFilter === g ? 750 : 600};color:${gameFilter === g ? "#04222a" : "var(--text-muted)"};background:${gameFilter === g ? "#22D3EE" : "transparent"};border:1px solid ${gameFilter === g ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:6px 12px">${escHtml(g)} <span style="opacity:.7;font-family:'JetBrains Mono',monospace">${n}</span></span>`;
+    const chips = games.length > 1 ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">${chip("Tous", ts.length)}${games.map((g) => chip(g, ts.filter((t: Detail) => (t.game || "Autre") === g).length)).join("")}</div>` : "";
+    const stateBadge = (t: Detail) => {
+      const [label, color] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#34D399"];
+      return `<span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${color};border:1px solid ${color}55;background:${color}14;border-radius:99px;padding:3px 9px;white-space:nowrap">${label}</span>`;
+    };
+    const tCard = (t: Detail) => `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
+        <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${stateBadge(t)}</div>
+          <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`, t.date, t.place].filter(Boolean).map(escHtml).join(" · ")}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--surface-4);background:var(--surface-2)">
+          ${btnSm(`data-open="${t.id}"`, t.live ? (evId ? "Ouvrir la régie" : "Voir en direct") : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}
+          <span style="flex:1"></span>
+${evId ? `<details style="position:relative"><summary title="Plus d'actions" style="list-style:none;cursor:pointer;display:grid;place-items:center;width:30px;height:28px;border-radius:8px;border:1px solid var(--border);color:var(--text-muted);font-size:16px;font-weight:800;line-height:1">⋯</summary>
+            <div style="position:absolute;right:0;bottom:34px;z-index:5;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${evId}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>` : ""}
+        </div>
+      </div>`;
+    return ts.length
+      ? `${summary}${chips}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${shown.map(tCard).join("")}</div>`
+      : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
+}
+
 function consoleEvents(S: State) {
   const list = S.myEvents;
   const ed = S.eventEdit;
@@ -5113,36 +5148,7 @@ function consoleEvents(S: State) {
   if (ed.id) {
     const ts: Detail[] = m?.tournaments ?? [];
     const attachable: Detail[] = m?.attachable ?? [];
-    // Filtre par jeu (puces) + résumé chiffré : un événement de plus d'une dizaine de tournois devient vite illisible en liste plate.
-    const games = Array.from(new Set(ts.map((t: Detail) => t.game || "Autre")));
-    const gameFilter = games.includes(S.evGame) ? S.evGame : "Tous";
-    const shown = gameFilter === "Tous" ? ts : ts.filter((t: Detail) => (t.game || "Autre") === gameFilter);
-    const totalPlayers = ts.reduce((n: number, t: Detail) => n + (Number(t.players) || 0), 0);
-    const liveCount = ts.filter((t: Detail) => t.live).length;
-    const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:10px 16px;min-width:110px"><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:4px">${k}</div></div>`;
-    const summary = ts.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 14px">${stat(ts.length, "Tournois")}${stat(totalPlayers, "Joueurs inscrits", "#22D3EE")}${stat(liveCount, "En direct", liveCount ? "#22D3EE" : "var(--text-faint)")}${stat(games.length, games.length > 1 ? "Jeux" : "Jeu")}</div>` : "";
-    const chip = (g: string, n: number) => `<span data-evgame="${escAttr(g)}" style="cursor:pointer;white-space:nowrap;font-size:12px;font-weight:${gameFilter === g ? 750 : 600};color:${gameFilter === g ? "#04222a" : "var(--text-muted)"};background:${gameFilter === g ? "#22D3EE" : "transparent"};border:1px solid ${gameFilter === g ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:6px 12px">${escHtml(g)} <span style="opacity:.7;font-family:'JetBrains Mono',monospace">${n}</span></span>`;
-    const chips = games.length > 1 ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">${chip("Tous", ts.length)}${games.map((g) => chip(g, ts.filter((t: Detail) => (t.game || "Autre") === g).length)).join("")}</div>` : "";
-    const stateBadge = (t: Detail) => {
-      const [label, color] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#34D399"];
-      return `<span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${color};border:1px solid ${color}55;background:${color}14;border-radius:99px;padding:3px 9px;white-space:nowrap">${label}</span>`;
-    };
-    const tCard = (t: Detail) => `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
-        <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${stateBadge(t)}</div>
-          <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`].filter(Boolean).map(escHtml).join(" · ")}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--surface-4);background:var(--surface-2)">
-          ${btnSm(`data-open="${t.id}"`, t.live ? "Ouvrir la régie" : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}
-          <span style="flex:1"></span>
-          <details style="position:relative"><summary title="Plus d'actions" style="list-style:none;cursor:pointer;display:grid;place-items:center;width:30px;height:28px;border-radius:8px;border:1px solid var(--border);color:var(--text-muted);font-size:16px;font-weight:800;line-height:1">⋯</summary>
-            <div style="position:absolute;right:0;bottom:34px;z-index:5;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${ed.id}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>
-        </div>
-      </div>`;
-    const tRows = ts.length
-      ? `${summary}${chips}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${shown.map(tCard).join("")}</div>`
-      : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
+    const tRows = evTournamentsView(S, ts, ed.id);
     const attach = attachable.length
       ? `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--surface-4)"><select id="ev-attach-sel" style="${inp};margin-top:0;max-width:340px;flex:1">${attachable.map((t: Detail) => `<option value="${t.id}">${escHtml(t.name)}${t.game ? " · " + escHtml(t.game) : ""}</option>`).join("")}</select>
           <button data-evattach="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">Rattacher ce tournoi</button></div>`
@@ -5155,6 +5161,18 @@ function consoleEvents(S: State) {
 }
 
 const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, joueur: pPlayerProfile, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
+
+/** Réglages internes d'une page (filtres, onglets) portés par l'adresse : « retour » / « avant » les respectent. */
+function subParams(S: State): string {
+  const q = new URLSearchParams();
+  const add = (k: string, v: string | undefined, def: string) => { if (v && v !== def) q.set(k, v); };
+  if (S.page === "tournois") { add("fmt", S.fmt, "Tous"); add("statut", S.tournStatus, "Tous"); add("jeu", S.game, "Tous"); }
+  else if (S.page === "classements") { add("vue", S.classementView, "joueurs"); add("jeu", S.game, "Tous"); }
+  else if (S.page === "boutique") { add("cat", S.cat, "Tous"); if (S.boutiqueInStock) q.set("stock", "1"); }
+  else if (S.page === "evenement") add("jeu", S.evGame, "Tous");
+  const str = q.toString();
+  return str ? "?" + str : "";
+}
 
 /** Compte bloqué : le club saisi à l'inscription doit d'abord être validé par un administrateur. */
 function clubPendingBanner(S: State): string {
@@ -5752,7 +5770,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
   /** Ouvre la page publique d'un événement. Un gestionnaire voit aussi ses brouillons (route /manage, sinon route publique). */
   async function openEvent(id: string) {
-    setS((s) => ({ ...s, page: "evenement", openEventId: id, eventDetail: null, eventStandings: null }));
+    setS((s) => ({ ...s, page: "evenement", openEventId: id, eventDetail: null, eventStandings: null, evGame: "Tous" }));
     window.scrollTo({ top: 0 });
     try {
       let d: Detail | null = null;
@@ -6792,22 +6810,23 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     let hash = "";
     if (S.page === "tournoi" && S.openId) hash = "#t=" + S.openId;
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
-    else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
+    else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId + subParams(S);
     else if (S.page === "evshow" && S.openEventId) hash = "#evshow=" + S.openEventId;
     else if (S.page === "joueur" && S.playerProfile?.name) hash = "#joueur=" + encodeURIComponent(S.playerProfile.name) + (S.playerProfile.userId ? "~" + S.playerProfile.userId : "");
     else if (S.page === "auth") hash = "#connexion";
     else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
-    else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
+    else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page + subParams(S);
     else return;
     // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
-    if (window.location.hash !== hash) {
+    const same = (a: string, b: string) => { try { return decodeURIComponent(a) === decodeURIComponent(b); } catch { return a === b; } };
+    if (!same(window.location.hash, hash)) {
       const cur = typeof history.state?.idx === "number" ? (history.state.idx as number) : 0;
       history.replaceState({ ...(history.state || {}), idx: cur, scroll: window.scrollY }, ""); // mémorise où l'on était
       history.pushState({ idx: cur + 1 }, "", hash);
       lastIdx.current = cur + 1;
     }
-  }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name]);
+  }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name, S.fmt, S.tournStatus, S.game, S.classementView, S.cat, S.boutiqueInStock, S.evGame]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
   // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
@@ -7035,10 +7054,22 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }, [S.creating, S.wizStep, S.wizData.matchMode]);
 
   /** Simples pages sans paramètre : le hash correspond directement à la clé de page. */
-  function applyHash(h: string) {
+  /** Rétablit les filtres/onglets d'une page depuis l'adresse (valeurs par défaut si le paramètre est absent). */
+  function applySub(page: string, qs: string) {
+    const q = new URLSearchParams(qs);
+    const g = (k: string, d: string) => q.get(k) ?? d;
+    if (page === "tournois") setS((s) => ({ ...s, fmt: g("fmt", "Tous"), tournStatus: g("statut", "Tous"), game: g("jeu", "Tous") }));
+    else if (page === "classements") { const v = g("vue", "joueurs") as State["classementView"]; setS((s) => ({ ...s, classementView: v, game: g("jeu", "Tous") })); if (v === "pronos") void loadPredictors(); }
+    else if (page === "boutique") setS((s) => ({ ...s, cat: g("cat", "Tous"), boutiqueInStock: q.get("stock") === "1" }));
+    else if (page === "evenement") setS((s) => ({ ...s, evGame: g("jeu", "Tous") }));
+  }
+  function applyHash(hFull: string) {
+    const qi = hFull.indexOf("?");
+    const h = qi >= 0 ? hFull.slice(0, qi) : hFull;
+    const qs = qi >= 0 ? hFull.slice(qi + 1) : "";
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
-    if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
+    if (h.startsWith("#ev=")) { openEvent(h.slice(4)); applySub("evenement", qs); return; }
     if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
     if (h.startsWith("#evshow=")) { const id = h.slice(8); setS((s) => ({ ...s, page: "evshow", openEventId: id, evShow: null })); loadEvShow(id); return; }
     if (h.startsWith("#joueur=")) { const [nm, uid] = h.slice(8).split("~"); openPlayerProfile(decodeURIComponent(nm), uid || undefined); return; }
@@ -7061,7 +7092,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       return;
     }
     const key = h.replace(/^#/, "");
-    if (SIMPLE_PAGES.includes(key)) setS((s) => ({ ...s, page: key }));
+    if (SIMPLE_PAGES.includes(key)) { setS((s) => ({ ...s, page: key })); applySub(key, qs); }
   }
 
   /** Lit les champs de l'étape actuellement affichée de l'assistant et les fusionne dans wizData. */

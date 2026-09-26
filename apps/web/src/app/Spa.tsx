@@ -104,6 +104,7 @@ type State = {
   productOpen: string | null;
   toast: string | null;
   myNext: Detail[] | null;
+  teamDraft: { name: string; members: string[] } | null; // saisie du capitaine (survit aux re-rendus, ex. ouverture du choix de paiement)
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -169,7 +170,7 @@ type State = {
   // Assistant de création (5 étapes) — accumule les champs au fil des étapes avant l'envoi final.
   wizStep: number;
   wizData: {
-    name: string; game: string; date: string; place: string; format: string;
+    name: string; game: string; date: string; place: string; format: string; teamSize: number; // 0 = individuel ; sinon joueurs par équipe (fixé à la création)
     pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
     finalsFormat: string; // mode de phase finale (Survival) : choisi à la création, non modifiable ensuite (voir wizScoringStep)
@@ -191,7 +192,7 @@ type State = {
   // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
   roster: Detail[] | null; clubs: Detail[] | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
-  classementView: "joueurs" | "clubs"; // bascule joueurs / clubs sur la page Classements
+  classementView: "joueurs" | "clubs" | "equipes"; // bascule joueurs / clubs sur la page Classements
   // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
   // d'un tournoi pour éviter les doublons de casse/orthographe qui fausseraient classements/stats.
   games: Detail[] | null; gameEdit: Detail | null;
@@ -902,6 +903,7 @@ function wizInfosStep(S: State) {
         ${wizField("Date", `<input id="wz-date" type="date" value="${escAttr(d.date)}" style="${WIZ_INP}" />`)}
         ${wizField("Lieu", `<input id="wz-place" value="${escAttr(d.place)}" placeholder="Salle, club, adresse…" style="${WIZ_INP}" />`)}
         ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point n'est utilisée que par certains formats.")}
+        ${S.wizEditId ? "" : wizField("Type de tournoi", `<select id="wz-team" style="${WIZ_INP}">${[0, 2, 3, 4, 5].map((n) => `<option value="${n}" ${d.teamSize === n ? "selected" : ""}>${n === 0 ? "Individuel" : `Par équipes de ${n} joueurs`}</option>`).join("")}</select>`, "Par équipes : le capitaine inscrit son équipe (nom + joueurs), l'équipe joue comme un seul concurrent.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
       </div>
@@ -965,6 +967,7 @@ function dupeWarningHtml(dupes: string[]): string {
 }
 function wizParticipantsStep(S: State) {
   const d = S.wizData;
+  if (d.teamSize) return `<div style="border:1px dashed var(--border-strong);border-radius:14px;padding:26px;text-align:center;color:var(--text-muted);font-size:14px;line-height:1.7"><div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);margin-bottom:6px">Tournoi par équipes de ${d.teamSize}</div>Les équipes s'inscrivent elles-mêmes (le capitaine donne le nom de l'équipe et ses ${d.teamSize} joueurs), ou tu les ajoutes depuis la fiche du tournoi après sa création. Passe à l'étape suivante.</div>`;
   const isSurvival = d.format === "SURVIVAL";
   const names = d.players.join("\n");
   const fullRoster: Detail[] = S.roster ?? [];
@@ -1205,7 +1208,7 @@ function wizValidateStep(S: State) {
   // scoringOk : chaque valeur de "victoire" doit être ≥ 0,25 (voir WIZ_SCORING_FLOOR) — sinon l'API
   // refuse la création avec un message technique brut ; on bloque ici avec une raison compréhensible.
   const scoringOk = isBR || wizScoringValid(d);
-  const canSubmit = scoringOk && (isSurvival ? c.valid : true) && d.name.trim().length > 0 && (editing || d.players.length >= 2);
+  const canSubmit = scoringOk && (isSurvival ? c.valid : true) && d.name.trim().length > 0 && (editing || d.teamSize > 0 || d.players.length >= 2);
   const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:var(--text-muted);font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
   // Hors Survival, seuls finalsWin/championBonus s'appliquent (voir wizScoringStep) — le reste ne concerne pas ce format.
   const scoringFields = isSurvival ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
@@ -1261,7 +1264,7 @@ function wizValidateStep(S: State) {
       ${canSubmit ? (editing ? "" : `<p style="color:var(--text-faint);font-size:11.5px;text-align:center;margin-top:9px">${isSurvival ? "Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page." : "Tu pourras lancer le tournoi depuis sa page."}</p>`) : (() => {
         const reasons: string[] = [];
         if (!d.name.trim()) reasons.push("le nom du tournoi");
-        if (!editing && d.players.length < 2) reasons.push("au moins 2 participants");
+        if (!editing && !d.teamSize && d.players.length < 2) reasons.push("au moins 2 participants");
         if (!scoringOk) reasons.push("le barème (une victoire ne peut pas valoir 0 point — 0,25 minimum)");
         if (isSurvival && !c.valid) reasons.push("le barème (dépasse la cagnotte disponible)");
         return `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige ${reasons.join(", ")} avant de ${editing ? "enregistrer" : "créer"}.</p>`;
@@ -1401,7 +1404,7 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${r.team ? escHtml((r.team as string[]).join(", ")) : escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const table = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
   return podiumHtml + table;
 }
@@ -1447,10 +1450,14 @@ function topClubsCompact(rows: Detail[], n = 3): { name: string; points: number;
 }
 
 function pClassements(S: State) {
-  const all: Detail[] = S.leaderboard ?? [];
-  const viewToggle = (v: "joueurs" | "clubs", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "var(--text-muted)"}">${label}</span>`;
+  // Tournois par équipes : les équipes ont leur propre onglet ; joueurs et clubs ne comptent que les individus.
+  const allRows: Detail[] = S.leaderboard ?? [];
+  const hasTeams = allRows.some((r) => r.team);
+  const teamView = S.classementView === "equipes" && hasTeams;
+  const all: Detail[] = allRows.filter((r) => (teamView ? !!r.team : !r.team));
+  const viewToggle = (v: "joueurs" | "clubs" | "equipes", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "var(--text-muted)"}">${label}</span>`;
   const head = railPageHead("Classements", `Points, victoires et titres calculés depuis les résultats réels. <b style="color:var(--text)">Un classement distinct par jeu</b> — les points ne sont jamais additionnés entre deux jeux.`,
-    `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${viewToggle("clubs", "Clubs")}</div>`);
+    `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${hasTeams ? viewToggle("equipes", "Équipes") : ""}${viewToggle("clubs", "Clubs")}</div>`);
   if (S.leaderboard === null) return `${head}<div class="page-hpad" style="padding:0 44px;color:var(--text-faint);text-align:center">Chargement…</div>`;
   if (!all.length) {
     return `${head}<div class="page-hpad-m" style="margin:0 44px 40px;border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:56px 24px;text-align:center;color:var(--text-muted)">
@@ -2953,6 +2960,7 @@ function playersRosterPanel(S: State, t: Detail, manage: boolean): string {
   if (!manage || !roster2.length) return "";
   const editRow = (p: { id: string; name: string; club?: string }) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid #22D3EE55;border-radius:10px;padding:8px;width:100%">
     <input id="pl-edit-name" value="${escAttr(p.name)}" placeholder="Nom" style="flex:1;min-width:110px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />
+    ${t.teamSize && t.status === "setup" ? `<input id="pl-edit-members" value="${escAttr(((t.teams?.[p.name] as string[]) || []).join(", "))}" placeholder="Joueurs de l'équipe (virgules)" style="flex:2 1 100%;min-width:200px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />` : ""}
     <input id="pl-edit-club" value="${escAttr(p.club || "")}" placeholder="Club" style="flex:1;min-width:90px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />
     <input id="pl-edit-delta" type="number" step="0.5" placeholder="+/- pts" style="width:72px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 7px" />
     <input id="pl-edit-reason" placeholder="Motif (si ajustement)" style="flex:1;min-width:110px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />
@@ -3868,7 +3876,7 @@ function pTournoi(S: State) {
     <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;text-wrap:balance;overflow-wrap:break-word;color:${t.imageUrl ? "#fff" : "var(--text)"};${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;color:${t.imageUrl ? "#D5D6E3" : "var(--text-muted)"};font-size:13px;font-weight:600">
-        <span style="min-width:0">${[t.game, t.format, t.matchFormatLabel, t.place, t.date].filter(Boolean).map((v: string) => `<span style="display:inline-block;max-width:100%">${escHtml(v)}</span>`).join(`<span style="opacity:.55;padding:0 .35em">·</span>`)}</span>
+        <span style="min-width:0">${[t.game, t.format, t.matchFormatLabel, t.teamSize ? `Équipes de ${t.teamSize}` : "", t.place, t.date].filter(Boolean).map((v: string) => `<span style="display:inline-block;max-width:100%">${escHtml(v)}</span>`).join(`<span style="opacity:.55;padding:0 .35em">·</span>`)}</span>
         ${t.entryFeeXof ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#FBBF24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;padding:3px 10px;font-size:12px">${ic(I.cart, 12)}${money(t.entryFeeXof)}</span>` : ""}
       </div>
     </div>
@@ -3958,6 +3966,16 @@ function pTournoi(S: State) {
     } else {
       action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
     }
+    if (t.teamSize && !manage && S.user && !isPending && !isReg) {
+      const draft = S.teamDraft || { name: "", members: [] as string[] };
+      const inp = "width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:14px;padding:11px 13px";
+      const rows = Array.from({ length: t.teamSize }, (_, i) => `<input id="team-m-${i}" value="${escAttr(draft.members[i] ?? (i === 0 ? S.user?.displayName : ""))}" placeholder="${i === 0 ? "Toi (capitaine)" : `Joueur ${i + 1}`}" maxlength="40" style="${inp}" />`).join("");
+      action = `<div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:18px;width:100%;max-width:380px;text-align:left;margin-bottom:6px">
+        <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:10px">Ton équipe (${t.teamSize} joueurs)</div>
+        <input id="team-name" value="${escAttr(draft.name)}" placeholder="Nom de l'équipe" maxlength="40" style="${inp};margin-bottom:10px" />
+        <div style="display:flex;flex-direction:column;gap:8px">${rows}</div>
+      </div>${action}`;
+    }
     const sub = manage
       ? t.mainFormat === "survival"
         ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
@@ -3973,6 +3991,7 @@ function pTournoi(S: State) {
     // panneau Joueurs en régie — fonctionne aussi avant lancement, l'API n'impose aucune restriction.
     const plEditRow = (p: { id: string; name: string; club?: string }) => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid #22D3EE55;border-radius:10px;padding:8px">
       <input id="pl-edit-name" value="${escAttr(p.name)}" placeholder="Nom" style="flex:1;min-width:110px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />
+      ${t.teamSize && t.status === "setup" ? `<input id="pl-edit-members" value="${escAttr(((t.teams?.[p.name] as string[]) || []).join(", "))}" placeholder="Joueurs de l'équipe (virgules)" style="flex:2 1 100%;min-width:200px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />` : ""}
       <input id="pl-edit-club" value="${escAttr(p.club || "")}" placeholder="Club" style="flex:1;min-width:90px;background:var(--surface-3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:6px 9px" />
       <button data-pledit-save="${t.id}|${p.id}" style="background:var(--surface-4);border:1px solid var(--border-strong);color:#22D3EE;border-radius:8px;padding:6px 11px;font-weight:700;font-size:12px;cursor:pointer">OK</button>
       <button data-pledit-cancel="1" style="background:transparent;border:0;color:var(--text-muted);cursor:pointer;font-size:12px">Annuler</button>
@@ -3980,9 +3999,9 @@ function pTournoi(S: State) {
     const participants = roster.length || manage
       ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-top:18px">
           <h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Participants (${roster.length})</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;${roster.length > 15 ? "max-height:620px;overflow-y:auto;padding-right:4px" : ""}">${roster.map((p) => S.editingPlayerId === p.id ? plEditRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 8px 7px 13px">${p.club ? `<span style="color:var(--text-faint);font-weight:500">@${escHtml(p.club)}</span>` : ""}<span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-4);font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${manage ? `<button data-pledit-open="${p.id}" title="Renommer / club" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:var(--text-muted);cursor:pointer">${ic(I.edit || I.plus, 11)}</button><button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:var(--text-muted);cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;${roster.length > 15 ? "max-height:620px;overflow-y:auto;padding-right:4px" : ""}">${roster.map((p) => S.editingPlayerId === p.id ? plEditRow(p) : `<span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 8px 7px 13px">${p.club ? `<span style="color:var(--text-faint);font-weight:500">@${escHtml(p.club)}</span>` : ""}<span style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--surface-4);font-size:10px;font-weight:800;color:#22D3EE">${p.name.charAt(0).toUpperCase()}</span>${escHtml(p.name)}${t.teams?.[p.name] ? `<span style="color:var(--text-faint);font-weight:500;font-size:12px">· ${escHtml((t.teams[p.name] as string[]).join(", "))}</span>` : ""}${manage ? `<button data-pledit-open="${p.id}" title="Renommer / club" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:var(--text-muted);cursor:pointer">${ic(I.edit || I.plus, 11)}</button><button data-plrem="${t.id}|${p.id}" style="display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:transparent;border:0;color:var(--text-muted);cursor:pointer">${ic(I.x, 12)}</button>` : ""}</span>`).join("")}</div>
           ${roster.length ? "" : `<div style="color:var(--text-faint);font-size:13px;margin-bottom:${manage ? "12px" : "0"}">Aucun participant pour l'instant.</div>`}
-          ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="Nom du joueur (@club optionnel)" style="flex:1;min-width:200px;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;padding:9px 12px" /><button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px dashed var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
+          ${manage ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><input id="pl-add-name" placeholder="${t.teamSize ? "Nom de l'équipe" : "Nom du joueur (@club optionnel)"}" style="flex:1;min-width:200px;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;padding:9px 12px" />${t.teamSize ? `<input id="pl-add-members" placeholder="${t.teamSize} joueurs, séparés par des virgules" style="flex:2;min-width:240px;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13px;padding:9px 12px" />` : ""}<button data-pladd="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px dashed var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button></div>` : ""}
         </div>`
       : "";
     // Répartition des poules : prévisualiser, réordonner et rééquilibrer l'effectif avant le
@@ -5110,7 +5129,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null, myNext: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null, myNext: null, teamDraft: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5129,7 +5148,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -5302,7 +5321,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
 
   /* ---------- Pilotage d'un tournoi ---------- */
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -5363,6 +5382,16 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ name }) });
         if (r.ok) lastOk = await r.json();
         else { const d = await r.json().catch(() => null); alert(d?.message || "Renommage impossible."); }
+      }
+      const membersEl = document.getElementById("pl-edit-members") as HTMLInputElement | null;
+      if (membersEl && current) {
+        const list = membersEl.value.split(",").map((m) => m.trim()).filter(Boolean);
+        const before = ((S.detail?.teams?.[current.name] as string[]) || []).join(",");
+        if (list.join(",") !== before) {
+          const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}/members`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ members: list }) });
+          if (r.ok) lastOk = await r.json();
+          else { const d = await r.json().catch(() => null); alert(d?.message || "Composition impossible à modifier."); }
+        }
       }
       if (current && club !== (current.club || "")) {
         const r = await fetch(`${API}/api/tournaments/${tid}/players/${pid}/club`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ club }) });
@@ -6312,6 +6341,23 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, passMsg: r.ok ? "Mot de passe modifié." : data.message || "Échec." }));
     } catch { setS((s) => ({ ...s, passMsg: "API injoignable." })); }
   }
+  /** Lit le formulaire d'équipe du capitaine (nom + joueurs) ; retombe sur le brouillon gardé en état si les champs ne sont pas à l'écran. */
+  function readTeamForm(): { teamName: string; members: string[] } | null {
+    const size: number = S.detail?.teamSize || 0;
+    const el = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+    const teamName = (el("team-name")?.value ?? S.teamDraft?.name ?? "").trim();
+    const members = Array.from({ length: size }, (_, i) => (el(`team-m-${i}`)?.value ?? S.teamDraft?.members[i] ?? "").trim());
+    if (teamName.length < 2) { alert("Donne un nom à ton équipe."); return null; }
+    if (members.some((m) => !m)) { alert(`Renseigne les ${size} joueurs de l'équipe.`); return null; }
+    return { teamName, members };
+  }
+  function captureTeamDraft() {
+    const size: number = S.detail?.teamSize || 0;
+    if (!size) return;
+    const el = (id: string) => document.getElementById(id) as HTMLInputElement | null;
+    const draft = { name: el("team-name")?.value ?? "", members: Array.from({ length: size }, (_, i) => el(`team-m-${i}`)?.value ?? "") };
+    setS((s) => ({ ...s, teamDraft: draft }));
+  }
   async function toggleReg(id: string, register: boolean, method?: string) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     const fee = S.detail?.entryFeeXof || 0;
@@ -6321,19 +6367,21 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const pointsToRedeem = Math.min(S.regPointsToRedeem, maxPoints);
     const netFee = Math.max(0, fee - pointsToRedeem * ly.pointValueXof);
     const payMethod = method ?? S.payPick;
+    const team = register && S.detail?.teamSize ? readTeamForm() : null;
+    if (register && S.detail?.teamSize && !team) return;
     if (register && netFee > 0 && !payMethod) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/register`, {
         method: register ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: register && fee > 0 ? JSON.stringify({ paymentMethod: payMethod, pointsToRedeem }) : undefined,
+        body: register && (fee > 0 || team) ? JSON.stringify({ ...(fee > 0 ? { paymentMethod: payMethod, pointsToRedeem } : {}), ...(team || {}) }) : undefined,
       });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       const data = await r.json();
       if (!r.ok) { alert(data.message || "Action impossible."); return; }
       await loadRegIds();
       await loadTournaments();
-      setS((s) => ({ ...s, me: null, myRegs: null, myResults: null, payPick: "", regPointsToRedeem: 0 })); // le profil se rechargera
+      setS((s) => ({ ...s, me: null, myRegs: null, myResults: null, payPick: "", regPointsToRedeem: 0, teamDraft: null })); // le profil se rechargera
       loadLoyaltyMe();
       if (S.openId === id) {
         const st = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -6885,6 +6933,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       d.place = val("wz-place").trim();
       d.pointsPerPlayer = Math.max(1, parseInt(val("wz-pts")) || 5);
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
+      if (!S.wizEditId) d.teamSize = parseInt(val("wz-team")) || 0;
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
       if (d.matchMode === "ft") d.matchValue = Math.max(1, Math.min(99, parseInt(val("wz-matchvalue")) || d.matchValue));
       d.countGoalDiff = (document.getElementById("wz-goaldiff") as HTMLInputElement | null)?.checked ?? true;
@@ -6984,7 +7033,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const d = wizCapture();
     // L'étape Participants n'existe que dans le flux de création pur : en modification (abrégée ou
     // via "Changer le format"), les participants déjà saisis sont conservés tels quels.
-    if (!S.wizEditId && next >= 3 && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
+    if (!S.wizEditId && next >= 3 && !d.teamSize && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
     setS((s) => ({ ...s, wizData: d, wizStep: next }));
     window.scrollTo({ top: 0 });
   }
@@ -7012,10 +7061,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
   async function submitCreate() {
     const d = S.wizData;
-    if (!d.name.trim() || d.players.length < 2) return;
+    if (!d.name.trim() || (!d.teamSize && d.players.length < 2)) return;
     const body: Detail = {
       name: d.name, game: d.game, format: d.format, place: d.place,
-      date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.players,
+      date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.teamSize ? [] : d.players,
+      ...(d.teamSize ? { teamSize: d.teamSize } : {}),
       nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
@@ -7054,7 +7104,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
@@ -7297,6 +7347,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         setS((s) => ({
           ...s, creating: true, wizEditId: t.id, wizFullEdit: fullEdit, wizStep: 1, wizRosterSearch: "",
           wizData: {
+            teamSize: t.teamSize || 0,
             name: t.name || "", game: t.game || "", date: "", place: t.place || "", format: ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL",
             pointsPerPlayer: t.pointsPerPlayer || 5, nbPools: t.nbPools || 2,
             players: roster.map((p) => (p.club ? `${p.name} @${p.club}` : p.name)),
@@ -7330,7 +7381,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.pladd) {
       const nameEl = document.getElementById("pl-add-name") as HTMLInputElement | null;
       const name = (nameEl?.value || "").trim();
-      if (name) { act(`${API}/api/tournaments/${d.pladd}/players`, { name }); if (nameEl) nameEl.value = ""; }
+      const memEl = document.getElementById("pl-add-members") as HTMLInputElement | null;
+      const members = memEl ? memEl.value.split(",").map((m) => m.trim()).filter(Boolean) : undefined;
+      if (name) { act(`${API}/api/tournaments/${d.pladd}/players`, { name, ...(members ? { members } : {}) }); if (nameEl) nameEl.value = ""; if (memEl) memEl.value = ""; }
     }
     else if (d.plrem) {
       const [tid, pid] = d.plrem.split("|");
@@ -7427,12 +7480,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.prodclose !== undefined) setS((s) => ({ ...s, productOpen: null }));
     else if (d.cartOpen !== undefined) { setS((s) => ({ ...s, cartOpen: true })); loadLoyaltyMe(); }
     else if (d.cartpts) setS((s) => ({ ...s, cartPointsToRedeem: parseInt(d.cartpts!) || 0 }));
-    else if (d.regpts) setS((s) => ({ ...s, regPointsToRedeem: parseInt(d.regpts!) || 0 }));
+    else if (d.regpts) { captureTeamDraft(); setS((s) => ({ ...s, regPointsToRedeem: parseInt(d.regpts!) || 0 })); }
     else if (d.cartClose !== undefined) setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "" }));
     else if (d.cartVieworders !== undefined) { setS((s) => ({ ...s, cartOpen: false, lastOrder: null, cartPayPick: "", page: "profil" })); window.scrollTo({ top: 0 }); }
     else if (d.cartRemove !== undefined) setS((s) => ({ ...s, cartItems: s.cartItems.filter((_, i) => i !== parseInt(d.cartRemove!)) }));
     else if (d.cartClear !== undefined) setS((s) => ({ ...s, cartItems: [] }));
-    else if (d.payopen) setS((s) => ({ ...s, payModal: d.payopen as "reg" | "cart" | "credit" }));
+    else if (d.payopen) { captureTeamDraft(); setS((s) => ({ ...s, payModal: d.payopen as "reg" | "cart" | "credit" })); }
     else if (d.payretry) { const [k, id, m] = d.payretry.split("|"); void startOnlinePay(k as PayKind, id, m); }
     else if (d.payclose !== undefined) setS((s) => ({ ...s, payModal: null }));
     else if (d.paychoose) {
@@ -7624,7 +7677,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.gfilter !== undefined) setS((s) => ({ ...s, galleryFilter: d.gfilter! }));
     else if (d.gtype !== undefined) setS((s) => ({ ...s, galleryType: d.gtype as State["galleryType"] }));
     else if (d.instock !== undefined) setS((s) => ({ ...s, boutiqueInStock: d.instock === "1" }));
-    else if (d.classview) setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" }));
+    else if (d.classview) setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" | "equipes" }));
     else if (d.gopen) setS((s) => ({ ...s, galleryOpen: d.gopen! }));
     else if (d.gclose !== undefined) setS((s) => ({ ...s, galleryOpen: null }));
     else if (d.gprev !== undefined || d.gnext !== undefined) {
@@ -7681,7 +7734,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.passsave !== undefined) savePassword();
     else if (d.reg) toggleReg(d.reg, true);
     else if (d.unreg) toggleReg(d.unreg, false);
-    else if (d.paypick) setS((s) => ({ ...s, payPick: d.paypick! }));
+    else if (d.paypick) { captureTeamDraft(); setS((s) => ({ ...s, payPick: d.paypick! })); }
     else if (d.confirmpay) { const [tid, regId] = d.confirmpay.split("|"); confirmRegPayment(tid, regId); }
     else if (d.show) window.open(window.location.pathname + "#show=" + d.show, "_blank");
     else if (d.print) {
@@ -7715,7 +7768,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }
       setS((s) => ({
         ...s, creating: true, wizEventId: d.evid || null, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
       }));
       loadRoster();
     }

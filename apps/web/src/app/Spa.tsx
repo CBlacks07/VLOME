@@ -3046,7 +3046,25 @@ function poolHistoryList(log: Detail[], poolId: string, manage: boolean): string
     <div style="max-height:220px;overflow-y:auto">${rows}</div>
   </div>`;
 }
+/** Postes et match « à l'antenne » du tournoi affiché (posés au rendu, voir renderPageBody) — lus par les
+ * cartes de poule et les cases de bracket, qui n'ont pas accès au tournoi entier. */
+let LIVE_META: { stations: Record<string, string>; stream: string | null } = { stations: {}, stream: null };
+function liveBadges(key: string | undefined, small = false): string {
+  if (!key) return "";
+  const station = LIVE_META.stations[key];
+  const stream = LIVE_META.stream === key;
+  if (!station && !stream) return "";
+  const fs = small ? "8.5px" : "10px";
+  return `${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
+}
 function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
+  const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log);
+  const b = p.current || (p.rrmatches || []).some((m: Detail) => m.playable) ? liveBadges(p.id) : "";
+  if (!b) return html;
+  const i = html.indexOf(">");
+  return i < 0 ? html : `${html.slice(0, i + 1)}<div style="display:flex;gap:6px;justify-content:flex-end;padding:0 0 8px">${b}</div>${html.slice(i + 1)}`;
+}
+function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
   let body: string;
   if (poolFormat === "roundrobin") {
     // Calendrier par journées plutôt qu'un seul "match en cours" mis en avant : les journées déjà
@@ -3160,7 +3178,7 @@ function matchBox(m: Detail, manage: boolean, logByMatch: Record<string, string>
     ? `<button data-editmatch="${logId}" title="Corriger ce match" style="margin-left:auto;display:grid;place-items:center;width:18px;height:18px;border-radius:5px;background:transparent;border:0;color:${v.badgeColor};cursor:pointer;flex:none">${ic(I.edit, 10)}</button>`
     : "";
   return `<div style="border:${v.border};border-radius:10px;overflow:hidden;background:${v.bg}">
-    <div style="display:flex;align-items:center;padding:6px 11px;background:var(--surface-7);border-bottom:1px solid var(--surface-3)"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span>${pencil}</div>
+    <div style="display:flex;align-items:center;padding:6px 11px;background:var(--surface-7);border-bottom:1px solid var(--surface-3)"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span>${m.playable ? `<span style="display:inline-flex;gap:4px;margin-left:6px">${liveBadges(m.matchId, true)}</span>` : ""}${pencil}</div>
     ${matchLine(m.aName, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid var(--surface-3)">${matchLine(m.bName, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div>
   </div>`;
 }
@@ -3366,7 +3384,7 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   const pencil = m.winnerId && manage && logId
     ? `<button data-editmatch="${logId}" title="Corriger ce match" style="margin-left:auto;display:grid;place-items:center;width:18px;height:18px;border-radius:5px;background:transparent;border:0;color:${v.badgeColor};cursor:pointer;flex:none">${ic(I.edit, 10)}</button>`
     : "";
-  const badge = `<div style="flex:none;display:flex;align-items:center;padding:5px 10px;background:var(--surface-7);border-bottom:1px solid var(--surface-3)"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span>${pencil}</div>`;
+  const badge = `<div style="flex:none;display:flex;align-items:center;padding:5px 10px;background:var(--surface-7);border-bottom:1px solid var(--surface-3)"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span>${m.playable ? `<span style="display:inline-flex;gap:4px;margin-left:6px">${liveBadges(m.matchId, true)}</span>` : ""}${pencil}</div>`;
   return shell(
     badge + row(m.aName, m.winnerId === m.aId, hasScore ? m.sa : null, false) + row(m.bName, m.winnerId === m.bId, hasScore ? m.sb : null, true),
     v.border, v.bg,
@@ -5017,6 +5035,7 @@ function clubPendingBanner(S: State): string {
 }
 function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S) + embedModal(S); }
 function renderPageBody(S: State) {
+  LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null };
   // Mode Show / écran de diffusion : conçus pour être projetés (vidéoprojecteur, écran de LAN) — restent
   // sombres quel que soit le thème choisi pour le reste du site.
   if (S.page === "show") return `<div data-force-theme="dark">${pShow(S)}</div>`;

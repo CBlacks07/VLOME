@@ -157,7 +157,7 @@ export class TournamentsService {
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
-        rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null,
+        rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null, teamSize: dto.teamSize ?? null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
         eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
@@ -292,29 +292,38 @@ export class TournamentsService {
   private async computeLeaderboard(where: { eventId?: string }) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
-      select: { id: true, game: true, engineState: true },
+      select: { id: true, game: true, engineState: true, teams: true },
     });
     const acct = await this.accountMap();
-    type Agg = { userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
+    type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
     const agg = new Map<string, Agg>();
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st || !st.players?.length) continue;
       const game = t.game || 'Autre';
+      const teams = (t.teams as Record<string, string[]> | null) || {};
       for (const p of st.players) {
         const uid = acct.get(`${t.id}|${p.name}`) ?? null;
-        const key = `${uid ? 'u:' + uid : p.name}||${game}`;
-        const entry = agg.get(key) ?? { userId: uid, name: p.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
         const points = st.points?.[p.id] || 0;
         // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
         // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
         const realMatches = st.log.filter((l) => l.a && l.b);
         const matches = realMatches.filter((l) => l.a === p.id || l.b === p.id).length;
         const wins = realMatches.filter((l) => l.winner === p.id).length;
-        entry.points += points; entry.wins += wins; entry.matches += matches;
-        if (st.champion === p.id) entry.championships++;
-        if (matches > 0) entry.tournaments.add(t.id);
-        agg.set(key, entry);
+        const champion = st.champion === p.id;
+        // Tournoi par équipes : l'équipe a sa ligne (marquée « team »), et chaque membre reçoit les MÊMES stats
+        // sur sa propre ligne de joueur.
+        const members = teams[p.name];
+        const targets: { key: string; name: string; uid: string | null; team?: string[] }[] = members
+          ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members }, ...members.map((m) => ({ key: `${m}||${game}`, name: m, uid: null }))]
+          : [{ key: `${uid ? 'u:' + uid : p.name}||${game}`, name: p.name, uid }];
+        for (const tg of targets) {
+          const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
+          entry.points += points; entry.wins += wins; entry.matches += matches;
+          if (champion) entry.championships++;
+          if (matches > 0) entry.tournaments.add(t.id);
+          agg.set(tg.key, entry);
+        }
       }
     }
 
@@ -332,6 +341,7 @@ export class TournamentsService {
       .filter((e) => e.matches > 0)
       .map((e) => ({
         userId: e.userId,
+        team: e.team ?? null,
         name: e.name,
         game: e.game,
         points: Math.round(e.points * 10) / 10,
@@ -346,6 +356,16 @@ export class TournamentsService {
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
       .slice(0, 300);
+  }
+
+  /** Le concurrent (côté moteur) que désigne un nom : un joueur/une équipe du tournoi, ou — en tournoi par
+   * équipes — un membre d'équipe, qui reprend alors les stats de son équipe. */
+  private findEntrant(st: Engine.Tournament, teams: Record<string, string[]>, tournamentId: string, name: string, uid: string | undefined, acct: Map<string, string> | null): Engine.Player | undefined {
+    const direct = st.players?.find((p) => p.name === name && (!uid || acct?.get(`${tournamentId}|${p.name}`) === uid));
+    if (direct || uid) return direct;
+    const lower = name.toLowerCase();
+    const teamName = Object.keys(teams).find((k) => teams[k].some((m) => m.toLowerCase() === lower));
+    return teamName ? st.players?.find((p) => p.name === teamName) : undefined;
   }
 
   /** Ville/club best-effort pour un nom de joueur — même rapprochement que leaderboard() (inscription/roster). */
@@ -364,7 +384,7 @@ export class TournamentsService {
   async playerProfile(name: string, uid?: string) {
     const acct = uid ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
-      select: { id: true, name: true, game: true, status: true, date: true, engineState: true },
+      select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true },
     });
     let points = 0, wins = 0, losses = 0, championships = 0, tournamentsPlayed = 0;
     const byGameMap = new Map<string, { game: string; points: number; wins: number; losses: number; championships: number; tournamentsPlayed: number }>();
@@ -372,7 +392,7 @@ export class TournamentsService {
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
-      const me = st.players?.find((p) => p.name === name && (!uid || acct!.get(`${t.id}|${p.name}`) === uid));
+      const me = this.findEntrant(st, (t.teams as Record<string, string[]> | null) || {}, t.id, name, uid, acct);
       if (!me) continue;
       const game = t.game || 'Autre';
       const tPoints = st.points?.[me.id] || 0;
@@ -414,15 +434,16 @@ export class TournamentsService {
   async headToHead(nameA: string, nameB: string, uidA?: string, uidB?: string) {
     const acct = uidA || uidB ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
-      select: { id: true, name: true, game: true, engineState: true },
+      select: { id: true, name: true, game: true, engineState: true, teams: true },
     });
     let aWins = 0, bWins = 0;
     const matches: Array<{ tournamentId: string; tournamentName: string; game: string; sa: number | null; sb: number | null; winner: 'a' | 'b'; ts: number }> = [];
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
-      const pa = st.players?.find((p) => p.name === nameA && (!uidA || acct!.get(`${t.id}|${p.name}`) === uidA));
-      const pb = st.players?.find((p) => p.name === nameB && (!uidB || acct!.get(`${t.id}|${p.name}`) === uidB));
+      const tms = (t.teams as Record<string, string[]> | null) || {};
+      const pa = this.findEntrant(st, tms, t.id, nameA, uidA, acct);
+      const pb = this.findEntrant(st, tms, t.id, nameB, uidB, acct);
       if (!pa || !pb) continue;
       const logs = st.log.filter((l) => l.a && l.b && l.winner && ((l.a === pa.id && l.b === pb.id) || (l.a === pb.id && l.b === pa.id)));
       for (const l of logs) {
@@ -480,8 +501,19 @@ export class TournamentsService {
     // Nom réservé : distinct des joueurs déjà dans le moteur ET des autres inscriptions (payées ou en attente).
     const allRegs = await this.prisma.registration.findMany({ where: { tournamentId: id }, select: { playerName: true } });
     const taken = new Set([...t.players.map((p) => p.name.toLowerCase()), ...allRegs.map((x) => x.playerName.toLowerCase())]);
+    // Tournoi par équipes : le capitaine inscrit l'équipe entière — l'équipe est UN concurrent côté moteur.
+    let members: string[] | null = null;
     let playerName = u.displayName.trim() || u.email.split('@')[0];
+    if (r.teamSize) {
+      const teamName = (dto.teamName || '').trim();
+      if (teamName.length < 2) throw new BadRequestException("Donne un nom à ton équipe (2 caractères minimum).");
+      members = (dto.members || []).map((m) => m.trim()).filter(Boolean);
+      if (members.length !== r.teamSize) throw new BadRequestException(`Une équipe compte exactement ${r.teamSize} joueurs.`);
+      if (new Set(members.map((m) => m.toLowerCase())).size !== members.length) throw new BadRequestException("Deux joueurs de l'équipe portent le même nom.");
+      playerName = teamName;
+    }
     if (taken.has(playerName.toLowerCase())) {
+      if (r.teamSize) throw new ConflictException("Ce nom d'équipe est déjà pris dans ce tournoi.");
       let n = 2;
       while (taken.has(`${playerName} (${n})`.toLowerCase())) n++;
       playerName = `${playerName} (${n})`;
@@ -490,6 +522,7 @@ export class TournamentsService {
     if (netFee === 0) {
       // Gratuit (ou entièrement couvert par des points) : ajouté tout de suite.
       t.players.push({ id: Engine.uid(), name: playerName, club: u.city || '' });
+      const teams = members ? { ...((r.teams as Record<string, string[]>) || {}), [playerName]: members } : undefined;
       const reg = await this.prisma.$transaction(async (tx) => {
         const created = await tx.registration.create({
           data: {
@@ -497,7 +530,7 @@ export class TournamentsService {
             paymentMethod: pointsUsed > 0 ? 'Points fidélité' : null, pointsRedeemed: pointsUsed,
           },
         });
-        await tx.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)) } });
+        await tx.tournament.update({ where: { id }, data: { engineState: JSON.parse(JSON.stringify(t)), ...(teams ? { teams } : {}) } });
         return created;
       });
       if (pointsUsed > 0) {
@@ -522,6 +555,7 @@ export class TournamentsService {
         paymentMethod: dto.paymentMethod, paymentStatus: 'pending', pointsRedeemed: pointsUsed,
       },
     });
+    if (members) await this.prisma.tournament.update({ where: { id }, data: { teams: { ...((r.teams as Record<string, string[]>) || {}), [playerName]: members } } });
     if (pointsUsed > 0) {
       try {
         await this.loyalty.redeem(user.sub, pointsUsed, LoyaltyReason.REGISTRATION_REDEMPTION, { registrationId: reg.id, note: r.name });
@@ -747,7 +781,7 @@ export class TournamentsService {
       streakLength: t.streakLength, finalsFormat: t.finalsFormat, poolFormat: t.poolFormat, qualifyPerPool: t.qualifyPerPool,
       matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff,
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
-      rules: r.rules ?? undefined, prize: r.prize ?? undefined,
+      rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
     };
     return this.create(dto, user);
   }
@@ -905,11 +939,13 @@ export class TournamentsService {
     const t = r.engineState as Engine.Tournament | null;
     if (t) t.players = t.players.filter((p) => p.name !== reg.playerName);
 
+    const teams = { ...((r.teams as Record<string, string[]>) || {}) };
+    delete teams[reg.playerName];
     await this.prisma.$transaction([
       this.prisma.registration.delete({ where: { id: reg.id } }),
       this.prisma.tournament.update({
         where: { id },
-        data: t ? { engineState: JSON.parse(JSON.stringify(t)) } : {},
+        data: { ...(t ? { engineState: JSON.parse(JSON.stringify(t)) } : {}), ...(r.teamSize ? { teams } : {}) },
       }),
     ]);
     // Rembourse les points dépensés sur cette inscription, et retire le point de participation
@@ -1024,7 +1060,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
@@ -1197,7 +1233,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1275,6 +1311,9 @@ export class TournamentsService {
       // Règlement et lot (texte libre saisi par l'organisateur).
       rules: extra.rules ?? null,
       prize: extra.prize ?? null,
+      // Tournoi par équipes : taille des équipes et composition { nomÉquipe: [joueurs] } (null = individuel).
+      teamSize: extra.teamSize ?? null,
+      teams: (extra.teams as Record<string, string[]>) || {},
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,
@@ -1388,8 +1427,30 @@ export class TournamentsService {
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
+  /** Composition d'une équipe : exactement `size` joueurs, noms non vides et distincts. */
+  private validTeam(members: string[] | undefined, size: number): string[] {
+    const list = (members || []).map((m) => m.trim()).filter(Boolean);
+    if (list.length !== size) throw new BadRequestException(`Une équipe compte exactement ${size} joueurs.`);
+    if (new Set(list.map((m) => m.toLowerCase())).size !== list.length) throw new BadRequestException("Deux joueurs de l'équipe portent le même nom.");
+    return list;
+  }
+
+  /** Remplace les joueurs d'une équipe — avant le lancement seulement (règle du tournoi par équipes). */
+  async setTeamMembers(id: string, playerId: string, members: string[], user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (!l.record.teamSize) throw new BadRequestException("Ce n'est pas un tournoi par équipes.");
+    if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : la composition des équipes est figée.');
+    const player = l.t.players.find((p) => p.id === playerId);
+    if (!player) throw new NotFoundException('Équipe introuvable.');
+    const teams = { ...((l.record.teams as Record<string, string[]>) || {}), [player.name]: this.validTeam(members, l.record.teamSize) };
+    await this.prisma.tournament.update({ where: { id }, data: { teams } });
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, teams });
+  }
+
   /** Ajout manuel d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
-  async addPlayer(id: string, name: string, user: JwtUser) {
+  async addPlayer(id: string, name: string, user: JwtUser, members?: string[]) {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
@@ -1400,10 +1461,13 @@ export class TournamentsService {
         throw new ConflictException(`Ce tournoi a atteint le nombre maximum de participants autorisé pour ce compte (${owner.organizerMaxPlayers}).`);
       }
     }
+    const team = l.record.teamSize ? this.validTeam(members, l.record.teamSize) : null;
     const p = Engine.addPlayer(l.t, name);
     if (!p) throw new BadRequestException('Nom invalide ou déjà utilisé dans ce tournoi.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
+    const teams = { ...((l.record.teams as Record<string, string[]>) || {}) };
+    if (team) { teams[p.name] = team; await this.prisma.tournament.update({ where: { id }, data: { teams } }); }
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, teams });
   }
 
   /** Retrait d'un joueur par l'organisateur/admin — uniquement avant le lancement. */
@@ -1412,9 +1476,12 @@ export class TournamentsService {
     if (!l) return null;
     this.assertCanManage(l.record, user);
     if (l.t.status !== 'setup') throw new ConflictException('Le tournoi a démarré : impossible de retirer un joueur.');
+    const removed = l.t.players.find((p) => p.id === playerId);
     if (!Engine.removePlayer(l.t, playerId)) throw new NotFoundException('Joueur introuvable.');
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
+    const teams = { ...((l.record.teams as Record<string, string[]>) || {}) };
+    if (removed && teams[removed.name]) { delete teams[removed.name]; await this.prisma.tournament.update({ where: { id }, data: { teams } }); }
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, teams });
   }
 
   /** Disqualification en direct — forfait immédiat, l'adversaire est déclaré vainqueur. */
@@ -1459,6 +1526,7 @@ export class TournamentsService {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
+    const oldName = l.t.players.find((p) => p.id === playerId)?.name;
     const res = Engine.renamePlayer(l.t, playerId, name);
     if (!res.ok) {
       if (res.reason === 'duplicate') throw new ConflictException('Un autre participant porte déjà ce nom dans ce tournoi.');
@@ -1466,7 +1534,10 @@ export class TournamentsService {
       throw new BadRequestException('Le nom ne peut pas être vide.');
     }
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
+    const teams = { ...((l.record.teams as Record<string, string[]>) || {}) };
+    const newName = l.t.players.find((p) => p.id === playerId)?.name;
+    if (oldName && newName && oldName !== newName && teams[oldName]) { teams[newName] = teams[oldName]; delete teams[oldName]; await this.prisma.tournament.update({ where: { id }, data: { teams } }); }
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, { ...l.record, teams });
   }
 
   /** Modifie le club affiché d'un joueur — à tout moment. */

@@ -243,6 +243,11 @@ model Tournament {
   // Règlement et lot du tournoi (texte libre affiché sur la page publique).
   rules             String?
   prize             String?
+  // Tournoi par équipes : taille des équipes (null = individuel) et composition { nomÉquipe: [joueurs] }.
+  // Côté moteur, chaque équipe est UN concurrent (Player nommé comme l'équipe) : bracket, poules et classements
+  // fonctionnent tels quels.
+  teamSize          Int?
+  teams             Json?
 }
 
 model Match {

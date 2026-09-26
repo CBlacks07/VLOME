@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Q
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, MatchStartDto, MatchMinutesDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, TeamMembersDto, MatchStartDto, MatchMinutesDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -257,7 +257,7 @@ export class TournamentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
   async addPlayer(@Param('id') id: string, @Body() dto: AddPlayerDto, @CurrentUser() user: JwtUser) {
-    const s = await this.service.addPlayer(id, dto.name, user);
+    const s = await this.service.addPlayer(id, dto.name, user, dto.members);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }
@@ -267,6 +267,15 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   async removePlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.removePlayer(id, playerId, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
+  @Post(':id/players/:playerId/members')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async setTeamMembers(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: TeamMembersDto, @CurrentUser() user: JwtUser) {
+    const s = await this.service.setTeamMembers(id, playerId, dto.members, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

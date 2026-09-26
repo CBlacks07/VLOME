@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -12,6 +12,8 @@ export class CreateTournamentDto {
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
   @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @IsOptional() @IsString() @MaxLength(400) prize?: string;
+  // Tournoi par équipes (2 à 8 joueurs par équipe) — fixé à la création. Absent = tournoi individuel.
+  @IsOptional() @IsInt() @Min(2) @Max(8) teamSize?: number;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   // Événement auquel rattacher ce tournoi (l'appelant doit pouvoir gérer cet événement).
@@ -92,6 +94,12 @@ export class UpdateTournamentDto {
 
 export class AddPlayerDto {
   @IsString() @MaxLength(80) name!: string;
+  // Tournoi par équipes : les joueurs de l'équipe ajoutée.
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(40, { each: true }) members?: string[];
+}
+
+export class TeamMembersDto {
+  @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(40, { each: true }) members!: string[];
 }
 
 export class ClubDto {
@@ -189,6 +197,9 @@ export class NotifyMatchDto {
 }
 
 export class RegisterDto {
+  // Tournoi par équipes : nom de l'équipe et ses joueurs (le capitaine inscrit toute l'équipe).
+  @IsOptional() @IsString() @MaxLength(40) teamName?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(40, { each: true }) members?: string[];
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;
 }

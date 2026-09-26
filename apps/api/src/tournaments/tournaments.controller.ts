@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Q
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -154,6 +154,13 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN')
   setStation(@Param('id') id: string, @Body() dto: StationDto, @CurrentUser() user: JwtUser) {
     return this.service.setStation(id, dto.key, dto.label, user);
+  }
+
+  @Post(':id/notify-match')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  notifyMatch(@Param('id') id: string, @Body() dto: NotifyMatchDto, @CurrentUser() user: JwtUser) {
+    return this.service.notifyMatch(id, dto.key, user);
   }
 
   @Post(':id/stream-match')

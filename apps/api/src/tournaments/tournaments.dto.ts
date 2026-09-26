@@ -171,6 +171,10 @@ export class StreamMatchDto {
   @IsBoolean() on!: boolean;
 }
 
+export class NotifyMatchDto {
+  @IsString() @MaxLength(60) key!: string;
+}
+
 export class RegisterDto {
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;

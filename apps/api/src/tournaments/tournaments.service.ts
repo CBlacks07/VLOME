@@ -714,6 +714,55 @@ export class TournamentsService {
     return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey);
   }
 
+  /** Prévient par e-mail les joueurs d'un match que celui-ci démarre (avec leur poste s'il en a un).
+   * Seuls les joueurs inscrits avec un compte (Registration, rapprochée par pseudo) sont joignables ;
+   * les autres (saisis à la main par l'organisateur) sont listés dans `unreachable` pour être appelés à voix haute. */
+  async notifyMatch(tournamentId: string, key: string, user: JwtUser) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const st = this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey) as Record<string, any>;
+    // Le match : une poule (clé = id de poule, match courant) ou un match de phase finale (clé = matchId).
+    let pair: { a: string; b: string } | null = null;
+    const pool = (st.pools || []).find((p: any) => p.id === key);
+    if (pool?.current) pair = { a: pool.current.aName, b: pool.current.bName };
+    else {
+      const walk = (n: any): void => {
+        if (pair || !n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (n.matchId === key && n.aName && n.bName) { pair = { a: n.aName, b: n.bName }; return; }
+        Object.values(n).forEach(walk);
+      };
+      walk(st.finals);
+    }
+    if (!pair) throw new NotFoundException('Match introuvable ou pas encore prêt.');
+    const p = pair as { a: string; b: string };
+    const station = ((l.record.stations as Record<string, string>) || {})[key] || null;
+    const regs = await this.prisma.registration.findMany({
+      where: { tournamentId, playerName: { in: [p.a, p.b] } },
+      include: { user: { select: { email: true, displayName: true } } },
+    });
+    const sent: string[] = [];
+    for (const reg of regs) {
+      const opponent = reg.playerName === p.a ? p.b : p.a;
+      const ok = await this.mail.send(
+        reg.user.email,
+        `C'est à toi de jouer — ${st.name}`,
+        this.mail.layout(
+          "C'est à toi de jouer !",
+          `<p>Bonjour ${escapeHtml(reg.user.displayName)},</p>
+           <p>Ton match du tournoi <b>${escapeHtml(st.name)}</b> démarre : <b>${escapeHtml(reg.playerName)}</b> contre <b>${escapeHtml(opponent)}</b>.</p>
+           ${station ? `<p>Rends-toi à : <b>${escapeHtml(station)}</b>.</p>` : ''}
+           <p>Présente-toi vite auprès de l'organisateur.</p>`,
+          { label: 'Voir le tournoi', url: `${this.mail.siteUrl}/tournois/${tournamentId}` },
+        ),
+      );
+      if (ok) sent.push(reg.playerName);
+    }
+    const reachable = new Set(regs.map((r) => r.playerName));
+    return { players: [p.a, p.b], sent, unreachable: [p.a, p.b].filter((n) => !sent.includes(n) && !reachable.has(n)), mailFailed: regs.length - sent.length };
+  }
+
   /** Pointage de présence (organisateur/admin) : par QR code / code court, ou directement sur une inscription. */
   async checkIn(tournamentId: string, dto: { code?: string; registrationId?: string; present?: boolean }, user: JwtUser) {
     const r = await this.prisma.tournament.findUnique({ where: { id: tournamentId } });

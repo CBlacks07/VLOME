@@ -102,6 +102,7 @@ type State = {
   eventStandings: Detail[] | null;
   embedTarget: { code: string; copied?: boolean } | null;
   productOpen: string | null;
+  toast: string | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -245,6 +246,10 @@ function shareModal(S: State): string {
 /** Code d'intégration (iframe) d'un bracket — même URL chromeless que "Mode Show" (#show=), déjà
  * pensée pour un grand écran sans le site autour : intégrable telle quelle ailleurs (Discord, un
  * site de club…), comme le permettent Challonge/start.gg. */
+/** Petite pastille de confirmation en bas d'écran (disparaît seule, voir showToast). */
+function toastHtml(S: State): string {
+  return S.toast ? `<div style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:400;max-width:min(92vw,520px);background:var(--surface-2);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:12px 18px;font-size:13.5px;font-weight:600;box-shadow:0 12px 40px rgba(0,0,0,.5)">${escHtml(S.toast)}</div>` : "";
+}
 function embedModal(S: State): string {
   const e = S.embedTarget;
   if (!e) return "";
@@ -3258,10 +3263,8 @@ function getActiveMatches(S: State, t: Detail): ActiveMatch[] {
 }
 
 /** Les autres matchs jouables qu'aucune des cartes affichées dans le contrôle — "Lancer" ajoute une carte de plus (S.activeMatchIds), sans remplacer celles déjà là. */
-function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
-  // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), le calendrier par
-  // journées du centre (journeeCalendar, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
-  if (t.finals?.format === "roundrobin") return "";
+/** Matchs jouables pas encore en cours de saisie en régie, dans l'ordre de la file (le match à l'antenne d'abord). */
+function queueItemsOf(t: Detail, actives: ActiveMatch[]): { id: string; label: string }[] {
   const activeIds = new Set(actives.map(activeKey));
   const items: { id: string; label: string }[] = [];
   if (t.finals && t.finals.format !== "battle_royale" && t.finals.format !== "survival") {
@@ -3271,9 +3274,16 @@ function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
   } else if (!t.finals || t.finals.format === "survival") {
     (t.pools || []).forEach((p: Detail) => { if (p.current && !activeIds.has(p.id)) items.push({ id: p.id, label: `${escHtml(p.name)} · ${escHtml(p.current.aName)} <span style="color:var(--text-faint)">vs</span> ${escHtml(p.current.bName)}` }); });
   }
+  return [...items].sort((a, b) => Number(b.id === t.streamMatchKey) - Number(a.id === t.streamMatchKey));
+}
+function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
+  // Round Robin : tous les matchs sont jouables en parallèle (pas de progression par round), le calendrier par
+  // journées du centre (journeeCalendar, avec report en un clic) couvre déjà ce besoin — une file d'attente y ferait doublon à l'identique.
+  if (t.finals?.format === "roundrobin") return "";
+  const items = queueItemsOf(t, actives);
   if (!items.length) return "";
   return `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;margin-top:16px">
-    <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid var(--surface-4)"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted)">File d'attente</span><span style="flex:1"></span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${items.length}</span></div>
+    <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid var(--surface-4)"><span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted)">File d'attente</span><span style="flex:1"></span><button data-launchnext="${t.id}" title="Lance le prochain match, lui donne le premier poste libre et prévient les joueurs par e-mail" style="background:#22D3EE;color:#04222a;border:0;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer">Lancer le suivant</button><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${items.length}</span></div>
     <div style="padding:6px 12px 12px">${[...items].sort((a, b) => Number(b.id === t.streamMatchKey) - Number(a.id === t.streamMatchKey)).map((it) => {
       const station = t.stations?.[it.id];
       const onStream = it.id === t.streamMatchKey;
@@ -3335,6 +3345,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
       ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
       ${streamBtn}
       ${stationField}
+      <button data-notifymatch="${t.id}|${key}" title="Prévenir les deux joueurs par e-mail (avec leur poste)" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">Prévenir</button>
       <button data-matchclose="${key}" title="Retirer de la régie (reste jouable, revient dans la file d'attente)" style="display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:transparent;border:0;color:var(--text-faint);cursor:pointer;flex:none">${ic(I.x, 12)}</button>
     </div>
     <div style="padding:14px">
@@ -5033,7 +5044,7 @@ function clubPendingBanner(S: State): string {
     <div style="font-size:13px;line-height:1.5;color:var(--text)"><b style="color:#FBBF24">Compte en attente de validation.</b> L'administrateur doit d'abord valider ton club « ${escHtml(u.clubRequested || "")} ». D'ici là, tu peux consulter le site mais pas t'inscrire, commander ni payer. Tu seras prévenu(e) par e-mail.</div>
   </div>`;
 }
-function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S) + embedModal(S); }
+function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S) + embedModal(S) + toastHtml(S); }
 function renderPageBody(S: State) {
   LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null };
   // Mode Show / écran de diffusion : conçus pour être projetés (vidéoprojecteur, écran de LAN) — restent
@@ -5065,7 +5076,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5726,6 +5737,45 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     setS((st) => (st.shareTarget ? { ...st, shareTarget: { ...st.shareTarget, copied: true } } : st));
     setTimeout(() => setS((st) => (st.shareTarget?.copied ? { ...st, shareTarget: { ...st.shareTarget, copied: false } } : st)), 2000);
+  }
+
+  function showToast(msg: string) {
+    setS((s) => ({ ...s, toast: msg }));
+    setTimeout(() => setS((s) => (s.toast === msg ? { ...s, toast: null } : s)), 4000);
+  }
+  /** Prévient par e-mail les joueurs d'un match (voir TournamentsService.notifyMatch). */
+  async function notifyMatch(tid: string, key: string) {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/notify-match`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ key }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { showToast(d?.message || "Impossible de prévenir les joueurs."); return; }
+      const parts: string[] = [];
+      if (d.sent.length) parts.push(`Prévenu : ${d.sent.join(", ")}`);
+      if (d.unreachable.length) parts.push(`Sans compte (à appeler) : ${d.unreachable.join(", ")}`);
+      if (d.mailFailed) parts.push(`${d.mailFailed} e-mail non envoyé`);
+      showToast(parts.join(" · ") || "Aucun joueur à prévenir.");
+    } catch { showToast("Impossible de prévenir les joueurs."); }
+  }
+  /** Lance le prochain match de la file : l'ajoute à la régie, lui donne le premier poste libre
+   * (« Table 1 », « Table 2 »… — même préfixe que les postes déjà utilisés) puis prévient les joueurs. */
+  async function launchNext(tid: string) {
+    const t = S.detail;
+    if (!t) return;
+    const actives = getActiveMatches(S, t);
+    const next = queueItemsOf(t, actives)[0];
+    if (!next) { showToast("Aucun match en attente."); return; }
+    const currentKeys = actives.map(activeKey);
+    setS((s) => ({ ...s, activeMatchIds: [...currentKeys, next.id] }));
+    if (!(t.stations && t.stations[next.id])) {
+      const used = new Set<string>(currentKeys.map((k) => (t.stations?.[k] || "").trim()).filter(Boolean));
+      const known: string[] = Object.values(t.stations || {}) as string[];
+      const prefix = (known.map((v) => /^(.*?)(\d+)$/.exec(v)).find(Boolean)?.[1]) ?? "Table ";
+      let n = 1;
+      while (used.has(`${prefix}${n}`)) n++;
+      await act(`${API}/api/tournaments/${tid}/station`, { key: next.id, label: `${prefix}${n}` });
+    }
+    await notifyMatch(tid, next.id);
   }
 
   /** Ouvre le code d'intégration (iframe) d'un tournoi — même URL chromeless que le bouton "Mode Show". */
@@ -6991,7 +7041,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7325,6 +7375,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.shareclose !== undefined) setS((s) => ({ ...s, shareTarget: null }));
     else if (d.sharecopy) copyShareLink();
     else if (d.embed) openEmbed(d.embed);
+    else if (d.launchnext) launchNext(d.launchnext);
+    else if (d.notifymatch) { const [tid, key] = d.notifymatch.split("|"); notifyMatch(tid, key); }
     else if (d.embedclose !== undefined) setS((s) => ({ ...s, embedTarget: null }));
     else if (d.embedcopy) copyEmbedCode();
     else if (d.themetoggle) {

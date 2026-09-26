@@ -157,6 +157,7 @@ export class TournamentsService {
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
+        rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
         eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
@@ -176,6 +177,8 @@ export class TournamentsService {
     if (dto.place !== undefined) data.place = dto.place.trim() || null;
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
+    if (dto.rules !== undefined) data.rules = dto.rules.trim() || null;
+    if (dto.prize !== undefined) data.prize = dto.prize.trim() || null;
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
     if (dto.givesLoyaltyPoint !== undefined) data.givesLoyaltyPoint = dto.givesLoyaltyPoint;
 
@@ -986,7 +989,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
@@ -1159,7 +1162,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1234,6 +1237,9 @@ export class TournamentsService {
       // Chronomètre par match : heure de début (ms) par activeKey, et durée prévue (minutes) — voir setMatchStart.
       matchStarts: (extra.matchStarts as Record<string, number>) || {},
       matchMinutes: extra.matchMinutes ?? null,
+      // Règlement et lot (texte libre saisi par l'organisateur).
+      rules: extra.rules ?? null,
+      prize: extra.prize ?? null,
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,

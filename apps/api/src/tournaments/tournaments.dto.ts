@@ -10,6 +10,8 @@ export class CreateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(4000) rules?: string;
+  @IsOptional() @IsString() @MaxLength(400) prize?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   // Événement auquel rattacher ce tournoi (l'appelant doit pouvoir gérer cet événement).
@@ -55,6 +57,8 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() place?: string;
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(4000) rules?: string;
+  @IsOptional() @IsString() @MaxLength(400) prize?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).

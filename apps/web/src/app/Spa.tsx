@@ -3873,7 +3873,13 @@ function pTournoi(S: State) {
       </div>
     </div>
   </div>`;
-  const head = `${cover}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const infoCard = t.prize || t.rules
+    ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px 20px;margin-bottom:18px">
+        ${t.prize ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;${t.rules ? "margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--surface-4)" : ""}"><span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#FBBF24">${ic(I.crown, 16)}</span><div><div style="font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800">À gagner</div><div style="font-size:16px;font-weight:700">${escHtml(t.prize)}</div></div></div>` : ""}
+        ${t.rules ? `<details ${t.prize ? "" : "open"}><summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Règlement</summary><div style="margin-top:10px;color:var(--text);font-size:14px;line-height:1.7;white-space:pre-line">${escHtml(t.rules)}</div></details>` : ""}
+      </div>`
+    : "";
+  const head = `${cover}${infoCard}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -3897,6 +3903,8 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Frais d'inscription (FCFA)<input id="e-fee" type="number" min="0" step="100" value="${t.entryFeeXof || 0}" style="${inpE}" /></label>
       ${t.status === "setup" ? `<label style="font-size:12px;color:var(--text-muted);font-weight:600">Nombre de poules<input id="e-pools" type="number" min="1" value="${t.nbPools || 2}" style="${inpE}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Points / joueur (cagnotte)<input id="e-pts" type="number" min="1" value="${t.pointsPerPlayer || 5}" style="${inpE}" /></label>` : ""}
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Lot / récompense<input id="e-prize" value="${escAttr(t.prize)}" maxlength="400" placeholder="Ex. 50 000 F + trophée" style="${inpE}" /></label>
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600;grid-column:1/-1">Règlement<textarea id="e-rules" rows="5" maxlength="4000" placeholder="Format des matchs, retards, fair-play, matériel autorisé…" style="${inpE};resize:vertical;font-family:inherit">${escHtml(t.rules)}</textarea></label>
       <div><div style="font-size:12px;color:var(--text-muted);font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche", "image/*", t.imageUrl)}</div>
     </div>
     ${t.status !== "setup" ? `<div style="font-size:12px;color:var(--text-faint);margin-top:10px">Poules et points par joueur ne sont modifiables qu'avant le lancement.</div>` : ""}
@@ -7302,7 +7310,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
       const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
-      const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0 };
+      const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0, prize: val("e-prize"), rules: val("e-rules") };
       if (S.detail?.status === "setup") { body.nbPools = parseInt(val("e-pools")) || 1; body.pointsPerPlayer = parseInt(val("e-pts")) || 1; }
       editSave(d.editsave, body);
     }
@@ -7783,6 +7791,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       return;
     }
     if (e.key !== "Enter") return;
+    if (t.tagName === "TEXTAREA") return; // Entrée = retour à la ligne dans un texte libre, jamais « enregistrer »
     if (t.id === "hsearch") {
       const q = (t as HTMLInputElement).value.trim();
       setS((s) => ({ ...s, q, page: "tournois", creating: false }));

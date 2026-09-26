@@ -240,6 +240,9 @@ model Tournament {
   matchStarts       Json?
   // Durée prévue d'un match (minutes) : au-delà, le chronomètre passe en alerte. Facultatif.
   matchMinutes      Int?
+  // Règlement et lot du tournoi (texte libre affiché sur la page publique).
+  rules             String?
+  prize             String?
 }
 
 model Match {

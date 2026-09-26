@@ -717,6 +717,28 @@ export class TournamentsService {
     return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey, l.record);
   }
 
+  /** Duplique un tournoi comme « modèle » : mêmes réglages (format, barème, manches, frais, règlement, lot,
+   * affiche, événement) mais sans joueurs ni résultats, en brouillon. Passe par create() : crédit
+   * organisateur, plafonds et validation s'appliquent exactement comme pour un tournoi créé à la main. */
+  async duplicate(id: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    const t = this.applyEngineCompat((r.engineState ?? Engine.newTournament({ name: r.name })) as unknown as Engine.Tournament);
+    const dto: CreateTournamentDto = {
+      name: `${r.name} (copie)`.slice(0, 120), game: r.game ?? undefined, format: r.format, place: r.place ?? undefined,
+      nbPools: t.nbPools, pointsPerPlayer: t.pointsPerPlayer, imageUrl: r.imageUrl ?? undefined,
+      entryFeeXof: r.entryFeeXof, givesLoyaltyPoint: r.givesLoyaltyPoint, eventId: r.eventId ?? undefined,
+      survWin: t.scoring.survWin, loserWin: t.scoring.loserWin, poolFinalWin: t.scoring.poolFinalWin,
+      finalsWin: t.scoring.finalsWin, championBonus: t.scoring.championBonus, streakBonus: t.scoring.streakBonus,
+      streakLength: t.streakLength, finalsFormat: t.finalsFormat, poolFormat: t.poolFormat, qualifyPerPool: t.qualifyPerPool,
+      matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff,
+      brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
+      rules: r.rules ?? undefined, prize: r.prize ?? undefined,
+    };
+    return this.create(dto, user);
+  }
+
   /** Démarre (ou arrête) le chronomètre d'un match lancé en régie. key = activeKey côté web. */
   async setMatchStart(tournamentId: string, key: string, on: boolean, user: JwtUser) {
     const l = await this.loadEngine(tournamentId);

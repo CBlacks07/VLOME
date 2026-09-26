@@ -162,6 +162,13 @@ export class TournamentsController {
     return this.service.setStation(id, dto.key, dto.label, user);
   }
 
+  @Post(':id/duplicate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  duplicate(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.duplicate(id, user);
+  }
+
   @Post(':id/match-start')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')

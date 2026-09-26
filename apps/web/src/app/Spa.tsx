@@ -5024,7 +5024,7 @@ function pEvenement(S: State) {
     ${heroHasCover ? `<div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.25) 0%,rgba(11,11,17,.55) 55%,#0B0B11 100%)"></div>` : ""}
     <div class="page-hpad" style="position:relative;display:flex;align-items:flex-end;gap:28px;padding:44px 44px 34px;min-height:clamp(280px,38vw,440px)">
       <div style="flex:1;min-width:0">
-        <button data-go="evenements" style="background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);color:#E8E9F4;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:18px;backdrop-filter:blur(6px)">← Événements</button>
+        <button data-back="1" style="background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);color:#E8E9F4;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:18px;backdrop-filter:blur(6px)">← Événements</button>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-bottom:12px">${eventStateBadge(ev, true)}${ev.liveCount ? `<span style="font-size:12.5px;font-weight:700;color:${accent};white-space:nowrap">${ev.liveCount} tournoi${ev.liveCount > 1 ? "s" : ""} en direct</span>` : ""}</div>
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,8.2vw,84px);letter-spacing:1.2px;margin:0;line-height:.96;text-wrap:balance;overflow-wrap:break-word;color:${heroTitleColor};${heroHasCover ? "text-shadow:0 6px 40px rgba(0,0,0,.6)" : ""}">${escHtml(ev.name)}</h1>
         ${ev.tagline ? `<p style="color:${heroTaglineColor};font-size:clamp(15px,1.6vw,19px);margin:12px 0 0;max-width:720px;line-height:1.5">${escHtml(ev.tagline)}</p>` : ""}
@@ -5304,7 +5304,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const q = new URLSearchParams(window.location.search);
     if (q.get("pay") !== "fedapay") return;
     const kind = q.get("kind") as PayKind | null, ref = q.get("ref"), tx = q.get("id"), status = (q.get("status") || "").toLowerCase();
-    window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    window.history.replaceState(history.state, "", window.location.pathname + window.location.hash);
     if (!kind || !ref) return;
     // Paiement annulé / refusé : rien à vérifier, et surtout on ne touche ni à la session ni à la navigation.
     if (status && status !== "approved" && status !== "transferred") {
@@ -5539,7 +5539,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!r.ok) { setS((s) => ({ ...s, authBusy: false, authError: data.message || "Lien invalide ou expiré." })); return; }
       localStorage.setItem("vlome_token", data.token);
       localStorage.setItem("vlome_user", JSON.stringify(data.user));
-      history.replaceState(null, "", window.location.pathname);
+      history.replaceState(history.state, "", window.location.pathname);
       setS((s) => ({ ...s, authBusy: false, authError: "", authNotice: "", resetToken: "", authTab: "login", user: data.user, page: "profil", me: null }));
     } catch { setS((s) => ({ ...s, authBusy: false, authError: "API injoignable." })); }
   }
@@ -5993,7 +5993,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   /** Lien ouvert depuis l'appareil photo du téléphone (QR du billet) : pointe le joueur si le compte est organisateur/admin. */
   async function checkInFromLink(value: string) {
     const [tid] = value.split(".");
-    history.replaceState(null, "", window.location.pathname + "#t=" + tid);
+    history.replaceState(history.state, "", window.location.pathname + "#t=" + tid);
     await openDetail(tid);
     const role = storedRole();
     if (!token() || !(role === "ORGANIZER" || role === "ADMIN")) {
@@ -6729,28 +6729,57 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
    * dans l'état React : sans entrée d'historique dédiée, le retour Android quittait carrément le
    * site au lieu de simplement refermer le panneau. On empile donc une entrée à l'ouverture, et
    * le retour la dépile pour fermer. La navigation entre pages, elle, passe par le hash (plus bas). */
-  const overlayOpen = !!(S.cartOpen || S.creating || S.galleryOpen || S.confirmBox || S.consoleMenuOpen);
+  const overlayOpen = !!(S.cartOpen || S.creating || S.galleryOpen || S.confirmBox || S.consoleMenuOpen || S.productOpen || S.embedTarget || S.shareTarget || S.payModal);
   const overlayRef = useRef(false);
   const overlayPushed = useRef(false);
+  /** Rang de l'entrée d'historique courante dans CE site (0 = première page de la session) et défilement mémorisé. */
+  const histIdx = () => (typeof history.state?.idx === "number" ? (history.state.idx as number) : 0);
+  const lastIdx = useRef(typeof window !== "undefined" && typeof window.history.state?.idx === "number" ? (window.history.state.idx as number) : 0);
   useEffect(() => {
     overlayRef.current = overlayOpen;
     if (overlayOpen && !overlayPushed.current) {
       overlayPushed.current = true;
-      history.pushState({ appOverlay: true }, "");
-    } else if (!overlayOpen) {
+      history.pushState({ appOverlay: true, idx: histIdx() + 1 }, "");
+      lastIdx.current = histIdx();
+    } else if (!overlayOpen && overlayPushed.current) {
+      // Fermé par un bouton (pas par « retour ») : on consomme l'entrée d'historique du panneau, sinon il
+      // faudrait appuyer deux fois sur « retour » pour quitter la page.
       overlayPushed.current = false;
+      // Différé : si la fermeture s'accompagne d'un changement de page, l'entrée de la nouvelle page est déjà
+      // empilée à ce moment-là et on ne doit surtout pas reculer d'un cran de trop.
+      setTimeout(() => { if (history.state?.appOverlay) history.back(); }, 0);
     }
   }, [overlayOpen]);
   useEffect(() => {
     const onPop = () => {
+      // Retour/avant : on rend à la page retrouvée le défilement qu'elle avait quand on l'a quittée.
+      const st = history.state;
+      const idx = typeof st?.idx === "number" ? (st.idx as number) : 0;
+      const dir = idx < lastIdx.current ? -1 : 1;
+      lastIdx.current = idx;
+      // Entrée d'un panneau déjà refermé : on l'enjambe dans le sens où l'on allait, sans rien changer à l'écran.
+      if (st?.appOverlay && !overlayRef.current) { if (dir < 0) history.back(); else history.forward(); return; }
+      const y = st?.scroll;
+      if (typeof y === "number") for (const ms of [60, 300, 800]) setTimeout(() => window.scrollTo({ top: y }), ms);
       if (!overlayRef.current) return; // navigation normale : hashchange s'en charge
       overlayRef.current = false;
       overlayPushed.current = false;
-      setS((s) => ({ ...s, cartOpen: false, creating: false, wizEditId: null, wizFullEdit: false, galleryOpen: null, confirmBox: null, consoleMenuOpen: false }));
+      setS((s) => ({ ...s, cartOpen: false, creating: false, wizEditId: null, wizFullEdit: false, galleryOpen: null, confirmBox: null, consoleMenuOpen: false, productOpen: null, embedTarget: null, shareTarget: null, payModal: null }));
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  // Première entrée de la session : rang 0, pour savoir plus tard s'il existe une page précédente DANS le site.
+  useEffect(() => {
+    if (typeof history.state?.idx !== "number") history.replaceState({ ...(history.state || {}), idx: 0 }, "");
+  }, []);
+  /** Bouton « retour » de l'interface : revient vraiment à la page d'où l'on vient (historique du navigateur)
+   * au lieu d'en ouvrir une nouvelle — sinon « retour » puis « précédent » tournaient en boucle. À défaut de
+   * page précédente dans le site (lien direct, nouvel onglet), on monte d'un cran dans l'arborescence. */
+  function goBack(fallback: () => void) {
+    if (histIdx() > 0) history.back();
+    else fallback();
+  }
 
   // Garde l'URL synchronisée avec la page affichée (quelle que soit l'action qui l'a changée :
   // clic, redirection après connexion, retour au cockpit…) — un rafraîchissement rouvre donc
@@ -6772,7 +6801,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else return;
     // pushState (et non replaceState) : chaque page visitée laisse une entrée, sans quoi le bouton
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
-    if (window.location.hash !== hash) history.pushState(null, "", hash);
+    if (window.location.hash !== hash) {
+      const cur = typeof history.state?.idx === "number" ? (history.state.idx as number) : 0;
+      history.replaceState({ ...(history.state || {}), idx: cur, scroll: window.scrollY }, ""); // mémorise où l'on était
+      history.pushState({ idx: cur + 1 }, "", hash);
+      lastIdx.current = cur + 1;
+    }
   }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
@@ -7288,7 +7322,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
     if (d.open) { openDetail(d.open); }
-    else if (d.back !== undefined) { setS((s) => ({ ...s, page: "tournois", detail: null, openId: null })); }
+    else if (d.back !== undefined) {
+      // Même bouton « ← » partout : on revient d'où l'on vient ; sinon (lien direct) on remonte à la page parente.
+      goBack(() => {
+        const parent: Record<string, string> = { tournoi: "tournois", joueur: "classements", evenement: "evenements", show: "tournois", evshow: "evenements" };
+        setS((s) => ({ ...s, page: parent[s.page] || "accueil", detail: null, openId: null }));
+        window.scrollTo({ top: 0 });
+      });
+    }
     else if (d.launch) { act(`${API}/api/tournaments/${d.launch}/launch`); }
     // Aucun format forcé ici : t.finalsFormat est déjà posé au lancement du tournoi (launchTournament),
     // que ce soit le choix Survival fait à la création ou le format principal des autres formats à
@@ -7612,7 +7653,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.authrole) setS((s) => ({ ...s, authRole: d.authrole! }));
     else if (d.authSubmit !== undefined) submitAuth();
     else if (d.evshow) window.open(window.location.pathname + "#evshow=" + d.evshow, "_blank");
-    else if (d.evshowclose !== undefined) { const id = S.openEventId; if (id) openEvent(id); else setS((s) => ({ ...s, page: "evenements" })); }
+    else if (d.evshowclose !== undefined) { goBack(() => { const id = S.openEventId; if (id) openEvent(id); else setS((s) => ({ ...s, page: "evenements" })); }); }
     else if (d.share) {
       const [kind, id] = d.share.split("|") as ["tournoi" | "evenement", string];
       const title = kind === "tournoi" ? S.detail?.name : S.eventDetail?.name;
@@ -7868,7 +7909,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setTimeout(cleanup, 15000); // filet de sécurité si le dialogue d'impression ne s'ouvre pas (afterprint ne se déclenche jamais)
       setTimeout(() => window.print(), 60);
     }
-    else if (d.showclose !== undefined) { history.replaceState(null, "", window.location.pathname); setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }
+    else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
     else if (d.act === "create-open") {
       if (S.user?.role === "ORGANIZER" && S.user.organizerStatus !== "APPROVED") {
         alert(S.user.organizerStatus === "REJECTED"

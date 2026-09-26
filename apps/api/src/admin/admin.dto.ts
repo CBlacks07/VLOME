@@ -103,6 +103,11 @@ export class ProductDto {
   @IsOptional()
   @IsBoolean()
   showOnHome?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1500)
+  description?: string;
 }
 
 export class ProductUpdateDto {
@@ -140,6 +145,11 @@ export class ProductUpdateDto {
   @IsOptional()
   @IsBoolean()
   showOnHome?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1500)
+  description?: string;
 }
 
 export class OrderStatusDto {

@@ -326,6 +326,7 @@ export class AdminService {
         priceXof: dto.priceXof, stock: dto.stock, imageUrl: dto.imageUrl || null,
         loyaltyEligible: dto.loyaltyEligible ?? false,
         showOnHome: dto.showOnHome ?? false,
+        description: dto.description?.trim() || null,
       },
     });
   }
@@ -341,6 +342,7 @@ export class AdminService {
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
     if (dto.loyaltyEligible !== undefined) data.loyaltyEligible = dto.loyaltyEligible;
     if (dto.showOnHome !== undefined) data.showOnHome = dto.showOnHome;
+    if (dto.description !== undefined) data.description = dto.description.trim() || null;
     return this.prisma.product.update({ where: { id }, data });
   }
 

@@ -102,7 +102,7 @@ type State = {
   eventStandings: Detail[] | null;
   embedTarget: { code: string; copied?: boolean } | null;
   productOpen: string | null;
-  cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean }[] | null; boutiqueInStock: boolean;
+  cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
   regPointsToRedeem: number; // idem, pour réduire les frais d'inscription à un tournoi
@@ -1724,6 +1724,7 @@ function pBoutique(S: State) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11.5px;color:#7C82FF;font-weight:700">${escHtml(open.cat)}</span>${open.loyaltyEligible ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points fidélité</span>` : ""}</div>
           <h2 style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;margin:6px 0 8px;line-height:1.05">${escHtml(open.name)}</h2>
           <div style="font-size:13px;margin-bottom:14px">${open.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">Épuisé</span>` : `<span style="color:#34D399;font-weight:700">${open.stock} en stock</span>`) : ""}</div>
+          ${open.description ? `<p style="font-size:14px;color:var(--text);line-height:1.65;margin:0 0 16px;white-space:pre-line">${escHtml(open.description)}</p>` : ""}
           ${open.loyaltyEligible ? `<p style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:0 0 16px">Une partie du prix peut être réglée avec tes points fidélité au moment du paiement.</p>` : ""}
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
             <span style="font-weight:800;color:${out ? "var(--text-muted)" : "#22D3EE"};font-size:24px;font-family:'JetBrains Mono',monospace">${money(open.price)}</span>
@@ -2512,6 +2513,7 @@ function adminProducts(S: State) {
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Prix (FCFA)<input id="pr-price" type="number" min="0" value="${e.priceXof ?? 0}" style="${adminInp}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Stock<input id="pr-stock" type="number" min="0" value="${e.stock ?? 0}" style="${adminInp}" /></label>
     </div>
+    <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:600;margin-top:14px">Description (affichée sur la fiche produit)<textarea id="pr-desc" rows="4" maxlength="1500" placeholder="Taille, matière, contenu, conditions d'utilisation…" style="${adminInp};resize:vertical;font-family:inherit">${escHtml(e.description || "")}</textarea></label>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer"><input id="pr-loyalty" type="checkbox" ${e.loyaltyEligible ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Éligible à la réduction en points fidélité</span></label>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer"><input id="pr-showhome" type="checkbox" ${e.showOnHome ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Afficher dans le carrousel boutique de l'accueil</span></label>
     <div style="margin-top:14px"><div style="font-size:12px;color:var(--text-muted);font-weight:600">Image du produit (jpg, png, webp — redimensionnée automatiquement)</div>${filePicker("pr-img", "Choisir une image", "image/*", e.imageUrl)}</div>
@@ -5516,9 +5518,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     try {
       const r = await fetch(`${API}/api/products`);
       if (!r.ok) return;
-      const rows: { id: string; name: string; category: string; priceXof: number; imageUrl?: string | null; loyaltyEligible?: boolean; showOnHome?: boolean }[] = await r.json();
+      const rows: { id: string; name: string; category: string; priceXof: number; imageUrl?: string | null; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] = await r.json();
       if (Array.isArray(rows) && rows.length) {
-        setS((s) => ({ ...s, products: rows.map((p) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, loyaltyEligible: !!p.loyaltyEligible, showOnHome: !!p.showOnHome })) }));
+        setS((s) => ({ ...s, products: rows.map((p) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, loyaltyEligible: !!p.loyaltyEligible, showOnHome: !!p.showOnHome, description: p.description || null })) }));
       }
     } catch { /* repli statique */ }
   }
@@ -6035,6 +6037,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       name: val("pr-name").trim(), category: val("pr-cat").trim() || "Goodies", priceXof: parseInt(val("pr-price")) || 0, stock: parseInt(val("pr-stock")) || 0,
       loyaltyEligible: (document.getElementById("pr-loyalty") as HTMLInputElement | null)?.checked ?? false,
       showOnHome: (document.getElementById("pr-showhome") as HTMLInputElement | null)?.checked ?? false,
+      description: val("pr-desc").trim(),
     };
     if (!body.name) { alert("Le nom du produit est requis."); return; }
     try { const img = await uploadOrNotify("pr-img"); if (img) body.imageUrl = img; } catch { return; }
@@ -6355,7 +6358,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,
         products: Array.isArray(products) && products.length
-          ? products.map((p: Detail) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, stock: p.stock, loyaltyEligible: !!p.loyaltyEligible, showOnHome: !!p.showOnHome }))
+          ? products.map((p: Detail) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, stock: p.stock, loyaltyEligible: !!p.loyaltyEligible, showOnHome: !!p.showOnHome, description: p.description || null }))
           : s.products,
         news: Array.isArray(news) && news.length ? news : s.news,
         site: site || s.site,

@@ -300,6 +300,7 @@ model Product {
   imageUrl        String?
   loyaltyEligible Boolean  @default(false) // réduction en points possible sur ce produit (choix admin)
   showOnHome      Boolean  @default(false) // affiché dans le carrousel boutique de l'accueil (choix admin)
+  description     String? // texte libre affiché sur la fiche produit
   createdAt       DateTime @default(now())
 }
 

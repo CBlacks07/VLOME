@@ -42,6 +42,8 @@
   --hover-1: rgba(255,255,255,.025); --hover-2: rgba(255,255,255,.015);
   --bar-bg-1: rgba(11,11,17,.82); --bar-bg-2: rgba(11,11,17,.92); --bar-bg-3: rgba(11,11,17,.96);
   color-scheme: dark;
+  /* Le texte hérite sinon de la couleur du thème clair posée sur body : foncé sur fond sombre. */
+  color: var(--text);
 }
 
 * { box-sizing: border-box; }

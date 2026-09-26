@@ -1397,11 +1397,11 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
     podiumHtml = `<div class="podium-row" style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
       const rank = list.indexOf(r);
       const [plColor, avA, h] = podiumColors[rank];
-      return `<div data-playerprofile="${escAttr(r.name)}" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px;cursor:pointer"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+      return `<div data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px;cursor:pointer"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const table = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
   return podiumHtml + table;
 }
@@ -5726,21 +5726,21 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
 
   /** Fiche joueur (nom seul, comme leaderboard() — aucun compte requis) : stats + historique des matchs. */
-  async function openPlayerProfile(name: string) {
+  async function openPlayerProfile(name: string, uid?: string) {
     setS((s) => ({ ...s, page: "joueur", playerProfile: null, h2hOpponent: "", h2hData: null }));
     window.scrollTo({ top: 0 });
     try {
-      const r = await fetch(`${API}/api/tournaments/players/profile?name=${encodeURIComponent(name)}`);
+      const r = await fetch(`${API}/api/tournaments/players/profile?name=${encodeURIComponent(name)}${uid ? `&uid=${encodeURIComponent(uid)}` : ""}`);
       if (r.ok) { const d = await r.json(); setS((s) => (s.page === "joueur" ? { ...s, playerProfile: d } : s)); }
     } catch { /* API hors ligne */ }
   }
 
   /** Confrontations directes entre le joueur de la fiche ouverte et un adversaire choisi. */
-  async function loadHeadToHead(a: string, b: string) {
+  async function loadHeadToHead(a: string, b: string, auid?: string) {
     if (!b.trim() || b.trim().toLowerCase() === a.toLowerCase()) return;
     setS((s) => ({ ...s, h2hBusy: true }));
     try {
-      const r = await fetch(`${API}/api/tournaments/players/head-to-head?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b.trim())}`);
+      const r = await fetch(`${API}/api/tournaments/players/head-to-head?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b.trim())}${auid ? `&auid=${encodeURIComponent(auid)}` : ""}`);
       const d = r.ok ? await r.json() : null;
       setS((s) => ({ ...s, h2hData: d, h2hBusy: false }));
     } catch { setS((s) => ({ ...s, h2hBusy: false })); }
@@ -6609,7 +6609,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (S.page === "show" && S.openId) hash = "#show=" + S.openId;
     else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId;
     else if (S.page === "evshow" && S.openEventId) hash = "#evshow=" + S.openEventId;
-    else if (S.page === "joueur" && S.playerProfile?.name) hash = "#joueur=" + encodeURIComponent(S.playerProfile.name);
+    else if (S.page === "joueur" && S.playerProfile?.name) hash = "#joueur=" + encodeURIComponent(S.playerProfile.name) + (S.playerProfile.userId ? "~" + S.playerProfile.userId : "");
     else if (S.page === "auth") hash = "#connexion";
     else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page;
@@ -6851,7 +6851,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h.startsWith("#ev=")) { openEvent(h.slice(4)); return; }
     if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
     if (h.startsWith("#evshow=")) { const id = h.slice(8); setS((s) => ({ ...s, page: "evshow", openEventId: id, evShow: null })); loadEvShow(id); return; }
-    if (h.startsWith("#joueur=")) { openPlayerProfile(decodeURIComponent(h.slice(8))); return; }
+    if (h.startsWith("#joueur=")) { const [nm, uid] = h.slice(8).split("~"); openPlayerProfile(decodeURIComponent(nm), uid || undefined); return; }
     if (h === "#creer") { setS((s) => ({ ...s, page: "tournois", creating: true })); return; }
     // Lien reçu par e-mail : #reset=<jeton> ouvre directement le choix du nouveau mot de passe.
     if (h.startsWith("#reset=")) {
@@ -7486,11 +7486,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.exportresults) downloadExport(`${API}/api/tournaments/${d.exportresults}/results/export`);
     else if (d.exportregs) downloadExport(`${API}/api/tournaments/${d.exportregs}/registrations/export`);
-    else if (d.playerprofile) openPlayerProfile(d.playerprofile);
+    else if (d.playerprofile) openPlayerProfile(d.playerprofile, d.playeruid || undefined);
     else if (d.h2h) {
       const opponent = (document.getElementById("h2h-opponent") as HTMLInputElement | null)?.value ?? "";
       setS((s) => ({ ...s, h2hOpponent: opponent }));
-      loadHeadToHead(d.h2h, opponent);
+      loadHeadToHead(d.h2h, opponent, S.playerProfile?.userId || undefined);
     }
     else if (d.openevent) openEvent(d.openevent);
     else if (d.evlist) { setS((s) => ({ ...s, page: "profil", adminTab: "events", eventEdit: null, eventManage: null, eventMsg: "" })); window.scrollTo({ top: 0 }); loadMyEvents(); }

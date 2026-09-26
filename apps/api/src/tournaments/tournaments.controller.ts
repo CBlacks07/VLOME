@@ -59,15 +59,15 @@ export class TournamentsController {
   }
 
   @Get('players/profile')
-  playerProfile(@Query('name') name: string) {
+  playerProfile(@Query('name') name: string, @Query('uid') uid?: string) {
     if (!name?.trim()) throw new NotFoundException('Joueur introuvable');
-    return this.service.playerProfile(name.trim());
+    return this.service.playerProfile(name.trim(), uid?.trim() || undefined);
   }
 
   @Get('players/head-to-head')
-  headToHead(@Query('a') a: string, @Query('b') b: string) {
+  headToHead(@Query('a') a: string, @Query('b') b: string, @Query('auid') auid?: string, @Query('buid') buid?: string) {
     if (!a?.trim() || !b?.trim()) throw new NotFoundException('Joueurs introuvables');
-    return this.service.headToHead(a.trim(), b.trim());
+    return this.service.headToHead(a.trim(), b.trim(), auid?.trim() || undefined, buid?.trim() || undefined);
   }
 
   @Get(':id')

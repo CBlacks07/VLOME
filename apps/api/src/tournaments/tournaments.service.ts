@@ -281,20 +281,30 @@ export class TournamentsService {
     return this.computeLeaderboard({ eventId });
   }
 
+  /** Compte (userId) derrière chaque pseudo inscrit à un tournoi : clé « tournoi|pseudo ». Sert à distinguer
+   * deux joueurs qui portent le même nom, dès lors qu'ils sont inscrits avec un compte (les joueurs saisis à
+   * la main par l'organisateur n'ont pas de compte et restent regroupés par nom). */
+  private async accountMap(): Promise<Map<string, string>> {
+    const regs = await this.prisma.registration.findMany({ where: { paymentStatus: 'paid' }, select: { tournamentId: true, playerName: true, userId: true } });
+    return new Map(regs.map((r) => [`${r.tournamentId}|${r.playerName}`, r.userId]));
+  }
+
   private async computeLeaderboard(where: { eventId?: string }) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
       select: { id: true, game: true, engineState: true },
     });
-    type Agg = { name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
+    const acct = await this.accountMap();
+    type Agg = { userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
     const agg = new Map<string, Agg>();
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st || !st.players?.length) continue;
       const game = t.game || 'Autre';
       for (const p of st.players) {
-        const key = `${p.name}||${game}`;
-        const entry = agg.get(key) ?? { name: p.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
+        const uid = acct.get(`${t.id}|${p.name}`) ?? null;
+        const key = `${uid ? 'u:' + uid : p.name}||${game}`;
+        const entry = agg.get(key) ?? { userId: uid, name: p.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
         const points = st.points?.[p.id] || 0;
         // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
         // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
@@ -321,6 +331,7 @@ export class TournamentsService {
     return Array.from(agg.values())
       .filter((e) => e.matches > 0)
       .map((e) => ({
+        userId: e.userId,
         name: e.name,
         game: e.game,
         points: Math.round(e.points * 10) / 10,
@@ -338,9 +349,9 @@ export class TournamentsService {
   }
 
   /** Ville/club best-effort pour un nom de joueur — même rapprochement que leaderboard() (inscription/roster). */
-  private async cityAndClubForName(name: string): Promise<{ city: string | null; club: string | null }> {
+  private async cityAndClubForName(name: string, uid?: string): Promise<{ city: string | null; club: string | null }> {
     const [reg, rosterPlayer] = await Promise.all([
-      this.prisma.registration.findFirst({ where: { playerName: name }, include: { user: { select: { city: true } } } }),
+      this.prisma.registration.findFirst({ where: uid ? { userId: uid, playerName: name } : { playerName: name }, include: { user: { select: { city: true } } } }),
       this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' } }, include: { club: { select: { name: true } } } }),
     ]);
     return { city: reg?.user.city || null, club: rosterPlayer?.club?.name || null };
@@ -350,7 +361,8 @@ export class TournamentsService {
    * Fiche publique d'un joueur (comme le profil joueur de start.gg) : stats globales et par jeu,
    * historique des matchs joués — identifié par son nom (pas de compte requis, comme leaderboard()).
    */
-  async playerProfile(name: string) {
+  async playerProfile(name: string, uid?: string) {
+    const acct = uid ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
       select: { id: true, name: true, game: true, status: true, date: true, engineState: true },
     });
@@ -360,7 +372,7 @@ export class TournamentsService {
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
-      const me = st.players?.find((p) => p.name === name);
+      const me = st.players?.find((p) => p.name === name && (!uid || acct!.get(`${t.id}|${p.name}`) === uid));
       if (!me) continue;
       const game = t.game || 'Autre';
       const tPoints = st.points?.[me.id] || 0;
@@ -386,9 +398,9 @@ export class TournamentsService {
         });
       }
     }
-    const { city, club } = await this.cityAndClubForName(name);
+    const { city, club } = await this.cityAndClubForName(name, uid);
     return {
-      name, city, club,
+      name, userId: uid ?? null, city, club,
       totals: { points: Math.round(points * 10) / 10, wins, losses, matches: wins + losses, winrate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : 0, championships, tournamentsPlayed },
       byGame: Array.from(byGameMap.values()).sort((a, b) => b.points - a.points),
       history: history.sort((a, b) => b.ts - a.ts).slice(0, 50),
@@ -399,7 +411,8 @@ export class TournamentsService {
    * Confrontations directes entre deux joueurs (comme le head-to-head de start.gg) — parcourt tous
    * les tournois où les deux noms apparaissent et compte les victoires l'un contre l'autre.
    */
-  async headToHead(nameA: string, nameB: string) {
+  async headToHead(nameA: string, nameB: string, uidA?: string, uidB?: string) {
+    const acct = uidA || uidB ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
       select: { id: true, name: true, game: true, engineState: true },
     });
@@ -408,8 +421,8 @@ export class TournamentsService {
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
-      const pa = st.players?.find((p) => p.name === nameA);
-      const pb = st.players?.find((p) => p.name === nameB);
+      const pa = st.players?.find((p) => p.name === nameA && (!uidA || acct!.get(`${t.id}|${p.name}`) === uidA));
+      const pb = st.players?.find((p) => p.name === nameB && (!uidB || acct!.get(`${t.id}|${p.name}`) === uidB));
       if (!pa || !pb) continue;
       const logs = st.log.filter((l) => l.a && l.b && l.winner && ((l.a === pa.id && l.b === pb.id) || (l.a === pb.id && l.b === pa.id)));
       for (const l of logs) {

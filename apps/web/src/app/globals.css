@@ -353,3 +353,15 @@ p { text-wrap: pretty; }
   }
 }
 
+
+/* Boutique : grille de produits — 2 colonnes sur mobile, cartes plus compactes. */
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; padding: 0 40px 40px; }
+@media (max-width: 720px) {
+  .shop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 14px 32px; }
+  .shop-grid .shop-body { padding: 10px 11px 12px !important; }
+  .shop-grid .shop-name { font-size: 13px !important; }
+  .shop-grid .shop-price { font-size: 13.5px !important; }
+  .shop-grid .shop-buy { padding: 7px 9px !important; font-size: 11.5px !important; }
+  .shop-head { padding: 24px 14px 14px !important; }
+  .shop-filters { padding: 0 14px 14px !important; }
+}

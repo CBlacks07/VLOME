@@ -101,6 +101,7 @@ type State = {
   playerProfile: Detail | null; h2hOpponent: string; h2hData: Detail | null; h2hBusy: boolean;
   eventStandings: Detail[] | null;
   embedTarget: { code: string; copied?: boolean } | null;
+  productOpen: string | null;
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
   cartPointsToRedeem: number; // points fidélité que l'utilisateur choisit d'appliquer au panier
@@ -1671,58 +1672,68 @@ function pBoutique(S: State) {
   const source = S.products ?? [];
   let list = S.cat === "Tous" ? source : source.filter((p) => p.cat === S.cat);
   if (S.boutiqueInStock) list = list.filter((p) => (p.stock ?? 0) > 0);
-  const pImg = (p: { ph: string; img?: string | null }, h: number) => p.img
-    ? `<div class="zoom" style="height:${h}px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>`
-    : `<div class="zoom" style="height:${h}px;background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 13px,var(--surface) 13px,var(--surface) 26px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
+  const pImg = (p: { ph: string; img?: string | null }, ratio = "1/1") => p.img
+    ? `<div class="zoom" style="aspect-ratio:${ratio};background-color:#fff;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>`
+    : `<div class="zoom" style="aspect-ratio:${ratio};background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 13px,var(--surface) 13px,var(--surface) 26px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
+  const addBtn = (p: typeof source[number], cls = "") => `<button ${cls ? `class="${cls}"` : ""} data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" data-add-id="${p.id}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button>`;
   const productCard = (p: typeof source[number]) => {
     const out = (p.stock ?? 0) <= 0;
-    return `<div class="${out ? "" : "hcard"}" style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);${out ? "opacity:.6" : ""}">
-      <div style="position:relative">${pImg(p, 180)}${out ? `<span style="position:absolute;top:10px;left:10px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FB7185;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);border-radius:99px;padding:4px 9px">Rupture</span>` : ""}</div>
-      <div style="padding:14px 15px 16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:11px;color:#7C82FF;font-weight:700">${escHtml(p.cat)}</span>${p.loyaltyEligible ? `<span title="Réduction possible avec les points fidélité" style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points</span>` : ""}</div>
-        <div style="font-weight:650;font-size:15px;margin:5px 0 4px">${escHtml(p.name)}</div>
-        <div style="font-size:11.5px;color:var(--text-faint);margin-bottom:11px">${p.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">épuisé</span>` : `<span style="color:#34D399;font-weight:700">${p.stock} en stock</span>`) : ""}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <span style="font-weight:800;color:${out ? "var(--text-muted)" : "#22D3EE"};font-size:16px;font-family:'JetBrains Mono',monospace">${money(p.price)}</span>
-          ${out
-            ? `<span style="border:1px solid var(--border);color:var(--text-faint);border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px">Épuisé</span>`
-            : `<button data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" data-add-id="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button>`}
+    return `<div data-prodopen="${p.id}" class="${out ? "" : "hcard"}" style="cursor:pointer;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column;${out ? "opacity:.6" : ""}">
+      <div style="position:relative">${pImg(p)}${out ? `<span style="position:absolute;top:8px;left:8px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FB7185;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);border-radius:99px;padding:3px 8px">Rupture</span>` : ""}${p.loyaltyEligible ? `<span title="Réduction possible avec les points fidélité" style="position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points</span>` : ""}</div>
+      <div class="shop-body" style="padding:14px 15px 16px;display:flex;flex-direction:column;flex:1">
+        <span style="font-size:11px;color:#7C82FF;font-weight:700">${escHtml(p.cat)}</span>
+        <div class="shop-name" style="font-weight:650;font-size:15px;margin:4px 0;line-height:1.3;flex:1">${escHtml(p.name)}</div>
+        <div style="font-size:11.5px;margin-bottom:9px">${p.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">épuisé</span>` : `<span style="color:#34D399;font-weight:700">${p.stock} en stock</span>`) : ""}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+          <span class="shop-price" style="font-weight:800;color:${out ? "var(--text-muted)" : "#22D3EE"};font-size:16px;font-family:'JetBrains Mono',monospace">${money(p.price)}</span>
+          ${out ? "" : addBtn(p, "shop-buy")}
         </div>
       </div>
     </div>`;
   };
   const grid = list.length
-    ? `<div class="rise d2" style="padding:0 40px 40px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px">${list.map(productCard).join("")}</div>`
+    ? `<div class="rise d2 shop-grid">${list.map(productCard).join("")}</div>`
     : `<div class="rise d2" style="margin:0 40px 40px;border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:48px 24px;text-align:center;color:var(--text-muted)">${source.length === 0 ? "Aucun produit pour l'instant." : "Aucun produit ne correspond à ces filtres."}</div>`;
 
-  const catRow = (v: string, label: string, n: number) => {
-    const on = S.cat === v;
-    return `<div data-cat="${v}" style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-radius:8px;cursor:pointer;transition:background .2s ease,color .2s ease;background:${on ? "rgba(251,191,36,.12)" : "transparent"};color:${on ? "var(--text)" : "var(--text-muted)"};font-size:13px;font-weight:${on ? 700 : 600}">${label} <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:${on ? "#FBBF24" : "var(--text-faint)"}">${n}</span></div>`;
-  };
+  // Filtres en haut de page : sélecteur de catégorie + disponibilité (plus de rail latéral).
   const availChip = (v: boolean, label: string) => {
     const on = S.boutiqueInStock === v;
-    return `<span data-instock="${v ? 1 : 0}" class="chip" style="font-size:12px;font-weight:${on ? 700 : 600};color:${on ? "#FBBF24" : "var(--text-muted)"};background:${on ? "rgba(251,191,36,.1)" : "transparent"};border:1px solid ${on ? "#FBBF24" : "var(--border)"};border-radius:99px;padding:6px 12px;cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease">${label}</span>`;
+    return `<span data-instock="${v ? 1 : 0}" class="chip" style="font-size:12.5px;font-weight:${on ? 700 : 600};color:${on ? "#FBBF24" : "var(--text-muted)"};background:${on ? "rgba(251,191,36,.1)" : "transparent"};border:1px solid ${on ? "#FBBF24" : "var(--border)"};border-radius:99px;padding:8px 14px;cursor:pointer">${label}</span>`;
   };
-  const rail = `<div class="rise d1 page-filter-rail" style="width:220px;flex:none;border-right:1px solid var(--surface-3);padding:32px 20px">
-    <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:14px">Catégories</div>
-    <div style="display:flex;flex-direction:column;gap:2px">${catRow("Tous", "Tout", source.length)}${CATS.filter((c) => c !== "Tous").map((c) => catRow(c, c, source.filter((p) => p.cat === c).length)).join("")}</div>
-    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--surface-3)">
-      <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:12px">Disponibilité</div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap">${availChip(true, "En stock")}${availChip(false, "Tout")}</div>
-    </div>
-    <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--surface-3)">
-      <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:12px">Paiement accepté</div>
-      <div style="display:flex;flex-direction:column;gap:8px">${PAYMENTS.map((m) => `<span style="font-size:12.5px;color:var(--text-muted);font-weight:600">${m}</span>`).join("")}</div>
-    </div>
+  const catOpt = (v: string, label: string, n: number) => `<option value="${v}" ${S.cat === v ? "selected" : ""}>${label} (${n})</option>`;
+  const filters = `<div class="rise d1 shop-filters" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 40px 20px">
+    <select id="shop-cat" style="background:var(--surface);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13.5px;font-weight:650;min-width:190px;cursor:pointer">${catOpt("Tous", "Toutes les catégories", source.length)}${CATS.filter((c) => c !== "Tous").map((c) => catOpt(c, c, source.filter((p) => p.cat === c).length)).join("")}</select>
+    <div style="display:flex;gap:7px">${availChip(true, "En stock")}${availChip(false, "Tout")}</div>
   </div>`;
 
-  const head = `<div class="rise" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px;flex-wrap:wrap">
+  const head = `<div class="rise shop-head" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px;flex-wrap:wrap">
     <div><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,4.5vw,56px);letter-spacing:1.5px;margin:0;line-height:.92">Boutique</h1><p style="color:var(--text-muted);font-size:14px;margin:8px 0 0">Maillots, goodies, billets et cartes cadeaux — paiement mobile money &amp; carte</p></div>
     <span style="flex:1"></span>
     <button data-cart-open="1" style="display:inline-flex;align-items:center;gap:9px;background:#FBBF24;border:0;color:#0b0b11;border-radius:10px;padding:11px 17px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.cart, 17)}Panier · <span style="font-family:'JetBrains Mono',monospace">${S.cartItems.length}</span></button>
   </div>`;
 
-  return `<div style="display:flex;flex-wrap:wrap">${rail}<div style="flex:1;min-width:0">${head}${grid}</div></div>`;
+  // Fiche produit (au clic sur une carte).
+  const open = S.productOpen ? source.find((p) => p.id === S.productOpen) : null;
+  let modal = "";
+  if (open) {
+    const out = (open.stock ?? 0) <= 0;
+    modal = `<div data-prodclose="1" style="position:fixed;inset:0;z-index:260;display:grid;place-items:center;padding:16px;background:rgba(6,6,10,.8);backdrop-filter:blur(6px);overflow-y:auto">
+      <div data-stop="1" style="width:min(520px,100%);max-height:94vh;overflow-y:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:18px">
+        <div style="position:relative">${pImg(open, "4/3")}<button data-prodclose="1" style="position:absolute;top:10px;right:10px;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(11,11,17,.75);border:1px solid rgba(255,255,255,.18);color:#fff;cursor:pointer">${ic(I.x, 16)}</button></div>
+        <div style="padding:18px 20px 22px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11.5px;color:#7C82FF;font-weight:700">${escHtml(open.cat)}</span>${open.loyaltyEligible ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points fidélité</span>` : ""}</div>
+          <h2 style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;margin:6px 0 8px;line-height:1.05">${escHtml(open.name)}</h2>
+          <div style="font-size:13px;margin-bottom:14px">${open.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">Épuisé</span>` : `<span style="color:#34D399;font-weight:700">${open.stock} en stock</span>`) : ""}</div>
+          ${open.loyaltyEligible ? `<p style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:0 0 16px">Une partie du prix peut être réglée avec tes points fidélité au moment du paiement.</p>` : ""}
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <span style="font-weight:800;color:${out ? "var(--text-muted)" : "#22D3EE"};font-size:24px;font-family:'JetBrains Mono',monospace">${money(open.price)}</span>
+            ${out ? `<span style="border:1px solid var(--border);color:var(--text-faint);border-radius:10px;padding:11px 18px;font-weight:700;font-size:13.5px">Épuisé</span>` : `<button data-add-name="${escAttr(open.name)}" data-add-price="${open.price}" data-add-id="${open.id}" style="display:inline-flex;align-items:center;gap:8px;background:#FBBF24;border:0;color:#0b0b11;border-radius:10px;padding:12px 20px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.cart, 16)}Ajouter au panier</button>`}
+          </div>
+        </div>
+      </div></div>`;
+  }
+
+  return `<div>${head}${filters}${grid}</div>${modal}`;
 }
 
 const canManage = (S: State) => !!S.user && (S.user.role === "ORGANIZER" || S.user.role === "ADMIN");
@@ -5033,7 +5044,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -6511,6 +6522,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const onNativeChange = (e: Event) => {
       const t = e.target as HTMLInputElement | null;
       if (t && t.tagName === "INPUT" && t.type === "file") fileChangeRef.current(t);
+      // Boutique : le sélecteur de catégorie (même raison : HTML injecté, pas de onChange React).
+      if (t && t.tagName === "SELECT" && t.id === "shop-cat") setS((s) => ({ ...s, cat: t.value }));
     };
     document.addEventListener("change", onNativeChange, true);
     return () => document.removeEventListener("change", onNativeChange, true);
@@ -6956,7 +6969,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7252,7 +7265,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));
-    else if (d.addName) setS((s) => ({ ...s, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0"), id: d.addId }] }));
+    else if (d.addName) setS((s) => ({ ...s, productOpen: null, cartItems: [...s.cartItems, { name: d.addName!, price: parseInt(d.addPrice || "0"), id: d.addId }] }));
+    else if (d.prodopen) setS((s) => ({ ...s, productOpen: d.prodopen! }));
+    else if (d.prodclose !== undefined) setS((s) => ({ ...s, productOpen: null }));
     else if (d.cartOpen !== undefined) { setS((s) => ({ ...s, cartOpen: true })); loadLoyaltyMe(); }
     else if (d.cartpts) setS((s) => ({ ...s, cartPointsToRedeem: parseInt(d.cartpts!) || 0 }));
     else if (d.regpts) setS((s) => ({ ...s, regPointsToRedeem: parseInt(d.regpts!) || 0 }));

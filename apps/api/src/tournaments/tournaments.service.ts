@@ -764,6 +764,99 @@ export class TournamentsService {
     return this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, streamMatchKey, l.record);
   }
 
+  /* ---------- Pronostics ---------- */
+
+  /** Matchs dont les deux concurrents sont connus et qui ne sont pas encore joués (phase finale + calendrier
+   * des poules round robin) — ceux sur lesquels on peut pronostiquer. `label` = nom du tour quand il existe. */
+  private predictableMatches(st: Record<string, any>): { key: string; a: string; b: string; label: string | null }[] {
+    const out: { key: string; a: string; b: string; label: string | null }[] = [];
+    const walk = (n: any, label: string | null): void => {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach((x) => walk(x, label)); return; }
+      if (n.matchId && n.aName && n.bName && !n.winnerId && !n.bye) { out.push({ key: n.matchId, a: n.aName, b: n.bName, label }); return; }
+      const next = typeof n.label === 'string' ? n.label : label;
+      Object.values(n).forEach((v) => walk(v, next));
+    };
+    walk(st.finals, null);
+    (st.pools || []).forEach((p: any) => walk(p.rrmatches, p.name));
+    return out;
+  }
+
+  /** Nom du vainqueur d'un match joué (depuis le journal), ou null s'il n'est pas encore joué. */
+  private winnerOf(t: Engine.Tournament, matchKey: string): string | null {
+    const l = t.log.find((e) => e.matchId === matchKey && e.winner && e.a && e.b);
+    return l ? Engine.playerName(t, l.winner!) : null;
+  }
+
+  /** Matchs pronostiquables d'un tournoi + tendance du public (votes par côté). Public. */
+  async predictionBoard(tournamentId: string) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    const st = this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record) as Record<string, any>;
+    const starts = (l.record.matchStarts as Record<string, number>) || {};
+    const rows = await this.prisma.prediction.groupBy({ by: ['matchKey', 'pick'], where: { tournamentId }, _count: { _all: true } });
+    const votes = (key: string, name: string) => rows.filter((r) => r.matchKey === key && r.pick === name).reduce((n, r) => n + r._count._all, 0);
+    const open = l.t.status !== 'setup' ? this.predictableMatches(st) : [];
+    return {
+      open: l.t.status !== 'finished',
+      matches: open.map((m) => ({ ...m, locked: !!starts[m.key], votesA: votes(m.key, m.a), votesB: votes(m.key, m.b) })),
+    };
+  }
+
+  /** Pronostics d'un membre sur ce tournoi, avec le verdict quand le match est joué. */
+  async myPredictions(tournamentId: string, userId: string) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    const preds = await this.prisma.prediction.findMany({ where: { tournamentId, userId }, orderBy: { createdAt: 'asc' } });
+    return preds.map((p) => {
+      const w = this.winnerOf(l.t, p.matchKey);
+      return { matchKey: p.matchKey, pick: p.pick, result: w === null ? 'pending' : w === p.pick ? 'won' : 'lost' };
+    });
+  }
+
+  async predict(tournamentId: string, user: JwtUser, matchKey: string, pick: string) {
+    const l = await this.loadEngine(tournamentId);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    if (l.t.status === 'setup') throw new ConflictException('Les pronostics ouvrent quand le tournoi est lancé.');
+    const st = this.toState(tournamentId, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record) as Record<string, any>;
+    const m = this.predictableMatches(st).find((x) => x.key === matchKey);
+    if (!m) throw new ConflictException("Ce match n'accepte plus de pronostics.");
+    if (pick !== m.a && pick !== m.b) throw new BadRequestException('Choix invalide pour ce match.');
+    const starts = (l.record.matchStarts as Record<string, number>) || {};
+    if (starts[matchKey]) throw new ConflictException('Ce match a commencé : les pronostics sont fermés.');
+    // Pas de pronostic sur son propre match (l'équipe/le joueur inscrit avec ce compte).
+    const own = await this.prisma.registration.findFirst({ where: { tournamentId, userId: user.sub, playerName: { in: [m.a, m.b] } } });
+    if (own) throw new ForbiddenException('Tu ne peux pas pronostiquer ton propre match.');
+    await this.prisma.prediction.upsert({
+      where: { userId_tournamentId_matchKey: { userId: user.sub, tournamentId, matchKey } },
+      update: { pick },
+      create: { userId: user.sub, tournamentId, matchKey, pick },
+    });
+    return this.myPredictions(tournamentId, user.sub);
+  }
+
+  /** Meilleurs pronostiqueurs (tous tournois) : bons pronostics d'abord, puis taux de réussite. Public. */
+  async predictorsLeaderboard() {
+    const preds = await this.prisma.prediction.findMany({ include: { user: { select: { displayName: true } } } });
+    if (!preds.length) return [];
+    const tournaments = await this.prisma.tournament.findMany({ where: { id: { in: [...new Set(preds.map((p) => p.tournamentId))] } }, select: { id: true, engineState: true } });
+    const engines = new Map(tournaments.map((t) => [t.id, t.engineState as unknown as Engine.Tournament | null]));
+    const agg = new Map<string, { name: string; correct: number; total: number; pending: number }>();
+    for (const p of preds) {
+      const e = agg.get(p.userId) ?? { name: p.user.displayName, correct: 0, total: 0, pending: 0 };
+      const t = engines.get(p.tournamentId);
+      const w = t ? this.winnerOf(this.applyEngineCompat(t), p.matchKey) : null;
+      if (w === null) e.pending++;
+      else { e.total++; if (w === p.pick) e.correct++; }
+      agg.set(p.userId, e);
+    }
+    return [...agg.values()]
+      .filter((e) => e.total > 0)
+      .map((e) => ({ name: e.name, correct: e.correct, total: e.total, pending: e.pending, rate: Math.round((e.correct / e.total) * 100) }))
+      .sort((a, b) => b.correct - a.correct || b.rate - a.rate)
+      .slice(0, 30);
+  }
+
   /** Duplique un tournoi comme « modèle » : mêmes réglages (format, barème, manches, frais, règlement, lot,
    * affiche, événement) mais sans joueurs ni résultats, en brouillon. Passe par create() : crédit
    * organisateur, plafonds et validation s'appliquent exactement comme pour un tournoi créé à la main. */

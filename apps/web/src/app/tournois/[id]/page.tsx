@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Spa from "../../Spa";
 import SeoLinks from "../../SeoLinks";
-import { SITE_URL, SEARCH_TERMS, fetchTournament, frenchDateToIso } from "../../seo";
+import { SITE_URL, SEARCH_TERMS, fetchTournament, frenchDateToIso, playerCount } from "../../seo";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -13,16 +13,18 @@ function pageTitle(t: { name?: string; game?: string; place?: string }) {
   return `${t.name ?? "Tournoi"} — tournoi ${t.game ?? "esport"}${where} | Miabe Esport`;
 }
 
-function pageDescription(t: { name?: string; game?: string; place?: string; date?: string; players?: number; status?: string; champion?: string | null }) {
+function pageDescription(t: { name?: string; game?: string; place?: string; date?: string; players?: number | unknown[]; status?: string; champion?: string | null; prize?: string | null; entryFeeXof?: number }) {
   const bits = [
     `${t.name ?? "Tournoi"} : tournoi ${t.game ?? "esport"}`,
     t.place ? `à ${t.place} (Togo)` : "au Togo",
     t.date ? `le ${t.date}` : "",
   ].filter(Boolean).join(" ");
   const extra = [
-    typeof t.players === "number" ? `${t.players} joueur${t.players > 1 ? "s" : ""} inscrit${t.players > 1 ? "s" : ""}` : "",
+    playerCount(t) !== undefined ? `${playerCount(t)} joueur${(playerCount(t) as number) > 1 ? "s" : ""} inscrit${(playerCount(t) as number) > 1 ? "s" : ""}` : "",
     t.status ? STATUS_LABEL[t.status] ?? "" : "",
     t.champion ? `champion : ${t.champion}` : "",
+    t.prize ? `à gagner : ${t.prize}` : "",
+    typeof t.entryFeeXof === "number" ? (t.entryFeeXof > 0 ? `inscription ${t.entryFeeXof.toLocaleString("fr-FR")} F` : "inscription gratuite") : "",
   ].filter(Boolean).join(", ");
   return `${bits}.${extra ? ` ${extra[0].toUpperCase()}${extra.slice(1)}.` : ""} Inscription et résultats sur Miabe Esport.`;
 }

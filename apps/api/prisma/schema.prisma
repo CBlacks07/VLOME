@@ -95,6 +95,7 @@ model User {
   createdAt           DateTime             @default(now())
   player              Player?
   registrations       Registration[]
+  predictions         Prediction[]
   orders              Order[]
   loyaltyTxs          LoyaltyTransaction[]
   creditTxs           CreditTransaction[]
@@ -228,6 +229,7 @@ model Tournament {
   createdAt         DateTime         @default(now())
   matches           Match[]
   registrations     Registration[]
+  predictions       Prediction[]
   galleryItems      GalleryItem[]
   // Poste/table assigné à chaque match en cours (LAN à plusieurs postes) — clé = activeKey côté web
   // (matchId de phase finale, poolId de poule), valeur = libellé libre ("Table 3", "PC 7"…). Purement
@@ -366,4 +368,20 @@ model Event {
   tournaments Tournament[]
 
   @@index([status, startDate])
+}
+
+// Pronostic d'un membre sur le vainqueur d'un match (matchId du moteur) — résolu à la lecture, depuis le
+// journal du tournoi : aucune écriture à faire quand le match est joué.
+model Prediction {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchKey     String // matchId du match pronostiqué
+  pick         String // nom du concurrent choisi
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, tournamentId, matchKey])
+  @@index([tournamentId])
 }

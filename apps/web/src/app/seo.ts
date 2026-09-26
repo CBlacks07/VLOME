@@ -152,7 +152,7 @@ export async function fetchEvent(id: string): Promise<{ found: boolean; data?: P
   }
 }
 
-export type PublicTournament = { id: string; name: string; game?: string; place?: string; date?: string; status?: string; players?: number; imageUrl?: string | null; champion?: string | null };
+export type PublicTournament = { id: string; name: string; game?: string; place?: string; date?: string; status?: string; players?: number | unknown[]; imageUrl?: string | null; champion?: string | null; prize?: string | null; entryFeeXof?: number; teamSize?: number | null };
 
 /** Liste publique des tournois (côté serveur, pour le sitemap). Silencieux si l'API est injoignable. */
 export async function fetchPublicTournaments(): Promise<PublicTournament[]> {
@@ -175,4 +175,10 @@ export async function fetchTournament(id: string): Promise<{ found: boolean; dat
   } catch {
     return { found: true };
   }
+}
+
+/** Nombre de participants d'un tournoi : un nombre dans la liste publique, un tableau de joueurs dans /state. */
+export function playerCount(t?: { players?: number | unknown[] } | null): number | undefined {
+  if (!t) return undefined;
+  return Array.isArray(t.players) ? t.players.length : typeof t.players === "number" ? t.players : undefined;
 }

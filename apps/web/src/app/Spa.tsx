@@ -104,6 +104,7 @@ type State = {
   productOpen: string | null;
   toast: string | null;
   myNext: Detail[] | null;
+  predBoard: Detail | null; myPreds: Detail[] | null; predictors: Detail[] | null; // pronostics : matchs ouverts, mes choix, classement des pronostiqueurs
   teamDraft: { name: string; members: string[] } | null; // saisie du capitaine (survit aux re-rendus, ex. ouverture du choix de paiement)
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
@@ -192,7 +193,7 @@ type State = {
   // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
   roster: Detail[] | null; clubs: Detail[] | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
-  classementView: "joueurs" | "clubs" | "equipes"; // bascule joueurs / clubs sur la page Classements
+  classementView: "joueurs" | "clubs" | "equipes" | "pronos"; // bascule joueurs / clubs sur la page Classements
   // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
   // d'un tournoi pour éviter les doublons de casse/orthographe qui fausseraient classements/stats.
   games: Detail[] | null; gameEdit: Detail | null;
@@ -1455,9 +1456,17 @@ function pClassements(S: State) {
   const hasTeams = allRows.some((r) => r.team);
   const teamView = S.classementView === "equipes" && hasTeams;
   const all: Detail[] = allRows.filter((r) => (teamView ? !!r.team : !r.team));
-  const viewToggle = (v: "joueurs" | "clubs" | "equipes", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "var(--text-muted)"}">${label}</span>`;
+  const viewToggle = (v: "joueurs" | "clubs" | "equipes" | "pronos", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "var(--text-muted)"}">${label}</span>`;
   const head = railPageHead("Classements", `Points, victoires et titres calculés depuis les résultats réels. <b style="color:var(--text)">Un classement distinct par jeu</b> — les points ne sont jamais additionnés entre deux jeux.`,
-    `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${hasTeams ? viewToggle("equipes", "Équipes") : ""}${viewToggle("clubs", "Clubs")}</div>`);
+    `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${hasTeams ? viewToggle("equipes", "Équipes") : ""}${viewToggle("pronos", "Pronostics")}${viewToggle("clubs", "Clubs")}</div>`);
+  if (S.classementView === "pronos") {
+    const list: Detail[] = S.predictors ?? [];
+    if (S.predictors === null) return `${head}<div class="page-hpad" style="padding:0 44px;color:var(--text-faint);text-align:center">Chargement…</div>`;
+    if (!list.length) return `${head}<div class="page-hpad-m" style="margin:0 44px 40px;border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:48px 24px;text-align:center;color:var(--text-muted)">Aucun pronostic résolu pour l'instant. Donne ton pronostic sur un match d'un tournoi en direct !</div>`;
+    const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
+    const trs = list.map((r, i) => `<tr style="border-top:1px solid var(--border)"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px;font-weight:650">${escHtml(r.name)}</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.correct}</td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.total}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.rate}%</td></tr>`).join("");
+    return `${head}<div class="rise d2 page-hpad" style="padding:10px 44px 44px"><div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:420px"><tr>${th("#")}${th("Pronostiqueur")}${th("Bons", true)}${th("Résolus", true)}${th("Réussite", true)}</tr>${trs}</table></div><p style="color:var(--text-faint);font-size:12.5px;margin:14px 2px 0">Un bon pronostic = le vainqueur d'un match trouvé avant son lancement. Classement tous tournois confondus.</p></div>`;
+  }
   if (S.leaderboard === null) return `${head}<div class="page-hpad" style="padding:0 44px;color:var(--text-faint);text-align:center">Chargement…</div>`;
   if (!all.length) {
     return `${head}<div class="page-hpad-m" style="margin:0 44px 40px;border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:56px 24px;text-align:center;color:var(--text-muted)">
@@ -3855,6 +3864,39 @@ function regiePage(S: State): string {
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${cartDrawer(S)}`;
 }
 
+/** Pronostics d'un tournoi en direct (page publique) : choisir le vainqueur des matchs à venir, voir la
+ * tendance du public, puis le verdict une fois le match joué. Fermé dès que le match est lancé en régie. */
+function predictionsCard(S: State, t: Detail, manage: boolean): string {
+  if (manage || t.status !== "live" || !S.predBoard) return "";
+  const board: Detail = S.predBoard;
+  const mine: Detail[] = S.myPreds ?? [];
+  const pickOf = (key: string) => mine.find((m) => m.matchKey === key)?.pick as string | undefined;
+  const matches: Detail[] = board.matches || [];
+  const won = mine.filter((m) => m.result === "won").length, done = mine.filter((m) => m.result !== "pending").length;
+  if (!matches.length && !done) return "";
+  const side = (m: Detail, name: string, votes: number, total: number, idx: number) => {
+    const picked = pickOf(m.key) === name;
+    const pct = total ? Math.round((votes / total) * 100) : 0;
+    const locked = !!m.locked;
+    const attr = !S.user ? `data-auth-open="1"` : locked ? "disabled" : `data-predict="${t.id}|${m.key}|${idx}"`;
+    return `<button ${attr} style="flex:1;min-width:0;text-align:left;border:1px solid ${picked ? "#22D3EE" : "var(--border-strong)"};background:${picked ? "rgba(34,211,238,.12)" : "var(--surface-3)"};color:var(--text);border-radius:11px;padding:10px 12px;cursor:${locked ? "default" : "pointer"};font-family:inherit;opacity:${locked && !picked ? ".6" : "1"}">
+      <div style="font-weight:750;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${picked ? "✓ " : ""}${escHtml(name)}</div>
+      <div style="height:4px;border-radius:99px;background:var(--surface-4);margin-top:7px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${idx === 0 ? "#22D3EE" : "#F43F7E"}"></div></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${total ? `${pct}% du public (${votes})` : "Aucun vote"}</div></button>`;
+  };
+  const rows = matches.map((m) => {
+    const total = m.votesA + m.votesB;
+    return `<div style="padding:12px 0;border-top:1px solid var(--surface-4)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;flex:1">${escHtml(m.label || "Match")}</span>${m.locked ? `<span style="font-size:10px;font-weight:800;color:#FBBF24">FERMÉ · match lancé</span>` : ""}</div>
+      <div style="display:flex;gap:10px">${side(m, m.a, m.votesA, total, 0)}${side(m, m.b, m.votesB, total, 1)}</div></div>`;
+  }).join("");
+  return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px 20px;margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;flex:1">Pronostics · qui va gagner ?</h3>${done ? `<span style="font-size:12px;font-weight:800;color:#34D399">Tes pronostics : ${won}/${done}</span>` : ""}</div>
+    ${!S.user ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">Connecte-toi pour donner ton pronostic — un choix modifiable jusqu'au lancement du match.</div>` : ""}
+    ${rows || `<div style="color:var(--text-faint);font-size:13px;padding:12px 0">Aucun match à pronostiquer pour l'instant.</div>`}
+  </div>`;
+}
+
 function pTournoi(S: State) {
   const t = S.detail;
   if (!t) return `<main style="max-width:1220px;margin:0 auto;padding:40px 22px;text-align:center;color:var(--text-muted)">Chargement du tournoi…</main>`;
@@ -4158,7 +4200,7 @@ function pTournoi(S: State) {
     </div>`;
     const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
-    return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
+    return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${predictionsCard(S, t, manage)}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
   }
 
   const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
@@ -4234,7 +4276,7 @@ function pTournoi(S: State) {
     ? `<div style="margin-top:18px">${poolsHtml}</div>`
     : (finalsHtml || poolsHtml + finalsBtn);
 
-  return `<main class="rise tf tf-pad" style="width:100%;padding:28px 44px 60px">${head}${editCard}${rosterPanel}${poolsToggle}${mainSection}</main>${wizModal}`;
+  return `<main class="rise tf tf-pad" style="width:100%;padding:28px 44px 60px">${head}${predictionsCard(S, t, manage)}${editCard}${rosterPanel}${poolsToggle}${mainSection}</main>${wizModal}`;
 }
 
 
@@ -5129,7 +5171,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null, myNext: null, teamDraft: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, toast: null, myNext: null, teamDraft: null, predBoard: null, myPreds: null, predictors: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5320,8 +5362,39 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }, [S.scanOpen, S.openId]);
 
   /* ---------- Pilotage d'un tournoi ---------- */
+  /** Pronostics du tournoi ouvert : matchs ouverts + tendance du public, et mes propres choix si connecté. */
+  async function loadPredictions(id: string) {
+    try {
+      const [b, m] = await Promise.all([
+        fetch(`${API}/api/tournaments/${id}/predictions`),
+        token() ? fetch(`${API}/api/tournaments/${id}/predictions/mine`, { headers: authHeaders() }) : Promise.resolve(null),
+      ]);
+      const board = b.ok ? await b.json() : null;
+      const mine = m && m.ok ? await m.json() : [];
+      setS((s) => (s.openId === id ? { ...s, predBoard: board, myPreds: mine } : s));
+    } catch { /* ignore */ }
+  }
+  async function predict(tid: string, key: string, idx: number) {
+    const m = (S.predBoard?.matches || []).find((x: Detail) => x.key === key);
+    if (!m || !token()) return;
+    const pick = idx === 0 ? m.a : m.b;
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/predictions`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ matchKey: key, pick }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { showToast(d?.message || "Pronostic impossible."); void loadPredictions(tid); return; }
+      setS((s) => ({ ...s, myPreds: d }));
+      void loadPredictions(tid);
+      showToast(`Pronostic enregistré : ${pick}`);
+    } catch { showToast("Pronostic impossible."); }
+  }
+  async function loadPredictors() {
+    try {
+      const r = await fetch(`${API}/api/tournaments/predictors/leaderboard`);
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, predictors: Array.isArray(d) ? d : [] })); }
+    } catch { /* ignore */ }
+  }
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -6525,6 +6598,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     return () => clearInterval(id);
   }, [S.detail, S.activeMatchIds]);
 
+  // Pronostics : chargés à l'ouverture d'un tournoi en direct (visiteurs, pas la régie) puis rafraîchis toutes les 10 s.
+  useEffect(() => {
+    if (S.page !== "tournoi" || !S.openId || S.detail?.status !== "live" || canManage(S)) return;
+    const id = S.openId;
+    void loadPredictions(id);
+    const t = setInterval(() => { void loadPredictions(id); }, 10000);
+    return () => clearInterval(t);
+  }, [S.page, S.openId, S.detail?.status, S.user?.role]);
+
   // « Mon prochain match » : se remet à jour tout seul tant qu'un match attend le joueur (poste attribué, file qui avance).
   const hasNext = (S.myNext?.length ?? 0) > 0;
   useEffect(() => {
@@ -7175,7 +7257,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7514,6 +7596,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.sharecopy) copyShareLink();
     else if (d.embed) openEmbed(d.embed);
     else if (d.launchnext) launchNext(d.launchnext);
+    else if (d.predict) { const [tid, key, idx] = d.predict.split("|"); predict(tid, key, parseInt(idx) || 0); }
     else if (d.duplicate) duplicateTournament(d.duplicate);
     else if (d.matchstart) { const [tid, key] = d.matchstart.split("|"); act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true }); }
     else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }
@@ -7677,7 +7760,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.gfilter !== undefined) setS((s) => ({ ...s, galleryFilter: d.gfilter! }));
     else if (d.gtype !== undefined) setS((s) => ({ ...s, galleryType: d.gtype as State["galleryType"] }));
     else if (d.instock !== undefined) setS((s) => ({ ...s, boutiqueInStock: d.instock === "1" }));
-    else if (d.classview) setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" | "equipes" }));
+    else if (d.classview) { setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" | "equipes" | "pronos" })); if (d.classview === "pronos") void loadPredictors(); }
     else if (d.gopen) setS((s) => ({ ...s, galleryOpen: d.gopen! }));
     else if (d.gclose !== undefined) setS((s) => ({ ...s, galleryOpen: null }));
     else if (d.gprev !== undefined || d.gnext !== undefined) {

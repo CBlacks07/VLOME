@@ -192,6 +192,11 @@ export class MatchMinutesDto {
   @IsOptional() @IsInt() @Min(0) @Max(240) minutes?: number;
 }
 
+export class PredictDto {
+  @IsString() @MaxLength(60) matchKey!: string;
+  @IsString() @MaxLength(80) pick!: string;
+}
+
 export class NotifyMatchDto {
   @IsString() @MaxLength(60) key!: string;
 }

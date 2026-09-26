@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Q
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
 import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, TeamMembersDto, MatchStartDto, MatchMinutesDto,
+  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto,
   RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
 } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
@@ -53,6 +53,11 @@ export class TournamentsController {
     return this.service.myNextMatches(user.sub);
   }
 
+  @Get('predictors/leaderboard')
+  predictorsLeaderboard() {
+    return this.service.predictorsLeaderboard();
+  }
+
   @Get('leaderboard')
   leaderboard() {
     return this.service.leaderboard();
@@ -75,6 +80,23 @@ export class TournamentsController {
     const t = await this.service.findOne(id);
     if (!t) throw new NotFoundException('Tournoi introuvable');
     return t;
+  }
+
+  @Get(':id/predictions')
+  predictionBoard(@Param('id') id: string) {
+    return this.service.predictionBoard(id);
+  }
+
+  @Get(':id/predictions/mine')
+  @UseGuards(JwtAuthGuard)
+  myPredictions(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.myPredictions(id, user.sub);
+  }
+
+  @Post(':id/predictions')
+  @UseGuards(JwtAuthGuard)
+  predict(@Param('id') id: string, @Body() dto: PredictDto, @CurrentUser() user: JwtUser) {
+    return this.service.predict(id, user, dto.matchKey, dto.pick);
   }
 
   @Get(':id/state')

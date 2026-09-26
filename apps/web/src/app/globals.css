@@ -365,3 +365,10 @@ p { text-wrap: pretty; }
   .shop-head { padding: 24px 14px 14px !important; }
   .shop-filters { padding: 0 14px 14px !important; }
 }
+
+/* Accueil : invite à voir les tournois suivants (flèche qui pousse vers la droite + halo). */
+@keyframes nudge { 0%,100% { transform: translateX(0); } 50% { transform: translateX(7px); } }
+.more-cta { animation: pulseGlow 2.2s ease-in-out infinite; transition: transform .2s ease; }
+.more-cta:hover { transform: translateY(-3px); }
+.more-cta .more-arrow { display: inline-block; animation: nudge 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .more-cta, .more-cta .more-arrow { animation: none; } }

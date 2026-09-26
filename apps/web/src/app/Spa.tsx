@@ -5010,7 +5010,7 @@ function pEvenement(S: State) {
     </div>`).join("")}</div>
   </div>` : "";
   const wizard = S.creating && canManage(S) ? tournamentWizard(S) : "";
-  return wizard + hero + `<div class="page-hpad" style="padding:26px 44px 50px;max-width:1240px">${actions}${desc}${liveBox}${standingsBlock}
+  return wizard + hero + `<div class="page-hpad" style="padding:26px 44px 50px">${actions}${desc}${liveBox}${standingsBlock}
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1.2px;margin:0 0 16px">Tournois de l'événement <span style="color:var(--text-faint);font-size:20px">${tournaments.length}</span></h2>${grid}</div>`;
 }
 

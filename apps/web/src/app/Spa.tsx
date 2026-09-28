@@ -581,13 +581,6 @@ function filePicker(id: string, label = "Choisir une image", accept = "image/*",
   </div>`;
 }
 
-function chips(list: string[], active: string, attr: string, color = "#22D3EE") {
-  return list.map((l) => {
-    const on = l === active;
-    return `<button class="chip" data-${attr}="${l}" style="font-family:inherit;font-size:12.5px;font-weight:${on ? 700 : 600};color:${on ? color : "var(--text-muted)"};background:${on ? "rgba(34,211,238,.08)" : "var(--surface)"};border:1px solid ${on ? color : "var(--border)"};border-radius:999px;padding:8px 15px;cursor:pointer;flex:none;white-space:nowrap">${l}</button>`;
-  }).join("");
-}
-
 /* ================= Pages ================= */
 function pAccueil(S: State) {
   // Tant que les réglages du site n'ont pas encore été chargés depuis l'API, on affiche un état de
@@ -1395,17 +1388,21 @@ function pTournois(S: State) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:10px;border-top:1px solid var(--surface-4)">${miniStat("Date", t.date || "À confirmer")}${miniStat("Joueurs", String(t.players))}${miniStat("Récompense", t.cagnotte !== null ? `${t.cagnotte} pts` : "—", t.cagnotte !== null ? "#FBBF24" : undefined)}</div>
     </div>`;
   };
-  const statusPills = `<div style="display:flex;gap:6px;flex-wrap:wrap">${TOURN_STATUSES.map((st) => {
+  const selStyle = "background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 30px 8px 13px";
+  const statusSel = `<select id="tourn-status-sel" style="${selStyle}">${TOURN_STATUSES.map((st) => {
     const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
-    const on = S.tournStatus === st;
-    return `<span data-tournstatus="${st}" style="cursor:pointer;white-space:nowrap;font-size:12.5px;font-weight:${on ? 750 : 600};color:${on ? "#04222a" : "var(--text-muted)"};background:${on ? "#22D3EE" : "var(--surface)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:7px 13px">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1}">${n}</span></span>`;
-  }).join("")}</div>`;
-  const gridHead = `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;margin-bottom:8px">
+    return `<option value="${st}" ${S.tournStatus === st ? "selected" : ""}>${st} (${n})</option>`;
+  }).join("")}</select>`;
+  const fmtSel = `<select id="tourn-fmt-sel" style="${selStyle}">${FORMATS.map((f) => {
+    const n = f === "Tous" ? source.length : source.filter((t) => t.format === f).length;
+    return `<option value="${f}" ${S.fmt === f ? "selected" : ""}>${f} (${n})</option>`;
+  }).join("")}</select>`;
+  const filterSelectors = `<div style="display:flex;gap:10px;flex-wrap:wrap">${statusSel}${fmtSel}</div>`;
+  const gridHead = `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
-    ${statusPills}
+    ${filterSelectors}
   </div>`;
-  const fmtRow = `<div style="display:flex;gap:7px;overflow-x:auto;max-width:100%;margin-bottom:18px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
-  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${fmtRow}${rest.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${rest.map(cardV2).join("")}</div>` : empty}</div>`;
+  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${rest.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${rest.map(cardV2).join("")}</div>` : empty}</div>`;
 
   return `${head}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
 }
@@ -2500,7 +2497,7 @@ function adminRosterPlayers(S: State) {
   const rows = filtered.length ? filtered.map((p: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
       <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted);flex:none">${(p.name || "?").charAt(0).toUpperCase()}</span>
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(p.name)}</div><div style="font-size:11.5px;color:var(--text-faint)">${[p.city, p.clubName].filter(Boolean).map(escHtml).join(" · ") || "—"}</div></div>
-      <span style="font-size:11px;color:#22D3EE;font-weight:700">${ic(I.bolt, 11)} ${p.elo}</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex:none;font-size:11px;color:#22D3EE;font-weight:700">${ic(I.bolt, 11)}${p.elo}</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-playerview="${p.id}"`, "Voir le profil", "#7C82FF", "#7C82FF55")}${btnSm(`data-rosteredit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-rosterdel="${p.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
     : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun joueur trouvé." : "Base vide. Ajoute des joueurs ici, ou crée un tournoi — pense à les y ajouter aussi."}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Base de joueurs (${roster.length})`)}<button data-rosteredit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Ajouter un joueur</button></div>`;
@@ -4129,13 +4126,25 @@ function pTournoi(S: State) {
       </div>
     </div>
   </div>`;
+  // Bascule directe vers un autre tournoi du même événement — sans repasser par la page de l'événement.
+  const eventSwitcher = t.event?.tournaments?.length > 1 ? (() => {
+    const acc = /^#[0-9a-f]{6}$/i.test(t.event.accentColor || "") ? t.event.accentColor : "#7C82FF";
+    const pill = (s: Detail) => {
+      const active = s.id === t.id;
+      return `<span ${active ? "" : `data-open="${s.id}"`} style="cursor:${active ? "default" : "pointer"};white-space:nowrap;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:${active ? 750 : 600};color:${active ? "#04222a" : "var(--text-muted)"};background:${active ? acc : "var(--surface)"};border:1px solid ${active ? acc : "var(--border)"};border-radius:99px;padding:7px 13px">${s.live ? `<span style="width:6px;height:6px;border-radius:50%;background:${active ? "#04222a" : "#22D3EE"};animation:blink 1.2s infinite"></span>` : ""}${escHtml(s.name)}</span>`;
+    };
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${acc};display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap">${ic(I.crown, 13)}${escHtml(t.event.name)}</span>
+      <div style="display:flex;gap:7px;overflow-x:auto;flex:1;min-width:0">${t.event.tournaments.map(pill).join("")}</div>
+    </div>`;
+  })() : "";
   const infoCard = t.prize || t.rules
     ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px 20px;margin-bottom:18px">
         ${t.prize ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;${t.rules ? "margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--surface-4)" : ""}"><span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#FBBF24">${ic(I.crown, 16)}</span><div><div style="font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800">À gagner</div><div style="font-size:16px;font-weight:700">${escHtml(t.prize)}</div></div></div>` : ""}
         ${t.rules ? `<details ${t.prize ? "" : "open"}><summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Règlement</summary><div style="margin-top:10px;color:var(--text);font-size:14px;line-height:1.7;white-space:pre-line">${escHtml(t.rules)}</div></details>` : ""}
       </div>`
     : "";
-  const head = `${cover}${infoCard}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const head = `${eventSwitcher}${cover}${infoCard}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -7277,6 +7286,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (t && t.tagName === "INPUT" && t.type === "file") fileChangeRef.current(t);
       // Boutique : le sélecteur de catégorie (même raison : HTML injecté, pas de onChange React).
       if (t && t.tagName === "SELECT" && t.id === "shop-cat") setS((s) => ({ ...s, cat: t.value }));
+      // Tournois : sélecteurs de statut et de catégorie (même raison).
+      if (t && t.tagName === "SELECT" && t.id === "tourn-status-sel") setS((s) => ({ ...s, tournStatus: t.value }));
+      if (t && t.tagName === "SELECT" && t.id === "tourn-fmt-sel") setS((s) => ({ ...s, fmt: t.value }));
     };
     document.addEventListener("change", onNativeChange, true);
     return () => document.removeEventListener("change", onNativeChange, true);
@@ -7736,7 +7748,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8038,8 +8050,6 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.go) { setS((s) => ({ ...s, page: d.go! })); window.scrollTo({ top: 0 }); }
     else if (d.slide) setS((s) => ({ ...s, slide: parseInt(d.slide!) }));
     else if (d.adslide) setS((s) => ({ ...s, adSlide: parseInt(d.adslide!) }));
-    else if (d.fmt) setS((s) => ({ ...s, fmt: d.fmt! }));
-    else if (d.tournstatus) setS((s) => ({ ...s, tournStatus: d.tournstatus! }));
     else if (d.scope) setS((s) => ({ ...s, scope: d.scope! }));
     else if (d.game) setS((s) => ({ ...s, game: d.game! }));
     else if (d.cat) setS((s) => ({ ...s, cat: d.cat! }));

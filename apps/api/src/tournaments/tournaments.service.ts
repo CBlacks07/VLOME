@@ -1479,14 +1479,25 @@ export class TournamentsService {
     if (!l) return null;
     const state = this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
     // Événement auquel le tournoi appartient (seulement s'il est publié) : le Mode Show l'annonce et
-    // reprend sa couverture en arrière-plan.
-    let event: { id: string; name: string; tagline: string | null; posterUrl: string | null; bannerUrl: string | null; accentColor: string | null } | null = null;
+    // reprend sa couverture en arrière-plan. La liste des autres tournois de l'événement permet de
+    // basculer de l'un à l'autre directement depuis la fiche, sans repasser par la page de l'événement.
+    let event: { id: string; name: string; tagline: string | null; posterUrl: string | null; bannerUrl: string | null; accentColor: string | null; tournaments: { id: string; name: string; live: boolean; status: string }[] } | null = null;
     if (l.record.eventId) {
       const ev = await this.prisma.event.findUnique({
         where: { id: l.record.eventId },
         select: { id: true, name: true, tagline: true, posterUrl: true, bannerUrl: true, accentColor: true, status: true },
       });
-      if (ev && ev.status === 'PUBLISHED') event = { id: ev.id, name: ev.name, tagline: ev.tagline, posterUrl: ev.posterUrl, bannerUrl: ev.bannerUrl, accentColor: ev.accentColor };
+      if (ev && ev.status === 'PUBLISHED') {
+        const siblings = await this.prisma.tournament.findMany({
+          where: { eventId: ev.id },
+          select: { id: true, name: true, status: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        event = {
+          id: ev.id, name: ev.name, tagline: ev.tagline, posterUrl: ev.posterUrl, bannerUrl: ev.bannerUrl, accentColor: ev.accentColor,
+          tournaments: siblings.map((s) => ({ id: s.id, name: s.name, live: s.status === 'LIVE', status: s.status === 'FINISHED' ? 'Terminé' : s.status === 'LIVE' ? '' : 'À venir' })),
+        };
+      }
     }
     return { ...state, event };
   }

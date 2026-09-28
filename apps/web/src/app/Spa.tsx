@@ -5036,9 +5036,10 @@ function pEvenement(S: State) {
     ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px 24px;margin-bottom:26px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:10px">À propos</div><div style="color:#C9CBDC;font-size:14.5px;line-height:1.75;white-space:pre-line">${escHtml(ev.description)}</div></div>` : "";
   const liveBox = live.length > 1
     ? `<div style="display:flex;align-items:center;gap:12px;border:1px solid ${accent}55;background:${accent}12;border-radius:12px;padding:12px 16px;margin-bottom:22px"><span style="width:8px;height:8px;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span><span style="font-size:13.5px;color:#E8E9F4"><b>${live.length} tournois se jouent en ce moment</b> — ${live.map((t) => escHtml(t.name)).join(" · ")}</span></div>` : "";
-  const grid = tournaments.length
-    ? evTournamentsView(S, tournaments as Detail[], null)
-    : `<div style="color:var(--text-faint);font-size:14px;padding:26px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
+  // Calendrier jour par jour (et non la grille plate de evTournamentsView, réservée à la console) : un
+  // événement rassemble souvent plusieurs jours de compétition, le public doit pouvoir voir d'un coup
+  // d'œil le programme de chaque jour plutôt qu'une liste de cartes sans repère temporel.
+  const grid = eventCalendarView(S, tournaments as Detail[], accent);
   // Classement cumulé (circuit) : toutes les étapes déjà jouées de l'événement confondues — n'apparaît
   // qu'une fois chargé (voir openEvent, chargé seulement à partir de 2 tournois rattachés).
   const standings: Detail[] = S.eventStandings || [];
@@ -5060,37 +5061,92 @@ function pEvenement(S: State) {
 /** Console (organisateur/admin) : liste des événements, éditeur et tournois rattachés. */
 /** Tournois d'un événement : résumé chiffré, filtre par jeu et grille de cartes — même vue dans la console
  * (evId renseigné : menu « Retirer de l'événement ») et sur la page publique de l'événement (evId = null). */
-function evTournamentsView(S: State, ts: Detail[], evId: string | null): string {
-    // Filtre par jeu (puces) + résumé chiffré : un événement de plus d'une dizaine de tournois devient vite illisible en liste plate.
-    const games = Array.from(new Set(ts.map((t: Detail) => t.game || "Autre")));
-    const gameFilter = games.includes(S.evGame) ? S.evGame : "Tous";
-    const shown = gameFilter === "Tous" ? ts : ts.filter((t: Detail) => (t.game || "Autre") === gameFilter);
-    const totalPlayers = ts.reduce((n: number, t: Detail) => n + (Number(t.players) || 0), 0);
-    const liveCount = ts.filter((t: Detail) => t.live).length;
-    const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:10px 16px;min-width:110px"><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:4px">${k}</div></div>`;
-    const summary = ts.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 14px">${stat(ts.length, "Tournois")}${stat(totalPlayers, "Joueurs inscrits", "#22D3EE")}${stat(liveCount, "En direct", liveCount ? "#22D3EE" : "var(--text-faint)")}${stat(games.length, games.length > 1 ? "Jeux" : "Jeu")}</div>` : "";
-    const chip = (g: string, n: number) => `<span data-evgame="${escAttr(g)}" style="cursor:pointer;white-space:nowrap;font-size:12px;font-weight:${gameFilter === g ? 750 : 600};color:${gameFilter === g ? "#04222a" : "var(--text-muted)"};background:${gameFilter === g ? "#22D3EE" : "transparent"};border:1px solid ${gameFilter === g ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:6px 12px">${escHtml(g)} <span style="opacity:.7;font-family:'JetBrains Mono',monospace">${n}</span></span>`;
-    const chips = games.length > 1 ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">${chip("Tous", ts.length)}${games.map((g) => chip(g, ts.filter((t: Detail) => (t.game || "Autre") === g).length)).join("")}</div>` : "";
-    const stateBadge = (t: Detail) => {
-      const [label, color] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#34D399"];
-      return `<span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${color};border:1px solid ${color}55;background:${color}14;border-radius:99px;padding:3px 9px;white-space:nowrap">${label}</span>`;
-    };
-    const tCard = (t: Detail) => `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
-        <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${stateBadge(t)}</div>
-          <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`, t.date, t.place].filter(Boolean).map(escHtml).join(" · ")}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--surface-4);background:var(--surface-2)">
-          ${btnSm(`data-open="${t.id}"`, t.live ? (evId ? "Ouvrir la régie" : "Voir en direct") : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}
-          <span style="flex:1"></span>
+/** Pastille d'état d'une carte de tournoi d'événement (grille plate ET calendrier) — partagée par les deux vues. */
+function eventTournStateBadge(t: Detail): string {
+  const [label, color] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#34D399"];
+  return `<span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${color};border:1px solid ${color}55;background:${color}14;border-radius:99px;padding:3px 9px;white-space:nowrap">${label}</span>`;
+}
+/** Carte d'un tournoi d'événement — utilisée à la fois par la grille plate (evTournamentsView, console incluse)
+ * et le calendrier jour par jour (eventCalendarView, page publique). evId renseigné : menu « Retirer de
+ * l'événement » (console uniquement, jamais passé par la page publique). */
+function eventTournCard(t: Detail, evId: string | null): string {
+  return `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
+      <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${eventTournStateBadge(t)}</div>
+        <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`, t.date, t.place].filter(Boolean).map(escHtml).join(" · ")}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--surface-4);background:var(--surface-2)">
+        ${btnSm(`data-open="${t.id}"`, t.live ? (evId ? "Ouvrir la régie" : "Voir en direct") : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}
+        <span style="flex:1"></span>
 ${evId ? `<details style="position:relative"><summary title="Plus d'actions" style="list-style:none;cursor:pointer;display:grid;place-items:center;width:30px;height:28px;border-radius:8px;border:1px solid var(--border);color:var(--text-muted);font-size:16px;font-weight:800;line-height:1">⋯</summary>
-            <div style="position:absolute;right:0;bottom:34px;z-index:5;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${evId}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>` : ""}
-        </div>
-      </div>`;
-    return ts.length
-      ? `${summary}${chips}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${shown.map(tCard).join("")}</div>`
-      : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
+          <div style="position:absolute;right:0;bottom:34px;z-index:5;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${evId}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>` : ""}
+      </div>
+    </div>`;
+}
+/** Résumé chiffré + filtre par jeu (puces), partagés par la grille plate et le calendrier — un événement de
+ * plus d'une dizaine de tournois devient vite illisible sans ce tri. */
+function eventSummaryAndFilter(S: State, ts: Detail[]): { summary: string; chips: string; shown: Detail[] } {
+  const games = Array.from(new Set(ts.map((t: Detail) => t.game || "Autre")));
+  const gameFilter = games.includes(S.evGame) ? S.evGame : "Tous";
+  const shown = gameFilter === "Tous" ? ts : ts.filter((t: Detail) => (t.game || "Autre") === gameFilter);
+  const totalPlayers = ts.reduce((n: number, t: Detail) => n + (Number(t.players) || 0), 0);
+  const liveCount = ts.filter((t: Detail) => t.live).length;
+  const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:10px 16px;min-width:110px"><div style="font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:4px">${k}</div></div>`;
+  const summary = ts.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 14px">${stat(ts.length, "Tournois")}${stat(totalPlayers, "Joueurs inscrits", "#22D3EE")}${stat(liveCount, "En direct", liveCount ? "#22D3EE" : "var(--text-faint)")}${stat(games.length, games.length > 1 ? "Jeux" : "Jeu")}</div>` : "";
+  const chip = (g: string, n: number) => `<span data-evgame="${escAttr(g)}" style="cursor:pointer;white-space:nowrap;font-size:12px;font-weight:${gameFilter === g ? 750 : 600};color:${gameFilter === g ? "#04222a" : "var(--text-muted)"};background:${gameFilter === g ? "#22D3EE" : "transparent"};border:1px solid ${gameFilter === g ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:6px 12px">${escHtml(g)} <span style="opacity:.7;font-family:'JetBrains Mono',monospace">${n}</span></span>`;
+  const chips = games.length > 1 ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">${chip("Tous", ts.length)}${games.map((g) => chip(g, ts.filter((t: Detail) => (t.game || "Autre") === g).length)).join("")}</div>` : "";
+  return { summary, chips, shown };
+}
+/** Tournois d'un événement : résumé chiffré, filtre par jeu et grille de cartes plate — vue de la console
+ * (evId renseigné : menu « Retirer de l'événement »). La page publique utilise plutôt eventCalendarView. */
+function evTournamentsView(S: State, ts: Detail[], evId: string | null): string {
+  const { summary, chips, shown } = eventSummaryAndFilter(S, ts);
+  return ts.length
+    ? `${summary}${chips}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${shown.map((t) => eventTournCard(t, evId)).join("")}</div>`
+    : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
+}
+/** Calendrier jour par jour des tournois d'un événement (page publique) : un jour = tous les tournois qui y
+ * sont programmés, dans l'ordre chronologique ; les tournois sans date en dernier ("Date à annoncer"). Une
+ * fois la date du jour passée (comparée à aujourd'hui), le jour se replie automatiquement (« Fermé ») —
+ * inutile de faire défiler les jours déjà joués pour retrouver le programme à venir. Le jour en cours et
+ * les jours à venir restent dépliés. */
+function eventCalendarView(S: State, ts: Detail[], accent: string): string {
+  const { summary, chips, shown } = eventSummaryAndFilter(S, ts);
+  if (!ts.length) return `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Les tournois de cet événement seront annoncés bientôt.</div>`;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const days = new Map<string, Detail[]>();
+  const undated: Detail[] = [];
+  shown.forEach((t: Detail) => {
+    const k = t.dateISO ? String(t.dateISO).slice(0, 10) : null;
+    if (!k) { undated.push(t); return; }
+    if (!days.has(k)) days.set(k, []);
+    days.get(k)!.push(t);
+  });
+  const dayKeys = Array.from(days.keys()).sort();
+  const fmtDay = (k: string) => {
+    const label = new Date(k + "T00:00:00Z").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  };
+  const grid = (list: Detail[]) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${list.map((t) => eventTournCard(t, null)).join("")}</div>`;
+  const daySection = (k: string) => {
+    const list = days.get(k)!;
+    const closed = k < todayKey;
+    return `<details ${closed ? "" : "open"} style="border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:12px;overflow:hidden">
+      <summary style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 18px;user-select:none">
+        <span style="width:9px;height:9px;border-radius:50%;background:${closed ? "var(--text-faint)" : accent};flex:none"></span>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.6px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(fmtDay(k))}</span>
+        <span style="font-size:11.5px;color:var(--text-muted);font-weight:600;white-space:nowrap">${list.length} tournoi${list.length > 1 ? "s" : ""}</span>
+        ${closed ? `<span style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);border:1px solid var(--border-strong);border-radius:99px;padding:3px 9px;white-space:nowrap">Fermé</span>` : ""}
+      </summary>
+      <div style="padding:0 16px 16px">${grid(list)}</div>
+    </details>`;
+  };
+  const undatedSection = undated.length ? `<div style="border:1px dashed var(--border-strong);border-radius:14px;padding:14px 18px;margin-bottom:12px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.6px;color:var(--text-muted);margin-bottom:10px">Date à annoncer</div>
+      ${grid(undated)}
+    </div>` : "";
+  return `${summary}${chips}${dayKeys.map(daySection).join("")}${undatedSection}`;
 }
 
 function consoleEvents(S: State) {

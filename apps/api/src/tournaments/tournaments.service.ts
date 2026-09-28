@@ -57,6 +57,10 @@ export class TournamentsService {
       live: r.status === 'LIVE',
       status: r.status === 'FINISHED' ? 'Terminé' : r.status === 'LIVE' ? '' : 'À venir',
       date: r.date ? new Date(r.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '',
+      // Date brute (ISO), en plus du libellé ci-dessus déjà utilisé partout ailleurs : sert au calendrier
+      // jour par jour de la page événement (regroupement + détection du jour passé), qui a besoin d'une
+      // vraie date à comparer, pas d'un libellé sans année déjà mis en forme pour l'affichage.
+      dateISO: r.date ? new Date(r.date).toISOString() : null,
       place: r.place || '',
       players,
       cagnotte: isSurvival ? players * r.pointsPerPlayer : null,

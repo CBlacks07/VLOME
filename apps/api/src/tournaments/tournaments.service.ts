@@ -41,6 +41,7 @@ export class TournamentsService {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
     imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
+    event?: { id: string; name: string; accentColor: string | null } | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -68,6 +69,10 @@ export class TournamentsService {
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
       eventId: r.eventId ?? null,
+      // Événement auquel ce tournoi est rattaché (badge sur la carte) — seulement s'il est publié :
+      // findAll() ne renvoie de toute façon que ces tournois-là, mais cardsByEvent()/mine() incluent
+      // aussi les tournois d'événements en brouillon, où le badge n'aurait pas de page à ouvrir.
+      event: r.event && r.event.name ? { id: r.event.id, name: r.event.name, accentColor: r.event.accentColor } : null,
     };
   }
 
@@ -77,8 +82,15 @@ export class TournamentsService {
     return rows.map((r) => this.toCard(r));
   }
 
+  /** Liste publique : cache les tournois programmés dans un événement encore en brouillon (l'événement
+   * n'est pas prêt à être montré, ses tournois ne devraient pas « fuiter » avant lui) — un tournoi sans
+   * événement, ou dont l'événement est publié, reste visible normalement. */
   async findAll() {
-    const rows = await this.prisma.tournament.findMany({ orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.tournament.findMany({
+      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
+      orderBy: { createdAt: 'desc' },
+      include: { event: { select: { id: true, name: true, accentColor: true, status: true } } },
+    });
     return rows
       .map((r) => this.toCard(r))
       .sort((a, b) => Number(b.live) - Number(a.live)); // les tournois en direct d'abord
@@ -260,6 +272,7 @@ export class TournamentsService {
     const rows = await this.prisma.tournament.findMany({
       where: { createdById: user.sub },
       orderBy: { createdAt: 'desc' },
+      include: { event: { select: { id: true, name: true, accentColor: true, status: true } } },
     });
     return rows.map((r) => this.toCard(r));
   }

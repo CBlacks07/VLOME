@@ -90,7 +90,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -549,6 +549,8 @@ function railPageHead(title: string, sub: string, actions = ""): string {
 
 /* ================= Composants ================= */
 function tournCard(t: TournCard, big: boolean) {
+  const evAcc = t.event ? (/^#[0-9a-f]{6}$/i.test(t.event.accentColor || "") ? t.event.accentColor! : "#7C82FF") : "";
+  const eventBadge = t.event ? `<span data-openevent="${t.event.id}" title="Fait partie de l'événement ${escAttr(t.event.name)}" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#fff;background:${evAcc}cc;backdrop-filter:blur(4px);border-radius:99px;padding:3px 9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ic(I.crown, 10)}${escHtml(t.event.name)}</span>` : "";
   const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
   const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:var(--text-muted);font-weight:600">${t.status}</span>`;
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
@@ -560,6 +562,7 @@ function tournCard(t: TournCard, big: boolean) {
     <div class="zoom" style="height:${t.imageUrl ? (big ? 130 : 110) : big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;${bannerBg}">
       <span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${badge}</div>
     <div style="padding:${big ? "15px 16px 17px" : "14px 15px 16px"}">
+      ${eventBadge ? `<div style="margin-bottom:7px">${eventBadge}</div>` : ""}
       <h4 style="margin:0 0 6px;font-size:${big ? 18 : 17}px">${t.name}</h4>
       <div style="color:var(--text-muted);font-size:12.5px;line-height:1.7">${t.game} · ${t.players} joueurs<br>${t.date} · ${t.place}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:13px;border-top:1px solid var(--border)">${foot}
@@ -664,10 +667,11 @@ function pAccueil(S: State) {
     ? `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#F43F7E;display:inline-block"></span>Événements${homeEvents.some((e: Detail) => e.state === "live") ? ` <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span>` : ""}</h3><a data-go="evenements" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>
       <div class="rise d1" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin-bottom:40px">${homeEvents.map(eventCard).join("")}</div>`
     : "";
-  const tournHead = `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir <span class="more-arrow" style="display:inline-block;animation:nudge 1.2s ease-in-out infinite">→</span></a></div>`;
-  const tournGrid = tourns.length
-    ? `<div class="rise d2" style="display:flex;flex-wrap:wrap;justify-content:center;gap:16px;margin-bottom:40px">${tourns.slice(0, 3).map((t) => `<div style="flex:1 1 280px;max-width:380px;min-width:0">${tournCard(t, false)}</div>`).join("")}${tourns.length > 3 ? `<div data-go="tournois" class="more-cta" style="flex:1 1 280px;max-width:380px;min-width:0;cursor:pointer;border:1px dashed #22D3EE99;border-radius:14px;background:rgba(34,211,238,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center"><span style="font-family:'Bebas Neue',sans-serif;font-size:38px;color:#22D3EE;line-height:1">+${tourns.length - 3}</span><span style="font-size:14px;font-weight:700">autre${tourns.length - 3 > 1 ? "s" : ""} tournoi${tourns.length - 3 > 1 ? "s" : ""} à découvrir</span><span style="font-size:13px;font-weight:750;color:#22D3EE">Tout voir <span class="more-arrow">→</span></span></div>` : ""}</div>`
-    : `<div class="rise d2" style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:36px 24px;text-align:center;color:var(--text-muted);margin-bottom:40px">Aucun tournoi pour l'instant — reviens bientôt !</div>`;
+  // « Tournois en cours » : seulement les tournois réellement démarrés (live) — une carte « À venir »
+  // n'a rien à faire sous ce titre. Section entière masquée s'il n'y en a aucun (déjà couverte par
+  // la barre « En direct » ci-dessus pour le premier, et par le bandeau défilant pour les à venir).
+  const tournSec = liveT.length ? `${`<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE;display:inline-block"></span>Tournois en cours</h3><a data-go="tournois" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir <span class="more-arrow" style="display:inline-block;animation:nudge 1.2s ease-in-out infinite">→</span></a></div>`}
+    <div class="rise d2" style="display:flex;flex-wrap:wrap;justify-content:center;gap:16px;margin-bottom:40px">${liveT.slice(0, 3).map((t) => `<div style="flex:1 1 280px;max-width:380px;min-width:0">${tournCard(t, false)}</div>`).join("")}${liveT.length > 3 ? `<div data-go="tournois" class="more-cta" style="flex:1 1 280px;max-width:380px;min-width:0;cursor:pointer;border:1px dashed #22D3EE99;border-radius:14px;background:rgba(34,211,238,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center"><span style="font-family:'Bebas Neue',sans-serif;font-size:38px;color:#22D3EE;line-height:1">+${liveT.length - 3}</span><span style="font-size:14px;font-weight:700">autre${liveT.length - 3 > 1 ? "s" : ""} tournoi${liveT.length - 3 > 1 ? "s" : ""} en direct</span><span style="font-size:13px;font-weight:750;color:#22D3EE">Tout voir <span class="more-arrow">→</span></span></div>` : ""}</div>` : "";
 
   // Teaser d'accueil : la meilleure performance de chaque joueur (un seul jeu à la fois, jamais de points additionnés entre jeux).
   let rankSource: Detail[] = [];
@@ -710,7 +714,7 @@ function pAccueil(S: State) {
   const partnerList = normPartners(S);
   const partners = `<div class="rise d6" style="border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div><div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:12px;height:76px;padding:0 18px;border:1px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:52px;padding:6px 14px;border-radius:10px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="height:40px;width:auto;max-width:150px;object-fit:contain" /></span>` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
 
-  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournHead}${tournGrid}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
+  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
 }
 
 /* ================= Assistant de création de tournoi (5 étapes) ================= */

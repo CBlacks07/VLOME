@@ -105,7 +105,7 @@ type State = {
   evGame: string; // filtre par jeu des tournois d'un événement (console)
   toast: string | null;
   myNext: Detail[] | null;
-  predBoard: Detail | null; myPreds: Detail[] | null; predictors: Detail[] | null; // pronostics : matchs ouverts, mes choix, classement des pronostiqueurs
+  predBoard: Detail | null; myPreds: Detail[] | null; predictors: Detail[] | null; predictorStats: Detail | null; predNudge: boolean; predRound: string | null; // pronostics : matchs ouverts, mes choix, classement des pronostiqueurs, mes stats perso, incitation à se connecter, étape choisie
   teamDraft: { name: string; members: string[] } | null; // saisie du capitaine (survit aux re-rendus, ex. ouverture du choix de paiement)
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
@@ -3872,36 +3872,23 @@ function regiePage(S: State): string {
 
 /** Pronostics d'un tournoi en direct (page publique) : choisir le vainqueur des matchs à venir, voir la
  * tendance du public, puis le verdict une fois le match joué. Fermé dès que le match est lancé en régie. */
+/** Carte pronostics « premium » : thème or dédié (police Geist, palette distincte du reste du site) sur le
+ * modèle validé côté design. Étapes en onglets, progression, incitation à se connecter, et un jeu caché
+ * jusqu'au pronostic (les votes du public ne se révèlent qu'une fois qu'on a soi-même choisi un camp, ou
+ * que le match n'est plus ouvert) pour ne pas influencer le choix. */
 function predictionsCard(S: State, t: Detail, manage: boolean): string {
   if (manage || t.status !== "live" || !S.predBoard) return "";
   const board: Detail = S.predBoard;
   const mine: Detail[] = S.myPreds ?? [];
   const pickOf = (key: string) => mine.find((m) => m.matchKey === key)?.pick as string | undefined;
   const matches: Detail[] = board.matches || [];
-  const won = mine.filter((m) => m.result === "won").length, done = mine.filter((m) => m.result !== "pending").length;
+  const done = mine.filter((m) => m.result !== "pending").length;
   if (!matches.length && !done) return "";
-  const side = (m: Detail, name: string, votes: number, total: number, idx: number) => {
-    const picked = pickOf(m.key) === name;
-    const pct = total ? Math.round((votes / total) * 100) : 0;
-    const locked = !!m.locked;
-    const attr = !S.user ? `data-auth-open="1"` : locked ? "disabled" : `data-predict="${t.id}|${m.key}|${idx}"`;
-    return `<button ${attr} style="width:100%;text-align:left;border:1px solid ${picked ? "#22D3EE" : "var(--border-strong)"};background:${picked ? "rgba(34,211,238,.12)" : "var(--surface-2)"};color:var(--text);border-radius:9px;padding:8px 10px;cursor:${locked ? "default" : "pointer"};font-family:inherit;opacity:${locked && !picked ? ".6" : "1"}">
-      <div style="display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${picked ? "✓ " : ""}${escHtml(name)}</span><span style="flex:none;font-size:10.5px;color:var(--text-faint);font-weight:700">${total ? `${pct}%` : "—"}</span></div>
-      <div style="height:3px;border-radius:99px;background:var(--surface-4);margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${idx === 0 ? "#22D3EE" : "#F43F7E"}"></div></div>
-    </button>`;
-  };
-  const matchCard = (m: Detail) => {
-    const total = m.votesA + m.votesB;
-    return `<div style="border:1px solid var(--border);border-radius:13px;background:var(--surface);padding:10px">
-      ${m.locked ? `<div style="text-align:right;font-size:9px;font-weight:800;letter-spacing:.5px;color:#FBBF24;margin-bottom:6px">FERMÉ · MATCH LANCÉ</div>` : ""}
-      ${side(m, m.a, m.votesA, total, 0)}
-      <div style="text-align:center;font-size:9px;font-weight:800;color:var(--text-faint);letter-spacing:1.2px;margin:5px 0">VS</div>
-      ${side(m, m.b, m.votesB, total, 1)}
-    </div>`;
-  };
-  // Un même intitulé d'étape (« Winners · Quarts »…) revient sur plusieurs matchs : un seul sous-titre
-  // par étape au lieu de le répéter devant chaque match, suivi d'une grille de cartes compactes plutôt
-  // que deux gros boutons pleine largeur — trop larges dès que les noms sont courts.
+  const gold = "#e8c872", green = "#7fd6a4", red = "#e57b7b", muted = "#8b8b98", faint = "#6f6f7c", ink = "#f5f5f8";
+  const mono = "'Geist Mono',monospace", sans = "'Geist',system-ui,sans-serif";
+
+  // Un même intitulé d'étape (« Poule A », « Quarts »…) revient sur plusieurs matchs : un onglet par étape
+  // plutôt qu'une liste plate, comme le ferait un vrai tableau de pronostics.
   const groups: { label: string; items: Detail[] }[] = [];
   matches.forEach((m) => {
     const label = m.label || "Match";
@@ -3909,14 +3896,92 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
     if (!g) { g = { label, items: [] }; groups.push(g); }
     g.items.push(m);
   });
-  const rows = groups.map((g) => `<div style="margin-top:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="flex:none;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">${escHtml(g.label)}</span><span style="flex:1;height:1px;background:var(--surface-4)"></span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">${g.items.map(matchCard).join("")}</div>
-    </div>`).join("");
-  return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px 20px;margin-bottom:18px">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;flex:1">Pronostics · qui va gagner ?</h3>${done ? `<span style="font-size:12px;font-weight:800;color:#34D399">Tes pronostics : ${won}/${done}</span>` : ""}</div>
-    ${!S.user ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">Connecte-toi pour donner ton pronostic — un choix modifiable jusqu'au lancement du match.</div>` : ""}
-    ${rows || `<div style="color:var(--text-faint);font-size:13px;padding:12px 0">Aucun match à pronostiquer pour l'instant.</div>`}
+  const activeLabel = groups.some((g) => g.label === S.predRound) ? S.predRound! : groups[0]?.label;
+  const shown = groups.find((g) => g.label === activeLabel)?.items ?? [];
+
+  const openMatches = matches.filter((m) => !m.locked);
+  const pickedCount = openMatches.filter((m) => pickOf(m.key)).length;
+  const progressW = openMatches.length ? Math.round((pickedCount / openMatches.length) * 100) : 0;
+
+  const initials = (name: string) => escHtml(name.slice(0, 2).toUpperCase());
+  const statBlock = S.user
+    ? `<div style="display:flex;align-items:center;gap:20px;padding:12px 16px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02);flex-wrap:wrap">
+        <div style="width:36px;height:36px;flex:none;border-radius:10px;background:linear-gradient(135deg,${gold},#a8812f);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#1a1408">${initials(S.user.displayName || "?")}</div>
+        <div style="display:flex;flex-direction:column;gap:2px"><div style="font-family:${mono};font-size:10px;letter-spacing:.14em;color:${faint};text-transform:uppercase">Score</div><div style="font-size:16px;font-weight:600;color:${ink}">${S.predictorStats?.score ?? 0} <span style="color:${faint};font-weight:500;font-size:13px">pts</span></div></div>
+        <div style="width:1px;height:30px;background:rgba(255,255,255,.08)"></div>
+        <div style="display:flex;flex-direction:column;gap:2px"><div style="font-family:${mono};font-size:10px;letter-spacing:.14em;color:${faint};text-transform:uppercase">Rang</div><div style="font-size:16px;font-weight:600;color:${ink}">${S.predictorStats?.rank != null ? "#" + S.predictorStats.rank : "—"}</div></div>
+        <div style="width:1px;height:30px;background:rgba(255,255,255,.08)"></div>
+        <div style="display:flex;flex-direction:column;gap:2px"><div style="font-family:${mono};font-size:10px;letter-spacing:.14em;color:${faint};text-transform:uppercase">Réussite</div><div style="font-size:16px;font-weight:600;color:${S.predictorStats?.rate ? green : ink}">${S.predictorStats?.rate ?? 0}%</div></div>
+      </div>`
+    : `<button data-auth-open="1" style="display:flex;align-items:center;gap:10px;height:44px;padding:0 20px;border-radius:12px;border:1px solid rgba(232,200,114,.5);background:linear-gradient(180deg,#f0d489,#d4ac4f);color:#1a1408;font-family:${sans};font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 8px 24px -8px rgba(232,200,114,.5)">Se connecter pour pronostiquer →</button>`;
+
+  const tabs = groups.map((g) => {
+    const active = g.label === activeLabel;
+    return `<button data-predround="${escAttr(g.label)}" style="height:32px;padding:0 14px;border-radius:8px;border:none;background:${active ? "rgba(255,255,255,.08)" : "transparent"};color:${active ? ink : muted};font-family:${sans};font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px">${escHtml(g.label)}<span style="font-family:${mono};font-size:10px;color:${faint}">${g.items.length}</span></button>`;
+  }).join("");
+  const progressRow = S.user
+    ? `<div style="display:flex;align-items:center;gap:12px;font-size:13px;color:${muted}"><span>${pickedCount} / ${openMatches.length} pronostics</span><div style="width:120px;height:4px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden"><div style="height:100%;width:${progressW}%;background:${gold};border-radius:4px;transition:width .4s"></div></div></div>`
+    : "";
+  const nudge = !S.user && S.predNudge
+    ? `<div style="margin:16px 0 0;padding:12px 16px;border-radius:12px;border:1px solid rgba(232,200,114,.25);background:rgba(232,200,114,.06);font-size:13px;color:${gold};display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>Connecte-toi pour enregistrer ton pronostic.</span><a href="#" data-auth-open="1" style="font-weight:600;color:${gold}">Se connecter →</a></div>`
+    : "";
+
+  const side = (m: Detail, name: string, votes: number, total: number, idx: number, reveal: boolean) => {
+    const picked = pickOf(m.key) === name;
+    const locked = !!m.locked;
+    const pct = reveal ? (total ? Math.round((votes / total) * 100) : 0) : null;
+    const border = picked ? gold + "99" : "rgba(255,255,255,.08)";
+    const bg = picked ? gold + "12" : "rgba(255,255,255,.02)";
+    const bar = picked ? gold : "rgba(255,255,255,.22)";
+    const attr = !S.user ? `data-prednudge="1"` : locked ? "disabled" : `data-predict="${t.id}|${m.key}|${idx}"`;
+    return `<button ${attr} style="position:relative;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:12px;border:1px solid ${border};background:${bg};cursor:${locked ? "default" : "pointer"};text-align:left;font-family:${sans};color:inherit;width:100%;box-sizing:border-box;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;width:100%;min-width:0">
+        <div style="width:24px;height:24px;flex:none;border-radius:7px;background:${picked ? bar : "rgba(255,255,255,.06)"};color:${picked ? "#1a1408" : "#b5b5c0"};display:flex;align-items:center;justify-content:center;font-size:${picked ? "12px" : "10px"};font-weight:800">${picked ? "✓" : initials(name)}</div>
+        <div style="flex:1;min-width:0"><span style="font-size:13.5px;font-weight:600;color:${ink};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">${escHtml(name)}</span></div>
+        <span style="flex:none;font-family:${mono};font-size:11.5px;font-weight:600;color:${picked ? gold : muted}">${pct === null ? "—" : pct + "%"}</span>
+      </div>
+      <div style="height:3px;width:100%;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden"><div style="height:100%;width:${pct === null ? 0 : pct}%;background:${bar};border-radius:3px;transition:width .6s cubic-bezier(.2,.8,.2,1)"></div></div>
+    </button>`;
+  };
+  const matchCard = (m: Detail) => {
+    const total = m.votesA + m.votesB;
+    const locked = !!m.locked, pick = pickOf(m.key);
+    const status = locked
+      ? `<span style="display:flex;align-items:center;gap:6px;color:${red}"><span style="width:6px;height:6px;border-radius:50%;background:${red};animation:blink 1.2s infinite"></span>En direct</span>`
+      : `<span style="color:${muted}">Pronostics ouverts</span>`;
+    const reveal = locked || !!pick;
+    const outsider = pick ? (pick === m.a ? m.votesA : m.votesB) / (total || 1) * 100 < 40 && total > 0 : false;
+    const foot = locked ? "Pronostics verrouillés" : pick ? "Modifiable jusqu'au lancement" : "Choisis un gagnant";
+    const pts = !locked && pick ? (outsider ? "+20 pts ×2" : "+10 pts") : locked && pick ? "En attente" : "";
+    return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.015);padding:14px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-family:${mono};font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">${status}</div>
+      <div style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:${mono};font-size:9.5px;font-weight:600;letter-spacing:.1em;color:${faint};background:#121218;padding:0 5px;border-radius:4px">VS</div>
+        ${side(m, m.a, m.votesA, total, 0, reveal)}${side(m, m.b, m.votesB, total, 1, reveal)}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:2px;font-size:12px;color:${faint}"><span>${foot}</span><span style="font-family:${mono};color:${gold}">${pts}</span></div>
+    </div>`;
+  };
+
+  return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,#121218 0%,#0e0e13 100%);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 80px -30px rgba(0,0,0,.8);overflow:hidden;margin-bottom:18px;font-family:${sans};color:${ink}">
+    <div style="padding:28px 24px 22px;display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-end;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;font-family:${mono};font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:${gold}"><span style="width:6px;height:6px;border-radius:50%;background:${gold};box-shadow:0 0 12px ${gold}"></span><span>Pronostics</span></div>
+        <div style="font-size:26px;font-weight:600;letter-spacing:-.02em;color:${ink}">Qui va gagner&nbsp;?</div>
+        <div style="font-size:13.5px;color:${muted};max-width:520px">Un choix par match, modifiable jusqu'au lancement. +10 pts par bon pronostic, ×2 sur les outsiders.</div>
+      </div>
+      ${statBlock}
+    </div>
+    <div style="padding:18px 24px 0;display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);flex-wrap:wrap">${tabs}</div>
+      ${progressRow}
+    </div>
+    ${nudge ? `<div style="padding:0 24px">${nudge}</div>` : ""}
+    <div style="padding:20px 24px 26px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:14px">${shown.map(matchCard).join("")}</div>
+    <div style="padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-size:12px;color:${faint}">
+      <span>Votes de la communauté visibles après ton pronostic.</span>
+      <a href="#" data-gopronos="1" style="color:${gold};font-weight:600">Voir le classement →</a>
+    </div>
   </div>`;
 }
 
@@ -5357,7 +5422,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, evGame: "Tous", toast: null, myNext: null, teamDraft: null, predBoard: null, myPreds: null, predictors: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, evGame: "Tous", toast: null, myNext: null, teamDraft: null, predBoard: null, myPreds: null, predictors: null, predictorStats: null, predNudge: false, predRound: null,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5579,8 +5644,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, predictors: Array.isArray(d) ? d : [] })); }
     } catch { /* ignore */ }
   }
+  /** Mes stats perso de pronostiqueur (score, rang, réussite) — pour l'en-tête de la carte pronostics. */
+  async function loadPredictorStats() {
+    try {
+      const r = await fetch(`${API}/api/tournaments/predictors/mine`, { headers: authHeaders() });
+      if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, predictorStats: d })); }
+    } catch { /* ignore */ }
+  }
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, predictorStats: null, predNudge: false, predRound: null, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -6844,6 +6916,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page !== "tournoi" || !S.openId || S.detail?.status !== "live" || canManage(S)) return;
     const id = S.openId;
     void loadPredictions(id);
+    if (S.user) void loadPredictorStats();
     const t = setInterval(() => { void loadPredictions(id); }, 10000);
     return () => clearInterval(t);
   }, [S.page, S.openId, S.detail?.status, S.user?.role]);
@@ -7545,7 +7618,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7893,6 +7966,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.launchnext) launchNext(d.launchnext);
     else if (d.evgame) setS((s) => ({ ...s, evGame: d.evgame! }));
     else if (d.predict) { const [tid, key, idx] = d.predict.split("|"); predict(tid, key, parseInt(idx) || 0); }
+    else if (d.prednudge !== undefined) setS((s) => ({ ...s, predNudge: true }));
+    else if (d.predround) setS((s) => ({ ...s, predRound: d.predround! }));
+    else if (d.gopronos !== undefined) { setS((s) => ({ ...s, page: "classements", classementView: "pronos" })); window.scrollTo({ top: 0 }); void loadPredictors(); }
     else if (d.duplicate) duplicateTournament(d.duplicate);
     else if (d.matchstart) { const [tid, key] = d.matchstart.split("|"); act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true }); }
     else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }

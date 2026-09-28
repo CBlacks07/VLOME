@@ -58,6 +58,12 @@ export class TournamentsController {
     return this.service.predictorsLeaderboard();
   }
 
+  @Get('predictors/mine')
+  @UseGuards(JwtAuthGuard)
+  myPredictorStats(@CurrentUser() user: JwtUser) {
+    return this.service.myPredictorStats(user.sub);
+  }
+
   @Get('leaderboard')
   leaderboard() {
     return this.service.leaderboard();

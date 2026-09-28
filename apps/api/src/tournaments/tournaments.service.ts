@@ -844,34 +844,64 @@ export class TournamentsService {
     // Pas de pronostic sur son propre match (l'équipe/le joueur inscrit avec ce compte).
     const own = await this.prisma.registration.findFirst({ where: { tournamentId, userId: user.sub, playerName: { in: [m.a, m.b] } } });
     if (own) throw new ForbiddenException('Tu ne peux pas pronostiquer ton propre match.');
+    // Cote figée au moment du choix (% de votes déjà en place, hors le mien puisqu'il n'est pas encore
+    // enregistré) : le bonus outsider à la résolution se base là-dessus, pas sur la cote du moment où le
+    // match se termine — sans quoi un pronostic changerait rétroactivement de valeur.
+    const voteRows = await this.prisma.prediction.groupBy({ by: ['pick'], where: { tournamentId, matchKey }, _count: { _all: true } });
+    const countFor = (name: string) => voteRows.find((r) => r.pick === name)?._count._all ?? 0;
+    const totalVotes = countFor(m.a) + countFor(m.b);
+    const oddsPct = totalVotes ? Math.round((countFor(pick) / totalVotes) * 100) : 100;
     await this.prisma.prediction.upsert({
       where: { userId_tournamentId_matchKey: { userId: user.sub, tournamentId, matchKey } },
-      update: { pick },
-      create: { userId: user.sub, tournamentId, matchKey, pick },
+      update: { pick, oddsPct },
+      create: { userId: user.sub, tournamentId, matchKey, pick, oddsPct },
     });
     return this.myPredictions(tournamentId, user.sub);
   }
 
-  /** Meilleurs pronostiqueurs (tous tournois) : bons pronostics d'abord, puis taux de réussite. Public. */
-  async predictorsLeaderboard() {
+  /** Agrège les pronostics de tout le monde, tous tournois confondus (bons, mauvais, en attente) — factorisé
+   * pour être utilisé aussi bien par le classement public que par les stats persos d'un pronostiqueur. */
+  private async aggregatePredictorsRaw(): Promise<{ userId: string; name: string; correct: number; total: number; pending: number; score: number }[]> {
     const preds = await this.prisma.prediction.findMany({ include: { user: { select: { displayName: true } } } });
     if (!preds.length) return [];
     const tournaments = await this.prisma.tournament.findMany({ where: { id: { in: [...new Set(preds.map((p) => p.tournamentId))] } }, select: { id: true, engineState: true } });
     const engines = new Map(tournaments.map((t) => [t.id, t.engineState as unknown as Engine.Tournament | null]));
-    const agg = new Map<string, { name: string; correct: number; total: number; pending: number }>();
+    const agg = new Map<string, { userId: string; name: string; correct: number; total: number; pending: number; score: number }>();
     for (const p of preds) {
-      const e = agg.get(p.userId) ?? { name: p.user.displayName, correct: 0, total: 0, pending: 0 };
+      const e = agg.get(p.userId) ?? { userId: p.userId, name: p.user.displayName, correct: 0, total: 0, pending: 0, score: 0 };
       const t = engines.get(p.tournamentId);
       const w = t ? this.winnerOf(this.applyEngineCompat(t), p.matchKey) : null;
       if (w === null) e.pending++;
-      else { e.total++; if (w === p.pick) e.correct++; }
+      // Bonus outsider : la cote figée au moment du pronostic (pas celle du jour où le match se termine).
+      else { e.total++; if (w === p.pick) { e.correct++; e.score += p.oddsPct !== null && p.oddsPct < 40 ? 20 : 10; } }
       agg.set(p.userId, e);
     }
-    return [...agg.values()]
+    return [...agg.values()];
+  }
+
+  /** Meilleurs pronostiqueurs (tous tournois) : bons pronostics d'abord, puis taux de réussite. Public. */
+  async predictorsLeaderboard() {
+    const all = await this.aggregatePredictorsRaw();
+    return all
       .filter((e) => e.total > 0)
-      .map((e) => ({ name: e.name, correct: e.correct, total: e.total, pending: e.pending, rate: Math.round((e.correct / e.total) * 100) }))
+      .map((e) => ({ name: e.name, correct: e.correct, total: e.total, pending: e.pending, score: e.score, rate: Math.round((e.correct / e.total) * 100) }))
       .sort((a, b) => b.correct - a.correct || b.rate - a.rate)
       .slice(0, 30);
+  }
+
+  /** Mes stats de pronostiqueur (tous tournois) : bons pronostics, taux de réussite, rang parmi les
+   * pronostiqueurs ayant au moins un pronostic tranché, et le score (10 pts par bon pronostic, 20 si le
+   * choix était outsider au moment du pronostic). Rang nul tant qu'aucun de mes pronostics n'est tranché. */
+  async myPredictorStats(userId: string) {
+    const all = await this.aggregatePredictorsRaw();
+    const ranked = all
+      .filter((e) => e.total > 0)
+      .map((e) => ({ ...e, rate: Math.round((e.correct / e.total) * 100) }))
+      .sort((a, b) => b.correct - a.correct || b.rate - a.rate);
+    const idx = ranked.findIndex((e) => e.userId === userId);
+    const mine = idx >= 0 ? ranked[idx] : all.find((e) => e.userId === userId);
+    const correct = mine?.correct ?? 0, total = mine?.total ?? 0;
+    return { correct, total, pending: mine?.pending ?? 0, rate: total ? Math.round((correct / total) * 100) : 0, rank: idx >= 0 ? idx + 1 : null, score: mine?.score ?? 0 };
   }
 
   /** Duplique un tournoi comme « modèle » : mêmes réglages (format, barème, manches, frais, règlement, lot,

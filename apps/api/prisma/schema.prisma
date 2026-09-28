@@ -382,6 +382,7 @@ model Prediction {
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   matchKey     String // matchId du match pronostiqué
   pick         String // nom du concurrent choisi
+  oddsPct      Int? // % de votes pour ce choix au moment du pronostic (fige la cote pour le bonus outsider)
   createdAt    DateTime   @default(now())
 
   @@unique([userId, tournamentId, matchKey])

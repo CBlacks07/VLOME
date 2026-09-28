@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import type { JwtUser } from '../common/jwt-auth.guard';
-import type { EventDto, EventUpdateDto } from './events.dto';
+import type { EventDto, EventUpdateDto, ScheduleItemDto, ScheduleItemUpdateDto } from './events.dto';
 
 type EventRow = {
   id: string; name: string; tagline: string | null; description: string | null; startDate: Date | null; endDate: Date | null;
@@ -149,6 +149,95 @@ export class EventsService {
     this.assertCanManage(ev, user);
     await this.prisma.event.delete({ where: { id } }); // les tournois sont détachés (SetNull), jamais supprimés
     return { deleted: true };
+  }
+
+  /* ---------- Programme (calendrier géré par l'organisateur) ---------- */
+
+  private scheduleView(items: { id: string; title: string; note: string | null; startAt: Date; endAt: Date | null; tournamentId: string | null; tournament: { id: string; name: string; game: string | null; status: string } | null }[]) {
+    return items.map((it) => ({
+      id: it.id, title: it.title, note: it.note,
+      startAt: it.startAt.toISOString(), endAt: it.endAt ? it.endAt.toISOString() : null,
+      tournament: it.tournament ? { id: it.tournament.id, name: it.tournament.name, game: it.tournament.game, live: it.tournament.status === 'LIVE' } : null,
+    }));
+  }
+
+  /** Programme d'un événement, dans l'ordre chronologique — public dès lors que l'événement l'est. */
+  async listSchedule(id: string) {
+    const ev = await this.prisma.event.findUnique({ where: { id }, select: { status: true } });
+    if (!ev || ev.status !== 'PUBLISHED') throw new NotFoundException('Événement introuvable.');
+    const items = await this.prisma.eventScheduleItem.findMany({
+      where: { eventId: id }, orderBy: { startAt: 'asc' },
+      include: { tournament: { select: { id: true, name: true, game: true, status: true } } },
+    });
+    return this.scheduleView(items);
+  }
+
+  /** Même liste, pour l'organisateur — pas de restriction de visibilité (brouillon compris). */
+  async listScheduleForManager(id: string, user: JwtUser) {
+    const ev = await this.prisma.event.findUnique({ where: { id } });
+    if (!ev) throw new NotFoundException('Événement introuvable.');
+    this.assertCanManage(ev, user);
+    const items = await this.prisma.eventScheduleItem.findMany({
+      where: { eventId: id }, orderBy: { startAt: 'asc' },
+      include: { tournament: { select: { id: true, name: true, game: true, status: true } } },
+    });
+    return this.scheduleView(items);
+  }
+
+  private async assertTournamentOfEvent(eventId: string, tournamentId: string | undefined) {
+    if (!tournamentId) return;
+    const t = await this.prisma.tournament.findUnique({ where: { id: tournamentId }, select: { eventId: true } });
+    if (!t || t.eventId !== eventId) throw new BadRequestException("Ce tournoi n'est pas rattaché à cet événement.");
+  }
+
+  async createScheduleItem(id: string, dto: ScheduleItemDto, user: JwtUser) {
+    const ev = await this.prisma.event.findUnique({ where: { id } });
+    if (!ev) throw new NotFoundException('Événement introuvable.');
+    this.assertCanManage(ev, user);
+    const startAt = parseDate(dto.startAt, 'Date de début');
+    if (!startAt) throw new BadRequestException('Date de début invalide.');
+    const endAt = parseDate(dto.endAt, 'Date de fin');
+    if (endAt && endAt < startAt) throw new BadRequestException('La fin est avant le début.');
+    await this.assertTournamentOfEvent(id, dto.tournamentId);
+    await this.prisma.eventScheduleItem.create({
+      data: { eventId: id, title: dto.title.trim(), note: dto.note?.trim() || null, startAt, endAt: endAt ?? null, tournamentId: dto.tournamentId || null },
+    });
+    return this.listScheduleForManager(id, user);
+  }
+
+  async updateScheduleItem(id: string, itemId: string, dto: ScheduleItemUpdateDto, user: JwtUser) {
+    const ev = await this.prisma.event.findUnique({ where: { id } });
+    if (!ev) throw new NotFoundException('Événement introuvable.');
+    this.assertCanManage(ev, user);
+    const item = await this.prisma.eventScheduleItem.findUnique({ where: { id: itemId } });
+    if (!item || item.eventId !== id) throw new NotFoundException('Point du programme introuvable.');
+    const startAt = parseDate(dto.startAt, 'Date de début');
+    const endAt = parseDate(dto.endAt, 'Date de fin');
+    const nextStart = startAt ?? item.startAt;
+    const nextEnd = endAt === undefined ? item.endAt : endAt;
+    if (nextEnd && nextEnd < nextStart) throw new BadRequestException('La fin est avant le début.');
+    if (dto.tournamentId !== undefined) await this.assertTournamentOfEvent(id, dto.tournamentId || undefined);
+    await this.prisma.eventScheduleItem.update({
+      where: { id: itemId },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+        ...(dto.note !== undefined ? { note: dto.note.trim() || null } : {}),
+        ...(startAt ? { startAt } : {}),
+        ...(endAt !== undefined ? { endAt } : {}),
+        ...(dto.tournamentId !== undefined ? { tournamentId: dto.tournamentId || null } : {}),
+      },
+    });
+    return this.listScheduleForManager(id, user);
+  }
+
+  async deleteScheduleItem(id: string, itemId: string, user: JwtUser) {
+    const ev = await this.prisma.event.findUnique({ where: { id } });
+    if (!ev) throw new NotFoundException('Événement introuvable.');
+    this.assertCanManage(ev, user);
+    const item = await this.prisma.eventScheduleItem.findUnique({ where: { id: itemId } });
+    if (!item || item.eventId !== id) throw new NotFoundException('Point du programme introuvable.');
+    await this.prisma.eventScheduleItem.delete({ where: { id: itemId } });
+    return this.listScheduleForManager(id, user);
   }
 
   async attachTournament(id: string, tid: string, user: JwtUser) {

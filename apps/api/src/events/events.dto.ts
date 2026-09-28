@@ -26,3 +26,19 @@ export class EventUpdateDto {
   @IsOptional() @Matches(/^(#[0-9a-fA-F]{6})?$/, { message: 'Couleur invalide (format #RRGGBB).' }) accentColor?: string;
   @IsOptional() @IsIn(['DRAFT', 'PUBLISHED']) status?: 'DRAFT' | 'PUBLISHED';
 }
+
+export class ScheduleItemDto {
+  @IsString() @MinLength(2) @MaxLength(120) title!: string;
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+  @IsString() @MaxLength(40) startAt!: string; // date-heure ISO
+  @IsOptional() @IsString() @MaxLength(40) endAt?: string;
+  @IsOptional() @IsString() @MaxLength(60) tournamentId?: string;
+}
+
+export class ScheduleItemUpdateDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(120) title?: string;
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+  @IsOptional() @IsString() @MaxLength(40) startAt?: string;
+  @IsOptional() @IsString() @MaxLength(40) endAt?: string;
+  @IsOptional() @IsString() @MaxLength(60) tournamentId?: string;
+}

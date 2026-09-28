@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { EventsService } from './events.service';
-import { EventDto, EventUpdateDto } from './events.dto';
+import { EventDto, EventUpdateDto, ScheduleItemDto, ScheduleItemUpdateDto } from './events.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -35,6 +35,39 @@ export class EventsController {
   @Get(':id/standings')
   standings(@Param('id') id: string) {
     return this.events.standings(id);
+  }
+
+  @Get(':id/schedule')
+  schedule(@Param('id') id: string) {
+    return this.events.listSchedule(id);
+  }
+
+  @Get(':id/schedule/manage')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  scheduleForManager(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.events.listScheduleForManager(id, user);
+  }
+
+  @Post(':id/schedule')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  createScheduleItem(@Param('id') id: string, @Body() dto: ScheduleItemDto, @CurrentUser() user: JwtUser) {
+    return this.events.createScheduleItem(id, dto, user);
+  }
+
+  @Patch(':id/schedule/:itemId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  updateScheduleItem(@Param('id') id: string, @Param('itemId') itemId: string, @Body() dto: ScheduleItemUpdateDto, @CurrentUser() user: JwtUser) {
+    return this.events.updateScheduleItem(id, itemId, dto, user);
+  }
+
+  @Delete(':id/schedule/:itemId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  deleteScheduleItem(@Param('id') id: string, @Param('itemId') itemId: string, @CurrentUser() user: JwtUser) {
+    return this.events.deleteScheduleItem(id, itemId, user);
   }
 
   /* ---------- Gestion (organisateur propriétaire ou admin) ---------- */

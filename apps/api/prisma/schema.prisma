@@ -226,6 +226,7 @@ model Tournament {
   createdById       String? // propriétaire (organisateur)
   eventId           String? // événement auquel ce tournoi est rattaché (facultatif)
   event             Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  scheduleItems     EventScheduleItem[]
   createdAt         DateTime         @default(now())
   matches           Match[]
   registrations     Registration[]
@@ -366,6 +367,7 @@ model Event {
   createdById String?
   createdAt   DateTime     @default(now())
   tournaments Tournament[]
+  schedule    EventScheduleItem[]
 
   @@index([status, startDate])
 }
@@ -384,4 +386,22 @@ model Prediction {
 
   @@unique([userId, tournamentId, matchKey])
   @@index([tournamentId])
+}
+
+// Un point du programme d'un événement (cérémonie, pause, finale…), saisi par l'organisateur avec une date
+// et une heure précises — distinct des tournois : un événement a un déroulé qui dépasse le calendrier des
+// tournois qui s'y jouent (accueil, remise des prix…), et un tournoi n'a souvent qu'une date sans heure.
+model EventScheduleItem {
+  id           String     @id @default(cuid())
+  eventId      String
+  event        Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title        String
+  note         String? // détail court affiché sous le titre (lieu précis dans le venue, intervenant…)
+  startAt      DateTime
+  endAt        DateTime?
+  tournamentId String? // relie ce point du programme à un tournoi (ouvre sa page au clic) — facultatif
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+
+  @@index([eventId, startAt])
 }

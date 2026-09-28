@@ -145,6 +145,7 @@ type State = {
   albums: Detail[] | null; // catalogues de la galerie
   albumEdit: Detail | null; // catalogue en cours de création/renommage (admin)
   albumOpen: string | null; // catalogue ouvert sur la galerie publique (null = vue des catalogues)
+  galleryQ: string; gallerySort: "recent" | "count" | "az"; // recherche et tri de la vue d'accueil de la galerie
   partnersEdit: { key: string; name: string; logoUrl: string | null; display: "both" | "logo" | "name" }[] | null;
   slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; imageUrl: string | null }[] | null;
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
@@ -1330,6 +1331,17 @@ function matchesTournStatus(t: TournCard, status: string): boolean {
   return true;
 }
 
+/** Sigle court pour le badge d'un tournoi sans affiche (COD Mobile → COD, Tekken 8 → T8…) — une valeur
+ * lisible tirée du nom du jeu, jamais du texte intégral qui déborderait d'un badge de 44px. */
+function gameAbbrev(game: string | null | undefined): string {
+  const s = (game || "").trim();
+  if (!s) return "?";
+  const words = s.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return s.slice(0, 3).toUpperCase();
+  const initials = words.map((w) => w[0]).join("").toUpperCase();
+  return initials.length <= 3 ? initials : words.slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
 function pTournois(S: State) {
   const source = S.tourns ?? [];
   const manage = canManage(S);
@@ -1341,59 +1353,61 @@ function pTournois(S: State) {
     ? `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button>`
     : "";
   const searchBox = `<div style="position:relative;width:240px"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint)">${ic(I.search, 15)}</span><input id="hsearch" value="${escAttr(S.q)}" placeholder="Tournoi, jeu, lieu…" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:13px;padding:10px 12px 10px 34px" /></div>`;
-  const statusCounts = TOURN_STATUSES.map((st) => [st, st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length] as const);
-  const statusBar = `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow-x:auto;max-width:100%">${statusCounts.map(([st, n], i) => {
-    const on = S.tournStatus === st;
-    return `<span data-tournstatus="${st}" style="padding:8px 15px;font-size:12.5px;font-weight:${on ? 750 : 600};cursor:pointer;background:${on ? "#22D3EE" : "transparent"};color:${on ? "#04222a" : "var(--text-muted)"};transition:background .2s ease,color .2s ease;white-space:nowrap;flex:none;${i > 0 ? "border-left:1px solid var(--border)" : ""}">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1};color:${on ? "#04222a" : "var(--text-faint)"}">${n}</span></span>`;
-  }).join("")}</div>`;
-  const filt = `<div class="rise d1 page-hpad" style="display:flex;align-items:center;gap:22px;padding:14px 44px;border-bottom:1px solid var(--surface-3);flex-wrap:wrap">${statusBar}<span style="width:1px;height:22px;background:var(--surface-4);flex:none"></span><div style="display:flex;gap:7px;overflow-x:auto;max-width:100%">${chips(FORMATS, S.fmt, "fmt")}</div></div>`;
-
   const head = railPageHead("Tournois", `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${searchBox}${createBtn}`);
 
   const form = S.creating && manage ? tournamentWizard(S) : "";
 
-  // Tournoi en direct mis en avant, extrait de la grille.
+  // Tournoi en direct mis en avant, extrait de la grille : bandeau large avec accès direct régie/Mode
+  // Show à gauche, et le même bloc d'infos (format, joueurs, lieu, date) que sur la fiche détail à droite.
   const liveT = source.find((t) => t.live);
-  const featured = liveT ? `<div class="rise d2 page-hpad" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer">
-    <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span><span style="font-size:12px;color:#63C6DA;font-weight:600">${escHtml(liveT.format)}</span></div>
-    <h3 style="font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:1.2px;margin:12px 0 0;line-height:.95;color:#fff">${escHtml(liveT.name)}</h3>
-    <div style="color:#A6C9D3;font-size:13.5px;margin-top:8px">${[liveT.game, liveT.players + " joueurs", liveT.place, liveT.date].filter(Boolean).map(escHtml).join(" · ")}</div>
-    <div style="display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
-      <span style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border-radius:10px;padding:11px 17px;font-weight:750;font-size:13.5px">Ouvrir la régie ${ic(I.arrow, 15)}</span>
-      <span data-show="${liveT.id}" style="display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:10px;padding:11px 17px;font-weight:700;font-size:13.5px">${ic(I.tv, 15)}Mode Show</span>
+  const heroStat = (label: string, val: string) => `<div style="background:rgba(11,11,17,.5);padding:12px 18px;min-width:112px"><div style="font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:#7FA9B2;font-weight:700">${label}</div><div style="font-size:14.5px;font-weight:700;color:#fff;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">${escHtml(val)}</div></div>`;
+  const eyebrow = liveT?.event?.name || liveT?.game || "Tournoi";
+  const featured = liveT ? `<div class="rise d2 page-hpad" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer;display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:center">
+    <div style="min-width:0;flex:1">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span><span style="font-size:11.5px;color:#63C6DA;font-weight:700;letter-spacing:.5px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(eyebrow)}</span></div>
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.4vw,44px);letter-spacing:1.2px;margin:12px 0 0;line-height:.95;color:#fff;overflow-wrap:break-word">${escHtml(liveT.name)}</h3>
+      <div style="display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap">
+        <span style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border-radius:10px;padding:11px 17px;font-weight:750;font-size:13.5px">Ouvrir la régie ${ic(I.arrow, 15)}</span>
+        <span data-show="${liveT.id}" style="display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:10px;padding:11px 17px;font-weight:700;font-size:13.5px">${ic(I.tv, 15)}Mode Show</span>
+      </div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:1px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden;flex:none">${heroStat("Format", liveT.format)}${heroStat("Joueurs", String(liveT.players))}${heroStat("Lieu", liveT.place || "—")}${heroStat("Date", liveT.date || "—")}</div>
   </div></div>` : "";
 
   const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
-  const empty = `<div class="page-hpad-m" style="margin:26px 44px 0;border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:48px 24px;text-align:center;color:var(--text-muted)">${emptyMsg}</div>`;
+  const empty = `<div style="border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:48px 24px;text-align:center;color:var(--text-muted)">${emptyMsg}</div>`;
   const rest = list.filter((t) => !liveT || t.id !== liveT.id);
-  const filetCard = (t: TournCard, i: number) => {
-    const n = rest.length;
-    const isRight = (i + 1) % 3 === 0 || i === n - 1;
-    const isLastRow = i >= n - (n % 3 === 0 ? 3 : n % 3);
-    const bannerBg = t.imageUrl
-      ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.6)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
-      : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
-    const statusBadge = t.live
-      ? `<span style="position:absolute;top:12px;right:12px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
-      : `<span style="position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${t.status === "Terminé" ? "#FBBF24" : "#7C82FF"};background:rgba(11,11,17,.7);border:1px solid ${t.status === "Terminé" ? "rgba(251,191,36,.4)" : "rgba(124,130,255,.45)"};border-radius:99px;padding:4px 9px">${escHtml(t.status)}</span>`;
+
+  const miniStat = (label: string, val: string, color = "var(--text)") => `<div style="min-width:0"><div style="font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint);font-weight:700">${label}</div><div style="font-size:12.5px;font-weight:700;color:${color};margin-top:3px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(val)}</div></div>`;
+  const cardV2 = (t: TournCard) => {
+    const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#7C82FF"];
+    const badge = t.imageUrl
+      ? `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:url('${mediaUrl(t.imageUrl)}') center/cover;border:1px solid var(--border-strong)"></div>`
+      : `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);display:grid;place-items:center"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:800;color:#22D3EE">${escHtml(gameAbbrev(t.game))}</span></div>`;
     const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-    return `<div ${openAttr} class="fcell" style="padding:20px ${isRight ? "0" : "24px"} 24px ${i % 3 === 0 ? "0" : "24px"};${isRight ? "" : "border-right:1px solid var(--surface-3);"}${isLastRow ? "" : "border-bottom:1px solid var(--surface-3);"}cursor:pointer">
-      <div class="zoom" style="position:relative;height:158px;border-radius:10px;overflow:hidden;${bannerBg};margin-bottom:14px">
-        <span style="position:absolute;bottom:12px;left:12px;font-size:10.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:rgba(11,11,17,.6);border:1px solid rgba(255,255,255,.16);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>
-        ${statusBadge}
+    const evBadge = t.event ? `<div style="margin-bottom:2px"><span style="font-size:9.5px;font-weight:700;color:#7C82FF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:160px">${escHtml(t.event.name)}</span></div>` : "";
+    return `<div ${openAttr} class="fcell2" style="cursor:pointer;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0">${badge}<div style="min-width:0">${evBadge}<h4 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.5px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</h4></div></div>
+        <span style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${stColor};background:${stColor}14;border:1px solid ${stColor}55;border-radius:99px;padding:3px 9px;white-space:nowrap">${t.live ? `<span style="width:5px;height:5px;border-radius:50%;background:${stColor};animation:blink 1.2s infinite"></span>` : ""}${stLabel}</span>
       </div>
-      <h4 style="margin:0 0 8px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.8px">${escHtml(t.name)}</h4>
-      <div style="color:var(--text-muted);font-size:13px;line-height:1.65">${escHtml(t.game)} · <span style="font-family:'JetBrains Mono',monospace">${t.players}</span> joueurs<br>${escHtml(t.date)} · ${escHtml(t.place)}</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid var(--surface-3)"><span style="font-size:12.5px;color:${t.live ? "#22D3EE" : "var(--text-muted)"};font-weight:${t.live ? 700 : 600}">${t.live ? "En direct" : escHtml(t.status)}</span>${t.cagnotte !== null ? `<span style="font-size:12.5px;color:#FBBF24;font-weight:700;font-family:'JetBrains Mono',monospace">${t.cagnotte} pts</span>` : ""}</div>
+      <div><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:10px;border-top:1px solid var(--surface-4)">${miniStat("Date", t.date || "À confirmer")}${miniStat("Joueurs", String(t.players))}${miniStat("Récompense", t.cagnotte !== null ? `${t.cagnotte} pts` : "—", t.cagnotte !== null ? "#FBBF24" : undefined)}</div>
     </div>`;
   };
-  const gridHead = `<div style="display:flex;align-items:center;gap:10px;margin:0 0 4px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${rest.length}</span></div>`;
-  const grid = rest.length
-    ? `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}<div class="tourn-grid" style="display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--surface-4);margin-top:12px">${rest.map(filetCard).join("")}</div></div>`
-    : (liveT ? "" : empty);
+  const statusPills = `<div style="display:flex;gap:6px;flex-wrap:wrap">${TOURN_STATUSES.map((st) => {
+    const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
+    const on = S.tournStatus === st;
+    return `<span data-tournstatus="${st}" style="cursor:pointer;white-space:nowrap;font-size:12.5px;font-weight:${on ? 750 : 600};color:${on ? "#04222a" : "var(--text-muted)"};background:${on ? "#22D3EE" : "var(--surface)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};border-radius:99px;padding:7px 13px">${st} <span style="font-family:'JetBrains Mono',monospace;opacity:${on ? .7 : 1}">${n}</span></span>`;
+  }).join("")}</div>`;
+  const gridHead = `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
+    ${statusPills}
+  </div>`;
+  const fmtRow = `<div style="display:flex;gap:7px;overflow-x:auto;max-width:100%;margin-bottom:18px">${chips(FORMATS, S.fmt, "fmt")}</div>`;
+  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${fmtRow}${rest.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${rest.map(cardV2).join("")}</div>` : empty}</div>`;
 
-  return `${head}${filt}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
+  return `${head}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
 }
 
 /** Rend le podium + tableau d'UN classement (déjà trié par points desc) pour un jeu donné. Jamais de stats mélangées entre jeux. */
@@ -1578,6 +1592,93 @@ function pPlayerProfile(S: State) {
   </div>`;
 }
 
+/** Accueil de la galerie : un module « bento » où chaque tuile est un événement (catalogue) ou un média
+ * isolé (hors catalogue) — recherche, filtre Tout/Photos/Vidéos et tri, sur le modèle validé côté design.
+ * La première tuile (la plus récente, tri « Plus récents », sans recherche ni filtre actif) est mise en
+ * avant en grand avec un badge « Dernier ajout ». Cliquer un catalogue l'ouvre, cliquer un média isolé
+ * l'affiche dans la visionneuse plein écran. */
+function galleryHome(S: State, all: Detail[], albums: Detail[]): string {
+  const q = S.galleryQ.trim().toLowerCase();
+  const looseItems = all.filter((it) => !it.albumId);
+  type Tile = { title: string; count: number; photos: number; videos: number; coverUrl: string | null; isVideo: boolean; createdAt: string; onClick: string };
+  const tiles: Tile[] = [
+    ...albums.map((a: Detail) => {
+      const videos = all.filter((it) => it.albumId === a.id && it.mediaType === "video").length;
+      return { title: a.title, count: a.count, photos: Math.max(0, a.count - videos), videos, coverUrl: a.coverUrl, isVideo: false, createdAt: a.createdAt, onClick: `data-albumopen="${a.id}"` };
+    }),
+    ...looseItems.map((it: Detail) => ({
+      title: it.title, count: 1, photos: it.mediaType === "video" ? 0 : 1, videos: it.mediaType === "video" ? 1 : 0,
+      coverUrl: it.mediaUrl, isVideo: it.mediaType === "video", createdAt: it.createdAt, onClick: `data-gopen="${it.id}"`,
+    })),
+  ];
+  const totalCount = all.length, totalPhotos = tiles.reduce((n, t) => n + t.photos, 0), totalVideos = tiles.reduce((n, t) => n + t.videos, 0);
+  let filtered = tiles.filter((t) => t.title.toLowerCase().includes(q));
+  if (S.galleryType === "image") filtered = filtered.filter((t) => t.photos > 0);
+  else if (S.galleryType === "video") filtered = filtered.filter((t) => t.videos > 0);
+  const featuredOn = !q && S.gallerySort === "recent" && S.galleryType === "";
+  if (S.gallerySort === "count") filtered = [...filtered].sort((a, b) => b.count - a.count);
+  else if (S.gallerySort === "az") filtered = [...filtered].sort((a, b) => a.title.localeCompare(b.title, "fr"));
+  // "recent" : déjà l'ordre de chargement (API triée par createdAt desc), rien à refaire.
+
+  const typeChip2 = (v: "" | "image" | "video", label: string, n: number) => {
+    const on = S.galleryType === v;
+    return `<button data-gtype="${v}" style="height:32px;padding:0 14px;border-radius:8px;border:none;background:${on ? "rgba(124,130,255,.18)" : "transparent"};color:${on ? "var(--text)" : "var(--text-muted)"};font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:8px">${label}<span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-faint)">${n}</span></button>`;
+  };
+  const sortPill = (v: State["gallerySort"], label: string) => {
+    const on = S.gallerySort === v;
+    return `<button data-gsort="${v}" style="height:30px;padding:0 12px;border-radius:999px;border:1px solid ${on ? "#7C82FF" : "var(--border)"};background:${on ? "rgba(124,130,255,.12)" : "transparent"};color:${on ? "var(--text)" : "var(--text-muted)"};font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer">${label}</button>`;
+  };
+  const bentoCard = (t: Tile, i: number) => {
+    const featured = featuredOn && i === 0;
+    const shownCount = S.galleryType === "image" ? t.photos : S.galleryType === "video" ? t.videos : t.count;
+    const media = t.isVideo
+      ? `<video src="${mediaUrl(t.coverUrl || "")}" muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`
+      : t.coverUrl
+        ? `<img src="${mediaUrl(t.coverUrl)}" alt="${escAttr(t.title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />`
+        : `<div style="position:absolute;inset:0;background:var(--surface-3);display:grid;place-items:center;color:var(--border-strong)">${ic(I.image, 26)}</div>`;
+    return `<a ${t.onClick} style="position:relative;display:block;cursor:pointer;${featured ? "grid-column:span 2;grid-row:span 2" : "grid-column:span 1;grid-row:span 1;aspect-ratio:4/3"};border-radius:16px;overflow:hidden;border:1px solid var(--border);background:var(--surface)">
+      ${media}
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(9,9,12,0) 35%,rgba(9,9,12,.55) 65%,rgba(9,9,12,.95) 100%)"></div>
+      <div style="position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px">
+        <span style="height:24px;padding:0 9px;border-radius:999px;background:rgba(9,9,12,.7);backdrop-filter:blur(8px);display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#fff">${shownCount} média${shownCount > 1 ? "s" : ""}</span>
+        ${featured ? `<span style="height:24px;padding:0 9px;border-radius:999px;background:#7b7bff;display:flex;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:#0b0b1a">Dernier ajout</span>` : ""}
+      </div>
+      <div style="position:absolute;left:16px;right:16px;bottom:14px;display:flex;flex-direction:column;gap:6px">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:${featured ? "40px" : "22px"};line-height:.95;color:#fff;text-wrap:balance">${escHtml(t.title)}</span>
+        <span style="font-size:12px;color:#b5b5c0">${t.photos} photo${t.photos > 1 ? "s" : ""} · ${t.videos} vidéo${t.videos > 1 ? "s" : ""}</span>
+      </div>
+    </a>`;
+  };
+
+  const head2 = `<div class="rise d1 page-hpad" style="display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-end;padding:32px 44px 22px">
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#7C82FF">Médiathèque Miabe</div>
+      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,5vw,64px);line-height:.9;letter-spacing:.5px;margin:0">Galerie</h1>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13.5px;color:var(--text-muted)">
+        <span><b style="color:var(--text)">${tiles.length}</b> événement${tiles.length > 1 ? "s" : ""}</span>
+        <span><b style="color:var(--text)">${totalCount}</b> photo${totalCount > 1 ? "s" : ""} &amp; vidéo${totalCount > 1 ? "s" : ""}</span>
+        <span>Tournois, LAN et remises de prix</span>
+      </div>
+    </div>
+    <div style="position:relative;width:300px;max-width:100%">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-faint)">${ic(I.search, 14)}</span>
+      <input id="gsearch" value="${escAttr(S.galleryQ)}" placeholder="Rechercher un événement… (Entrée)" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:13.5px;padding:10px 12px 10px 34px" />
+    </div>
+  </div>`;
+  const filtRow2 = `<div class="rise d1 page-hpad" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;padding:0 44px 18px;border-bottom:1px solid var(--surface-3);margin-bottom:20px">
+    <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--surface);border:1px solid var(--border)">${typeChip2("", "Tout", totalCount)}${typeChip2("image", "Photos", totalPhotos)}${typeChip2("video", "Vidéos", totalVideos)}</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-faint);padding-right:6px">Trier</span>
+      ${sortPill("recent", "Plus récents")}${sortPill("count", "Plus de médias")}${sortPill("az", "A → Z")}
+    </div>
+  </div>`;
+  const bentoGrid = filtered.length
+    ? `<div class="rise d2 page-hpad" style="padding:0 44px 44px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));grid-auto-flow:dense;gap:14px">${filtered.map(bentoCard).join("")}</div>`
+    : `<div class="rise d2 page-hpad" style="padding:0 44px 44px"><div style="border:1px dashed var(--border-strong);border-radius:16px;padding:48px;text-align:center;color:var(--text-muted)">Aucun événement ne correspond${q ? ` à « ${escHtml(S.galleryQ)} »` : ""}.</div></div>`;
+
+  return `${head2}${filtRow2}${bentoGrid}${galleryLightbox(S, looseItems)}`;
+}
+
 function pGalerie(S: State) {
   const all: Detail[] = S.gallery ?? [];
   const tournFilters = Array.from(
@@ -1593,6 +1694,8 @@ function pGalerie(S: State) {
   }
   const albums: Detail[] = S.albums ?? [];
   const openAlbum = S.albumOpen ? albums.find((a: Detail) => a.id === S.albumOpen) : null;
+
+  if (!openAlbum) return galleryHome(S, all, albums);
   // Catalogue ouvert : on ne montre que ses médias. Sinon, seuls les médias hors catalogue —
   // un média catalogué ne doit jamais apparaître avant d'être entré dans son catalogue.
   let items = openAlbum ? all.filter((it) => it.albumId === openAlbum.id) : all.filter((it) => !it.albumId);
@@ -5436,7 +5539,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     me: null, myRegs: null, myOrders: null, myTourns: null, myResults: null,
     regIds: [], profileMsg: "", passMsg: "", profileEdit: false,
     payPick: "", gallery: null, galleryEdit: null, galleryFilter: "", galleryOpen: null, galleryType: "", galleryBusy: null,
-    albums: null, albumEdit: null, albumOpen: null, boutiqueInStock: false, regsPanel: null,
+    albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
@@ -7618,7 +7721,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8139,6 +8242,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.gfilter !== undefined) setS((s) => ({ ...s, galleryFilter: d.gfilter! }));
     else if (d.gtype !== undefined) setS((s) => ({ ...s, galleryType: d.gtype as State["galleryType"] }));
+    else if (d.gsort) setS((s) => ({ ...s, gallerySort: d.gsort as State["gallerySort"] }));
     else if (d.instock !== undefined) setS((s) => ({ ...s, boutiqueInStock: d.instock === "1" }));
     else if (d.classview) { setS((s) => ({ ...s, classementView: d.classview as "joueurs" | "clubs" | "equipes" | "pronos" })); if (d.classview === "pronos") void loadPredictors(); }
     else if (d.gopen) setS((s) => ({ ...s, galleryOpen: d.gopen! }));
@@ -8329,6 +8433,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       window.scrollTo({ top: 0 });
       return;
     }
+    if (t.id === "gsearch") { setS((s) => ({ ...s, galleryQ: (t as HTMLInputElement).value.trim() })); return; }
     if (t.id === "adm-search") { setS((s) => ({ ...s, adminSearch: (t as HTMLInputElement).value.trim() })); return; }
     if (t.id === "wiz-roster-search") { setS((s) => ({ ...s, wizRosterSearch: (t as HTMLInputElement).value.trim() })); return; }
     if (t.id === "regie-roster-search") { setS((s) => ({ ...s, rosterQ: (t as HTMLInputElement).value.trim() })); return; }

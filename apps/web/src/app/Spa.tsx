@@ -105,7 +105,7 @@ type State = {
   evGame: string; // filtre par jeu des tournois d'un événement (console)
   toast: string | null;
   myNext: Detail[] | null;
-  predBoard: Detail | null; myPreds: Detail[] | null; predictors: Detail[] | null; predictorStats: Detail | null; predNudge: boolean; predRound: string | null; // pronostics : matchs ouverts, mes choix, classement des pronostiqueurs, mes stats perso, incitation à se connecter, étape choisie
+  predBoard: Detail | null; myPreds: Detail[] | null; predictors: Detail[] | null; predictorStats: Detail | null; predNudge: boolean; predRound: string | null; predExpanded: boolean; // pronostics : matchs ouverts, mes choix, classement des pronostiqueurs, mes stats perso, incitation à se connecter, étape choisie, grille dépliée manuellement
   teamDraft: { name: string; members: string[] } | null; // saisie du capitaine (survit aux re-rendus, ex. ouverture du choix de paiement)
   cartItems: CartItem[]; cartOpen: boolean; products: { id: string; cat: string; name: string; price: number; ph: string; img?: string | null; stock?: number; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] | null; boutiqueInStock: boolean;
   cartPayPick: string; cartBusy: boolean; lastOrder: { reference: string; totalXof: number; paymentMethod: string } | null;
@@ -4066,6 +4066,21 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
     </div>`;
   };
 
+  // Beaucoup de matchs dans une même étape (poule à 8+ joueurs…) : on réduit à deux rangées avec un
+  // défilement interne plutôt que d'allonger toute la page, avec un bouton pour tout déplier soi-même.
+  const COLLAPSE_ROWS_HEIGHT = 360;
+  const needsCollapse = shown.length > 4;
+  const collapsed = needsCollapse && !S.predExpanded;
+  const matchesGrid = `<div style="position:relative">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:14px;${collapsed ? `max-height:${COLLAPSE_ROWS_HEIGHT}px;overflow-y:auto;padding-right:4px` : ""}">${shown.map(matchCard).join("")}</div>
+    ${collapsed ? `<div style="position:absolute;left:0;right:4px;bottom:0;height:46px;background:linear-gradient(180deg,rgba(18,18,24,0),#121218);pointer-events:none"></div>` : ""}
+  </div>`;
+  const expandBtn = needsCollapse
+    ? `<div style="display:flex;justify-content:center;margin-top:${collapsed ? "-10px" : "14px"};position:relative">
+        <button data-predexpand="1" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:${gold};border-radius:99px;padding:8px 16px;font-family:${sans};font-size:12.5px;font-weight:600;cursor:pointer">${S.predExpanded ? "Réduire ↑" : `Tout afficher (${shown.length}) ↓`}</button>
+      </div>`
+    : "";
+
   return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:20px;background:linear-gradient(180deg,#121218 0%,#0e0e13 100%);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 30px 80px -30px rgba(0,0,0,.8);overflow:hidden;margin-bottom:18px;font-family:${sans};color:${ink}">
     <div style="padding:28px 24px 22px;display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:flex-end;border-bottom:1px solid rgba(255,255,255,.06)">
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
@@ -4080,7 +4095,7 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
       ${progressRow}
     </div>
     ${nudge ? `<div style="padding:0 24px">${nudge}</div>` : ""}
-    <div style="padding:20px 24px 26px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:14px">${shown.map(matchCard).join("")}</div>
+    <div style="padding:20px 24px 26px">${matchesGrid}${expandBtn}</div>
     <div style="padding:14px 24px;border-top:1px solid rgba(255,255,255,.06);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-size:12px;color:${faint}">
       <span>Votes de la communauté visibles après ton pronostic.</span>
       <a href="#" data-gopronos="1" style="color:${gold};font-weight:600">Voir le classement →</a>
@@ -5525,7 +5540,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const [S, setS] = useState<State>({
     page: initialPage, slide: 0, fmt: "Tous", scope: "Togo", game: "Tous", cat: "Tous", tournStatus: "Tous",
     tourns: null, creating: false, busy: false, leaderboard: null,
-    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, evGame: "Tous", toast: null, myNext: null, teamDraft: null, predBoard: null, myPreds: null, predictors: null, predictorStats: null, predNudge: false, predRound: null,
+    playerProfile: null, h2hOpponent: "", h2hData: null, h2hBusy: false, eventStandings: null, embedTarget: null, productOpen: null, evGame: "Tous", toast: null, myNext: null, teamDraft: null, predBoard: null, myPreds: null, predictors: null, predictorStats: null, predNudge: false, predRound: null, predExpanded: false,
     cartItems: [], cartOpen: false, products: null, cartPayPick: "", cartBusy: false, lastOrder: null,
     cartPointsToRedeem: 0, regPointsToRedeem: 0, loyaltySettings: null, loyaltyHistory: null, loyaltyBalance: 0,
     creditsMe: null, creditBuyQty: 1, creditBuyPay: "", creditBuyBusy: false, payConfig: null, payModal: null,
@@ -5755,7 +5770,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     } catch { /* ignore */ }
   }
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, predictorStats: null, predNudge: false, predRound: null, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, predictorStats: null, predNudge: false, predRound: null, predExpanded: false, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -7721,7 +7736,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8070,7 +8085,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.evgame) setS((s) => ({ ...s, evGame: d.evgame! }));
     else if (d.predict) { const [tid, key, idx] = d.predict.split("|"); predict(tid, key, parseInt(idx) || 0); }
     else if (d.prednudge !== undefined) setS((s) => ({ ...s, predNudge: true }));
-    else if (d.predround) setS((s) => ({ ...s, predRound: d.predround! }));
+    else if (d.predround) setS((s) => ({ ...s, predRound: d.predround!, predExpanded: false }));
+    else if (d.predexpand !== undefined) setS((s) => ({ ...s, predExpanded: !s.predExpanded }));
     else if (d.gopronos !== undefined) { setS((s) => ({ ...s, page: "classements", classementView: "pronos" })); window.scrollTo({ top: 0 }); void loadPredictors(); }
     else if (d.duplicate) duplicateTournament(d.duplicate);
     else if (d.matchstart) { const [tid, key] = d.matchstart.split("|"); act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true }); }

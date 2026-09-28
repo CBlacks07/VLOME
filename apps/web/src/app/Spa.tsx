@@ -5129,10 +5129,44 @@ function eventCalendarView(S: State, ts: Detail[], accent: string): string {
     return label.charAt(0).toUpperCase() + label.slice(1);
   };
   const grid = (list: Detail[]) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${list.map((t) => eventTournCard(t, null)).join("")}</div>`;
+  // Bandeau calendrier : une vraie page de calendrier par jour (jour de semaine, quantième, mois),
+  // pas seulement un texte — demandé explicitement (« un calendrier dessiné »). Cliquer une page fait
+  // défiler jusqu'à la section de ce jour ci-dessous (et la déplie si elle était fermée) ; la liste
+  // détaillée par jour reste la source de vérité, ce bandeau n'en est qu'un aperçu/raccourci visuel.
+  const tileFrag = (k: string) => {
+    const d = new Date(k + "T00:00:00Z");
+    const weekday = d.toLocaleDateString("fr-FR", { weekday: "short", timeZone: "UTC" }).replace(/\.$/, "");
+    const day = d.toLocaleDateString("fr-FR", { day: "numeric", timeZone: "UTC" });
+    const month = d.toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" }).replace(/\.$/, "");
+    return { weekday, day, month };
+  };
+  const dayTile = (k: string) => {
+    const list = days.get(k)!;
+    const closed = k < todayKey;
+    const isToday = k === todayKey;
+    const live = list.some((t: Detail) => t.live);
+    const { weekday, day, month } = tileFrag(k);
+    return `<div data-evday="${k}" title="${escAttr(fmtDay(k))}" style="cursor:pointer;width:70px;flex:none;border-radius:14px;overflow:hidden;border:1px solid ${isToday ? accent : "var(--border)"};background:var(--surface);opacity:${closed ? ".5" : "1"};${isToday ? `box-shadow:0 0 0 3px ${accent}33` : ""}">
+        <div style="background:${closed ? "var(--surface-3)" : accent};color:${closed ? "var(--text-muted)" : "#04222a"};text-align:center;font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;padding:5px 0">${escHtml(weekday)}</div>
+        <div style="text-align:center;padding:7px 0 2px">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:25px;line-height:1;color:var(--text)">${day}</div>
+          <div style="font-size:9.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${escHtml(month)}</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:2px 0 8px;font-size:10.5px;color:var(--text-muted);font-weight:700">
+          ${live ? `<span style="width:6px;height:6px;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span>` : ""}${list.length}
+        </div>
+      </div>`;
+  };
+  const undatedTile = undated.length ? `<div data-evday="undated" title="Date à annoncer" style="cursor:pointer;width:70px;flex:none;border-radius:14px;border:1px dashed var(--border-strong);background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 4px">
+      <span style="font-size:17px;color:var(--text-faint)">?</span>
+      <span style="font-size:9px;color:var(--text-muted);text-align:center;line-height:1.25">À annoncer</span>
+      <span style="font-size:10.5px;color:var(--text-muted);font-weight:700">${undated.length}</span>
+    </div>` : "";
+  const calendarStrip = `<div style="display:flex;gap:10px;overflow-x:auto;padding:2px 2px 16px">${dayKeys.map(dayTile).join("")}${undatedTile}</div>`;
   const daySection = (k: string) => {
     const list = days.get(k)!;
     const closed = k < todayKey;
-    return `<details ${closed ? "" : "open"} style="border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:12px;overflow:hidden">
+    return `<details id="evday-${k}" ${closed ? "" : "open"} style="border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:12px;overflow:hidden">
       <summary style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 18px;user-select:none">
         <span style="width:9px;height:9px;border-radius:50%;background:${closed ? "var(--text-faint)" : accent};flex:none"></span>
         <span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.6px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(fmtDay(k))}</span>
@@ -5142,11 +5176,11 @@ function eventCalendarView(S: State, ts: Detail[], accent: string): string {
       <div style="padding:0 16px 16px">${grid(list)}</div>
     </details>`;
   };
-  const undatedSection = undated.length ? `<div style="border:1px dashed var(--border-strong);border-radius:14px;padding:14px 18px;margin-bottom:12px">
+  const undatedSection = undated.length ? `<div id="evday-undated" style="border:1px dashed var(--border-strong);border-radius:14px;padding:14px 18px;margin-bottom:12px">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.6px;color:var(--text-muted);margin-bottom:10px">Date à annoncer</div>
       ${grid(undated)}
     </div>` : "";
-  return `${summary}${chips}${dayKeys.map(daySection).join("")}${undatedSection}`;
+  return `${summary}${chips}${calendarStrip}${dayKeys.map(daySection).join("")}${undatedSection}`;
 }
 
 function consoleEvents(S: State) {
@@ -7404,7 +7438,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-evday],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7555,6 +7589,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         setS((s) => ({ ...s, activeMatchIds: next }));
       }
       document.getElementById(`poolcard-${d.viewpool}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    // Page du calendrier de l'événement (eventCalendarView) : déplie la section de ce jour si elle
+    // était fermée (jour déjà passé) et y fait défiler — le bandeau n'est qu'un raccourci visuel vers
+    // la liste détaillée, qui reste la source de vérité.
+    else if (d.evday) {
+      const dayEl = document.getElementById(`evday-${d.evday}`);
+      if (dayEl instanceof HTMLDetailsElement) dayEl.open = true;
+      dayEl?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));
     else if (d.bracketview) setS((s) => ({ ...s, bracketView: d.bracketview as State["bracketView"] }));

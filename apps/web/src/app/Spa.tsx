@@ -3885,17 +3885,34 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
     const pct = total ? Math.round((votes / total) * 100) : 0;
     const locked = !!m.locked;
     const attr = !S.user ? `data-auth-open="1"` : locked ? "disabled" : `data-predict="${t.id}|${m.key}|${idx}"`;
-    return `<button ${attr} style="flex:1;min-width:0;text-align:left;border:1px solid ${picked ? "#22D3EE" : "var(--border-strong)"};background:${picked ? "rgba(34,211,238,.12)" : "var(--surface-3)"};color:var(--text);border-radius:11px;padding:10px 12px;cursor:${locked ? "default" : "pointer"};font-family:inherit;opacity:${locked && !picked ? ".6" : "1"}">
-      <div style="font-weight:750;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${picked ? "✓ " : ""}${escHtml(name)}</div>
-      <div style="height:4px;border-radius:99px;background:var(--surface-4);margin-top:7px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${idx === 0 ? "#22D3EE" : "#F43F7E"}"></div></div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${total ? `${pct}% du public (${votes})` : "Aucun vote"}</div></button>`;
+    return `<button ${attr} style="width:100%;text-align:left;border:1px solid ${picked ? "#22D3EE" : "var(--border-strong)"};background:${picked ? "rgba(34,211,238,.12)" : "var(--surface-2)"};color:var(--text);border-radius:9px;padding:8px 10px;cursor:${locked ? "default" : "pointer"};font-family:inherit;opacity:${locked && !picked ? ".6" : "1"}">
+      <div style="display:flex;align-items:center;gap:6px"><span style="flex:1;min-width:0;font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${picked ? "✓ " : ""}${escHtml(name)}</span><span style="flex:none;font-size:10.5px;color:var(--text-faint);font-weight:700">${total ? `${pct}%` : "—"}</span></div>
+      <div style="height:3px;border-radius:99px;background:var(--surface-4);margin-top:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${idx === 0 ? "#22D3EE" : "#F43F7E"}"></div></div>
+    </button>`;
   };
-  const rows = matches.map((m) => {
+  const matchCard = (m: Detail) => {
     const total = m.votesA + m.votesB;
-    return `<div style="padding:12px 0;border-top:1px solid var(--surface-4)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;flex:1">${escHtml(m.label || "Match")}</span>${m.locked ? `<span style="font-size:10px;font-weight:800;color:#FBBF24">FERMÉ · match lancé</span>` : ""}</div>
-      <div style="display:flex;gap:10px">${side(m, m.a, m.votesA, total, 0)}${side(m, m.b, m.votesB, total, 1)}</div></div>`;
-  }).join("");
+    return `<div style="border:1px solid var(--border);border-radius:13px;background:var(--surface);padding:10px">
+      ${m.locked ? `<div style="text-align:right;font-size:9px;font-weight:800;letter-spacing:.5px;color:#FBBF24;margin-bottom:6px">FERMÉ · MATCH LANCÉ</div>` : ""}
+      ${side(m, m.a, m.votesA, total, 0)}
+      <div style="text-align:center;font-size:9px;font-weight:800;color:var(--text-faint);letter-spacing:1.2px;margin:5px 0">VS</div>
+      ${side(m, m.b, m.votesB, total, 1)}
+    </div>`;
+  };
+  // Un même intitulé d'étape (« Winners · Quarts »…) revient sur plusieurs matchs : un seul sous-titre
+  // par étape au lieu de le répéter devant chaque match, suivi d'une grille de cartes compactes plutôt
+  // que deux gros boutons pleine largeur — trop larges dès que les noms sont courts.
+  const groups: { label: string; items: Detail[] }[] = [];
+  matches.forEach((m) => {
+    const label = m.label || "Match";
+    let g = groups.find((x) => x.label === label);
+    if (!g) { g = { label, items: [] }; groups.push(g); }
+    g.items.push(m);
+  });
+  const rows = groups.map((g) => `<div style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px"><span style="flex:none;font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">${escHtml(g.label)}</span><span style="flex:1;height:1px;background:var(--surface-4)"></span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px">${g.items.map(matchCard).join("")}</div>
+    </div>`).join("");
   return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px 20px;margin-bottom:18px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;flex:1">Pronostics · qui va gagner ?</h3>${done ? `<span style="font-size:12px;font-weight:800;color:#34D399">Tes pronostics : ${won}/${done}</span>` : ""}</div>
     ${!S.user ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:6px">Connecte-toi pour donner ton pronostic — un choix modifiable jusqu'au lancement du match.</div>` : ""}
@@ -5045,9 +5062,10 @@ function pEvenement(S: State) {
   // compris : accueil, remise des prix…) — pas des seules dates de tournois, trop grossières et
   // incomplètes pour représenter le déroulé réel d'un événement.
   const schedule: Detail[] = S.eventSchedule ?? [];
-  const programme = schedule.length ? `<div style="margin-bottom:30px">
+  const scheduleHtml = eventScheduleCalendar(schedule, tournaments as Detail[], accent);
+  const programme = scheduleHtml ? `<div style="margin-bottom:30px">
     <h2 style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:1.2px;margin:0 0 16px">Programme</h2>
-    ${eventScheduleCalendar(schedule, accent)}
+    ${scheduleHtml}
   </div>` : "";
   const grid = evTournamentsView(S, tournaments as Detail[], null);
   // Classement cumulé (circuit) : toutes les étapes déjà jouées de l'événement confondues — n'apparaît
@@ -5116,34 +5134,30 @@ function evTournamentsView(S: State, ts: Detail[], evId: string | null): string 
     : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
 }
 
-/** Calendrier public du programme d'un événement — jour par jour, dans l'ordre chronologique de chaque
- * point (heure comprise), un jour passé se replie tout seul comme le fait déjà le reste du site. Un point
- * relié à un tournoi ouvre ce tournoi au clic (badge « En direct » s'il l'est). */
-function eventScheduleCalendar(schedule: Detail[], accent: string): string {
+/** Calendrier public du programme d'un événement — les jours défilent côte à côte horizontalement (un
+ * trait sépare chaque jour du suivant), et à l'intérieur d'un même jour les points s'alignent eux aussi
+ * horizontalement ; l'ensemble défile latéralement quand ça déborde de l'écran. Fusionne les points de
+ * programme saisis par l'organisateur avec les tournois programmés à une date qui n'ont pas déjà leur
+ * propre point (pour ne pas doubler l'entrée). Un point relié à un tournoi ouvre ce tournoi au clic
+ * (badge « Live » s'il l'est déjà). Renvoie "" quand il n'y a rien à montrer. */
+function eventScheduleCalendar(schedule: Detail[], tournaments: Detail[], accent: string): string {
   const todayKey = new Date().toISOString().slice(0, 10);
-  const days = new Map<string, Detail[]>();
-  schedule.forEach((it: Detail) => {
-    const k = String(it.startAt).slice(0, 10);
+  type Entry = { title: string; note?: string | null; startAt: string; endAt?: string | null; tournament?: Detail | null };
+  const linkedTournIds = new Set(schedule.map((it: Detail) => it.tournament?.id).filter(Boolean));
+  const entries: Entry[] = [
+    ...schedule.map((it: Detail) => ({ title: it.title, note: it.note, startAt: it.startAt, endAt: it.endAt, tournament: (it.tournament as Detail) ?? null })),
+    ...tournaments.filter((t: Detail) => t.dateISO && !linkedTournIds.has(t.id)).map((t: Detail) => ({ title: t.name, note: t.place || null, startAt: t.dateISO as string, endAt: null, tournament: t })),
+  ];
+  if (!entries.length) return "";
+  const days = new Map<string, Entry[]>();
+  entries.forEach((e) => {
+    const k = e.startAt.slice(0, 10);
     if (!days.has(k)) days.set(k, []);
-    days.get(k)!.push(it);
+    days.get(k)!.push(e);
   });
+  days.forEach((list) => list.sort((a, b) => a.startAt.localeCompare(b.startAt)));
   const dayKeys = Array.from(days.keys()).sort();
-  const fmtDay = (k: string) => {
-    const label = new Date(k + "T00:00:00Z").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-    return label.charAt(0).toUpperCase() + label.slice(1);
-  };
   const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  const itemRow = (it: Detail) => {
-    const tourn = it.tournament as Detail | null;
-    return `<div ${tourn ? `data-open="${tourn.id}" style="cursor:pointer"` : ""} style="display:flex;gap:14px;padding:12px 0;border-top:1px solid var(--surface-4)">
-      <div style="flex:none;width:56px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${accent};padding-top:1px">${timeOf(it.startAt)}${it.endAt ? `<div style="color:var(--text-faint);font-size:11px;font-weight:600">→ ${timeOf(it.endAt)}</div>` : ""}</div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;font-size:14.5px">${escHtml(it.title)}</span>${tourn?.live ? `<span style="font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:2px 8px">En direct</span>` : ""}</div>
-        ${it.note ? `<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${escHtml(it.note)}</div>` : ""}
-        ${tourn ? `<div style="font-size:12px;color:${accent};font-weight:600;margin-top:3px">${escHtml(tourn.name)}${tourn.game ? ` · ${escHtml(tourn.game)}` : ""}</div>` : ""}
-      </div>
-    </div>`;
-  };
   const tileFrag = (k: string) => {
     const d = new Date(k + "T00:00:00Z");
     return {
@@ -5152,38 +5166,32 @@ function eventScheduleCalendar(schedule: Detail[], accent: string): string {
       month: d.toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" }).replace(/\.$/, ""),
     };
   };
-  const dayTile = (k: string) => {
+  const itemCard = (e: Entry) => {
+    const t = e.tournament;
+    return `<div ${t ? `data-open="${t.id}" style="cursor:pointer"` : ""} style="flex:none;width:190px;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:11px 13px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:${accent}">${timeOf(e.startAt)}${e.endAt ? ` → ${timeOf(e.endAt)}` : ""}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px"><span style="font-weight:700;font-size:13.5px;line-height:1.25">${escHtml(e.title)}</span>${t?.live ? `<span style="font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:2px 7px;flex:none">Live</span>` : ""}</div>
+      ${e.note ? `<div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.note)}</div>` : ""}
+      ${t ? `<div style="font-size:11px;color:${accent};font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.game ? escHtml(t.game) : "Tournoi"}</div>` : ""}
+    </div>`;
+  };
+  const dayBlock = (k: string, isLast: boolean) => {
     const list = days.get(k)!;
     const closed = k < todayKey;
     const isToday = k === todayKey;
-    const live = list.some((it: Detail) => it.tournament?.live);
     const { weekday, day, month } = tileFrag(k);
-    return `<div data-evday="${k}" title="${escAttr(fmtDay(k))}" style="cursor:pointer;width:70px;flex:none;border-radius:14px;overflow:hidden;border:1px solid ${isToday ? accent : "var(--border)"};background:var(--surface);opacity:${closed ? ".5" : "1"};${isToday ? `box-shadow:0 0 0 3px ${accent}33` : ""}">
-      <div style="background:${closed ? "var(--surface-3)" : accent};color:${closed ? "var(--text-muted)" : "#04222a"};text-align:center;font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;padding:5px 0">${escHtml(weekday)}</div>
-      <div style="text-align:center;padding:7px 0 2px">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:25px;line-height:1;color:var(--text)">${day}</div>
-        <div style="font-size:9.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${escHtml(month)}</div>
+    return `<div style="flex:none;display:flex;align-items:flex-start;gap:14px;padding-right:20px;margin-right:20px;${isLast ? "" : "border-right:1px solid var(--border)"};opacity:${closed ? ".55" : "1"}">
+      <div style="flex:none;width:64px;border-radius:12px;overflow:hidden;border:1px solid ${isToday ? accent : "var(--border)"};${isToday ? `box-shadow:0 0 0 3px ${accent}33` : ""}">
+        <div style="background:${isToday ? accent : "var(--surface-3)"};color:${isToday ? "#04222a" : "var(--text-muted)"};text-align:center;font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:4px 0">${escHtml(weekday)}</div>
+        <div style="text-align:center;padding:6px 0 8px;background:var(--surface)">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:23px;line-height:1;color:var(--text)">${day}</div>
+          <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${escHtml(month)}</div>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:5px;padding:2px 0 8px;font-size:10.5px;color:var(--text-muted);font-weight:700">
-        ${live ? `<span style="width:6px;height:6px;border-radius:50%;background:${accent};animation:blink 1.2s infinite"></span>` : ""}${list.length}
-      </div>
+      <div style="display:flex;gap:10px">${list.map(itemCard).join("")}</div>
     </div>`;
   };
-  const calendarStrip = `<div style="display:flex;gap:10px;overflow-x:auto;padding:2px 2px 16px">${dayKeys.map(dayTile).join("")}</div>`;
-  const daySection = (k: string) => {
-    const list = days.get(k)!;
-    const closed = k < todayKey;
-    return `<details id="evday-${k}" ${closed ? "" : "open"} style="border:1px solid var(--border);border-radius:14px;background:var(--surface);margin-bottom:12px;overflow:hidden">
-      <summary style="cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 18px;user-select:none">
-        <span style="width:9px;height:9px;border-radius:50%;background:${closed ? "var(--text-faint)" : accent};flex:none"></span>
-        <span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.6px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(fmtDay(k))}</span>
-        <span style="font-size:11.5px;color:var(--text-muted);font-weight:600;white-space:nowrap">${list.length} point${list.length > 1 ? "s" : ""}</span>
-        ${closed ? `<span style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);border:1px solid var(--border-strong);border-radius:99px;padding:3px 9px;white-space:nowrap">Fermé</span>` : ""}
-      </summary>
-      <div style="padding:0 18px 6px">${list.map(itemRow).join("")}</div>
-    </details>`;
-  };
-  return `${calendarStrip}${dayKeys.map(daySection).join("")}`;
+  return `<div style="display:flex;overflow-x:auto;padding:2px 2px 10px">${dayKeys.map((k, i) => dayBlock(k, i === dayKeys.length - 1)).join("")}</div>`;
 }
 
 function consoleEvents(S: State) {
@@ -7537,7 +7545,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-evday],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-fmt],[data-tournstatus],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -7688,14 +7696,6 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         setS((s) => ({ ...s, activeMatchIds: next }));
       }
       document.getElementById(`poolcard-${d.viewpool}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    // Bandeau du calendrier du programme (eventScheduleCalendar) : déplie la section de ce jour si elle
-    // était fermée (jour déjà passé) et y fait défiler — le bandeau n'est qu'un raccourci visuel vers
-    // la liste détaillée, qui reste la source de vérité.
-    else if (d.evday) {
-      const dayEl = document.getElementById(`evday-${d.evday}`);
-      if (dayEl instanceof HTMLDetailsElement) dayEl.open = true;
-      dayEl?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));
     else if (d.bracketview) setS((s) => ({ ...s, bracketView: d.bracketview as State["bracketView"] }));

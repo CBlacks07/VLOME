@@ -8,6 +8,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreditsService } from '../credits/credits.service';
 import { LoyaltyReason } from '../../generated/prisma';
 import { MailService, escapeHtml } from '../mail/mail.service';
+import { DEFAULT_PREDICTIONS_SETTINGS } from '../admin/admin.service';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
@@ -805,6 +806,12 @@ export class TournamentsService {
     return l ? Engine.playerName(t, l.winner!) : null;
   }
 
+  /** Barème des pronostics — réglable depuis Admin → Pronostics (Setting générique, clé "predictions"). */
+  private async getPredictionSettings(): Promise<{ basePoints: number; outsiderThreshold: number; outsiderMultiplier: number }> {
+    const row = await this.prisma.setting.findUnique({ where: { key: 'predictions' } });
+    return { ...DEFAULT_PREDICTIONS_SETTINGS, ...(row?.value as object) };
+  }
+
   /** Matchs pronostiquables d'un tournoi + tendance du public (votes par côté). Public. */
   async predictionBoard(tournamentId: string) {
     const l = await this.loadEngine(tournamentId);
@@ -814,9 +821,11 @@ export class TournamentsService {
     const rows = await this.prisma.prediction.groupBy({ by: ['matchKey', 'pick'], where: { tournamentId }, _count: { _all: true } });
     const votes = (key: string, name: string) => rows.filter((r) => r.matchKey === key && r.pick === name).reduce((n, r) => n + r._count._all, 0);
     const open = l.t.status !== 'setup' ? this.predictableMatches(st) : [];
+    const settings = await this.getPredictionSettings();
     return {
       open: l.t.status !== 'finished',
       matches: open.map((m) => ({ ...m, locked: !!starts[m.key], votesA: votes(m.key, m.a), votesB: votes(m.key, m.b) })),
+      settings,
     };
   }
 
@@ -866,6 +875,7 @@ export class TournamentsService {
     if (!preds.length) return [];
     const tournaments = await this.prisma.tournament.findMany({ where: { id: { in: [...new Set(preds.map((p) => p.tournamentId))] } }, select: { id: true, engineState: true } });
     const engines = new Map(tournaments.map((t) => [t.id, t.engineState as unknown as Engine.Tournament | null]));
+    const { basePoints, outsiderThreshold, outsiderMultiplier } = await this.getPredictionSettings();
     const agg = new Map<string, { userId: string; name: string; correct: number; total: number; pending: number; score: number }>();
     for (const p of preds) {
       const e = agg.get(p.userId) ?? { userId: p.userId, name: p.user.displayName, correct: 0, total: 0, pending: 0, score: 0 };
@@ -873,7 +883,7 @@ export class TournamentsService {
       const w = t ? this.winnerOf(this.applyEngineCompat(t), p.matchKey) : null;
       if (w === null) e.pending++;
       // Bonus outsider : la cote figée au moment du pronostic (pas celle du jour où le match se termine).
-      else { e.total++; if (w === p.pick) { e.correct++; e.score += p.oddsPct !== null && p.oddsPct < 40 ? 20 : 10; } }
+      else { e.total++; if (w === p.pick) { e.correct++; e.score += p.oddsPct !== null && p.oddsPct < outsiderThreshold ? basePoints * outsiderMultiplier : basePoints; } }
       agg.set(p.userId, e);
     }
     return [...agg.values()];

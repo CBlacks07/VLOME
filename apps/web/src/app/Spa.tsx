@@ -1397,7 +1397,8 @@ function pTournois(S: State) {
     const n = f === "Tous" ? source.length : source.filter((t) => t.format === f).length;
     return `<option value="${f}" ${S.fmt === f ? "selected" : ""}>${f} (${n})</option>`;
   }).join("")}</select>`;
-  const filterSelectors = `<div style="display:flex;gap:10px;flex-wrap:wrap">${statusSel}${fmtSel}</div>`;
+  const selGroup = (label: string, sel: string) => `<div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint)">${label}</span>${sel}</div>`;
+  const filterSelectors = `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Statut", statusSel)}${selGroup("Catégorie", fmtSel)}</div>`;
   const gridHead = `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
     ${filterSelectors}
@@ -2141,7 +2142,7 @@ function consoleAccountHeader(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Aperçu"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["pronostics", "Pronostics"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
   // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
   // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
   ["legal", "Pages légales"], ["compte", "Mon compte"],
@@ -2317,6 +2318,7 @@ function consolePage(S: State): string {
       S.adminTab === "galerie" ? adminGallery(S) :
       S.adminTab === "produits" ? adminProducts(S) :
       S.adminTab === "fidelite" ? adminLoyalty(S) :
+      S.adminTab === "pronostics" ? adminPredictions(S) :
       S.adminTab === "credits" ? adminCredits(S) :
       S.adminTab === "paiements" ? adminPayments(S) :
       S.adminTab === "commandes" ? adminOrders(a) :
@@ -2707,6 +2709,25 @@ function adminLoyalty(S: State) {
     </div>
     <div style="margin-top:16px"><button data-loyaltysave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button></div>
     <p style="color:var(--text-faint);font-size:12px;margin:14px 0 0">L'éligibilité produit se règle depuis l'onglet Produits, et le gain de point par tournoi depuis l'assistant de création (étape 1).</p>
+  `);
+}
+
+/** Onglet Pronostics : barème de la carte « Qui va gagner ? » (points par bon pronostic, bonus outsider). */
+function adminPredictions(S: State) {
+  const pd = S.site?.predictions || { basePoints: 10, outsiderThreshold: 40, outsiderMultiplier: 2 };
+  const ok = S.siteMsg === "Réglages enregistrés.";
+  return card(`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle("Pronostics")}
+      ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
+    </div>
+    <p style="color:var(--text-muted);font-size:13.5px;line-height:1.7;margin:0 0 18px">Sur un match donné, un pronostic est « outsider » quand le camp choisi avait moins que le seuil ci-dessous du total des voix déjà en place au moment du choix (cette cote reste figée : elle ne change plus ensuite, même si les votes évoluent). Ces réglages s'appliquent à tous les tournois.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Points par bon pronostic<input id="pd-base" type="number" min="1" value="${pd.basePoints}" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Seuil outsider (% de voix)<input id="pd-threshold" type="number" min="0" max="100" value="${pd.outsiderThreshold}" style="${adminInp}" /></label>
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Multiplicateur outsider (×)<input id="pd-multiplier" type="number" min="1" step="0.5" value="${pd.outsiderMultiplier}" style="${adminInp}" /></label>
+    </div>
+    <div style="margin-top:16px"><button data-predsettingssave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button></div>
   `);
 }
 
@@ -3984,6 +4005,11 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
   const matches: Detail[] = board.matches || [];
   const done = mine.filter((m) => m.result !== "pending").length;
   if (!matches.length && !done) return "";
+  // Barème réglable depuis Admin → Pronostics — jamais de chiffre en dur ici, pour que la carte reflète
+  // toujours ce que rapportera vraiment un bon pronostic.
+  const predSettings: { basePoints: number; outsiderThreshold: number; outsiderMultiplier: number } = board.settings || { basePoints: 10, outsiderThreshold: 40, outsiderMultiplier: 2 };
+  const outsiderPts = predSettings.basePoints * predSettings.outsiderMultiplier;
+  const outsiderMultLabel = Number.isInteger(predSettings.outsiderMultiplier) ? predSettings.outsiderMultiplier : predSettings.outsiderMultiplier.toString().replace(".", ",");
   const gold = "#e8c872", green = "#7fd6a4", red = "#e57b7b", muted = "#8b8b98", faint = "#6f6f7c", ink = "#f5f5f8";
   const mono = "'Geist Mono',monospace", sans = "'Geist',system-ui,sans-serif";
 
@@ -4050,9 +4076,9 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
       ? `<span style="display:flex;align-items:center;gap:6px;color:${red}"><span style="width:6px;height:6px;border-radius:50%;background:${red};animation:blink 1.2s infinite"></span>En direct</span>`
       : `<span style="color:${muted}">Pronostics ouverts</span>`;
     const reveal = locked || !!pick;
-    const outsider = pick ? (pick === m.a ? m.votesA : m.votesB) / (total || 1) * 100 < 40 && total > 0 : false;
+    const outsider = pick ? (pick === m.a ? m.votesA : m.votesB) / (total || 1) * 100 < predSettings.outsiderThreshold && total > 0 : false;
     const foot = locked ? "Pronostics verrouillés" : pick ? "Modifiable jusqu'au lancement" : "Choisis un gagnant";
-    const pts = !locked && pick ? (outsider ? "+20 pts ×2" : "+10 pts") : locked && pick ? "En attente" : "";
+    const pts = !locked && pick ? (outsider ? `+${outsiderPts} pts ×${outsiderMultLabel}` : `+${predSettings.basePoints} pts`) : locked && pick ? "En attente" : "";
     return `<div style="border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.015);padding:14px;display:flex;flex-direction:column;gap:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;font-family:${mono};font-size:10.5px;letter-spacing:.1em;text-transform:uppercase">${status}</div>
       <div style="position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px">
@@ -4083,7 +4109,7 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
         <div style="display:flex;align-items:center;gap:10px;font-family:${mono};font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:${gold}"><span style="width:6px;height:6px;border-radius:50%;background:${gold};box-shadow:0 0 12px ${gold}"></span><span>Pronostics</span></div>
         <div style="font-size:26px;font-weight:600;letter-spacing:-.02em;color:${ink}">Qui va gagner&nbsp;?</div>
-        <div style="font-size:13.5px;color:${muted};max-width:520px">Un choix par match, modifiable jusqu'au lancement. +10 pts par bon pronostic, ×2 sur les outsiders.</div>
+        <div style="font-size:13.5px;color:${muted};max-width:520px">Un choix par match, modifiable jusqu'au lancement. +${predSettings.basePoints} pts par bon pronostic, ×${outsiderMultLabel} sur les outsiders.</div>
       </div>
       ${statBlock}
     </div>
@@ -4133,9 +4159,9 @@ function pTournoi(S: State) {
       const active = s.id === t.id;
       return `<span ${active ? "" : `data-open="${s.id}"`} style="cursor:${active ? "default" : "pointer"};white-space:nowrap;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:${active ? 750 : 600};color:${active ? "#04222a" : "var(--text-muted)"};background:${active ? acc : "var(--surface)"};border:1px solid ${active ? acc : "var(--border)"};border-radius:99px;padding:7px 13px">${s.live ? `<span style="width:6px;height:6px;border-radius:50%;background:${active ? "#04222a" : "#22D3EE"};animation:blink 1.2s infinite"></span>` : ""}${escHtml(s.name)}</span>`;
     };
-    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${acc};display:inline-flex;align-items:center;gap:6px;flex:none;white-space:nowrap">${ic(I.crown, 13)}${escHtml(t.event.name)}</span>
-      <div style="display:flex;gap:7px;overflow-x:auto;flex:1;min-width:0">${t.event.tournaments.map(pill).join("")}</div>
+    return `<div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${acc};display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:8px">${ic(I.crown, 13)}${escHtml(t.event.name)}</div>
+      <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;margin:0 -2px;padding-left:2px;padding-right:2px">${t.event.tournaments.map(pill).join("")}</div>
     </div>`;
   })() : "";
   const infoCard = t.prize || t.rules
@@ -6666,6 +6692,22 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       else setS((s) => ({ ...s, siteMsg: "Enregistrement impossible." }));
     } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
   }
+  /** Enregistre le barème des pronostics (Setting générique, clé "predictions"). */
+  async function savePredictionSettings() {
+    const val = (x: string) => (document.getElementById(x) as HTMLInputElement | null)?.value ?? "";
+    const value = {
+      basePoints: Math.max(1, parseInt(val("pd-base")) || 10),
+      outsiderThreshold: Math.min(100, Math.max(0, parseInt(val("pd-threshold")) || 0)),
+      outsiderMultiplier: Math.max(1, parseFloat(val("pd-multiplier")) || 2),
+    };
+    try {
+      const r = await fetch(`${API}/api/admin/settings/predictions`, {
+        method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
+      });
+      if (r.ok) { await loadSettings(); setS((s) => ({ ...s, siteMsg: "Réglages enregistrés." })); }
+      else setS((s) => ({ ...s, siteMsg: "Enregistrement impossible." }));
+    } catch { setS((s) => ({ ...s, siteMsg: "API injoignable." })); }
+  }
 
   /** Retire le fond (image/vidéo) du héro : retour aux halos animés. */
   async function clearHeroBg() {
@@ -7748,7 +7790,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8189,6 +8231,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.admsearchclear !== undefined) setS((s) => ({ ...s, adminSearch: "" }));
     else if (d.sitesave !== undefined) saveSite();
     else if (d.loyaltysave !== undefined) saveLoyalty();
+    else if (d.predsettingssave !== undefined) savePredictionSettings();
     else if (d.legalsave !== undefined) saveLegalPages();
     else if (d.creditssave !== undefined) saveCreditsSettings();
     else if (d.confirmcredit) confirmCreditPurchaseAdmin(d.confirmcredit);
@@ -8433,6 +8476,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (id.startsWith("al-")) return "[data-albumsave]";
     if (id.startsWith("ly-")) return "[data-loyaltysave],[data-legalsave]";
     if (id.startsWith("cr-")) return "[data-creditssave]";
+    if (id.startsWith("pd-")) return "[data-predsettingssave]";
     if (id.startsWith("e-")) return "[data-editsave]";
     if (id === "pl-add-name") return "[data-pladd]";
     if (id.startsWith("pl-edit-")) return "[data-pledit-save]";

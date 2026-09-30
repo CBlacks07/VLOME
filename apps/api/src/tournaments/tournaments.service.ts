@@ -42,7 +42,7 @@ export class TournamentsService {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
     imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
-    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string;
+    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -69,7 +69,7 @@ export class TournamentsService {
       imageUrl: r.imageUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
-      tier: r.tier === 'ELITE' ? 'ELITE' : 'AMATEUR',
+      tier: r.tier === 'ELITE' || r.tier === 'AMATEUR' ? r.tier : null,
       eventId: r.eventId ?? null,
       // Événement auquel ce tournoi est rattaché (badge sur la carte) — seulement s'il est publié :
       // findAll() ne renvoie de toute façon que ces tournois-là, mais cardsByEvent()/mine() incluent
@@ -177,7 +177,7 @@ export class TournamentsService {
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
         rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null, teamSize: dto.teamSize ?? null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
-        tier: (dto.tier ?? 'AMATEUR') as any,
+        tier: (dto.tier ?? null) as any,
         eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
@@ -938,7 +938,7 @@ export class TournamentsService {
       matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff,
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
       rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
-      tier: r.tier as 'AMATEUR' | 'ELITE',
+      tier: (r.tier ?? undefined) as 'AMATEUR' | 'ELITE' | undefined,
     };
     return this.create(dto, user);
   }
@@ -1471,7 +1471,7 @@ export class TournamentsService {
       // Tournoi par équipes : taille des équipes et composition { nomÉquipe: [joueurs] } (null = individuel).
       teamSize: extra.teamSize ?? null,
       teams: (extra.teams as Record<string, string[]>) || {},
-      tier: extra.tier === 'ELITE' ? 'ELITE' : 'AMATEUR',
+      tier: extra.tier === 'ELITE' || extra.tier === 'AMATEUR' ? extra.tier : null,
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,

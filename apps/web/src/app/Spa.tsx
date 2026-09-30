@@ -90,7 +90,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; tier?: "AMATEUR" | "ELITE"; event?: { id: string; name: string; accentColor?: string | null } | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -187,7 +187,7 @@ type State = {
     brPoints: number[]; // Battle Royale : points par palier de classement (index 0 = 1er), réglable avant lancement (voir wizScoringStep)
     brKillPoints: number; // Battle Royale : points par élimination, en plus du palier de classement
     imageUrl: string | null;
-    tier: "AMATEUR" | "ELITE"; // badge + poids dans le classement (Élite = points doublés) — modifiable après création
+    tier: "AMATEUR" | "ELITE" | null; // facultatif — badge + poids dans le classement (Élite = points doublés), modifiable après création
   };
   wizRosterSearch: string;
   wizEditId: string | null; // id du tournoi en cours de modification via l'assistant (null = création)
@@ -908,7 +908,7 @@ function wizInfosStep(S: State) {
         ${S.wizEditId ? "" : wizField("Type de tournoi", `<select id="wz-team" style="${WIZ_INP}">${[0, 2, 3, 4, 5].map((n) => `<option value="${n}" ${d.teamSize === n ? "selected" : ""}>${n === 0 ? "Individuel" : `Par équipes de ${n} joueurs`}</option>`).join("")}</select>`, "Par équipes : le capitaine inscrit son équipe (nom + joueurs), l'équipe joue comme un seul concurrent.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
-        ${wizField("Palier", `<select id="wz-tier" style="${WIZ_INP}"><option value="AMATEUR" ${d.tier !== "ELITE" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Élite double les points de classement gagnés dans ce tournoi.")}
+        ${wizField("Palier (facultatif)", `<select id="wz-tier" style="${WIZ_INP}"><option value="" ${!d.tier ? "selected" : ""}>Non défini</option><option value="AMATEUR" ${d.tier === "AMATEUR" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Élite double les points de classement gagnés dans ce tournoi. Laisse « Non défini » si ça ne s'applique pas.")}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>
       <div style="margin-top:14px">
@@ -5611,7 +5611,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
+    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -7567,7 +7567,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
       if (!S.wizEditId) d.teamSize = parseInt(val("wz-team")) || 0;
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
-      d.tier = val("wz-tier") === "ELITE" ? "ELITE" : "AMATEUR";
+      { const tv = val("wz-tier"); d.tier = tv === "ELITE" ? "ELITE" : tv === "AMATEUR" ? "AMATEUR" : null; }
       if (d.matchMode === "ft") d.matchValue = Math.max(1, Math.min(99, parseInt(val("wz-matchvalue")) || d.matchValue));
       d.countGoalDiff = (document.getElementById("wz-goaldiff") as HTMLInputElement | null)?.checked ?? true;
     } else if (S.wizStep === 2) {
@@ -7737,7 +7737,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
       }));
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
@@ -8004,7 +8004,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
             brPoints: (t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : DEFAULT_BR_POINTS).slice(),
             brKillPoints: t.brKillPoints ?? DEFAULT_BR_KILL_POINTS,
             imageUrl: t.imageUrl || null,
-            tier: t.tier === "ELITE" ? "ELITE" : "AMATEUR",
+            tier: t.tier === "ELITE" ? "ELITE" : t.tier === "AMATEUR" ? "AMATEUR" : null,
           },
         }));
         loadRoster();
@@ -8424,7 +8424,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }
       setS((s) => ({
         ...s, creating: true, wizEventId: d.evid || null, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
       }));
       loadRoster();
     }

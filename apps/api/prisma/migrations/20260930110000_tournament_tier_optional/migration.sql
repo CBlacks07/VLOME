@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Tournament" ALTER COLUMN "tier" DROP NOT NULL;
+ALTER TABLE "Tournament" ALTER COLUMN "tier" DROP DEFAULT;

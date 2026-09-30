@@ -259,7 +259,7 @@ model Tournament {
   // fonctionnent tels quels.
   teamSize          Int?
   teams             Json?
-  tier              TournamentTier   @default(AMATEUR)
+  tier              TournamentTier?  // facultatif — pas de palier tant que l'organisateur n'en choisit pas un
 }
 
 model Match {

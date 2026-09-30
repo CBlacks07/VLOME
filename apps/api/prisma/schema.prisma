@@ -35,9 +35,9 @@ enum TournamentFormat {
   BATTLE_ROYALE
 }
 
-// Palier affiché sur la page Tournois (badge + regroupement) et qui pèse sur le classement général
-// (un tournoi Élite rapporte le double de points qu'un Amateur pour le même résultat) : Amateur par
-// défaut, Élite pour les tournois relevés (repris du système joué pour la GAL 3).
+// Palier affiché sur la page Tournois (badge + regroupement uniquement, sans effet sur les points de
+// classement) — repris du système joué pour la GAL 3. Facultatif : pas de valeur tant que l'organisateur
+// n'en choisit pas une.
 enum TournamentTier {
   AMATEUR
   ELITE

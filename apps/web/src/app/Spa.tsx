@@ -187,7 +187,7 @@ type State = {
     brPoints: number[]; // Battle Royale : points par palier de classement (index 0 = 1er), réglable avant lancement (voir wizScoringStep)
     brKillPoints: number; // Battle Royale : points par élimination, en plus du palier de classement
     imageUrl: string | null;
-    tier: "AMATEUR" | "ELITE" | null; // facultatif — badge + poids dans le classement (Élite = points doublés), modifiable après création
+    tier: "AMATEUR" | "ELITE" | null; // facultatif — juste un badge affiché sur le tournoi, sans effet sur les points de classement
   };
   wizRosterSearch: string;
   wizEditId: string | null; // id du tournoi en cours de modification via l'assistant (null = création)
@@ -908,7 +908,7 @@ function wizInfosStep(S: State) {
         ${S.wizEditId ? "" : wizField("Type de tournoi", `<select id="wz-team" style="${WIZ_INP}">${[0, 2, 3, 4, 5].map((n) => `<option value="${n}" ${d.teamSize === n ? "selected" : ""}>${n === 0 ? "Individuel" : `Par équipes de ${n} joueurs`}</option>`).join("")}</select>`, "Par équipes : le capitaine inscrit son équipe (nom + joueurs), l'équipe joue comme un seul concurrent.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
-        ${wizField("Palier (facultatif)", `<select id="wz-tier" style="${WIZ_INP}"><option value="" ${!d.tier ? "selected" : ""}>Non défini</option><option value="AMATEUR" ${d.tier === "AMATEUR" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Élite double les points de classement gagnés dans ce tournoi. Laisse « Non défini » si ça ne s'applique pas.")}
+        ${wizField("Palier (facultatif)", `<select id="wz-tier" style="${WIZ_INP}"><option value="" ${!d.tier ? "selected" : ""}>Non défini</option><option value="AMATEUR" ${d.tier === "AMATEUR" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Juste un badge affiché sur le tournoi — n'a aucune influence sur les points de classement.")}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>
       <div style="margin-top:14px">

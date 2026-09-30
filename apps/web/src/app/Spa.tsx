@@ -147,7 +147,7 @@ type State = {
   albumOpen: string | null; // catalogue ouvert sur la galerie publique (null = vue des catalogues)
   galleryQ: string; gallerySort: "recent" | "count" | "az"; // recherche et tri de la vue d'accueil de la galerie
   partnersEdit: { key: string; name: string; logoUrl: string | null; display: "both" | "logo" | "name" }[] | null;
-  slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; imageUrl: string | null }[] | null;
+  slidesEdit: { key: string; tag: string; title: string; sub: string; cta: string; linkUrl: string; imageUrl: string | null }[] | null;
   adsEdit: { key: string; label: string; linkUrl: string; imageUrl: string | null; page: string }[] | null;
   adSlide: number;
   regsPanel: Detail[] | null; // inscriptions du tournoi ouvert (cockpit organisateur)
@@ -639,7 +639,9 @@ function pAccueil(S: State) {
         <span style="align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:5px 11px">${escHtml(s.tag)}</span>
         <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4vw,46px);letter-spacing:1px;line-height:.95;margin:14px 0 8px;color:${slideTextColor}">${escHtml(s.title)}</h2>
         <p style="color:${slideSubColor};font-size:14px;line-height:1.55;margin:0">${escHtml(s.sub)}</p>
-        <button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button></div>
+        ${s.linkUrl
+          ? `<a href="${escAttr(s.linkUrl)}" ${/^https?:\/\//i.test(s.linkUrl) ? 'target="_blank" rel="noopener"' : ""} style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none">${escHtml(s.cta)} ${ic(I.arrow, 16)}</a>`
+          : `<button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button>`}</div>
       <div style="display:flex;gap:8px;position:relative;z-index:1">${dots}</div></div></section>`;
 
   // Tournoi en direct : barre fixe bien visible (au lieu du bandeau défilant) — sinon repli sur le bandeau des tournois à venir.
@@ -2399,6 +2401,7 @@ function adminSite(S: State) {
         <label style="${lbl}">Texte<input id="sl-${sl.key}-sub" value="${escAttr(sl.sub)}" placeholder="Description courte…" style="${adminInp}" /></label>
         <label style="${lbl}">Bouton<input id="sl-${sl.key}-cta" value="${escAttr(sl.cta)}" placeholder="S'inscrire" style="${adminInp}" /></label>
       </div>
+      <label style="${lbl};display:block;margin-top:10px">Lien du bouton (optionnel — /tournois/xxx, /evenements/xxx ou https://…)<input id="sl-${sl.key}-link" value="${escAttr(sl.linkUrl)}" placeholder="Laisser vide = redirige vers la liste des tournois" style="${adminInp}" /></label>
       <div style="margin-top:10px"><div style="${lbl}">Image de la diapo (fond du carrousel)</div>${filePicker(`sl-${sl.key}-img`, "Choisir une image", "image/*", sl.imageUrl)}</div>
     </div>`).join("")}
     ${slides.length ? "" : `<div style="color:var(--text-faint);font-size:13px;padding:8px 0 14px">Aucune diapo pour l'instant.</div>`}
@@ -6653,6 +6656,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       title: val(`sl-${sl.key}-title`, sl.title),
       sub: val(`sl-${sl.key}-sub`, sl.sub),
       cta: val(`sl-${sl.key}-cta`, sl.cta),
+      linkUrl: val(`sl-${sl.key}-link`, sl.linkUrl),
     }));
   }
   const newKey = () => Math.random().toString(36).slice(2, 9);
@@ -6685,7 +6689,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     };
     const slides = slideRows
       .filter((sl) => sl.title.trim())
-      .map((sl) => ({ tag: sl.tag.trim(), title: sl.title.trim(), sub: sl.sub.trim(), cta: sl.cta.trim(), imageUrl: sl.imageUrl }));
+      .map((sl) => ({ tag: sl.tag.trim(), title: sl.title.trim(), sub: sl.sub.trim(), cta: sl.cta.trim(), linkUrl: sl.linkUrl.trim(), imageUrl: sl.imageUrl }));
     const partners = partnerRows.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), logoUrl: p.logoUrl, display: p.display || "both" }));
     const ads = adRows.filter((a) => a.imageUrl).map((a) => ({ label: a.label.trim(), linkUrl: a.linkUrl.trim(), imageUrl: a.imageUrl, page: a.page || "accueil" }));
     try {
@@ -7074,7 +7078,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       ...s,
       partnersEdit: s.partnersEdit ?? normPartners(s).map((p) => ({ key: newKey(), name: p.name, logoUrl: p.logoUrl, display: p.display })),
       adsEdit: s.adsEdit ?? (s.site?.ads ?? []).map((a: Detail) => ({ key: newKey(), label: a.label || "", linkUrl: a.linkUrl || "", imageUrl: a.imageUrl ?? null, page: a.page || "accueil" })),
-      slidesEdit: s.slidesEdit ?? (s.site?.slides?.length ? s.site.slides : SLIDES).map((sl: Detail) => ({ key: newKey(), tag: sl.tag || "", title: sl.title || "", sub: sl.sub || "", cta: sl.cta || "", imageUrl: sl.imageUrl ?? null })),
+      slidesEdit: s.slidesEdit ?? (s.site?.slides?.length ? s.site.slides : SLIDES).map((sl: Detail) => ({ key: newKey(), tag: sl.tag || "", title: sl.title || "", sub: sl.sub || "", cta: sl.cta || "", linkUrl: sl.linkUrl || "", imageUrl: sl.imageUrl ?? null })),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.adminTab, S.site]);
@@ -8325,7 +8329,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.ptdel) setS((s) => ({ ...s, partnersEdit: syncPartnersFromDom(s.partnersEdit ?? []), confirmBox: { title: "Supprimer le partenaire", message: "Cette ligne sera retirée du bandeau partenaires.", okLabel: "Supprimer", action: `ptdel|${d.ptdel}` } }));
     else if (d.adnew !== undefined) setS((s) => ({ ...s, adsEdit: [...syncAdsFromDom(s.adsEdit ?? []), { key: newKey(), label: "", linkUrl: "", imageUrl: null, page: "accueil" }] }));
     else if (d.addel) setS((s) => ({ ...s, adsEdit: syncAdsFromDom(s.adsEdit ?? []), confirmBox: { title: "Supprimer la publicité", message: "Cette annonce sera retirée de la liste.", okLabel: "Supprimer", action: `addel|${d.addel}` } }));
-    else if (d.sladd !== undefined) setS((s) => ({ ...s, slidesEdit: [...syncSlidesFromDom(s.slidesEdit ?? []), { key: newKey(), tag: "", title: "", sub: "", cta: "", imageUrl: null }] }));
+    else if (d.sladd !== undefined) setS((s) => ({ ...s, slidesEdit: [...syncSlidesFromDom(s.slidesEdit ?? []), { key: newKey(), tag: "", title: "", sub: "", cta: "", linkUrl: "", imageUrl: null }] }));
     else if (d.sldel) setS((s) => ({ ...s, slidesEdit: syncSlidesFromDom(s.slidesEdit ?? []), confirmBox: { title: "Supprimer la diapo", message: "Cette diapo sera retirée du slider « À la une ».", okLabel: "Supprimer", action: `sldel|${d.sldel}` } }));
     else if (d.newsnew !== undefined) setS((s) => ({ ...s, newsEdit: { title: "", category: "", body: "" } }));
     else if (d.newsedit) { const n = S.admin?.news.find((x: Detail) => x.id === d.newsedit); if (n) setS((s) => ({ ...s, newsEdit: n })); }

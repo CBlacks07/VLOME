@@ -1527,7 +1527,9 @@ export class TournamentsService {
         };
       }
     }
-    return { ...state, event };
+    // eventId brut, toujours présent même si l'événement est en brouillon (donc absent de `event`
+    // ci-dessus) — sert côté web à savoir où revenir depuis le bouton « retour » de la fiche tournoi.
+    return { ...state, event, eventId: l.record.eventId ?? null };
   }
 
   async launch(id: string, user: JwtUser) {

@@ -7243,14 +7243,18 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const overlayOpen = !!(S.cartOpen || S.creating || S.galleryOpen || S.confirmBox || S.consoleMenuOpen || S.productOpen || S.embedTarget || S.shareTarget || S.payModal);
   const overlayRef = useRef(false);
   const overlayPushed = useRef(false);
-  /** Rang de l'entrée d'historique courante dans CE site (0 = première page de la session) et défilement mémorisé. */
-  const histIdx = () => (typeof history.state?.idx === "number" ? (history.state.idx as number) : 0);
-  const lastIdx = useRef(typeof window !== "undefined" && typeof window.history.state?.idx === "number" ? (window.history.state.idx as number) : 0);
+  /** Rang de l'entrée d'historique courante dans CE site (0 = première page de la session) et défilement mémorisé.
+   * Clé « navIdx » (et non « idx ») : Next.js App Router pose déjà son propre `history.state.idx` interne
+   * (restauration de scroll) dès le premier chargement — un nom identique faisait croire à tort que notre
+   * propre compteur était déjà initialisé, et le bouton « retour » finissait presque toujours par appeler
+   * `history.back()` au lieu du repli applicatif (page brouillon, etc.). */
+  const histIdx = () => (typeof history.state?.navIdx === "number" ? (history.state.navIdx as number) : 0);
+  const lastIdx = useRef(typeof window !== "undefined" && typeof window.history.state?.navIdx === "number" ? (window.history.state.navIdx as number) : 0);
   useEffect(() => {
     overlayRef.current = overlayOpen;
     if (overlayOpen && !overlayPushed.current) {
       overlayPushed.current = true;
-      history.pushState({ appOverlay: true, idx: histIdx() + 1 }, "");
+      history.pushState({ appOverlay: true, navIdx: histIdx() + 1 }, "");
       lastIdx.current = histIdx();
     } else if (!overlayOpen && overlayPushed.current) {
       // Fermé par un bouton (pas par « retour ») : on consomme l'entrée d'historique du panneau, sinon il
@@ -7265,7 +7269,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const onPop = () => {
       // Retour/avant : on rend à la page retrouvée le défilement qu'elle avait quand on l'a quittée.
       const st = history.state;
-      const idx = typeof st?.idx === "number" ? (st.idx as number) : 0;
+      const idx = typeof st?.navIdx === "number" ? (st.navIdx as number) : 0;
       const dir = idx < lastIdx.current ? -1 : 1;
       lastIdx.current = idx;
       // Entrée d'un panneau déjà refermé : on l'enjambe dans le sens où l'on allait, sans rien changer à l'écran.
@@ -7282,7 +7286,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }, []);
   // Première entrée de la session : rang 0, pour savoir plus tard s'il existe une page précédente DANS le site.
   useEffect(() => {
-    if (typeof history.state?.idx !== "number") history.replaceState({ ...(history.state || {}), idx: 0 }, "");
+    if (typeof history.state?.navIdx !== "number") history.replaceState({ ...(history.state || {}), navIdx: 0 }, "");
   }, []);
   /** Bouton « retour » de l'interface : revient vraiment à la page d'où l'on vient (historique du navigateur)
    * au lieu d'en ouvrir une nouvelle — sinon « retour » puis « précédent » tournaient en boucle. À défaut de
@@ -7314,9 +7318,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // « retour » du téléphone quitte le site dès la première pression au lieu de revenir en arrière.
     const same = (a: string, b: string) => { try { return decodeURIComponent(a) === decodeURIComponent(b); } catch { return a === b; } };
     if (!same(window.location.hash, hash)) {
-      const cur = typeof history.state?.idx === "number" ? (history.state.idx as number) : 0;
-      history.replaceState({ ...(history.state || {}), idx: cur, scroll: window.scrollY }, ""); // mémorise où l'on était
-      history.pushState({ idx: cur + 1 }, "", hash);
+      const cur = typeof history.state?.navIdx === "number" ? (history.state.navIdx as number) : 0;
+      history.replaceState({ ...(history.state || {}), navIdx: cur, scroll: window.scrollY }, ""); // mémorise où l'on était
+      history.pushState({ navIdx: cur + 1 }, "", hash);
       lastIdx.current = cur + 1;
     }
   }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name, S.fmt, S.tournStatus, S.game, S.classementView, S.cat, S.boutiqueInStock, S.evGame]);
@@ -7851,6 +7855,24 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
     if (d.open) { openDetail(d.open); }
     else if (d.back !== undefined) {
+      // Un événement encore en brouillon n'apparaît jamais dans la liste publique : y « remonter »
+      // laisserait l'organisateur sans moyen simple d'y revenir. On le renvoie plutôt vers sa console.
+      // Vérifié AVANT le retour historique du navigateur (pas en simple repli) : même en arrivant
+      // ici via une page in-app précédente, cette page précédente est presque toujours cette même
+      // liste publique dont le brouillon est absent — y revenir serait tout autant une impasse.
+      if (S.page === "evenement" && S.eventDetail?.status !== "PUBLISHED" && canManage(S)) {
+        setS((s) => ({ ...s, page: "profil", adminTab: "events" }));
+        window.scrollTo({ top: 0 });
+        loadMyEvents();
+        return;
+      }
+      // Un tournoi rattaché à un événement encore en brouillon n'est pas listé sur /tournois (public,
+      // voir toCard côté API) : « remonter » là-bas serait une impasse. On revient plutôt sur la fiche
+      // de l'événement, d'où le tournoi a été ouvert la plupart du temps.
+      if (S.page === "tournoi" && S.detail?.eventId && !S.detail?.event && canManage(S)) {
+        openEvent(S.detail.eventId);
+        return;
+      }
       // Même bouton « ← » partout : on revient d'où l'on vient ; sinon (lien direct) on remonte à la page parente.
       goBack(() => {
         const parent: Record<string, string> = { tournoi: "tournois", joueur: "classements", evenement: "evenements", show: "tournois", evshow: "evenements" };

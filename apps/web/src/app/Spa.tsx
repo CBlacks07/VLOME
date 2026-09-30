@@ -90,7 +90,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; event?: { id: string; name: string; accentColor?: string | null } | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; tier?: "AMATEUR" | "ELITE"; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -187,6 +187,7 @@ type State = {
     brPoints: number[]; // Battle Royale : points par palier de classement (index 0 = 1er), réglable avant lancement (voir wizScoringStep)
     brKillPoints: number; // Battle Royale : points par élimination, en plus du palier de classement
     imageUrl: string | null;
+    tier: "AMATEUR" | "ELITE"; // badge + poids dans le classement (Élite = points doublés) — modifiable après création
   };
   wizRosterSearch: string;
   wizEditId: string | null; // id du tournoi en cours de modification via l'assistant (null = création)
@@ -907,6 +908,7 @@ function wizInfosStep(S: State) {
         ${S.wizEditId ? "" : wizField("Type de tournoi", `<select id="wz-team" style="${WIZ_INP}">${[0, 2, 3, 4, 5].map((n) => `<option value="${n}" ${d.teamSize === n ? "selected" : ""}>${n === 0 ? "Individuel" : `Par équipes de ${n} joueurs`}</option>`).join("")}</select>`, "Par équipes : le capitaine inscrit son équipe (nom + joueurs), l'équipe joue comme un seul concurrent.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
+        ${wizField("Palier", `<select id="wz-tier" style="${WIZ_INP}"><option value="AMATEUR" ${d.tier !== "ELITE" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Élite double les points de classement gagnés dans ce tournoi.")}
       </div>
       <div style="margin-top:14px">${wizField("Affiche du tournoi (optionnel)", filePicker("wz-img", "Choisir l'affiche", "image/*", d.imageUrl))}</div>
       <div style="margin-top:14px">
@@ -1340,7 +1342,7 @@ function pTournois(S: State) {
   const manage = canManage(S);
   const q = S.q.trim().toLowerCase();
   let list = S.tournStatus === "Tous" ? source : source.filter((t) => matchesTournStatus(t, S.tournStatus));
-  if (S.fmt !== "Tous") list = list.filter((t) => t.format === S.fmt);
+  if (S.fmt !== "Tous") list = list.filter((t) => (t.tier || "AMATEUR") === S.fmt);
   if (q) list = list.filter((t) => `${t.name} ${t.game || ""}`.toLowerCase().includes(q));
   const createBtn = manage
     ? `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button>`
@@ -1384,7 +1386,7 @@ function pTournois(S: State) {
         <div style="display:flex;align-items:center;gap:12px;min-width:0">${badge}<div style="min-width:0">${evBadge}<h4 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.5px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</h4></div></div>
         <span style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${stColor};background:${stColor}14;border:1px solid ${stColor}55;border-radius:99px;padding:3px 9px;white-space:nowrap">${t.live ? `<span style="width:5px;height:5px;border-radius:50%;background:${stColor};animation:blink 1.2s infinite"></span>` : ""}${stLabel}</span>
       </div>
-      <div><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>${t.tier === "ELITE" ? `<span style="font-size:11px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 11)} Élite</span>` : ""}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:10px;border-top:1px solid var(--surface-4)">${miniStat("Date", t.date || "À confirmer")}${miniStat("Joueurs", String(t.players))}${miniStat("Récompense", t.cagnotte !== null ? `${t.cagnotte} pts` : "—", t.cagnotte !== null ? "#FBBF24" : undefined)}</div>
     </div>`;
   };
@@ -1393,9 +1395,10 @@ function pTournois(S: State) {
     const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
     return `<option value="${st}" ${S.tournStatus === st ? "selected" : ""}>${st} (${n})</option>`;
   }).join("")}</select>`;
-  const fmtSel = `<select id="tourn-fmt-sel" style="${selStyle}">${FORMATS.map((f) => {
-    const n = f === "Tous" ? source.length : source.filter((t) => t.format === f).length;
-    return `<option value="${f}" ${S.fmt === f ? "selected" : ""}>${f} (${n})</option>`;
+  const TIER_OPTIONS = [["Tous", "Tous"], ["AMATEUR", "Amateur"], ["ELITE", "Élite"]] as const;
+  const fmtSel = `<select id="tourn-fmt-sel" style="${selStyle}">${TIER_OPTIONS.map(([v, label]) => {
+    const n = v === "Tous" ? source.length : source.filter((t) => (t.tier || "AMATEUR") === v).length;
+    return `<option value="${v}" ${S.fmt === v ? "selected" : ""}>${label} (${n})</option>`;
   }).join("")}</select>`;
   const selGroup = (label: string, sel: string) => `<div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint)">${label}</span>${sel}</div>`;
   const filterSelectors = `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Statut", statusSel)}${selGroup("Catégorie", fmtSel)}</div>`;
@@ -1403,7 +1406,18 @@ function pTournois(S: State) {
     <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
     ${filterSelectors}
   </div>`;
-  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${rest.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${rest.map(cardV2).join("")}</div>` : empty}</div>`;
+  // Aucun palier choisi : on regroupe la grille en deux sections (Amateur/Élite), comme sur la
+  // maquette — filtrer sur un palier précis retombe sur une simple liste plate, le regroupement
+  // n'ayant plus d'intérêt.
+  const cardGrid = (items: TournCard[]) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${items.map(cardV2).join("")}</div>`;
+  const tierSection = (label: string, items: TournCard[]) => items.length ? `<div style="margin-bottom:26px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><h4 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;text-transform:uppercase;margin:0;color:var(--text-muted)">${label}</h4><span style="font-size:11.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${items.length}</span></div>
+    ${cardGrid(items)}
+  </div>` : "";
+  const groupedGrid = S.fmt === "Tous"
+    ? `${tierSection("Amateur", rest.filter((t) => (t.tier || "AMATEUR") !== "ELITE"))}${tierSection("Élite", rest.filter((t) => t.tier === "ELITE"))}`
+    : cardGrid(rest);
+  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${rest.length ? groupedGrid : empty}</div>`;
 
   return `${head}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
 }
@@ -4142,7 +4156,10 @@ function pTournoi(S: State) {
   const cover = `<div style="border-radius:20px;border:1px solid var(--border);overflow:hidden;position:relative;margin-bottom:14px;${coverBg}">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-wrap:wrap;gap:10px">
       <button data-back="1" style="display:inline-flex;align-items:center;gap:7px;background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid var(--border-strong);color:#F4F5FB;border-radius:11px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer">← Tournois</button>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:6px 12px">${ic(I.crown, 12)}Élite</span>` : ""}
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
+      </div>
     </div>
     <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;text-wrap:balance;overflow-wrap:break-word;color:${t.imageUrl ? "#fff" : "var(--text)"};${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
@@ -5594,7 +5611,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -7550,6 +7567,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
       if (!S.wizEditId) d.teamSize = parseInt(val("wz-team")) || 0;
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
+      d.tier = val("wz-tier") === "ELITE" ? "ELITE" : "AMATEUR";
       if (d.matchMode === "ft") d.matchValue = Math.max(1, Math.min(99, parseInt(val("wz-matchvalue")) || d.matchValue));
       d.countGoalDiff = (document.getElementById("wz-goaldiff") as HTMLInputElement | null)?.checked ?? true;
     } else if (S.wizStep === 2) {
@@ -7681,7 +7699,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       name: d.name, game: d.game, format: d.format, place: d.place,
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.teamSize ? [] : d.players,
       ...(d.teamSize ? { teamSize: d.teamSize } : {}),
-      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint,
+      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
@@ -7719,7 +7737,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
       }));
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
@@ -7741,7 +7759,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     setS((s) => ({ ...s, busy: true }));
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
-      entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
+      entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
       // Les reglages de poule concernent tous les formats qui en proposent, pas seulement Survival.
       ...(wizHasPools(d.format) ? { poolFormat: d.poolFormat, qualifyPerPool: d.qualifyPerPool } : {}),
       // Le format de la phase finale est un choix libre dès qu'il y a des poules, quel que soit le
@@ -7986,6 +8004,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
             brPoints: (t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : DEFAULT_BR_POINTS).slice(),
             brKillPoints: t.brKillPoints ?? DEFAULT_BR_KILL_POINTS,
             imageUrl: t.imageUrl || null,
+            tier: t.tier === "ELITE" ? "ELITE" : "AMATEUR",
           },
         }));
         loadRoster();
@@ -8405,7 +8424,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }
       setS((s) => ({
         ...s, creating: true, wizEventId: d.evid || null, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: "AMATEUR" },
       }));
       loadRoster();
     }

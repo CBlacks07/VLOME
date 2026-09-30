@@ -42,7 +42,7 @@ export class TournamentsService {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
     imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
-    event?: { id: string; name: string; accentColor: string | null } | null;
+    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -69,6 +69,7 @@ export class TournamentsService {
       imageUrl: r.imageUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
+      tier: r.tier === 'ELITE' ? 'ELITE' : 'AMATEUR',
       eventId: r.eventId ?? null,
       // Événement auquel ce tournoi est rattaché (badge sur la carte) — seulement s'il est publié :
       // findAll() ne renvoie de toute façon que ces tournois-là, mais cardsByEvent()/mine() incluent
@@ -176,6 +177,7 @@ export class TournamentsService {
         imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
         rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null, teamSize: dto.teamSize ?? null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
+        tier: (dto.tier ?? 'AMATEUR') as any,
         eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
@@ -198,6 +200,7 @@ export class TournamentsService {
     if (dto.prize !== undefined) data.prize = dto.prize.trim() || null;
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
     if (dto.givesLoyaltyPoint !== undefined) data.givesLoyaltyPoint = dto.givesLoyaltyPoint;
+    if (dto.tier !== undefined) data.tier = dto.tier;
 
     // Changement de format : un format différent = une structure de jeu différente (poules ou non,
     // barème ou non…), donc le moteur est reconstruit à neuf plutôt que rafistolé champ par champ.
@@ -310,7 +313,7 @@ export class TournamentsService {
   private async computeLeaderboard(where: { eventId?: string }) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
-      select: { id: true, game: true, engineState: true, teams: true },
+      select: { id: true, game: true, engineState: true, teams: true, tier: true },
     });
     const acct = await this.accountMap();
     type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
@@ -320,9 +323,11 @@ export class TournamentsService {
       if (!st || !st.players?.length) continue;
       const game = t.game || 'Autre';
       const teams = (t.teams as Record<string, string[]> | null) || {};
+      // Palier Élite : le même résultat rapporte le double de points qu'en Amateur (repris du barème GAL 3).
+      const tierMult = t.tier === 'ELITE' ? 2 : 1;
       for (const p of st.players) {
         const uid = acct.get(`${t.id}|${p.name}`) ?? null;
-        const points = st.points?.[p.id] || 0;
+        const points = (st.points?.[p.id] || 0) * tierMult;
         // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
         // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
         const realMatches = st.log.filter((l) => l.a && l.b);
@@ -402,7 +407,7 @@ export class TournamentsService {
   async playerProfile(name: string, uid?: string) {
     const acct = uid ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
-      select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true },
+      select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true, tier: true },
     });
     let points = 0, wins = 0, losses = 0, championships = 0, tournamentsPlayed = 0;
     const byGameMap = new Map<string, { game: string; points: number; wins: number; losses: number; championships: number; tournamentsPlayed: number }>();
@@ -413,7 +418,8 @@ export class TournamentsService {
       const me = this.findEntrant(st, (t.teams as Record<string, string[]> | null) || {}, t.id, name, uid, acct);
       if (!me) continue;
       const game = t.game || 'Autre';
-      const tPoints = st.points?.[me.id] || 0;
+      // Même barème que computeLeaderboard() : un tournoi Élite compte double.
+      const tPoints = (st.points?.[me.id] || 0) * (t.tier === 'ELITE' ? 2 : 1);
       const logs = st.log.filter((l) => l.a && l.b && (l.a === me.id || l.b === me.id));
       const tWins = logs.filter((l) => l.winner === me.id).length;
       const tLosses = logs.length - tWins;
@@ -932,6 +938,7 @@ export class TournamentsService {
       matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff,
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
       rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
+      tier: r.tier as 'AMATEUR' | 'ELITE',
     };
     return this.create(dto, user);
   }
@@ -1383,7 +1390,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1464,6 +1471,7 @@ export class TournamentsService {
       // Tournoi par équipes : taille des équipes et composition { nomÉquipe: [joueurs] } (null = individuel).
       teamSize: extra.teamSize ?? null,
       teams: (extra.teams as Record<string, string[]>) || {},
+      tier: extra.tier === 'ELITE' ? 'ELITE' : 'AMATEUR',
       format: format ? (FORMAT_LABEL[format] || format) : null,
       place,
       date: date ? new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : null,

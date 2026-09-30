@@ -35,6 +35,14 @@ enum TournamentFormat {
   BATTLE_ROYALE
 }
 
+// Palier affiché sur la page Tournois (badge + regroupement) et qui pèse sur le classement général
+// (un tournoi Élite rapporte le double de points qu'un Amateur pour le même résultat) : Amateur par
+// défaut, Élite pour les tournois relevés (repris du système joué pour la GAL 3).
+enum TournamentTier {
+  AMATEUR
+  ELITE
+}
+
 enum TournamentStatus {
   DRAFT
   LIVE
@@ -251,6 +259,7 @@ model Tournament {
   // fonctionnent tels quels.
   teamSize          Int?
   teams             Json?
+  tier              TournamentTier   @default(AMATEUR)
 }
 
 model Match {

@@ -16,6 +16,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsInt() @Min(2) @Max(8) teamSize?: number;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
+  @IsOptional() @IsIn(['AMATEUR', 'ELITE']) tier?: 'AMATEUR' | 'ELITE';
   // Événement auquel rattacher ce tournoi (l'appelant doit pouvoir gérer cet événement).
   @IsOptional() @IsString() @MaxLength(60) eventId?: string;
   // Barème de points (facultatif — valeurs par défaut du moteur sinon).
@@ -63,6 +64,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() @MaxLength(400) prize?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
+  @IsOptional() @IsIn(['AMATEUR', 'ELITE']) tier?: 'AMATEUR' | 'ELITE';
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;

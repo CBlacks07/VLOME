@@ -554,6 +554,7 @@ function tournCard(t: TournCard, big: boolean) {
   const evAcc = t.event ? (/^#[0-9a-f]{6}$/i.test(t.event.accentColor || "") ? t.event.accentColor! : "#7C82FF") : "";
   const eventBadge = t.event ? `<span data-openevent="${t.event.id}" title="Fait partie de l'événement ${escAttr(t.event.name)}" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#fff;background:${evAcc}cc;backdrop-filter:blur(4px);border-radius:99px;padding:3px 9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ic(I.crown, 10)}${escHtml(t.event.name)}</span>` : "";
   const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
+  const eliteBadge = t.tier === "ELITE" ? `<span style="font-size:10.5px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 9px;white-space:nowrap">${ic(I.crown, 10)} Élite</span>` : "";
   const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:var(--text-muted);font-weight:600">${t.status}</span>`;
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
   // Bandeau : image du tournoi si fournie, sinon dégradé par défaut.
@@ -562,7 +563,7 @@ function tournCard(t: TournCard, big: boolean) {
     : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
   return `<div ${openAttr} class="hcard" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,var(--surface),var(--surface-2))">
     <div class="zoom" style="height:${t.imageUrl ? (big ? 130 : 110) : big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;${bannerBg}">
-      <span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${badge}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${eliteBadge}</div>${badge}</div>
     <div style="padding:${big ? "15px 16px 17px" : "14px 15px 16px"}">
       ${eventBadge ? `<div style="margin-bottom:7px">${eventBadge}</div>` : ""}
       <h4 style="margin:0 0 6px;font-size:${big ? 18 : 17}px">${t.name}</h4>
@@ -5355,7 +5356,7 @@ function eventTournStateBadge(t: Detail): string {
 function eventTournCard(t: Detail, evId: string | null): string {
   return `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
       <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${eventTournStateBadge(t)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${t.tier === "ELITE" ? `<span style="flex:none;font-size:9.5px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:3px 8px;white-space:nowrap">${ic(I.crown, 9)} Élite</span>` : ""}${eventTournStateBadge(t)}</div>
         <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`, t.date, t.place].filter(Boolean).map(escHtml).join(" · ")}</div>
       </div>

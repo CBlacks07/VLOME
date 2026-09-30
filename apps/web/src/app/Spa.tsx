@@ -892,7 +892,6 @@ function wizInfosStep(S: State) {
     </div>
     ${editing ? `<p style="color:var(--text-faint);font-size:11.5px;margin-top:8px">Les participants déjà inscrits sont conservés. Le lancement répartit tout selon le nouveau format.</p>` : ""}
   </div>`;
-  const chosen = WIZ_FORMATS.find(([key]) => key === d.format) || WIZ_FORMATS[0];
   // Raccourci abrégé (Modifier, format figé) : le barème détaillé n'a de sens qu'en Survival (seul
   // format à respecter une cagnotte) — les autres formats n'ont rien à régler ici, on saute direct à
   // la validation (voir la même règle dans wizSteps() et le backTarget de wizValidateStep()).
@@ -928,10 +927,12 @@ function wizInfosStep(S: State) {
         <p style="color:var(--text-faint);font-size:11.5px;margin-top:6px">Round Robin (poules et phase finale) : à égalité de victoires, celui qui a le meilleur écart entre buts marqués et encaissés passe devant. Décoché, seules les victoires comptent.</p>
       </div>
       ${formatPicker}`)}
-    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.warn, 16)}Comment ça marche</h3>
-      <div style="color:var(--text-muted);font-size:13px;line-height:1.9">${WIZ_FORMAT_EXPLAIN[chosen[0]] || ""}</div>`)}
+    ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.warn, 16)}Comment créer un tournoi</h3>
+      <div style="color:var(--text-muted);font-size:13px;line-height:1.9">${editing ? WIZ_EDIT_GUIDE : WIZ_CREATE_GUIDE}</div>`)}
   </div>${wizFoot("Annuler", 0, nextStep)}`;
 }
+const WIZ_CREATE_GUIDE = `Un tournoi se crée en quelques étapes, dans l'ordre : <b style="color:var(--text)">Informations générales</b> (ici — nom, jeu, format…), <b style="color:var(--text)">Participants</b> (saisis à la main ou depuis la base de joueurs), puis selon le format, <b style="color:var(--text)">Poules et barème de points</b>, et enfin <b style="color:var(--text)">Validation</b> avant de lancer.<br><br>Rien n'est figé tant que le tournoi n'est pas lancé : tu peux revenir en arrière à tout moment et tout ajuster, y compris changer de format.`;
+const WIZ_EDIT_GUIDE = `Les réglages généraux d'un tournoi restent modifiables tant qu'il n'est pas lancé — participants, poules, barème de points, et même le format lui-même (« Changer le format », qui rouvre l'assistant complet en conservant les participants déjà saisis).<br><br>Une fois lancé, seuls les paramètres qui ne changent pas le déroulé (nom, lieu, frais…) restent modifiables ; poules et barème se figent.`;
 
 const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
   SURVIVAL: `<b style="color:var(--text)">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras à l'étape 4.<br><br><b style="color:var(--text)">Déroulé</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.`,

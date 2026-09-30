@@ -9,15 +9,19 @@ import { SESSION_SECRET_CONFIGURED } from '../auth/auth.module';
 import { MailService, escapeHtml } from '../mail/mail.service';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
-export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'legal', 'privacy'] as const;
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'tierPoints', 'legal', 'privacy'] as const;
 /** Barème des pronostics (carte « Qui va gagner ? ») : points par bon pronostic, et bonus si le choix
  * était outsider (moins de X % des voix) au moment où le pronostic a été fait. */
 export const DEFAULT_PREDICTIONS_SETTINGS = { basePoints: 10, outsiderThreshold: 40, outsiderMultiplier: 2 };
+/** Multiplicateur de points de classement selon le palier du tournoi (Amateur/Élite, purement un badge
+ * sinon) — 1 = aucun effet. Un tournoi sans palier suit le multiplicateur Amateur. */
+export const DEFAULT_TIER_POINTS_SETTINGS = { amateurMultiplier: 1, eliteMultiplier: 2 };
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'Miabe', name2: 'ESPORT', logoUrl: null },
   loyalty: DEFAULT_LOYALTY_SETTINGS,
   credits: DEFAULT_CREDITS_SETTINGS,
   predictions: DEFAULT_PREDICTIONS_SETTINGS,
+  tierPoints: DEFAULT_TIER_POINTS_SETTINGS,
   hero: {
     kicker: 'Miabe Esport · Togo',
     title: "LE HUB DE L'ESPORT\nTOGOLAIS & OUEST-AFRICAIN",

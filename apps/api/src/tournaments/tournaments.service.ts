@@ -8,7 +8,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreditsService } from '../credits/credits.service';
 import { LoyaltyReason } from '../../generated/prisma';
 import { MailService, escapeHtml } from '../mail/mail.service';
-import { DEFAULT_PREDICTIONS_SETTINGS } from '../admin/admin.service';
+import { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS } from '../admin/admin.service';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
@@ -313,9 +313,10 @@ export class TournamentsService {
   private async computeLeaderboard(where: { eventId?: string }) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
-      select: { id: true, game: true, engineState: true, teams: true },
+      select: { id: true, game: true, engineState: true, teams: true, tier: true },
     });
     const acct = await this.accountMap();
+    const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
     type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
     const agg = new Map<string, Agg>();
     for (const t of tournaments) {
@@ -323,9 +324,12 @@ export class TournamentsService {
       if (!st || !st.players?.length) continue;
       const game = t.game || 'Autre';
       const teams = (t.teams as Record<string, string[]> | null) || {};
+      // Palier : purement un badge par défaut (multiplicateurs à 1), mais réglable depuis Admin →
+      // Paliers si l'équipe veut vraiment pondérer le classement par palier.
+      const tierMult = t.tier === 'ELITE' ? eliteMultiplier : amateurMultiplier;
       for (const p of st.players) {
         const uid = acct.get(`${t.id}|${p.name}`) ?? null;
-        const points = st.points?.[p.id] || 0;
+        const points = (st.points?.[p.id] || 0) * tierMult;
         // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
         // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
         const realMatches = st.log.filter((l) => l.a && l.b);
@@ -405,8 +409,9 @@ export class TournamentsService {
   async playerProfile(name: string, uid?: string) {
     const acct = uid ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
-      select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true },
+      select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true, tier: true },
     });
+    const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
     let points = 0, wins = 0, losses = 0, championships = 0, tournamentsPlayed = 0;
     const byGameMap = new Map<string, { game: string; points: number; wins: number; losses: number; championships: number; tournamentsPlayed: number }>();
     const history: Array<{ tournamentId: string; tournamentName: string; game: string; opponent: string; sa: number | null; sb: number | null; won: boolean; ts: number }> = [];
@@ -416,7 +421,8 @@ export class TournamentsService {
       const me = this.findEntrant(st, (t.teams as Record<string, string[]> | null) || {}, t.id, name, uid, acct);
       if (!me) continue;
       const game = t.game || 'Autre';
-      const tPoints = st.points?.[me.id] || 0;
+      // Même barème que computeLeaderboard() : multiplicateur par palier, réglable en admin.
+      const tPoints = (st.points?.[me.id] || 0) * (t.tier === 'ELITE' ? eliteMultiplier : amateurMultiplier);
       const logs = st.log.filter((l) => l.a && l.b && (l.a === me.id || l.b === me.id));
       const tWins = logs.filter((l) => l.winner === me.id).length;
       const tLosses = logs.length - tWins;
@@ -813,6 +819,13 @@ export class TournamentsService {
   private async getPredictionSettings(): Promise<{ basePoints: number; outsiderThreshold: number; outsiderMultiplier: number }> {
     const row = await this.prisma.setting.findUnique({ where: { key: 'predictions' } });
     return { ...DEFAULT_PREDICTIONS_SETTINGS, ...(row?.value as object) };
+  }
+
+  /** Multiplicateur de points de classement par palier — réglable depuis Admin → Paliers (Setting
+   * générique, clé "tierPoints"). Un tournoi sans palier suit le multiplicateur Amateur. */
+  private async getTierMultipliers(): Promise<{ amateurMultiplier: number; eliteMultiplier: number }> {
+    const row = await this.prisma.setting.findUnique({ where: { key: 'tierPoints' } });
+    return { ...DEFAULT_TIER_POINTS_SETTINGS, ...(row?.value as object) };
   }
 
   /** Matchs pronostiquables d'un tournoi + tendance du public (votes par côté). Public. */

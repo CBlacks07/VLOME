@@ -5672,8 +5672,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // Les animations d'entrée (.rise) ne jouent qu'au changement de page :
   // tout autre re-rendu recrée le DOM et les rejouerait sinon.
   const prevPage = useRef<string | null>(null);
-  const pageChanged = prevPage.current !== S.page;
-  useEffect(() => { prevPage.current = S.page; });
+  // Au premier chargement, le contenu réel (site, tournois…) arrive après un rendu de secours
+  // ("Chargement…") : prevPage est déjà posé sur la page courante à ce moment-là, donc sans ce
+  // second repère, l'entrée en cascade (hero, actus, partenaires…) ne jouait jamais sur un accès
+  // direct/rechargement — seulement lors d'une navigation déjà en place dans l'appli.
+  const prevSiteLoaded = useRef(false);
+  const siteJustLoaded = !prevSiteLoaded.current && !!S.site;
+  const pageChanged = prevPage.current !== S.page || siteJustLoaded;
+  useEffect(() => { prevPage.current = S.page; if (S.site) prevSiteLoaded.current = true; });
 
   // Le HTML injecté est entièrement recréé à chaque rendu : les zones défilantes internes (bracket,
   // centre de la régie, listes) retomberaient en haut. On mémorise donc leur dernière position (écoute

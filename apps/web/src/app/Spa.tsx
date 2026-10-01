@@ -709,10 +709,25 @@ function pAccueil(S: State) {
     ? `<section class="rise d5" style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "Miabe")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
     : "";
 
+  // Partenaires (pastilles) et contenu sponsorisé étaient deux blocs quasi identiques l'un sous l'autre
+  // (même carte, même largeur) — fondus en une seule section « Partenaires & sponsors », avec une entrée
+  // premium (pastilles en cascade + reflet unique) plutôt que la simple apparition en bloc d'avant.
   const partnerList = normPartners(S);
-  const partners = `<div class="rise d6" style="border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div><div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p) => `<span style="display:inline-flex;align-items:center;gap:12px;height:76px;padding:0 18px;border:1px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:52px;padding:6px 14px;border-radius:10px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="height:40px;width:auto;max-width:150px;object-fit:contain" /></span>` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div></div>`;
+  const adData = adSlideData(S, "accueil");
+  const partnersPills = partnerList.length
+    ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p, i) => `<span class="rise-premium" style="animation-delay:${(i * 0.06).toFixed(2)}s;display:inline-flex;align-items:center;gap:12px;height:76px;padding:0 18px;border:1px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:52px;padding:6px 14px;border-radius:10px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="height:40px;width:auto;max-width:150px;object-fit:contain" /></span>` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div>`
+    : "";
+  const sponsoredBlock = adData
+    ? `<div style="${partnerList.length ? "margin-top:20px;padding-top:20px;border-top:1px solid var(--border)" : ""}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="width:5px;height:16px;border-radius:3px;background:var(--text-faint);display:inline-block"></span><span style="font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-faint);font-weight:700">Contenu sponsorisé</span></div>
+      ${adSlideCard(adData.ad)}${adSlideDots(adData.items, adData.idx)}
+    </div>`
+    : "";
+  const partners = (partnerList.length || adData)
+    ? `<div class="rise d6 shine-sweep" style="border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div>${partnersPills}${sponsoredBlock}</div>`
+    : "";
 
-  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${partners}${adCarousel(S, "accueil")}</main>`;
+  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${partners}</main>`;
 }
 
 /* ================= Assistant de création de tournoi (5 étapes) ================= */
@@ -5124,14 +5139,17 @@ function pShowInner(S: State) {
  * pages ») ; s'il y en a plusieurs, elles tournent automatiquement avec des
  * puces de navigation. L'image reste toujours visible en entier (object-fit:contain).
  */
-/** Bannière sponsorisée : section pleine largeur au style cohérent avec le reste du site, placée en fin de page (jamais coincée entre deux blocs de contenu). */
-function adCarousel(S: State, pageKey: string) {
+/** Sélectionne la diapo sponsorisée courante pour une page donnée (null si aucune) — factorisé pour
+ * être consommé soit seul (adCarousel), soit fondu dans la section Partenaires de l'accueil. */
+function adSlideData(S: State, pageKey: string): { items: Detail[]; idx: number; ad: Detail } | null {
   const all: Detail[] = S.site?.ads ?? [];
   const items = all.filter((a) => a.imageUrl && (a.page === pageKey || a.page === "toutes"));
-  if (!items.length) return "";
+  if (!items.length) return null;
   const idx = items.length > 1 ? ((S.adSlide % items.length) + items.length) % items.length : 0;
-  const ad = items[idx];
-  const label = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:5px;height:22px;border-radius:3px;background:var(--text-faint);display:inline-block"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Contenu sponsorisé</h3></div>`;
+  return { items, idx, ad: items[idx] };
+}
+/** Carte d'une diapo sponsorisée seule (sans titre de section ni puces) — réutilisée par adCarousel et par la section Partenaires & sponsors de l'accueil. */
+function adSlideCard(ad: Detail): string {
   const inner = `<div class="slidein" style="display:flex;align-items:center;gap:26px;padding:20px 24px;flex-wrap:wrap">
     <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center">
       <img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
@@ -5143,11 +5161,19 @@ function adCarousel(S: State, pageKey: string) {
     ${ad.linkUrl ? `<span style="flex:none;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px">Découvrir ${ic(I.arrow, 15)}</span>` : ""}
   </div>`;
   const card = `<div class="hcard" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;background:linear-gradient(90deg,var(--surface),var(--surface-2))">${inner}</div>`;
-  const clickable = ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block;text-decoration:none;color:inherit">${card}</a>` : card;
-  const dots = items.length > 1
+  return ad.linkUrl ? `<a href="${escAttr(ad.linkUrl)}" target="_blank" rel="noopener sponsored" style="display:block;text-decoration:none;color:inherit">${card}</a>` : card;
+}
+function adSlideDots(items: Detail[], idx: number): string {
+  return items.length > 1
     ? `<div style="display:flex;gap:6px;justify-content:center;margin-top:12px">${items.map((_, i) => `<span data-adslide="${i}" style="display:inline-block;width:${i === idx ? 18 : 7}px;height:6px;border-radius:99px;background:${i === idx ? "#7C82FF" : "var(--border-strong)"};cursor:pointer;transition:width .2s"></span>`).join("")}</div>`
     : "";
-  return `<section style="margin:0 0 44px">${label}${clickable}${dots}</section>`;
+}
+/** Bannière sponsorisée : section pleine largeur au style cohérent avec le reste du site, placée en fin de page (jamais coincée entre deux blocs de contenu). */
+function adCarousel(S: State, pageKey: string) {
+  const data = adSlideData(S, pageKey);
+  if (!data) return "";
+  const label = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:5px;height:22px;border-radius:3px;background:var(--text-faint);display:inline-block"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Contenu sponsorisé</h3></div>`;
+  return `<section style="margin:0 0 44px">${label}${adSlideCard(data.ad)}${adSlideDots(data.items, data.idx)}</section>`;
 }
 
 /** Bandeau permanent des partenaires — présent sur toutes les pages, sous l'en-tête. */

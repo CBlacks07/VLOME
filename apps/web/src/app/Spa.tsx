@@ -709,22 +709,22 @@ function pAccueil(S: State) {
     ? `<section class="rise d5" style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "Miabe")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
     : "";
 
-  // Partenaires (pastilles) et contenu sponsorisé étaient deux blocs quasi identiques l'un sous l'autre
-  // (même carte, même largeur) — fondus en une seule section « Partenaires & sponsors », avec une entrée
-  // premium (pastilles en cascade + reflet unique) plutôt que la simple apparition en bloc d'avant.
-  const partnerList = normPartners(S);
-  const adData = adSlideData(S, "accueil");
-  const partnersPills = partnerList.length
-    ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${partnerList.map((p, i) => `<span class="rise-premium" style="animation-delay:${(i * 0.06).toFixed(2)}s;display:inline-flex;align-items:center;gap:12px;height:76px;padding:0 18px;border:1px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:700;font-size:14px" title="${escAttr(p.name)}">${p.logoUrl && p.display !== "name" ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:52px;padding:6px 14px;border-radius:10px;background:#F4F5FB"><img src="${mediaUrl(p.logoUrl)}" alt="${escAttr(p.name)}" style="height:40px;width:auto;max-width:150px;object-fit:contain" /></span>` : ""}${p.display !== "logo" || !p.logoUrl ? escHtml(p.name) : ""}</span>`).join("")}</div>`
-    : "";
-  const sponsoredBlock = adData
-    ? `<div style="${partnerList.length ? "margin-top:20px;padding-top:20px;border-top:1px solid var(--border)" : ""}">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="width:5px;height:16px;border-radius:3px;background:var(--text-faint);display:inline-block"></span><span style="font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-faint);font-weight:700">Contenu sponsorisé</span></div>
-      ${adSlideCard(adData.ad)}${adSlideDots(adData.items, adData.idx)}
-    </div>`
-    : "";
-  const partners = (partnerList.length || adData)
-    ? `<div class="rise d6 shine-sweep" style="border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:22px 24px"><div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div>${partnersPills}${sponsoredBlock}</div>`
+  // Partenaires et contenu sponsorisé étaient deux carrousels quasi identiques l'un sous l'autre — fondus
+  // en un seul carrousel qui fait défiler les deux indifféremment (un partenaire, puis un sponsor, etc.),
+  // sous un unique titre et une unique rangée de puces, avec un reflet premium au premier affichage.
+  const allAds: Detail[] = S.site?.ads ?? [];
+  const showcaseAds = allAds.filter((a) => a.imageUrl && (a.page === "accueil" || a.page === "toutes"));
+  const showcaseItems: { ad: Detail; subtitle: string }[] = [
+    ...normPartners(S).map((p) => ({ ad: { imageUrl: p.logoUrl, label: p.name, linkUrl: null } as unknown as Detail, subtitle: "Partenaire Miabe Esport" })),
+    ...showcaseAds.map((a) => ({ ad: a, subtitle: "Cet emplacement soutient l'organisation des tournois Miabe." })),
+  ];
+  const sIdx = showcaseItems.length > 1 ? ((S.adSlide % showcaseItems.length) + showcaseItems.length) % showcaseItems.length : 0;
+  const partners = showcaseItems.length
+    ? `<div class="rise d6 shine-sweep" style="border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:22px 24px">
+        <div style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:16px">Partenaires &amp; sponsors</div>
+        ${adSlideCard(showcaseItems[sIdx].ad, showcaseItems[sIdx].subtitle)}
+        ${adSlideDots(showcaseItems.map((it) => it.ad), sIdx)}
+      </div>`
     : "";
 
   return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${partners}</main>`;
@@ -5148,15 +5148,17 @@ function adSlideData(S: State, pageKey: string): { items: Detail[]; idx: number;
   const idx = items.length > 1 ? ((S.adSlide % items.length) + items.length) % items.length : 0;
   return { items, idx, ad: items[idx] };
 }
-/** Carte d'une diapo sponsorisée seule (sans titre de section ni puces) — réutilisée par adCarousel et par la section Partenaires & sponsors de l'accueil. */
-function adSlideCard(ad: Detail): string {
+/** Carte d'une diapo sponsorisée seule (sans titre de section ni puces) — réutilisée par adCarousel et par le
+ * carrousel unique « Partenaires & sponsors » de l'accueil (où une diapo peut aussi être un partenaire sans
+ * lien : d'où le sous-titre et le fond de secours personnalisables). */
+function adSlideCard(ad: Detail, subtitle = "Cet emplacement soutient l'organisation des tournois Miabe."): string {
   const inner = `<div class="slidein" style="display:flex;align-items:center;gap:26px;padding:20px 24px;flex-wrap:wrap">
-    <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center">
-      <img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />
+    <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:${ad.imageUrl ? "var(--bg)" : "linear-gradient(140deg,rgba(34,211,238,.14),rgba(124,130,255,.1))"};display:flex;align-items:center;justify-content:center">
+      ${ad.imageUrl ? `<img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />` : ic(I.crown, 32)}
     </div>
     <div style="flex:1;min-width:200px">
       <div style="font-weight:750;font-size:16px">${ad.label ? escHtml(ad.label) : "Un partenaire Miabe Esport"}</div>
-      <div style="font-size:12.5px;color:var(--text-faint);margin-top:4px">Cet emplacement soutient l'organisation des tournois Miabe.</div>
+      <div style="font-size:12.5px;color:var(--text-faint);margin-top:4px">${subtitle}</div>
     </div>
     ${ad.linkUrl ? `<span style="flex:none;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:13.5px">Découvrir ${ic(I.arrow, 15)}</span>` : ""}
   </div>`;

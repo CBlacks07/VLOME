@@ -73,12 +73,6 @@ a:hover { color: #7C82FF; }
 .d4 { animation-delay: .26s; } .d5 { animation-delay: .33s; } .d6 { animation-delay: .4s; }
 .slidein { animation: slideIn .35s ease both; }
 
-/* ---- Entrée "premium" (ex. pastilles partenaires) : même interrupteur --rise-anim que .rise (voir
-   plus haut) pour ne jouer qu'au changement de page, mais un fondu plus doux (flou + léger zoom) —
-   le délai par élément se pose en style inline (animation-delay), comme .d1..d6 pour .rise. */
-@keyframes premiumIn { from { opacity: 0; transform: translateY(14px) scale(.93); filter: blur(5px); } to { opacity: 1; transform: none; filter: none; } }
-.rise-premium { animation: var(--rise-anim, .6s cubic-bezier(.16,1,.3,1) both premiumIn); }
-
 /* ---- Reflet unique au chargement (zone partenaires & sponsors) : même interrupteur --rise-anim,
    un seul passage, jamais rejoué par le défilement automatique du contenu sponsorisé. ---- */
 @keyframes shineSweep { from { transform: translateX(-120%) skewX(-12deg); } to { transform: translateX(220%) skewX(-12deg); } }
@@ -278,7 +272,7 @@ tr:hover td { background: var(--hover-2); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise, .slidein, .hcard, button, .kb, .blob, .marquee-track, .glow, .rise-premium, .shine-sweep::after { animation: none !important; transition: none !important; }
+  .rise, .slidein, .hcard, button, .kb, .blob, .marquee-track, .glow, .shine-sweep::after { animation: none !important; transition: none !important; }
 }
 
 /* ---- Affiche imprimable (résultats d'un tournoi) : #print-area injecté au clic, tout le reste masqué à l'impression.

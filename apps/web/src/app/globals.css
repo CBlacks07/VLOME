@@ -74,12 +74,20 @@ a:hover { color: #7C82FF; }
 .slidein { animation: slideIn .35s ease both; }
 
 /* ---- Reflet unique au chargement (zone partenaires & sponsors) : même interrupteur --rise-anim,
-   un seul passage, jamais rejoué par le défilement automatique du contenu sponsorisé. ---- */
-@keyframes shineSweep { from { transform: translateX(-120%) skewX(-12deg); } to { transform: translateX(220%) skewX(-12deg); } }
+   un seul passage, jamais rejoué par le défilement automatique du contenu sponsorisé. L'opacité fait
+   partie du keyframe (pas juste la position) : quand --rise-anim vaut "none" sur un re-rendu ultérieur
+   (ex. rotation du carrousel), l'élément retombe sur son état de base — il doit donc être invisible
+   par défaut, sinon il restait figé, visible, au milieu de la carte au lieu de disparaître. ---- */
+@keyframes shineSweep {
+  0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; }
+  12%, 70% { opacity: 1; }
+  100% { transform: translateX(220%) skewX(-12deg); opacity: 0; }
+}
 .shine-sweep { position: relative; overflow: hidden; }
 .shine-sweep::after {
   content: ""; position: absolute; inset: 0; width: 35%;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .12), transparent);
+  opacity: 0;
   animation: var(--rise-anim, shineSweep 1.3s ease-out .55s 1 both);
   pointer-events: none;
 }

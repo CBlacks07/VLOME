@@ -621,13 +621,13 @@ function pAccueil(S: State) {
     <div style="display:flex;flex-direction:column;justify-content:center;padding:34px 32px;border-radius:20px;border:1px solid var(--border);background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(124,130,255,.06) 55%,var(--surface-2));position:relative;overflow:hidden">
       ${heroMedia}
       <div style="position:relative;z-index:1">
-      <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#22D3EE;font-weight:800">${heroKicker}</span>
-      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,72px);letter-spacing:1.5px;line-height:.92;margin:12px 0 0;color:${heroTextColor}">${heroTitle}</h1>
-      <p style="color:${heroSubColor};font-size:15px;line-height:1.6;max-width:560px;margin:16px 0 24px">${heroSub}</p>
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <span class="enter-up" style="animation-delay:.02s;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#22D3EE;font-weight:800">${heroKicker}</span>
+      <h1 class="enter-up" style="animation-delay:.1s;font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,72px);letter-spacing:1.5px;line-height:.92;margin:12px 0 0;color:${heroTextColor}">${heroTitle}</h1>
+      <p class="enter-up" style="animation-delay:.18s;color:${heroSubColor};font-size:15px;line-height:1.6;max-width:560px;margin:16px 0 24px">${heroSub}</p>
+      <div class="enter-up" style="animation-delay:.26s;display:flex;gap:12px;flex-wrap:wrap">
         <button data-go="tournois" class="glow" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:pointer">Voir les tournois ${ic(I.arrow)}</button>
         ${S.user ? `<button data-go="profil" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Mon espace</button>` : `<button data-auth-open="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Rejoindre la communauté</button>`}</div>
-      <div style="display:flex;gap:30px;margin-top:30px;flex-wrap:wrap">
+      <div class="enter-up" style="animation-delay:.34s;display:flex;gap:30px;margin-top:30px;flex-wrap:wrap">
         ${heroStats.map((st, i) => `<div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;color:${i === 0 ? "#22D3EE" : heroTextColor}">${escHtml(st.v)}</div><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:${heroStatColor};font-weight:700">${escHtml(st.k)}</div></div>`).join("")}</div>
       </div></div>
     <div style="border-radius:20px;border:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px;display:flex;flex-direction:column;position:relative;overflow:hidden">

@@ -76,7 +76,11 @@ a:hover { color: #7C82FF; }
 
 /* ---- Entrées chic (héro) : même interrupteur --rise-anim que .rise, donc pas de rejeu à chaque
    rotation de la carte « À la une ». Le délai se pose en style inline (animation-delay). ---- */
-.enter-up { animation: var(--rise-anim, fade-in-up .7s cubic-bezier(.16, 1, .3, 1) both); }
+/* fill-mode « backwards » (et non « both ») : l'état final ne reste pas figé, donc le survol des cartes
+   (.hcard, translateY) reste actif après l'entrée. */
+.enter-up { animation: var(--rise-anim, fade-in-up .7s cubic-bezier(.16, 1, .3, 1) backwards); }
+@keyframes accentGrow { from { transform: scaleY(0); } to { transform: none; } }
+.enter-grow { transform-origin: center; animation: var(--rise-anim, accentGrow .6s cubic-bezier(.16, 1, .3, 1) backwards); }
 
 /* ---- Reflet unique au chargement (zone partenaires & sponsors) : même interrupteur --rise-anim,
    un seul passage, jamais rejoué par le défilement automatique du contenu sponsorisé. L'opacité fait

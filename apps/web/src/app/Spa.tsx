@@ -507,9 +507,9 @@ function railMobileBars(S: State, activeKey: string): string {
   </div>`;
   const tabs = RAIL_NAV.map(([key, label, icon]) => {
     const on = key === activeKey;
-    return `<button data-go="${key}" ${on ? 'aria-current="page"' : ""} style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;height:100%;border:0;background:transparent;cursor:pointer;padding:0 1px">
+    return `<button data-go="${key}" ${on ? 'aria-current="page"' : ""} style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;height:100%;border:0;background:transparent;cursor:pointer;padding:0">
       <span style="color:${on ? "#22D3EE" : "var(--text-muted)"}">${ic(icon, 19)}</span>
-      <span style="font-size:9.5px;font-weight:${on ? 800 : 700};letter-spacing:0;color:${on ? "#22D3EE" : "var(--text-muted)"};text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+      <span style="font-size:10px;font-weight:${on ? 800 : 600};letter-spacing:-.3px;color:${on ? "#22D3EE" : "var(--text-muted)"};max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
     </button>`;
   }).join("");
   const bottom = `<div class="rail-mobile-bottom" style="position:fixed;left:0;right:0;bottom:0;z-index:45;height:64px;border-top:1px solid var(--surface-3);background:var(--bar-bg-3);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">${tabs}</div>`;
@@ -519,14 +519,26 @@ function railMobileBars(S: State, activeKey: string): string {
 /** Shell rail complet : barre live + rail d'icônes + contenu de la page. Utilisé par Tournois/Classements/Galerie/Boutique.
  * Sous 1024px, le rail à icônes cède la place à railMobileBars() (bandeau haut + barre d'onglets bas), voir globals.css. */
 function railShell(S: State, activeKey: string, body: string): string {
+  // `site` arrive avec le reste des données au chargement initial : tant qu'il est absent, on n'affiche pas de
+  // faux états vides (« Aucun produit »…) mais des squelettes.
+  const content = S.site ? body : pageSkeleton();
   return `${railNav(S, activeKey)}${railMobileBars(S, activeKey)}
   <div class="rail-content" style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
     ${railLiveBar(S)}
-    <div style="flex:1;min-width:0">${body}</div>
+    <div style="flex:1;min-width:0">${content}</div>
     ${siteFooter()}
   </div>`;
 }
 
+
+/** Squelette générique d'une page du rail (titre + grille de cartes) ; après 12 s sans réponse de l'API, propose de réessayer. */
+function pageSkeleton(): string {
+  return `<div aria-busy="true" aria-label="Chargement" class="page-hpad" style="padding:32px 44px 44px">
+    <div class="skel" style="height:48px;width:min(320px,70%);margin-bottom:12px"></div><div class="skel" style="height:14px;width:min(460px,90%);margin-bottom:34px"></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px"><div class="skel" style="height:170px;border-radius:14px"></div><div class="skel" style="height:170px;border-radius:14px"></div><div class="skel" style="height:170px;border-radius:14px"></div><div class="skel" style="height:170px;border-radius:14px"></div></div>
+    <div class="load-fail" style="margin-top:34px">${emptyState(I.bolt, "Le chargement prend plus de temps que prévu", "Vérifie ta connexion puis réessaie.", `<button data-act="reload" class="btn-primary" style="${BTN_PRIMARY}">Réessayer</button>`, "20px")}</div>
+  </div>`;
+}
 
 /** Pied de page du site : mentions légales obligatoires. Partagé entre le shell rail (accueil,
  * tournois, galerie, boutique, classements) et la page d'accueil de repli — il était auparavant
@@ -608,6 +620,7 @@ function pAccueil(S: State) {
       <section class="grid2" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;margin-bottom:20px"><div class="skel" style="min-height:340px;border-radius:20px"></div><div class="skel" style="min-height:340px;border-radius:20px"></div></section>
       <section class="grid2b" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div class="skel" style="height:200px;border-radius:16px"></div><div class="skel" style="height:200px;border-radius:16px"></div></section>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px"><div class="skel" style="height:190px;border-radius:16px"></div><div class="skel" style="height:190px;border-radius:16px"></div><div class="skel" style="height:190px;border-radius:16px"></div></div>
+      <div class="load-fail" style="margin-top:34px">${emptyState(I.bolt, "Le chargement prend plus de temps que prévu", "Vérifie ta connexion puis réessaie.", `<button data-act="reload" class="btn-primary" style="${BTN_PRIMARY}">Réessayer</button>`, "20px")}</div>
     </main>`;
   }
   const slides: Detail[] = (S.site?.slides && S.site.slides.length ? S.site.slides : SLIDES) as Detail[];
@@ -1406,7 +1419,7 @@ function pTournois(S: State) {
   const heroStat = (label: string, val: string) => `<div style="background:rgba(11,11,17,.5);padding:12px 18px;min-width:112px"><div style="font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:#7FA9B2;font-weight:700">${label}</div><div style="font-size:14.5px;font-weight:700;color:#fff;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">${escHtml(val)}</div></div>`;
   const eyebrow = liveT?.event?.name || liveT?.game || "Tournoi";
   const featured = liveT ? `<div class="rise d2 page-hpad" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer;display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:center">
-    <div style="min-width:0;flex:1">
+    <div style="min-width:0;flex:1 1 280px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span><span style="font-size:11.5px;color:#63C6DA;font-weight:700;letter-spacing:.5px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(eyebrow)}</span></div>
       <h3 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4.4vw,44px);letter-spacing:1.2px;margin:12px 0 0;line-height:.95;color:#fff;overflow-wrap:break-word">${escHtml(liveT.name)}</h3>
       <div style="display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap">
@@ -1414,7 +1427,7 @@ function pTournois(S: State) {
         <span data-show="${liveT.id}" style="display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:10px;padding:11px 17px;font-weight:700;font-size:13.5px">${ic(I.tv, 15)}Mode Show</span>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:1px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden;flex:none">${heroStat("Format", liveT.format)}${heroStat("Joueurs", String(liveT.players))}${heroStat("Lieu", liveT.place || "—")}${heroStat("Date", liveT.date || "—")}</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:1px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:12px;overflow:hidden;flex:none;max-width:100%">${heroStat("Format", liveT.format)}${heroStat("Joueurs", String(liveT.players))}${heroStat("Lieu", liveT.place || "—")}${heroStat("Date", liveT.date || "—")}</div>
   </div></div>` : "";
 
   const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
@@ -1451,7 +1464,7 @@ function pTournois(S: State) {
     return `<option value="${v}" ${S.fmt === v ? "selected" : ""}>${label} (${n})</option>`;
   }).join("")}</select>`;
   const selGroup = (label: string, sel: string) => `<div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint)">${label}</span>${sel}</div>`;
-  const filterSelectors = source.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Statut", statusSel)}${selGroup("Catégorie", fmtSel)}</div>` : "";
+  const filterSelectors = source.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Catégorie", fmtSel)}</div>` : "";
   const quickChips = source.length ? `<div role="group" aria-label="Filtres rapides" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${TOURN_STATUSES.map((st) => {
     const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
     return `<button data-act="tstatus" data-v="${st}" class="qchip${S.tournStatus === st ? " on" : ""}" aria-pressed="${S.tournStatus === st}">${st} <span style="opacity:.7;font-family:'JetBrains Mono',monospace;font-size:11px">${n}</span></button>`;
@@ -1544,7 +1557,7 @@ function pClassements(S: State) {
   const all: Detail[] = allRows.filter((r) => (teamView ? !!r.team : !r.team));
   const viewToggle = (v: "joueurs" | "clubs" | "equipes" | "pronos", label: string) => `<span data-classview="${v}" style="padding:9px 16px;font-size:12.5px;font-weight:${S.classementView === v ? 750 : 600};cursor:pointer;transition:background .2s ease,color .2s ease;background:${S.classementView === v ? "#22D3EE" : "transparent"};color:${S.classementView === v ? "#04222a" : "var(--text-muted)"}">${label}</span>`;
   const head = railPageHead("Classements", `Points, victoires et titres calculés depuis les résultats réels. <b style="color:var(--text)">Un classement distinct par jeu</b> — les points ne sont jamais additionnés entre deux jeux.`,
-    `<div style="display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden">${viewToggle("joueurs", "Joueurs")}${hasTeams ? viewToggle("equipes", "Équipes") : ""}${viewToggle("pronos", "Pronostics")}${viewToggle("clubs", "Clubs")}</div>`);
+    `<div class="view-toggle" style="display:flex;border:1px solid var(--border);border-radius:9px;overflow-x:auto;max-width:100%">${viewToggle("joueurs", "Joueurs")}${hasTeams ? viewToggle("equipes", "Équipes") : ""}${viewToggle("pronos", "Pronostics")}${viewToggle("clubs", "Clubs")}</div>`);
   if (S.classementView === "pronos") {
     const list: Detail[] = S.predictors ?? [];
     if (S.predictors === null) return `${head}<div class="page-hpad" style="padding:0 44px;color:var(--text-faint);text-align:center">Chargement…</div>`;
@@ -1739,7 +1752,7 @@ function galleryHome(S: State, all: Detail[], albums: Detail[]): string {
     </div>
   </div>`;
   const bentoGrid = filtered.length
-    ? `<div class="rise d2 page-hpad" style="padding:0 44px 44px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));grid-auto-flow:dense;gap:14px">${filtered.map(bentoCard).join("")}</div>`
+    ? `<div class="rise d2 page-hpad bento-grid" style="padding:0 44px 44px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));grid-auto-flow:dense;gap:14px">${filtered.map(bentoCard).join("")}</div>`
     : `<div class="rise d2 page-hpad" style="padding:0 44px 44px"><div style="border:1px dashed var(--border-strong);border-radius:16px;padding:48px;text-align:center;color:var(--text-muted)">Aucun événement ne correspond${q ? ` à « ${escHtml(S.galleryQ)} »` : ""}.</div></div>`;
 
   return `${head2}${filtRow2}${bentoGrid}${galleryLightbox(S, looseItems)}`;
@@ -8548,6 +8561,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setTimeout(() => window.print(), 60);
     }
     else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
+    else if (d.act === "reload") { window.location.reload(); }
     else if (d.act === "tstatus") { setS((s) => ({ ...s, tournStatus: d.v || "Tous", fmt: d.v === "Tous" ? "Tous" : s.fmt, q: d.v === "Tous" ? "" : s.q })); }
     else if (d.act === "create-open") {
       if (S.user?.role === "ORGANIZER" && S.user.organizerStatus !== "APPROVED") {

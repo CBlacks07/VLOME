@@ -187,6 +187,12 @@ tr:hover td { background: var(--hover-2); }
 @media (max-width: 640px) {
   .gallery-grid { grid-template-columns: repeat(2, 1fr) !important; grid-auto-rows: 120px !important; }
 }
+/* Accueil galerie (tuiles « bento ») : sur téléphone, une colonne de cartes pleine largeur — la tuile mise en avant
+   (2×2) chevauchait ses voisines dans la grille à rangées fixes. */
+@media (max-width: 640px) {
+  .bento-grid { grid-template-columns: 1fr !important; grid-auto-rows: auto !important; }
+  .bento-grid > a { grid-column: span 1 !important; grid-row: span 1 !important; aspect-ratio: 16 / 10 !important; }
+}
 
 /* ---- Marges/paddings horizontaux de 44px (en-têtes de page, Tournois, Classements) : pensés pour
    desktop, ils mangent trop d'espace utile sur mobile (ex : le tableau de classement, déjà proche de
@@ -218,7 +224,7 @@ tr:hover td { background: var(--hover-2); }
    téléphone étroit (358px avec le padding réduit ci-dessus) ; flex-wrap ne rattrape pas un dépassement
    aussi faible proprement, donc on réduit directement cartes + espacement sous 640px. ---- */
 @media (max-width: 640px) {
-  .podium-row { gap: 8px !important; }
+  .podium-row { gap: 8px !important; flex-wrap: nowrap !important; }
   .podium-item { width: 92px !important; }
 }
 
@@ -452,3 +458,13 @@ input:focus, select:focus { outline: none; border-color: #22D3EE !important; box
 .qchip { cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 99px; padding: 7px 14px; font-size: 12.5px; font-weight: 700; font-family: inherit; }
 .qchip:hover { border-color: var(--border-strong); color: var(--text); }
 .qchip.on { background: rgba(34, 211, 238, .12); border-color: #22D3EE; color: #22D3EE; }
+
+/* Message de secours des squelettes : invisible, il n'apparaît que si le chargement dépasse 12 s. */
+@keyframes showFail { to { opacity: 1; visibility: visible; } }
+.load-fail { opacity: 0; visibility: hidden; animation: showFail .4s ease 12s forwards; }
+
+/* Sélecteur de vue (Classements) : pleine largeur sur téléphone, onglets répartis à parts égales. */
+@media (max-width: 640px) {
+  .view-toggle { width: 100%; }
+  .view-toggle > span { flex: 1 1 0; text-align: center; padding-left: 8px !important; padding-right: 8px !important; }
+}

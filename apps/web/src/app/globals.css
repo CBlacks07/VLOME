@@ -15,7 +15,7 @@
   --surface: #14141D; --surface-2: #0E0E16; --surface-3: #1B1B27; --surface-4: #22222F;
   --surface-5: #101019; --surface-6: #191922; --surface-7: #0d0d14; --surface-8: #0E131B;
   --border: #282838; --border-strong: #33334A;
-  --text: #F4F5FB; --text-muted: #8E8FA6; --text-faint: #5D5E72;
+  --text: #F4F5FB; --text-muted: #A2A3B9; --text-faint: #82839A;
   --hover-1: rgba(255,255,255,.025); --hover-2: rgba(255,255,255,.015);
   /* Fonds translucides des barres de navigation fixes (verre dépoli) — teinte de --bg, pas de --surface :
      à ne jamais utiliser pour les dégradés posés sur une image (légende de carte…), qui restent sombres
@@ -30,7 +30,7 @@
   --surface: #FFFFFF; --surface-2: #F5F6FA; --surface-3: #ECEEF4; --surface-4: #E1E4ED;
   --surface-5: #FFFFFF; --surface-6: #F2F3F8; --surface-7: #FFFFFF; --surface-8: #F2F4F8;
   --border: #D6DAE4; --border-strong: #B7BCCE;
-  --text: #14141B; --text-muted: #565875; --text-faint: #8B8DA0;
+  --text: #14141B; --text-muted: #565875; --text-faint: #6B6D84;
   --hover-1: rgba(20,20,30,.04); --hover-2: rgba(20,20,30,.028);
   --bar-bg-1: rgba(231,234,242,.82); --bar-bg-2: rgba(231,234,242,.92); --bar-bg-3: rgba(231,234,242,.96);
 }
@@ -39,7 +39,7 @@
   --surface: #14141D; --surface-2: #0E0E16; --surface-3: #1B1B27; --surface-4: #22222F;
   --surface-5: #101019; --surface-6: #191922; --surface-7: #0d0d14; --surface-8: #0E131B;
   --border: #282838; --border-strong: #33334A;
-  --text: #F4F5FB; --text-muted: #8E8FA6; --text-faint: #5D5E72;
+  --text: #F4F5FB; --text-muted: #A2A3B9; --text-faint: #82839A;
   --hover-1: rgba(255,255,255,.025); --hover-2: rgba(255,255,255,.015);
   --bar-bg-1: rgba(11,11,17,.82); --bar-bg-2: rgba(11,11,17,.92); --bar-bg-3: rgba(11,11,17,.96);
   color-scheme: dark;
@@ -402,3 +402,53 @@ p { text-wrap: pretty; }
 .more-cta:hover { transform: translateY(-3px); }
 .more-cta .more-arrow { display: inline-block; animation: nudge 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .more-cta, .more-cta .more-arrow { animation: none; } }
+
+/* ===== Améliorations UX (2026-10) ===== */
+
+/* Focus clavier visible partout (accessibilité) — sans gêner le clic souris. */
+:focus-visible { outline: 2px solid #22D3EE; outline-offset: 2px; border-radius: 6px; }
+button:focus-visible, a:focus-visible, [data-go]:focus-visible, [data-open]:focus-visible { outline: 2px solid #22D3EE; outline-offset: 2px; }
+input:focus, select:focus { outline: none; border-color: #22D3EE !important; box-shadow: 0 0 0 3px rgba(34, 211, 238, .18); }
+
+/* Squelettes de chargement : reprennent la forme du contenu final, évitent le saut de mise en page. */
+@keyframes skelShimmer { from { background-position: -240px 0; } to { background-position: 240px 0; } }
+.skel {
+  background: linear-gradient(90deg, var(--surface) 0, var(--surface-4) 120px, var(--surface) 240px);
+  background-size: 480px 100%; animation: skelShimmer 1.3s linear infinite; border-radius: 12px;
+}
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+/* Boutons principaux : léger soulèvement au survol. */
+.btn-primary { transition: transform .18s ease, box-shadow .2s ease, filter .2s ease; }
+.btn-primary:hover { transform: translateY(-2px); filter: brightness(1.06); box-shadow: 0 10px 30px rgba(34, 211, 238, .35); }
+.btn-ghost:hover { border-color: #22D3EE !important; color: #22D3EE !important; transform: translateY(-2px); }
+
+/* Rail : infobulle à droite de l'icône (desktop seulement) pour les boutons d'action sans libellé. */
+.rail-desktop [data-tip] { position: relative; }
+.rail-desktop [data-tip]::after {
+  content: attr(data-tip); position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%) translateX(-4px);
+  background: var(--surface-4); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .15s ease, transform .15s ease; z-index: 60;
+}
+.rail-desktop [data-tip]:hover::after, .rail-desktop [data-tip]:focus-visible::after { opacity: 1; transform: translateY(-50%); }
+
+/* Carrousel boutique : fondu sur les bords + nom du produit sur 2 lignes maximum. */
+.fade-edges { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%); }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* État vide : bloc illustré avec action. */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.empty-ico { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; color: #22D3EE; background: rgba(34, 211, 238, .1); border: 1px solid rgba(34, 211, 238, .25); }
+
+/* Chiffres clés du héro : plus lisibles sur petit écran. */
+@media (max-width: 640px) { .hero-stat-v { font-size: 38px !important; } }
+
+/* Recherche : s'étire sur mobile. */
+.search-wide { width: min(340px, 100%); }
+@media (max-width: 640px) { .search-wide { width: 100% !important; flex: 1 1 100%; } }
+
+/* Puces de filtre rapide. */
+.qchip { cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 99px; padding: 7px 14px; font-size: 12.5px; font-weight: 700; font-family: inherit; }
+.qchip:hover { border-color: var(--border-strong); color: var(--text); }
+.qchip.on { background: rgba(34, 211, 238, .12); border-color: #22D3EE; color: #22D3EE; }

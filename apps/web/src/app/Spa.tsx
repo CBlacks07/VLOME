@@ -466,23 +466,23 @@ function railLiveBar(S: State): string {
 /** Bouton de bascule thème clair/sombre — un seul endroit à changer si l'icône ou la taille par défaut évolue. */
 function themeToggleBtn(S: State, size = 38, iconSize = 17): string {
   const light = S.theme === "light";
-  return `<button data-themetoggle="1" title="${light ? "Passer en sombre" : "Passer en clair"}" style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:${Math.round(size * .29)}px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(light ? I.moon : I.sun, iconSize)}</button>`;
+  return `<button data-themetoggle="1" data-tip="${light ? "Thème sombre" : "Thème clair"}" aria-label="${light ? "Passer en thème sombre" : "Passer en thème clair"}" title="${light ? "Passer en sombre" : "Passer en clair"}" style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:${Math.round(size * .29)}px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(light ? I.moon : I.sun, iconSize)}</button>`;
 }
 
 /** Rail de navigation à icônes (88px) — remplace le header public sur les pages du module contenu. */
 function railNav(S: State, activeKey: string): string {
   const items = RAIL_NAV.map(([key, label, icon]) => {
     const on = key === activeKey;
-    return `<button data-go="${key}" class="hbtn" style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;padding:10px 0;border:0;border-left:2px solid ${on ? "#22D3EE" : "transparent"};background:${on ? "linear-gradient(90deg,rgba(34,211,238,.12),transparent)" : "transparent"};cursor:pointer">
-      <span style="color:${on ? "#22D3EE" : "var(--text-muted)"}">${ic(icon, 20)}</span>
-      <span style="font-size:9.5px;font-weight:${on ? 800 : 700};letter-spacing:.6px;color:${on ? "#22D3EE" : "var(--text-muted)"};text-transform:uppercase">${label}</span>
+    return `<button data-go="${key}" class="hbtn" ${on ? 'aria-current="page"' : ""} style="display:flex;flex-direction:column;align-items:center;gap:5px;width:100%;padding:11px 0;border:0;border-left:2px solid ${on ? "#22D3EE" : "transparent"};background:${on ? "linear-gradient(90deg,rgba(34,211,238,.12),transparent)" : "transparent"};cursor:pointer">
+      <span style="color:${on ? "#22D3EE" : "var(--text-muted)"}">${ic(icon, 22)}</span>
+      <span style="font-size:10.5px;font-weight:${on ? 800 : 700};letter-spacing:.4px;color:${on ? "#22D3EE" : "var(--text-muted)"};text-transform:uppercase">${label}</span>
     </button>`;
   }).join("");
-  const cartBtn = `<button data-cart-open="1" title="Panier" style="position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.cart, 17)}
+  const cartBtn = `<button data-cart-open="1" data-tip="Panier${S.cartItems.length ? ` (${S.cartItems.length})` : ""}" aria-label="Panier" style="position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.cart, 17)}
     ${S.cartItems.length ? `<span style="position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:10px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>`;
   const userBtn = S.user
-    ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
-    : `<button data-auth-open="1" title="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.user, 18)}</button>`;
+    ? `<button data-go="profil" data-tip="Mon espace · ${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
+    : `<button data-auth-open="1" data-tip="Connexion" aria-label="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.user, 18)}</button>`;
   return `<div class="rail-desktop" style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;overflow-y:auto;border-right:1px solid var(--surface-3);display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:var(--bg)">
     <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;margin-bottom:16px;cursor:pointer">${brandLogo(S, 40, 22)}</div>
     ${items}
@@ -507,9 +507,9 @@ function railMobileBars(S: State, activeKey: string): string {
   </div>`;
   const tabs = RAIL_NAV.map(([key, label, icon]) => {
     const on = key === activeKey;
-    return `<button data-go="${key}" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;height:100%;border:0;background:transparent;cursor:pointer;padding:0 1px">
+    return `<button data-go="${key}" ${on ? 'aria-current="page"' : ""} style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-width:0;height:100%;border:0;background:transparent;cursor:pointer;padding:0 1px">
       <span style="color:${on ? "#22D3EE" : "var(--text-muted)"}">${ic(icon, 19)}</span>
-      <span style="font-size:8.5px;font-weight:${on ? 800 : 700};letter-spacing:0;color:${on ? "#22D3EE" : "var(--text-muted)"};text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+      <span style="font-size:9.5px;font-weight:${on ? 800 : 700};letter-spacing:0;color:${on ? "#22D3EE" : "var(--text-muted)"};text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
     </button>`;
   }).join("");
   const bottom = `<div class="rail-mobile-bottom" style="position:fixed;left:0;right:0;bottom:0;z-index:45;height:64px;border-top:1px solid var(--surface-3);background:var(--bar-bg-3);backdrop-filter:blur(10px);padding-bottom:env(safe-area-inset-bottom)">${tabs}</div>`;
@@ -533,10 +533,18 @@ function railShell(S: State, activeKey: string, body: string): string {
  * cantonné à cette dernière, donc invisible sur toutes les pages réellement visitées. */
 function siteFooter(): string {
   const link = (page: string, label: string) =>
+    `<button data-go="${page}" style="background:none;border:0;color:var(--text-muted);font-size:13px;font-family:inherit;cursor:pointer;padding:0">${label}</button>`;
+  const legal = (page: string, label: string) =>
     `<button data-go="${page}" style="background:none;border:0;color:var(--text-muted);font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline;padding:0">${label}</button>`;
-  return `<footer style="border-top:1px solid var(--border);padding:26px 22px;text-align:center;color:var(--text-faint);font-size:12.5px">
-    © ${new Date().getFullYear()} MIABE ESPORT · Le hub de l'esport togolais &amp; ouest-africain
-    <div style="margin-top:10px;display:flex;gap:18px;justify-content:center;flex-wrap:wrap">${link("mentions-legales", "Mentions légales")}${link("confidentialite", "Politique de confidentialité")}</div>
+  return `<footer style="border-top:1px solid var(--border);padding:34px 22px 28px;color:var(--text-muted);font-size:12.5px">
+    <div style="max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:26px 48px;justify-content:space-between;align-items:flex-start">
+      <div style="min-width:220px;flex:1"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:var(--text)">MIABE <span style="color:#22D3EE">ESPORT</span></div><p style="margin:8px 0 0;line-height:1.55;max-width:340px">Le hub de l'esport togolais &amp; ouest-africain.<br>Lomé, Togo</p></div>
+      <nav aria-label="Pied de page" style="display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center">${link("tournois", "Tournois")}${link("evenements", "Événements")}${link("classements", "Classements")}${link("galerie", "Galerie")}${link("boutique", "Boutique")}</nav>
+    </div>
+    <div style="max-width:1100px;margin:22px auto 0;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:space-between;color:var(--text-faint)">
+      <span>© ${new Date().getFullYear()} MIABE ESPORT</span>
+      <span style="display:flex;gap:18px;flex-wrap:wrap">${legal("mentions-legales", "Mentions légales")}${legal("confidentialite", "Politique de confidentialité")}</span>
+    </div>
   </footer>`;
 }
 
@@ -583,13 +591,24 @@ function filePicker(id: string, label = "Choisir une image", accept = "image/*",
   </div>`;
 }
 
+/** État vide illustré : icône, titre, explication et (optionnel) boutons d'action — pour ne jamais laisser le visiteur sans piste. */
+function emptyState(icon: string, title: string, text: string, actions = "", pad = "40px 24px"): string {
+  return `<div class="empty-state" style="padding:${pad}"><span class="empty-ico">${ic(icon, 26)}</span><div style="font-weight:750;font-size:16px;color:var(--text)">${title}</div><p style="margin:0;max-width:420px;color:var(--text-muted);font-size:13.5px;line-height:1.55">${text}</p>${actions ? `<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:6px">${actions}</div>` : ""}</div>`;
+}
+const BTN_PRIMARY = "display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 20px;font-weight:750;font-size:14px;cursor:pointer";
+const BTN_GHOST = "display:inline-flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:12px 20px;font-weight:700;font-size:14px;cursor:pointer";
+
 /* ================= Pages ================= */
 function pAccueil(S: State) {
   // Tant que les réglages du site n'ont pas encore été chargés depuis l'API, on affiche un état de
   // chargement plutôt que le contenu de secours (titre/stats/slide par défaut) — sinon ce contenu
   // fictif s'affiche brièvement avant d'être remplacé par le vrai, à chaque ouverture de la page.
   if (!S.site) {
-    return `<main style="width:100%;padding:28px clamp(22px,3vw,64px) 60px"><div style="border-radius:20px;border:1px solid var(--border);background:var(--surface);min-height:340px;display:grid;place-items:center;color:var(--text-faint)">Chargement…</div></main>`;
+    return `<main aria-busy="true" aria-label="Chargement" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">
+      <section class="grid2" style="display:grid;grid-template-columns:1.35fr 1fr;gap:20px;margin-bottom:20px"><div class="skel" style="min-height:340px;border-radius:20px"></div><div class="skel" style="min-height:340px;border-radius:20px"></div></section>
+      <section class="grid2b" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div class="skel" style="height:200px;border-radius:16px"></div><div class="skel" style="height:200px;border-radius:16px"></div></section>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px"><div class="skel" style="height:190px;border-radius:16px"></div><div class="skel" style="height:190px;border-radius:16px"></div><div class="skel" style="height:190px;border-radius:16px"></div></div>
+    </main>`;
   }
   const slides: Detail[] = (S.site?.slides && S.site.slides.length ? S.site.slides : SLIDES) as Detail[];
   const s = slides[S.slide] || slides[0];
@@ -625,19 +644,19 @@ function pAccueil(S: State) {
       <h1 class="enter-up" style="animation-delay:.1s;font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,72px);letter-spacing:1.5px;line-height:.92;margin:12px 0 0;color:${heroTextColor}">${heroTitle}</h1>
       <p class="enter-up" style="animation-delay:.18s;color:${heroSubColor};font-size:15px;line-height:1.6;max-width:560px;margin:16px 0 24px">${heroSub}</p>
       <div class="enter-up" style="animation-delay:.26s;display:flex;gap:12px;flex-wrap:wrap">
-        <button data-go="tournois" class="glow" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:pointer">Voir les tournois ${ic(I.arrow)}</button>
-        ${S.user ? `<button data-go="profil" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Mon espace</button>` : `<button data-auth-open="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:14px 22px;font-weight:700;font-size:15px;cursor:pointer">Rejoindre la communauté</button>`}</div>
-      <div class="enter-up" style="animation-delay:.34s;display:flex;gap:30px;margin-top:30px;flex-wrap:wrap">
-        ${heroStats.map((st, i) => `<div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;color:${i === 0 ? "#22D3EE" : heroTextColor}">${escHtml(st.v)}</div><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:${heroStatColor};font-weight:700">${escHtml(st.k)}</div></div>`).join("")}</div>
+        <button data-go="tournois" class="glow btn-primary" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:13px;padding:17px 30px;font-weight:800;font-size:16.5px;cursor:pointer">Voir les tournois ${ic(I.arrow)}</button>
+        ${S.user ? `<button data-go="profil" class="btn-ghost" style="background:transparent;border:1.5px solid ${heroBg ? "rgba(255,255,255,.4)" : "var(--border-strong)"};color:${heroTextColor};border-radius:13px;padding:15px 22px;font-weight:700;font-size:14.5px;cursor:pointer">Mon espace</button>` : `<button data-auth-open="1" class="btn-ghost" style="background:transparent;border:1.5px solid ${heroBg ? "rgba(255,255,255,.4)" : "var(--border-strong)"};color:${heroTextColor};border-radius:13px;padding:15px 22px;font-weight:700;font-size:14.5px;cursor:pointer">Rejoindre la communauté</button>`}</div>
+      <div class="enter-up" style="animation-delay:.34s;display:flex;gap:36px;margin-top:32px;flex-wrap:wrap;padding-top:22px;border-top:1px solid ${heroBg ? "rgba(255,255,255,.14)" : "var(--border)"}">
+        ${heroStats.map((st, i) => `<div><div class="hero-stat-v" style="font-family:'Bebas Neue',sans-serif;font-size:46px;line-height:1;color:${i === 0 ? "#22D3EE" : heroTextColor}">${escHtml(st.v)}</div><div style="font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:${heroStatColor};font-weight:700;margin-top:4px">${escHtml(st.k)}</div></div>`).join("")}</div>
       </div></div>
     <div style="border-radius:20px;border:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px;display:flex;flex-direction:column;position:relative;overflow:hidden">
       ${s.imageUrl
-        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${mediaUrl(s.imageUrl)}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.5),rgba(11,11,17,.86) 78%);pointer-events:none"></div>`
+        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${mediaUrl(s.imageUrl)}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.62),rgba(11,11,17,.94) 72%);pointer-events:none"></div>`
         : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(34,211,238,.14),transparent 55%);pointer-events:none"></div>`}
       <div style="display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:var(--text-faint);font-weight:600">${S.slide + 1} / ${slides.length}</span></div>
       <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 4px;position:relative;z-index:1;min-height:240px">
         <span style="align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:5px 11px">${escHtml(s.tag)}</span>
-        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4vw,46px);letter-spacing:1px;line-height:.95;margin:14px 0 8px;color:${slideTextColor}">${escHtml(s.title)}</h2>
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4vw,46px);letter-spacing:1px;line-height:.95;margin:14px 0 8px;color:${slideTextColor};${s.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.6)" : ""}">${escHtml(s.title)}</h2>
         <p style="color:${slideSubColor};font-size:14px;line-height:1.55;margin:0">${escHtml(s.sub)}</p>
         ${s.linkUrl
           ? `<a href="${escAttr(s.linkUrl)}" ${/^https?:\/\//i.test(s.linkUrl) ? 'target="_blank" rel="noopener"' : ""} style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none">${escHtml(s.cta)} ${ic(I.arrow, 16)}</a>`
@@ -680,7 +699,7 @@ function pAccueil(S: State) {
   }
   const rankRows = rankSource.length
     ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--border)"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text-faint);width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:var(--text-muted);font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-family:'JetBrains Mono',monospace">${r.points}</td></tr>`).join("")
-    : `<tr><td style="padding:16px 6px;color:var(--text-faint);font-size:13px" colspan="4">Aucun résultat pour l'instant.</td></tr>`;
+    : `<tr><td style="padding:6px" colspan="4">${emptyState(I.medal, "Le classement se remplit bientôt", "Dès les premiers matchs joués, les meilleurs joueurs apparaîtront ici.", "", "18px 10px")}</td></tr>`;
   // Prochains tournois : dérivé des vrais tournois à venir (aucune donnée inventée) — les deux
   // premiers segments de la date déjà formatée côté API ("12 juil.") alimentent le badge jour/mois.
   const upcoming = tourns.filter((t) => t.status === "À venir" && t.date).slice(0, 4);
@@ -690,23 +709,28 @@ function pAccueil(S: State) {
         const mo = (moRaw || "").replace(/\.$/, "");
         return `<div data-open="${t.id}" style="display:flex;gap:13px;align-items:center;cursor:pointer"><div style="flex:none;width:52px;text-align:center;border:1px solid var(--border);border-radius:11px;padding:7px 4px;background:var(--surface)"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${escHtml(d) || "—"}</div><div style="font-size:9px;letter-spacing:1px;color:var(--text-muted);font-weight:700;text-transform:uppercase">${escHtml(mo)}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</div><div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.format)}${t.place ? " · " + escHtml(t.place) : ""}</div></div></div>`;
       }).join("")
-    : `<div style="color:var(--text-faint);font-size:13px">Aucun tournoi à venir pour l'instant.</div>`;
-  const mid = `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Prochains tournois</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
+    : emptyState(I.flame, "Pas de tournoi annoncé", "Les prochaines dates arrivent bientôt. Crée ton compte pour ne rien rater.", S.user ? "" : `<button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY}">Créer mon compte</button>`, "18px 10px");
+  // Rien à montrer ni côté classement ni côté tournois : un seul bloc d'invitation plutôt que deux cases vides côte à côte.
+  const midBothEmpty = !rankSource.length && !upcoming.length;
+  const mid = midBothEmpty
+    ? `<section class="rise d3" style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));margin-bottom:40px">${emptyState(I.flame, "La saison démarre bientôt", "Aucun tournoi n'est annoncé pour le moment, et le classement se remplira dès les premiers matchs. Reste dans la boucle : crée ton compte et découvre déjà la boutique et la galerie.", `${S.user ? "" : `<button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY}">Créer mon compte</button>`}<button data-go="galerie" class="btn-ghost" style="${BTN_GHOST}">Voir la galerie</button>`, "38px 24px")}</section>`
+    : `<section class="grid2b rise d3" style="display:grid;grid-template-columns:1.45fr 1fr;gap:18px;margin-bottom:40px"><div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Classement · Top joueurs</h3><a data-go="classements" style="font-size:12px;font-weight:700;cursor:pointer">Complet →</a></div><table style="width:100%;border-collapse:collapse;font-size:14px">${rankRows}</table></div><div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px"><h3 style="margin:0 0 14px;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Prochains tournois</h3><div style="display:flex;flex-direction:column;gap:12px">${evRows}</div></div></section>`;
 
   const newsItems: { cat: string; ph: string; t: string; date: string; img?: string | null }[] =
     (S.news ?? []).slice(0, 3).map((n: Detail) => ({ cat: n.category, ph: n.slug, t: n.title, date: n.date, img: n.imageUrl }));
   const newsGrid = `<div class="rise d4" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span class="enter-grow" style="width:5px;height:22px;border-radius:3px;background:#7C82FF;display:inline-block"></span>Actualités</h3></div>${newsItems.length
     ? `<div class="rise d4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:44px">${newsItems.map((a, i) => `<div class="hcard enter-up" style="animation-delay:${(i * 0.08).toFixed(2)}s;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:linear-gradient(180deg,var(--surface),var(--surface-2))">${a.img ? `<div class="zoom" style="height:132px;background-image:url('${mediaUrl(a.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:132px;background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 12px,var(--surface) 12px,var(--surface) 24px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:11px;letter-spacing:1px">// ${a.ph}</div>`}<div style="padding:14px 15px 16px"><span style="font-size:11px;font-weight:700;color:#7C82FF;letter-spacing:.5px">${escHtml(a.cat)}</span><h4 style="margin:6px 0 0;font-size:15.5px;line-height:1.35">${escHtml(a.t)}</h4><div style="font-size:12px;color:var(--text-faint);margin-top:8px">${escHtml(a.date)}</div></div></div>`).join("")}</div>`
-    : `<div class="rise d4" style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:30px 24px;text-align:center;color:var(--text-muted);margin-bottom:44px">Aucune actualité pour l'instant.</div>`}`;
+    : `<div class="rise d4" style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));margin-bottom:44px">${emptyState(I.bolt, "Pas encore d'actualité", "Résultats, annonces et coulisses des tournois seront publiés ici.", "", "30px 24px")}</div>`}`;
 
   const shopProducts: { name: string; price: number; ph: string; img?: string | null; showOnHome?: boolean }[] = S.products ?? [];
   // Carrousel défilant en continu (pause au survol) — ne garde que les produits cochés
   // "Afficher sur l'accueil" côté admin ; si aucun n'est coché, retombe sur tout le catalogue.
   const shopHome = shopProducts.filter((p) => p.showOnHome);
-  const shopFeatured = (shopHome.length ? shopHome : shopProducts).slice(0, 14);
-  const shopCard = (p: Detail) => `<div class="hcard" style="flex:none;width:190px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface)">${p.img ? `<div class="zoom" style="height:120px;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 12px,var(--surface) 12px,var(--surface) 24px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px"><div style="font-weight:650;font-size:13.5px">${escHtml(p.name)}</div><div style="font-weight:800;color:#22D3EE;font-size:13px;margin-top:5px">${money(p.price)}</div></div></div>`;
+  const shopSeen = new Set<string>();
+  const shopFeatured = (shopHome.length ? shopHome : shopProducts).filter((p) => { const k = String(p.name).trim().toLowerCase(); if (shopSeen.has(k)) return false; shopSeen.add(k); return true; }).slice(0, 14);
+  const shopCard = (p: Detail) => `<div data-go="boutique" class="hcard" style="flex:none;width:190px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface);cursor:pointer;display:flex;flex-direction:column">${p.img ? `<div style="position:relative;height:120px;overflow:hidden;background:var(--surface-3)"><div class="zoom" style="position:absolute;inset:0;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:auto 0 0 0;height:36px;background:linear-gradient(180deg,transparent,rgba(11,11,17,.32));pointer-events:none"></div></div>` : `<div class="zoom" style="height:120px;background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 12px,var(--surface) 12px,var(--surface) 24px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:10px;letter-spacing:1px">// ${p.ph}</div>`}<div style="padding:12px 13px;display:flex;flex-direction:column;flex:1"><div class="clamp2" style="font-weight:650;font-size:13.5px;line-height:1.3;min-height:35px;white-space:normal" title="${escAttr(p.name)}">${escHtml(p.name)}</div><div style="font-weight:800;color:#22D3EE;font-size:14px;margin-top:auto;padding-top:6px">${money(p.price)}</div></div></div>`;
   const shopSec = shopProducts.length
-    ? `<section class="rise d5" style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "Miabe")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
+    ? `<section class="rise d5" style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:24px 0 24px;margin-bottom:40px;overflow:hidden"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;padding:0 24px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin:0">La boutique ${escHtml(S.site?.brand?.name1 ?? "Miabe")}</h3><a data-go="boutique" style="font-size:13px;font-weight:700;cursor:pointer">Voir la boutique →</a></div><div class="marquee fade-edges" style="padding:0 24px"><div class="marquee-track" style="gap:16px;animation-duration:48s;align-items:stretch">${shopFeatured.map(shopCard).join("")}${shopFeatured.map(shopCard).join("")}</div></div></section>`
     : "";
 
   // Partenaires et contenu sponsorisé étaient deux carrousels quasi identiques l'un sous l'autre — fondus
@@ -727,7 +751,12 @@ function pAccueil(S: State) {
       </div>`
     : "";
 
-  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${partners}</main>`;
+  // Appel à l'action final pour les visiteurs non connectés (ceux qui ont lu toute la page sont prêts à s'inscrire).
+  const joinCta = S.user ? "" : `<section class="rise d5" style="position:relative;overflow:hidden;border:1px solid rgba(34,211,238,.3);border-radius:18px;background:linear-gradient(120deg,rgba(34,211,238,.12),rgba(124,130,255,.1) 60%,var(--surface-2));padding:30px 28px;margin-bottom:40px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;justify-content:space-between">
+    <div style="min-width:240px;flex:1"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(26px,3.4vw,36px);letter-spacing:1px;margin:0;line-height:1">Prêt à entrer dans l'arène ?</h3><p style="margin:8px 0 0;color:var(--text-muted);font-size:14px;line-height:1.55;max-width:560px">Crée ton compte gratuitement : inscris-toi aux tournois, suis ton classement et gagne des points de fidélité.</p></div>
+    <button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY};padding:15px 26px;font-size:15.5px">Créer mon compte ${ic(I.arrow)}</button>
+  </section>`;
+  return `<main class="rise home-main" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${hero}${liveBar}${ticker}${eventsSec}${tournSec}${mid}${newsGrid}${shopSec}${joinCta}${partners}</main>`;
 }
 
 /* ================= Assistant de création de tournoi (5 étapes) ================= */
@@ -1366,8 +1395,8 @@ function pTournois(S: State) {
   const createBtn = manage
     ? `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button>`
     : "";
-  const searchBox = `<div style="position:relative;width:240px"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint)">${ic(I.search, 15)}</span><input id="hsearch" value="${escAttr(S.q)}" placeholder="Tournoi, jeu, lieu…" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:9px;color:var(--text);font-family:inherit;font-size:13px;padding:10px 12px 10px 34px" /></div>`;
-  const head = railPageHead("Tournois", `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${searchBox}${createBtn}`);
+  const searchBox = `<div class="search-wide" style="position:relative;width:340px"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint)">${ic(I.search, 15)}</span><input id="hsearch" value="${escAttr(S.q)}" placeholder="Rechercher un tournoi, un jeu, un lieu…" aria-label="Rechercher un tournoi" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 14px 12px 36px" /></div>`;
+  const head = railPageHead("Tournois", source.length === 0 ? "Les prochains tournois seront annoncés ici — inscriptions en ligne, brackets en direct et récompenses." : `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${source.length ? searchBox : ""}${createBtn}`);
 
   const form = S.creating && manage ? tournamentWizard(S) : "";
 
@@ -1389,7 +1418,9 @@ function pTournois(S: State) {
   </div></div>` : "";
 
   const emptyMsg = source.length === 0 ? "Aucun tournoi pour l'instant." : `Aucun tournoi ne correspond${q ? ` à « ${S.q} »` : ""}.`;
-  const empty = `<div style="border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:48px 24px;text-align:center;color:var(--text-muted)">${emptyMsg}</div>`;
+  const empty = `<div style="border:1px solid var(--border);border-radius:16px;background:var(--surface)">${source.length === 0
+    ? emptyState(I.flame, "Aucun tournoi pour l'instant", "Le prochain tournoi sera annoncé très bientôt. Crée ton compte pour être prêt le jour de l'ouverture des inscriptions.", `${S.user ? "" : `<button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY}">Créer mon compte</button>`}<button data-go="evenements" class="btn-ghost" style="${BTN_GHOST}">Voir les événements</button>`, "52px 24px")
+    : emptyState(I.search, emptyMsg, "Essaie un autre mot-clé ou réinitialise les filtres.", `<button data-act="tstatus" data-v="Tous" class="btn-ghost" style="${BTN_GHOST}">Réinitialiser les filtres</button>`, "44px 24px")}</div>`;
   const rest = list.filter((t) => !liveT || t.id !== liveT.id);
 
   const miniStat = (label: string, val: string, color = "var(--text)") => `<div style="min-width:0"><div style="font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint);font-weight:700">${label}</div><div style="font-size:12.5px;font-weight:700;color:${color};margin-top:3px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(val)}</div></div>`;
@@ -1420,7 +1451,11 @@ function pTournois(S: State) {
     return `<option value="${v}" ${S.fmt === v ? "selected" : ""}>${label} (${n})</option>`;
   }).join("")}</select>`;
   const selGroup = (label: string, sel: string) => `<div style="display:flex;flex-direction:column;gap:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint)">${label}</span>${sel}</div>`;
-  const filterSelectors = `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Statut", statusSel)}${selGroup("Catégorie", fmtSel)}</div>`;
+  const filterSelectors = source.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${selGroup("Statut", statusSel)}${selGroup("Catégorie", fmtSel)}</div>` : "";
+  const quickChips = source.length ? `<div role="group" aria-label="Filtres rapides" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${TOURN_STATUSES.map((st) => {
+    const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
+    return `<button data-act="tstatus" data-v="${st}" class="qchip${S.tournStatus === st ? " on" : ""}" aria-pressed="${S.tournStatus === st}">${st} <span style="opacity:.7;font-family:'JetBrains Mono',monospace;font-size:11px">${n}</span></button>`;
+  }).join("")}</div>` : "";
   const gridHead = `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;justify-content:space-between;margin-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
     ${filterSelectors}
@@ -1436,7 +1471,7 @@ function pTournois(S: State) {
   const groupedGrid = S.fmt === "Tous"
     ? `${tierSection("Amateur", rest.filter((t) => (t.tier || "AMATEUR") !== "ELITE"))}${tierSection("Élite", rest.filter((t) => t.tier === "ELITE"))}`
     : cardGrid(rest);
-  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${gridHead}${rest.length ? groupedGrid : empty}</div>`;
+  const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${source.length ? gridHead : ""}${quickChips}${rest.length ? groupedGrid : empty}</div>`;
 
   return `${head}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;
 }
@@ -5152,8 +5187,8 @@ function adSlideData(S: State, pageKey: string): { items: Detail[]; idx: number;
  * carrousel unique « Partenaires & sponsors » de l'accueil (où une diapo peut aussi être un partenaire sans
  * lien : d'où le sous-titre et le fond de secours personnalisables). */
 function adSlideCard(ad: Detail, subtitle = "Cet emplacement soutient l'organisation des tournois Miabe."): string {
-  const inner = `<div class="slidein" style="display:flex;align-items:center;gap:26px;padding:20px 24px;flex-wrap:wrap">
-    <div style="flex:none;width:180px;height:104px;border-radius:12px;overflow:hidden;background:${ad.imageUrl ? "var(--bg)" : "linear-gradient(140deg,rgba(34,211,238,.14),rgba(124,130,255,.1))"};display:flex;align-items:center;justify-content:center">
+  const inner = `<div class="slidein" style="display:flex;align-items:center;gap:20px;padding:14px 20px;flex-wrap:wrap">
+    <div style="flex:none;width:132px;height:76px;border-radius:12px;overflow:hidden;background:${ad.imageUrl ? "var(--bg)" : "linear-gradient(140deg,rgba(34,211,238,.14),rgba(124,130,255,.1))"};display:flex;align-items:center;justify-content:center">
       ${ad.imageUrl ? `<img src="${mediaUrl(ad.imageUrl)}" alt="${escAttr(ad.label || "Publicité")}" style="max-width:100%;max-height:100%;object-fit:contain" />` : ic(I.crown, 32)}
     </div>
     <div style="flex:1;min-width:200px">
@@ -8513,6 +8548,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setTimeout(() => window.print(), 60);
     }
     else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
+    else if (d.act === "tstatus") { setS((s) => ({ ...s, tournStatus: d.v || "Tous", fmt: d.v === "Tous" ? "Tous" : s.fmt, q: d.v === "Tous" ? "" : s.q })); }
     else if (d.act === "create-open") {
       if (S.user?.role === "ORGANIZER" && S.user.organizerStatus !== "APPROVED") {
         alert(S.user.organizerStatus === "REJECTED"

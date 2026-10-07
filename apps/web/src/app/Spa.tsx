@@ -4538,7 +4538,7 @@ function pTournoi(S: State) {
     // "Changer le format" (brouillon uniquement) : rouvre l'assistant complet plutôt que d'obliger à
     // supprimer et recréer le tournoi pour changer de type — les participants déjà saisis sont conservés.
     const changeFormatBtn = manage ? `<button data-changeformat="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border-strong);color:var(--text-muted);border-radius:10px;padding:8px 14px;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:30px">${ic(I.arrow, 13)}Changer le format</button>` : "";
-    const actionRail = `<div style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
+    const actionRail = `<div id="reg-rail" style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
       <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? "Prêt à démarrer" : "Inscription"}</div>
       ${feeBadge}${pointBadge}
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
@@ -4546,7 +4546,11 @@ function pTournoi(S: State) {
     </div>`;
     const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
-    return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${predictionsCard(S, t, manage)}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>`;
+    // Sur téléphone, le bloc d'inscription est tout en bas de la page : bouton fixe qui y mène (inscription encore possible seulement).
+    const regSticky = !manage && !isReg && !isPending
+      ? `<div class="reg-sticky"><button data-act="scroll-reg" class="btn-primary" style="${BTN_PRIMARY};width:100%;justify-content:center;padding:14px 20px;font-size:15.5px">${ic(I.plus, 18)}${S.user ? "S'inscrire" : "Participer"}${fee > 0 ? ` · ${money(fee)}` : " · Gratuit"}</button></div>`
+      : "";
+    return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${predictionsCard(S, t, manage)}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>${regSticky}`;
   }
 
   const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
@@ -8561,6 +8565,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setTimeout(() => window.print(), 60);
     }
     else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
+    else if (d.act === "scroll-reg") { document.getElementById("reg-rail")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
     else if (d.act === "reload") { window.location.reload(); }
     else if (d.act === "tstatus") { setS((s) => ({ ...s, tournStatus: d.v || "Tous", fmt: d.v === "Tous" ? "Tous" : s.fmt, q: d.v === "Tous" ? "" : s.q })); }
     else if (d.act === "create-open") {

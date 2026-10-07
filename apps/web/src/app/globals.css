@@ -468,3 +468,9 @@ input:focus, select:focus { outline: none; border-color: #22D3EE !important; box
   .view-toggle { width: 100%; }
   .view-toggle > span { flex: 1 1 0; text-align: center; padding-left: 8px !important; padding-right: 8px !important; }
 }
+
+/* Fiche tournoi : bouton d'inscription fixe, uniquement sur petit écran (au-dessus de la barre d'onglets du bas). */
+.reg-sticky { display: none; }
+@media (max-width: 1024px) {
+  .reg-sticky { display: block; position: fixed; left: 0; right: 0; bottom: 64px; z-index: 44; padding: 10px 16px; background: linear-gradient(180deg, transparent, var(--bar-bg-3) 40%); }
+}

@@ -610,7 +610,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : ["À venir", "#C4C7FF"];
   const cover = t.imageUrl || gameCover(t.game || main);
   const art = cover
-    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center top`
+    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center 64%`
     : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;
   const mark = cover ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
   const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${t.live ? "#04222a" : stColor};background:${t.live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${t.live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${t.live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
@@ -619,8 +619,8 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const fee = paid ? money(t.entryFeeXof!) : "Gratuit";
   const goLabel = t.live ? "Suivre le direct" : finished ? "Voir les résultats" : "S'inscrire";
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-  const meta = (icon: string, text: string, color = "var(--text-muted)", tip = "") => `<span ${tip ? `title="${tip}"` : ""} style="display:inline-flex;align-items:center;gap:5px;color:${color};font-size:12px;font-weight:700;white-space:nowrap">${ic(icon, 13)}${text}</span>`;
-  const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 9px;white-space:nowrap">${text}</span>`;
+  const meta = (icon: string, text: string, color = "var(--text-muted)", tip = "") => `<span ${tip ? `title="${tip}"` : ""} style="display:inline-flex;align-items:center;gap:4px;color:${color};font-size:12px;font-weight:700;white-space:nowrap">${ic(icon, 13)}${text}</span>`;
+  const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 8px;white-space:nowrap">${text}</span>`;
   return `<div ${openAttr} class="hcard tposter" title="${escAttr(t.name)}" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:var(--surface);display:flex;flex-direction:column">
     <div class="zoom" style="position:relative;min-height:150px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;${art}">
       ${mark}
@@ -631,7 +631,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
       </div>
       <span class="tp-go${finished ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
     </div>
-    <div style="padding:11px 14px 13px;display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap">
+    <div style="padding:11px 12px 13px;display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
       ${meta(I.calendar, escHtml(t.date || "À venir"), t.date ? "var(--text)" : "var(--text-faint)")}
       ${meta(I.users, String(t.players), "var(--text-muted)", "Inscrits")}
       ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}

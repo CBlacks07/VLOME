@@ -573,6 +573,16 @@ function railPageHead(title: string, sub: string, actions = ""): string {
 }
 
 /* ================= Composants ================= */
+/** Jaquettes issues de la boutique (un produit par jeu : « TEKKEN 8 », « EA FC 26 »…), alimentées au chargement des produits.
+ * Un tournoi sans image propre emprunte celle du produit dont le nom contient son jeu — aucune saisie en plus. */
+let GAME_COVERS: { key: string; img: string }[] = [];
+const coverKey = (v: string) => v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+function gameCover(game: string): string | null {
+  const k = coverKey(game || "");
+  if (k.length < 4) return null;
+  const hit = GAME_COVERS.find((c) => c.key.includes(k));
+  return hit ? hit.img : null;
+}
 /** Teinte stable (0-359) dérivée du nom du jeu : un jeu garde sa couleur d'une affiche à l'autre. */
 function gameHue(game: string): number {
   let h = 0;
@@ -598,10 +608,11 @@ function tournPoster(t: TournCard, showPlace = false): string {
   const hue = gameHue(t.game || t.name);
   const finished = t.status === "Terminé";
   const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : ["À venir", "#C4C7FF"];
-  const art = t.imageUrl
-    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
+  const cover = t.imageUrl || gameCover(t.game || main);
+  const art = cover
+    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center top`
     : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;
-  const mark = t.imageUrl ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
+  const mark = cover ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
   const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${t.live ? "#04222a" : stColor};background:${t.live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${t.live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${t.live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
   const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
   const paid = !!t.entryFeeXof && t.entryFeeXof > 0;
@@ -1930,19 +1941,19 @@ function pBoutique(S: State) {
   const pImg = (p: { ph: string; img?: string | null }, ratio = "1/1") => p.img
     ? `<div class="zoom" style="aspect-ratio:${ratio};background-color:#fff;background-image:url('${mediaUrl(p.img)}');background-size:cover;background-position:center"></div>`
     : `<div class="zoom" style="aspect-ratio:${ratio};background:repeating-linear-gradient(45deg,var(--surface-6),var(--surface-6) 13px,var(--surface) 13px,var(--surface) 26px);display:grid;place-items:center;color:var(--text-faint);font-family:monospace;font-size:11px;letter-spacing:1px">// ${p.ph}</div>`;
-  const addBtn = (p: typeof source[number], cls = "") => `<button ${cls ? `class="${cls}"` : ""} data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" data-add-id="${p.id}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:9px 12px;font-weight:700;font-size:12.5px;cursor:pointer">${ic(I.plus, 14)}Ajouter</button>`;
+  const addBtn = (p: typeof source[number], cls = "") => `<button class="shop-add ${cls}" data-add-name="${escAttr(p.name)}" data-add-price="${p.price}" data-add-id="${p.id}" aria-label="Ajouter ${escAttr(p.name)} au panier">${ic(I.cart, 15)}Ajouter</button>`;
   const productCard = (p: typeof source[number]) => {
     const out = (p.stock ?? 0) <= 0;
     return `<div data-prodopen="${p.id}" class="${out ? "" : "hcard"}" style="cursor:pointer;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column;${out ? "opacity:.6" : ""}">
-      <div style="position:relative">${pImg(p)}${out ? `<span style="position:absolute;top:8px;left:8px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FB7185;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);border-radius:99px;padding:3px 8px">Rupture</span>` : ""}${p.loyaltyEligible ? `<span title="Réduction possible avec les points fidélité" style="position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points</span>` : ""}</div>
-      <div class="shop-body" style="padding:14px 15px 16px;display:flex;flex-direction:column;flex:1">
-        <span style="font-size:11px;color:#7C82FF;font-weight:700">${escHtml(p.cat)}</span>
-        <div class="shop-name" style="font-weight:650;font-size:15px;margin:4px 0;line-height:1.3;flex:1">${escHtml(p.name)}</div>
-        <div style="font-size:11.5px;margin-bottom:9px">${p.stock !== undefined ? (out ? `<span style="color:#FB7185;font-weight:700">épuisé</span>` : `<span style="color:#34D399;font-weight:700">${p.stock} en stock</span>`) : ""}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
-          <span class="shop-price" style="font-weight:800;color:${out ? "var(--text-muted)" : "#22D3EE"};font-size:16px;font-family:'JetBrains Mono',monospace">${money(p.price)}</span>
-          ${out ? "" : addBtn(p, "shop-buy")}
+      <div style="position:relative">${pImg(p, "4/5")}${out ? `<span style="position:absolute;top:8px;left:8px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#FB7185;background:rgba(11,11,17,.75);border:1px solid rgba(251,113,133,.4);border-radius:99px;padding:3px 8px">Rupture</span>` : ""}${p.loyaltyEligible ? `<span title="Réduction possible avec les points fidélité" style="position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:3px 8px">Points</span>` : ""}</div>
+      <div class="shop-body" style="padding:14px 15px 16px;display:flex;flex-direction:column;flex:1;gap:8px">
+        <span style="font-size:10.5px;color:#7C82FF;font-weight:800;letter-spacing:.8px;text-transform:uppercase">${escHtml(p.cat)}</span>
+        <div class="shop-name clamp2" title="${escAttr(p.name)}" style="font-weight:700;font-size:15px;line-height:1.3;flex:1">${escHtml(p.name)}</div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span class="shop-price" style="font-weight:800;color:${out ? "var(--text-muted)" : "var(--text)"};font-size:18px;font-family:'JetBrains Mono',monospace">${money(p.price)}</span>
+          ${p.stock === undefined ? "" : out ? `<span style="font-size:11.5px;color:#FB7185;font-weight:700">Épuisé</span>` : p.stock <= 5 ? `<span style="font-size:11.5px;color:#FBBF24;font-weight:800">Plus que ${p.stock}</span>` : `<span style="font-size:11.5px;color:#34D399;font-weight:700">En stock</span>`}
         </div>
+        ${out ? "" : addBtn(p, "shop-buy")}
       </div>
     </div>`;
   };
@@ -1955,10 +1966,11 @@ function pBoutique(S: State) {
     const on = S.boutiqueInStock === v;
     return `<span data-instock="${v ? 1 : 0}" class="chip" style="font-size:12.5px;font-weight:${on ? 700 : 600};color:${on ? "#FBBF24" : "var(--text-muted)"};background:${on ? "rgba(251,191,36,.1)" : "transparent"};border:1px solid ${on ? "#FBBF24" : "var(--border)"};border-radius:99px;padding:8px 14px;cursor:pointer">${label}</span>`;
   };
-  const catOpt = (v: string, label: string, n: number) => `<option value="${v}" ${S.cat === v ? "selected" : ""}>${label} (${n})</option>`;
-  const filters = `<div class="rise d1 shop-filters" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 40px 20px">
-    <select id="shop-cat" style="background:var(--surface);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13.5px;font-weight:650;min-width:190px;cursor:pointer">${catOpt("Tous", "Toutes les catégories", source.length)}${CATS.filter((c) => c !== "Tous").map((c) => catOpt(c, c, source.filter((p) => p.cat === c).length)).join("")}</select>
-    <div style="display:flex;gap:7px">${availChip(true, "En stock")}${availChip(false, "Tout")}</div>
+  const catChip = (v: string, label: string, n: number) => `<button data-cat="${escAttr(v)}" class="qchip${S.cat === v ? " on" : ""}" aria-pressed="${S.cat === v}">${escHtml(label)} <span style="opacity:.7;font-family:'JetBrains Mono',monospace;font-size:11px">${n}</span></button>`;
+  const catChips = [catChip("Tous", "Tout", source.length), ...CATS.filter((c) => c !== "Tous").map((c) => [c, source.filter((p) => p.cat === c).length] as const).filter(([c, n]) => n > 0 || S.cat === c).map(([c, n]) => catChip(c, c, n))].join("");
+  const filters = `<div class="rise d1 shop-filters" style="display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;padding:0 40px 22px">
+    <div class="shop-chips" role="group" aria-label="Catégories" style="display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0">${catChips}</div>
+    <div style="display:flex;gap:7px;flex:none">${availChip(true, "En stock")}${availChip(false, "Tout")}</div>
   </div>`;
 
   const head = `<div class="rise shop-head" style="display:flex;align-items:flex-end;gap:20px;padding:32px 40px 22px;flex-wrap:wrap">
@@ -4292,9 +4304,12 @@ function pTournoi(S: State) {
   const pct = total ? Math.min(100, (dist / total) * 100) : 0;
 
   // Couverture : l'affiche du tournoi (si fournie) constitue le fond de la section détail, comme sur les cartes.
-  const coverBg = t.imageUrl
-    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.2) 35%,rgba(11,11,17,.94)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
-    : `background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(124,130,255,.06) 55%,var(--surface-2))`;
+  const heroCover = t.imageUrl || gameCover(t.game || "");
+  const heroHue = gameHue(t.game || t.name || "");
+  const heroParts = tournTitleParts({ name: t.name || "", game: t.game || "" } as TournCard);
+  const coverBg = heroCover
+    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.25) 30%,rgba(11,11,17,.95)),url('${mediaUrl(heroCover)}');background-size:cover;background-position:center 20%`
+    : `background:radial-gradient(90% 120% at 90% 0%,hsl(${heroHue} 85% 46% / .5),transparent 60%),linear-gradient(160deg,hsl(${heroHue} 50% 20%),hsl(${(heroHue + 55) % 360} 45% 8%))`;
   const cover = `<div style="border-radius:20px;border:1px solid var(--border);overflow:hidden;position:relative;margin-bottom:14px;${coverBg}">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-wrap:wrap;gap:10px">
       <button data-back="1" style="display:inline-flex;align-items:center;gap:7px;background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid var(--border-strong);color:#F4F5FB;border-radius:11px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer">← Tournois</button>
@@ -4303,11 +4318,12 @@ function pTournoi(S: State) {
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
       </div>
     </div>
-    <div style="padding:${t.imageUrl ? "64px" : "26px"} 22px 22px">
-      <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1;text-wrap:balance;overflow-wrap:break-word;color:${t.imageUrl ? "#fff" : "var(--text)"};${t.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.65)" : ""}">${t.name}</h1>
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;color:${t.imageUrl ? "#D5D6E3" : "var(--text-muted)"};font-size:13px;font-weight:600">
-        <span style="min-width:0">${[t.game, t.format, t.matchFormatLabel, t.teamSize ? `Équipes de ${t.teamSize}` : "", t.place, t.date].filter(Boolean).map((v: string) => `<span style="display:inline-block;max-width:100%">${escHtml(v)}</span>`).join(`<span style="opacity:.55;padding:0 .35em">·</span>`)}</span>
-        ${t.entryFeeXof ? `<span style="display:inline-flex;align-items:center;gap:5px;color:#FBBF24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;padding:3px 10px;font-size:12px">${ic(I.cart, 12)}${money(t.entryFeeXof)}</span>` : ""}
+    <div style="padding:${heroCover ? "84px" : "64px"} 24px 26px">
+      <h1 title="${escAttr(t.name || "")}" style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,6.5vw,68px);letter-spacing:1.2px;margin:0;line-height:.95;text-wrap:balance;overflow-wrap:break-word;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.6)">${escHtml(heroParts.main || t.name || "")}</h1>
+      ${heroParts.sub ? `<div style="margin-top:9px;font-size:13px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:rgba(255,255,255,.82)">${escHtml(heroParts.sub)}</div>` : ""}
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px">
+        ${([[I.calendar, t.date], [I.pin, t.place], [I.bolt, t.format], [I.tv, t.matchFormatLabel], [I.users, t.teamSize ? `Équipes de ${t.teamSize}` : ""]] as [string, string][]).filter(([, v]) => v).map(([icon, v]) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#fff;background:rgba(8,8,14,.5);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(6px);border-radius:99px;padding:6px 12px">${ic(icon, 13)}${escHtml(v)}</span>`).join("")}
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:${t.entryFeeXof ? "#FBBF24" : "#34D399"};background:rgba(8,8,14,.5);border:1px solid ${t.entryFeeXof ? "rgba(251,191,36,.45)" : "rgba(52,211,153,.45)"};backdrop-filter:blur(6px);border-radius:99px;padding:6px 12px">${ic(I.cart, 13)}${t.entryFeeXof ? money(t.entryFeeXof) : "Gratuit"}</span>
       </div>
     </div>
   </div>`;
@@ -6281,6 +6297,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!r.ok) return;
       const rows: { id: string; name: string; category: string; priceXof: number; imageUrl?: string | null; loyaltyEligible?: boolean; showOnHome?: boolean; description?: string | null }[] = await r.json();
       if (Array.isArray(rows) && rows.length) {
+        GAME_COVERS = rows.filter((p) => p.imageUrl).map((p) => ({ key: coverKey(p.name), img: p.imageUrl as string }));
         setS((s) => ({ ...s, products: rows.map((p) => ({ id: p.id, cat: p.category, name: p.name, price: p.priceXof, ph: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), img: p.imageUrl || null, loyaltyEligible: !!p.loyaltyEligible, showOnHome: !!p.showOnHome, description: p.description || null })) }));
       }
     } catch { /* repli statique */ }

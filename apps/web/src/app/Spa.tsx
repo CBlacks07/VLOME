@@ -90,7 +90,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; entryFeeXof?: number; dateISO?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; entryFeeXof?: number; maxPlayers?: number | null; dateISO?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -175,7 +175,7 @@ type State = {
   wizStep: number;
   wizData: {
     name: string; game: string; date: string; place: string; format: string; teamSize: number; // 0 = individuel ; sinon joueurs par équipe (fixé à la création)
-    pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; givesLoyaltyPoint: boolean;
+    pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; maxPlayers?: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
     finalsFormat: string; // mode de phase finale (Survival) : choisi à la création, non modifiable ensuite (voir wizScoringStep)
     poolFormat: "survival" | "double" | "roundrobin"; // mode des poules (Survival) : classique ou mini-bracket double élim
@@ -607,7 +607,11 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const { main, sub } = tournTitleParts(t);
   const hue = gameHue(t.game || t.name);
   const finished = t.status === "Terminé";
-  const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : ["À venir", "#C4C7FF"];
+  const cap = t.maxPlayers && t.maxPlayers > 0 ? t.maxPlayers : 0;
+  const isFull = !!cap && t.players >= cap && !t.live && !finished;
+  const capPct = cap ? Math.min(100, (t.players / cap) * 100) : 0;
+  const capColor = isFull ? "#FB7185" : capPct >= 80 ? "#FBBF24" : "#22D3EE";
+  const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : isFull ? ["Complet", "#FB7185"] : ["À venir", "#C4C7FF"];
   const cover = t.imageUrl || gameCover(t.game || main);
   const art = cover
     ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center 64%`
@@ -617,7 +621,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
   const paid = !!t.entryFeeXof && t.entryFeeXof > 0;
   const fee = paid ? money(t.entryFeeXof!) : "Gratuit";
-  const goLabel = t.live ? "Suivre le direct" : finished ? "Voir les résultats" : "S'inscrire";
+  const goLabel = t.live ? "Suivre le direct" : finished ? "Voir les résultats" : isFull ? "Complet" : "S'inscrire";
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
   const meta = (icon: string, text: string, color = "var(--text-muted)", tip = "") => `<span ${tip ? `title="${tip}"` : ""} style="display:inline-flex;align-items:center;gap:4px;color:${color};font-size:12px;font-weight:700;white-space:nowrap">${ic(icon, 13)}${text}</span>`;
   const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 8px;white-space:nowrap">${text}</span>`;
@@ -629,15 +633,16 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
         <div class="clamp2" style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.8px;line-height:1;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.55);word-break:break-word">${escHtml(main)}</div>
         ${sub ? `<div style="margin-top:5px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.78);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sub)}</div>` : ""}
       </div>
-      <span class="tp-go${finished ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
+      <span class="tp-go${finished || isFull ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
     </div>
-    <div style="padding:11px 12px 13px;display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
+    <div style="position:relative;padding:11px 12px 13px;display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
       ${t.date ? meta(I.calendar, escHtml(t.date), "var(--text)") : ""}
-      ${meta(I.users, String(t.players), "var(--text-muted)", "Inscrits")}
+      ${meta(I.users, cap ? `${t.players}/${cap}` : String(t.players), isFull ? "#FB7185" : "var(--text-muted)", cap ? "Places prises" : "Inscrits")}
       ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}
       ${pill(escHtml(t.format), "var(--text-muted)")}
       ${pill(fee, paid ? "var(--text)" : "#34D399")}
       ${t.cagnotte !== null ? pill(`${t.cagnotte} pts`, "#FBBF24", "rgba(251,191,36,.1)") : ""}
+      ${cap ? `<span aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--surface-4)"><span style="display:block;height:100%;width:${capPct}%;background:${capColor}"></span></span>` : ""}
     </div>
   </div>`;
 }
@@ -1020,6 +1025,7 @@ function wizInfosStep(S: State) {
         ${wizField("Points en jeu par participant", `<input id="wz-pts" type="number" min="1" value="${d.pointsPerPlayer}" ${d.format === "SURVIVAL" ? "" : "disabled"} style="${WIZ_INP};${d.format === "SURVIVAL" ? "" : "opacity:.5;cursor:not-allowed"}" />`, d.format === "SURVIVAL" ? "Détermine la cagnotte totale." : "Ne s'applique pas à ce format — la cagnotte par point n'est utilisée que par certains formats.")}
         ${S.wizEditId ? "" : wizField("Type de tournoi", `<select id="wz-team" style="${WIZ_INP}">${[0, 2, 3, 4, 5].map((n) => `<option value="${n}" ${d.teamSize === n ? "selected" : ""}>${n === 0 ? "Individuel" : `Par équipes de ${n} joueurs`}</option>`).join("")}</select>`, "Par équipes : le capitaine inscrit son équipe (nom + joueurs), l'équipe joue comme un seul concurrent.")}
         ${wizField("Frais d'inscription (FCFA, 0 = gratuit)", `<input id="wz-fee" type="number" min="0" step="100" value="${d.entryFeeXof ?? 0}" style="${WIZ_INP}" />`)}
+        ${wizField("Places maximum (0 = illimité)", `<input id="wz-max" type="number" min="0" step="1" value="${d.maxPlayers ?? 0}" style="${WIZ_INP}" />`)}
         ${wizField("Points fidélité", `<label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer"><input id="wz-loyalty" type="checkbox" ${d.givesLoyaltyPoint !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Ce tournoi rapporte 1 point</span></label>`, "Décoche si ce tournoi est organisé par un tiers.")}
         ${wizField("Palier (facultatif)", `<select id="wz-tier" style="${WIZ_INP}"><option value="" ${!d.tier ? "selected" : ""}>Non défini</option><option value="AMATEUR" ${d.tier === "AMATEUR" ? "selected" : ""}>Amateur</option><option value="ELITE" ${d.tier === "ELITE" ? "selected" : ""}>Élite</option></select>`, "Badge affiché sur le tournoi. Peut aussi peser sur les points de classement, selon les multiplicateurs réglés dans Admin → Paliers.")}
       </div>
@@ -4365,6 +4371,7 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Lieu<input id="e-place" value="${(t.place || "").replace(/"/g, "&quot;")}" style="${inpE}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Date<input id="e-date" type="date" style="${inpE}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Frais d'inscription (FCFA)<input id="e-fee" type="number" min="0" step="100" value="${t.entryFeeXof || 0}" style="${inpE}" /></label>
+      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Places maximum (0 = illimité)<input id="e-max" type="number" min="0" step="1" value="${t.maxPlayers || 0}" style="${inpE}" /></label>
       ${t.status === "setup" ? `<label style="font-size:12px;color:var(--text-muted);font-weight:600">Nombre de poules<input id="e-pools" type="number" min="1" value="${t.nbPools || 2}" style="${inpE}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Points / joueur (cagnotte)<input id="e-pts" type="number" min="1" value="${t.pointsPerPlayer || 5}" style="${inpE}" /></label>` : ""}
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Lot / récompense<input id="e-prize" value="${escAttr(t.prize)}" maxlength="400" placeholder="Ex. 50 000 F + trophée" style="${inpE}" /></label>
@@ -4431,6 +4438,14 @@ function pTournoi(S: State) {
         <div style="display:flex;flex-direction:column;gap:8px">${rows}</div>
       </div>${action}`;
     }
+    const rosterCount: number = Array.isArray(t.players) ? t.players.length : 0;
+    const capMax: number = t.maxPlayers || 0;
+    const full = !!capMax && rosterCount >= capMax;
+    if (full && !manage && !isReg && !isPending) {
+      action = `<div style="display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(251,113,133,.5);background:rgba(251,113,133,.08);color:#FB7185;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px">${ic(I.warn, 18)}Complet</div>`;
+    }
+    const capLeft = Math.max(0, capMax - rosterCount);
+    const capBar = capMax ? `<div style="margin:0 0 16px;text-align:left"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:6px"><span>Places</span><b style="color:${full ? "#FB7185" : "var(--text)"}">${rosterCount} / ${capMax}</b></div><div style="height:8px;border-radius:99px;background:var(--surface-4);overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, (rosterCount / capMax) * 100)}%;background:${full ? "#FB7185" : capLeft <= Math.ceil(capMax * 0.2) ? "#FBBF24" : "linear-gradient(90deg,#22D3EE,#7C82FF)"}"></span></div><div style="font-size:11.5px;font-weight:700;margin-top:6px;color:${full ? "#FB7185" : capLeft <= Math.ceil(capMax * 0.2) ? "#FBBF24" : "var(--text-muted)"}">${full ? "Complet" : `${capLeft} place${capLeft > 1 ? "s" : ""} restante${capLeft > 1 ? "s" : ""}`}</div></div>` : "";
     const sub = manage
       ? t.mainFormat === "survival"
         ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
@@ -4592,7 +4607,7 @@ function pTournoi(S: State) {
     // montrer aurait fait croire à un budget de points qui ne s'applique pas à ce tournoi.
     const statTiles = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--surface-3);border:1px solid var(--surface-3);border-radius:11px;overflow:hidden;margin-bottom:30px">
       ${t.mainFormat === "survival" ? statTile("Cagnotte", String(t.cagnotte?.total ?? 0), "#FBBF24") : ""}
-      ${statTile("Inscrits", String(roster.length))}
+      ${statTile("Inscrits", t.maxPlayers ? `${roster.length} / ${t.maxPlayers}` : String(roster.length), t.maxPlayers && roster.length >= t.maxPlayers ? "#FB7185" : "var(--text)")}
       ${statTile("Frais", fee > 0 ? money(fee) : "Gratuit")}
       ${statTile("Format", escHtml(t.format) || "—")}
     </div>`;
@@ -4608,13 +4623,14 @@ function pTournoi(S: State) {
     const actionRail = `<div id="reg-rail" style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
       <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? "Prêt à démarrer" : "Inscription"}</div>
       ${feeBadge}${pointBadge}
+      ${capBar}
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
     const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     // Sur téléphone, le bloc d'inscription est tout en bas de la page : bouton fixe qui y mène (inscription encore possible seulement).
-    const regSticky = !manage && !isReg && !isPending
+    const regSticky = !manage && !isReg && !isPending && !full
       ? `<div class="reg-sticky"><button data-act="scroll-reg" class="btn-primary" style="${BTN_PRIMARY};width:100%;justify-content:center;padding:14px 20px;font-size:15.5px">${ic(I.plus, 18)}${S.user ? "S'inscrire" : "Participer"}${fee > 0 ? ` · ${money(fee)}` : " · Gratuit"}</button></div>`
       : "";
     return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${predictionsCard(S, t, manage)}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>${regSticky}`;
@@ -5572,8 +5588,8 @@ function eventScheduleCalendar(schedule: Detail[], tournaments: Detail[], accent
   const itemCard = (e: Entry) => {
     const t = e.tournament;
     return `<div ${t ? `data-open="${t.id}" style="cursor:pointer"` : ""} style="flex:none;width:190px;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:11px 13px">
-      <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:${accent}">${timeOf(e.startAt)}${e.endAt ? ` → ${timeOf(e.endAt)}` : ""}</div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px"><span style="font-weight:700;font-size:13.5px;line-height:1.25">${escHtml(e.title)}</span>${t?.live ? `<span style="font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:2px 7px;flex:none">Live</span>` : ""}</div>
+      ${timeOf(e.startAt) !== "00:00" || e.endAt ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:${accent}">${timeOf(e.startAt)}${e.endAt ? ` → ${timeOf(e.endAt)}` : ""}</div>` : ""}
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:${timeOf(e.startAt) !== "00:00" || e.endAt ? 4 : 0}px"><span style="font-weight:700;font-size:13.5px;line-height:1.25">${escHtml(e.title)}</span>${t?.live ? `<span style="font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:2px 7px;flex:none">Live</span>` : ""}</div>
       ${e.note ? `<div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.note)}</div>` : ""}
       ${t ? `<div style="font-size:11px;color:${accent};font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.game ? escHtml(t.game) : "Tournoi"}</div>` : ""}
     </div>`;
@@ -7761,6 +7777,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       d.place = val("wz-place").trim();
       d.pointsPerPlayer = Math.max(1, parseInt(val("wz-pts")) || 5);
       d.entryFeeXof = Math.max(0, parseInt(val("wz-fee")) || 0);
+      d.maxPlayers = Math.max(0, parseInt(val("wz-max")) || 0);
       if (!S.wizEditId) d.teamSize = parseInt(val("wz-team")) || 0;
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
       { const tv = val("wz-tier"); d.tier = tv === "ELITE" ? "ELITE" : tv === "AMATEUR" ? "AMATEUR" : null; }
@@ -7895,7 +7912,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       name: d.name, game: d.game, format: d.format, place: d.place,
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.teamSize ? [] : d.players,
       ...(d.teamSize ? { teamSize: d.teamSize } : {}),
-      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier,
+      nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, maxPlayers: d.maxPlayers || 0, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier,
       survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
       finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
@@ -7955,7 +7972,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     setS((s) => ({ ...s, busy: true }));
     const body: Detail = {
       name: d.name, game: d.game, place: d.place, date: d.date || undefined,
-      entryFeeXof: d.entryFeeXof, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
+      entryFeeXof: d.entryFeeXof, maxPlayers: d.maxPlayers || 0, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier, nbPools: d.nbPools, pointsPerPlayer: d.pointsPerPlayer,
       // Les reglages de poule concernent tous les formats qui en proposent, pas seulement Survival.
       ...(wizHasPools(d.format) ? { poolFormat: d.poolFormat, qualifyPerPool: d.qualifyPerPool } : {}),
       // Le format de la phase finale est un choix libre dès qu'il y a des poules, quel que soit le
@@ -8205,7 +8222,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
             name: t.name || "", game: t.game || "", date: "", place: t.place || "", format: ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL",
             pointsPerPlayer: t.pointsPerPlayer || 5, nbPools: t.nbPools || 2,
             players: roster.map((p) => (p.club ? `${p.name} @${p.club}` : p.name)),
-            entryFeeXof: t.entryFeeXof || 0, givesLoyaltyPoint: t.givesLoyaltyPoint ?? true,
+            entryFeeXof: t.entryFeeXof || 0, maxPlayers: t.maxPlayers || 0, givesLoyaltyPoint: t.givesLoyaltyPoint ?? true,
             survWin: t.scoring?.survWin ?? 1, loserWin: t.scoring?.loserWin ?? 0.5, poolFinalWin: t.scoring?.poolFinalWin ?? 1.5,
             finalsWin: t.scoring?.finalsWin ?? 2, championBonus: t.scoring?.championBonus ?? 3, streakBonus: t.scoring?.streakBonus ?? 0,
             finalsFormat: t.finalsFormat || "single",
@@ -8229,7 +8246,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.editcancel !== undefined) { setS((s) => ({ ...s, editing: false })); }
     else if (d.editsave) {
       const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
-      const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0, prize: val("e-prize"), rules: val("e-rules") };
+      const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0, maxPlayers: parseInt(val("e-max")) || 0, prize: val("e-prize"), rules: val("e-rules") };
       if (S.detail?.status === "setup") { body.nbPools = parseInt(val("e-pools")) || 1; body.pointsPerPlayer = parseInt(val("e-pts")) || 1; }
       editSave(d.editsave, body);
     }

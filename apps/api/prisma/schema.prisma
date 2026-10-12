@@ -260,6 +260,8 @@ model Tournament {
   teamSize          Int?
   teams             Json?
   tier              TournamentTier?  // facultatif — pas de palier tant que l'organisateur n'en choisit pas un
+  // Nombre maximum de participants (null = illimité). Au-delà, l'inscription en ligne est refusée (« complet »).
+  maxPlayers        Int?
 }
 
 model Match {

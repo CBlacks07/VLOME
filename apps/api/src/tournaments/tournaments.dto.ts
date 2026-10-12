@@ -14,6 +14,8 @@ export class CreateTournamentDto {
   @IsOptional() @IsString() @MaxLength(400) prize?: string;
   // Tournoi par équipes (2 à 8 joueurs par équipe) — fixé à la création. Absent = tournoi individuel.
   @IsOptional() @IsInt() @Min(2) @Max(8) teamSize?: number;
+  // Nombre maximum de participants (0 ou absent = illimité).
+  @IsOptional() @IsInt() @Min(0) @Max(2048) maxPlayers?: number;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   @IsOptional() @IsIn(['AMATEUR', 'ELITE']) tier?: 'AMATEUR' | 'ELITE';
@@ -65,6 +67,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;
   @IsOptional() @IsBoolean() givesLoyaltyPoint?: boolean;
   @IsOptional() @IsIn(['AMATEUR', 'ELITE']) tier?: 'AMATEUR' | 'ELITE';
+  @IsOptional() @IsInt() @Min(0) @Max(2048) maxPlayers?: number;
   // Modifiables uniquement tant que le tournoi n'est pas lancé (voir TournamentsService.update).
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;

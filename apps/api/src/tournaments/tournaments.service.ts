@@ -42,7 +42,7 @@ export class TournamentsService {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
     imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
-    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null;
+    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null; maxPlayers?: number | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -70,6 +70,7 @@ export class TournamentsService {
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
       tier: r.tier === 'ELITE' || r.tier === 'AMATEUR' ? r.tier : null,
+      maxPlayers: r.maxPlayers ?? null,
       eventId: r.eventId ?? null,
       // Événement auquel ce tournoi est rattaché (badge sur la carte) — seulement s'il est publié :
       // findAll() ne renvoie de toute façon que ces tournois-là, mais cardsByEvent()/mine() incluent
@@ -178,6 +179,7 @@ export class TournamentsService {
         rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null, teamSize: dto.teamSize ?? null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
         tier: (dto.tier ?? null) as any,
+        maxPlayers: dto.maxPlayers && dto.maxPlayers > 0 ? dto.maxPlayers : null,
         eventId: eventIdToUse,
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
@@ -201,6 +203,7 @@ export class TournamentsService {
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
     if (dto.givesLoyaltyPoint !== undefined) data.givesLoyaltyPoint = dto.givesLoyaltyPoint;
     if (dto.tier !== undefined) data.tier = dto.tier;
+    if (dto.maxPlayers !== undefined) data.maxPlayers = dto.maxPlayers > 0 ? dto.maxPlayers : null;
 
     // Changement de format : un format différent = une structure de jeu différente (poules ou non,
     // barème ou non…), donc le moteur est reconstruit à neuf plutôt que rafistolé champ par champ.
@@ -526,7 +529,12 @@ export class TournamentsService {
 
     const t = (r.engineState ?? Engine.newTournament({ name: r.name })) as Engine.Tournament;
     // Nom réservé : distinct des joueurs déjà dans le moteur ET des autres inscriptions (payées ou en attente).
-    const allRegs = await this.prisma.registration.findMany({ where: { tournamentId: id }, select: { playerName: true } });
+    const allRegs = await this.prisma.registration.findMany({ where: { tournamentId: id }, select: { playerName: true, paymentStatus: true } });
+    // Tournoi complet : les joueurs déjà dans le moteur + les paiements en attente (qui réservent leur place).
+    if (r.maxPlayers) {
+      const pendingSlots = allRegs.filter((x) => x.paymentStatus === 'pending').length;
+      if (t.players.length + pendingSlots >= r.maxPlayers) throw new ConflictException('Ce tournoi est complet : toutes les places sont prises.');
+    }
     const taken = new Set([...t.players.map((p) => p.name.toLowerCase()), ...allRegs.map((x) => x.playerName.toLowerCase())]);
     // Tournoi par équipes : le capitaine inscrit l'équipe entière — l'équipe est UN concurrent côté moteur.
     let members: string[] | null = null;
@@ -949,6 +957,7 @@ export class TournamentsService {
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
       rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
       tier: (r.tier ?? undefined) as 'AMATEUR' | 'ELITE' | undefined,
+      maxPlayers: r.maxPlayers ?? undefined,
     };
     return this.create(dto, user);
   }
@@ -1400,7 +1409,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1480,6 +1489,7 @@ export class TournamentsService {
       prize: extra.prize ?? null,
       // Tournoi par équipes : taille des équipes et composition { nomÉquipe: [joueurs] } (null = individuel).
       teamSize: extra.teamSize ?? null,
+      maxPlayers: extra.maxPlayers ?? null,
       teams: (extra.teams as Record<string, string[]>) || {},
       tier: extra.tier === 'ELITE' || extra.tier === 'AMATEUR' ? extra.tier : null,
       format: format ? (FORMAT_LABEL[format] || format) : null,

@@ -7337,6 +7337,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
       const [tourns, products, news, site, gallery, albums, leaderboard, loyaltySettings, games, clubs] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("gallery/albums"), get("tournaments/leaderboard"), get("loyalty/settings"), get("games"), get("clubs")]);
+      if (Array.isArray(products)) GAME_COVERS = products.filter((p: Detail) => p.imageUrl).map((p: Detail) => ({ key: coverKey(String(p.name || "")), img: p.imageUrl as string }));
       setS((s) => ({
         ...s,
         tourns: Array.isArray(tourns) && tourns.length ? tourns : s.tourns,

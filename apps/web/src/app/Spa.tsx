@@ -5549,7 +5549,7 @@ function eventSummaryAndFilter(S: State, ts: Detail[]): { summary: string; chips
 function evTournamentsView(S: State, ts: Detail[], evId: string | null): string {
   const { summary, chips, shown } = eventSummaryAndFilter(S, ts);
   return ts.length
-    ? `${summary}${chips}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px">${shown.map((t) => eventTournCard(t, evId)).join("")}</div>`
+    ? `${summary}${chips}<div class="tposter-grid">${shown.map((t) => eventTournCard(t, evId)).join("")}</div>`
     : `<div style="color:var(--text-faint);font-size:13.5px;padding:14px 0">Aucun tournoi rattaché pour l'instant.</div>`;
 }
 

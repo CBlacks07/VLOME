@@ -90,7 +90,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; entryFeeXof?: number; dateISO?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -339,6 +339,9 @@ const I = {
   share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6 15.4 6.4M8.6 13.4l6.8 4.2"/>',
   extlink: '<path d="M14 4h6v6M20 4 10 14M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  users: '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.8c2 .6 3.2 2.4 3.5 5.2"/>',
+  pin: '<path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/>',
 };
 const money = (n: number) => n.toLocaleString("fr-FR") + " F";
 
@@ -570,26 +573,69 @@ function railPageHead(title: string, sub: string, actions = ""): string {
 }
 
 /* ================= Composants ================= */
-function tournCard(t: TournCard, big: boolean) {
-  const evAcc = t.event ? (/^#[0-9a-f]{6}$/i.test(t.event.accentColor || "") ? t.event.accentColor! : "#7C82FF") : "";
-  const eventBadge = t.event ? `<span data-openevent="${t.event.id}" title="Fait partie de l'événement ${escAttr(t.event.name)}" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#fff;background:${evAcc}cc;backdrop-filter:blur(4px);border-radius:99px;padding:3px 9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ic(I.crown, 10)}${escHtml(t.event.name)}</span>` : "";
-  const badge = t.live ? '<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>' : "";
-  const eliteBadge = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:10.5px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 9px">${ic(I.crown, 10)}Élite</span>` : "";
-  const foot = t.live ? '<span style="font-size:12px;color:#22D3EE;font-weight:700">En direct</span>' : `<span style="font-size:12px;color:var(--text-muted);font-weight:600">${t.status}</span>`;
+/** Teinte stable (0-359) dérivée du nom du jeu : un jeu garde sa couleur d'une affiche à l'autre. */
+function gameHue(game: string): number {
+  let h = 0;
+  for (let i = 0; i < game.length; i++) h = (h * 31 + game.charCodeAt(i)) % 360;
+  return h;
+}
+/** Titre / sous-titre d'une affiche : le jeu (ce qui distingue vraiment les tournois d'une même série) en grand, le reste du nom
+ * (« GAL S4 / CHALLENGER ») en petit dessous. Le nom complet reste dans l'infobulle et sur la fiche. */
+function tournTitleParts(t: TournCard): { main: string; sub: string } {
+  const name = (t.name || "").trim();
+  const game = (t.game || "").trim();
+  if (!game) return { main: name, sub: "" };
+  const esc = game.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = name.match(new RegExp(esc + "(?:\\s*\\d+)?", "i"));
+  if (!m) return { main: game, sub: name };
+  const sub = name.replace(m[0], " ").replace(/\bTOURNOI\b/gi, " ").replace(/\s+/g, " ").replace(/^[\s\-–·:/]+|[\s\-–·:/]+$/g, "").trim();
+  return { main: m[0].trim(), sub };
+}
+/** Affiche de tournoi (accueil + page Tournois) : visuel du jeu en tête (image du tournoi, sinon aplat généré à la couleur
+ * du jeu), jeu en gros titre, puis date / inscrits / frais et un appel à l'action explicite. Toute la carte ouvre la fiche. */
+function tournPoster(t: TournCard, showPlace = false): string {
+  const { main, sub } = tournTitleParts(t);
+  const hue = gameHue(t.game || t.name);
+  const finished = t.status === "Terminé";
+  const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : ["À venir", "#C4C7FF"];
+  const art = t.imageUrl
+    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
+    : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;
+  const mark = t.imageUrl ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
+  const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${t.live ? "#04222a" : stColor};background:${t.live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${t.live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${t.live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
+  const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
+  const paid = !!t.entryFeeXof && t.entryFeeXof > 0;
+  const fee = paid ? money(t.entryFeeXof!) : "Gratuit";
+  const cta: [string, boolean] = t.live ? ["Suivre le direct", true] : finished ? ["Voir les résultats", false] : ["S'inscrire", true];
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-  // Bandeau : image du tournoi si fournie, sinon dégradé par défaut.
-  const bannerBg = t.imageUrl
-    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.15),rgba(11,11,17,.55)),url('${mediaUrl(t.imageUrl)}');background-size:cover;background-position:center`
-    : "background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(124,130,255,.11))";
-  return `<div ${openAttr} class="hcard" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,var(--surface),var(--surface-2))">
-    <div class="zoom" style="height:${t.imageUrl ? (big ? 130 : 110) : big ? 80 : 74}px;display:flex;align-items:flex-start;justify-content:space-between;padding:13px 14px;${bannerBg}">
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:#04222a;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 9px">${t.format}</span>${eliteBadge}</div>${badge}</div>
-    <div style="padding:${big ? "15px 16px 17px" : "14px 15px 16px"}">
-      ${eventBadge ? `<div style="margin-bottom:7px">${eventBadge}</div>` : ""}
-      <h4 style="margin:0 0 6px;font-size:${big ? 18 : 17}px">${t.name}</h4>
-      <div style="color:var(--text-muted);font-size:12.5px;line-height:1.7">${t.game} · ${t.players} joueurs<br>${t.date} · ${t.place}</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:13px;border-top:1px solid var(--border)">${foot}
-        ${t.cagnotte !== null ? `<span style="font-size:12px;color:#FBBF24;font-weight:700">${big ? "Cagnotte " : ""}<span style="font-family:'JetBrains Mono',monospace">${t.cagnotte}</span> pts</span>` : ""}</div></div></div>`;
+  const meta = (icon: string, text: string, color = "var(--text-muted)") => `<span style="display:inline-flex;align-items:center;gap:6px;color:${color};font-size:12.5px;font-weight:600;white-space:nowrap">${ic(icon, 14)}${text}</span>`;
+  return `<div ${openAttr} class="hcard tposter" title="${escAttr(t.name)}" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:var(--surface);display:flex;flex-direction:column">
+    <div class="zoom" style="position:relative;min-height:158px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;${art}">
+      ${mark}
+      <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${statusChip}${elite}</div>
+      <div style="position:relative">
+        <div class="clamp2" style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.8px;line-height:1;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.55);word-break:break-word">${escHtml(main)}</div>
+        ${sub ? `<div style="margin-top:5px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.78);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sub)}</div>` : ""}
+      </div>
+    </div>
+    <div style="padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;flex:1">
+      <div style="display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap">
+        ${meta(I.calendar, escHtml(t.date || "Date à venir"), t.date ? "var(--text)" : "var(--text-faint)")}
+        ${meta(I.users, `${t.players} inscrit${t.players > 1 ? "s" : ""}`)}
+        ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>
+        <span style="font-size:11px;font-weight:800;color:${paid ? "var(--text)" : "#34D399"};background:var(--surface-3);border-radius:99px;padding:4px 10px">${fee}</span>
+        ${t.cagnotte !== null ? `<span style="font-size:11px;font-weight:800;color:#FBBF24;background:rgba(251,191,36,.1);border-radius:99px;padding:4px 10px">${t.cagnotte} pts</span>` : ""}
+      </div>
+      <span class="tp-cta${cta[1] ? " tp-cta-main" : ""}" style="margin-top:auto">${cta[0]}${ic(I.arrow, 14)}</span>
+    </div>
+  </div>`;
+}
+/** Carte tournoi de l'accueil : même affiche que la page Tournois (le paramètre « big » est conservé pour les appels existants). */
+function tournCard(t: TournCard, _big: boolean) {
+  return tournPoster(t, !t.event);
 }
 /** Sélecteur de fichier stylé : input masqué + bouton + nom du fichier choisi. */
 function filePicker(id: string, label = "Choisir une image", accept = "image/*", existingUrl?: string | null, multiple = false) {
@@ -1436,23 +1482,6 @@ function pTournois(S: State) {
     : emptyState(I.search, emptyMsg, "Essaie un autre mot-clé ou réinitialise les filtres.", `<button data-act="tstatus" data-v="Tous" class="btn-ghost" style="${BTN_GHOST}">Réinitialiser les filtres</button>`, "44px 24px")}</div>`;
   const rest = list.filter((t) => !liveT || t.id !== liveT.id);
 
-  const miniStat = (label: string, val: string, color = "var(--text)") => `<div style="min-width:0"><div style="font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-faint);font-weight:700">${label}</div><div style="font-size:12.5px;font-weight:700;color:${color};margin-top:3px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(val)}</div></div>`;
-  const cardV2 = (t: TournCard) => {
-    const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : t.status === "Terminé" ? ["Terminé", "#FBBF24"] : ["À venir", "#7C82FF"];
-    const badge = t.imageUrl
-      ? `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:url('${mediaUrl(t.imageUrl)}') center/cover;border:1px solid var(--border-strong)"></div>`
-      : `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);display:grid;place-items:center"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:800;color:#22D3EE">${escHtml(gameAbbrev(t.game))}</span></div>`;
-    const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-    const evBadge = t.event ? `<div style="margin-bottom:2px"><span title="${escAttr(t.event.name)}" style="font-size:9.5px;font-weight:700;color:#7C82FF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%">${escHtml(t.event.name)}</span></div>` : "";
-    return `<div ${openAttr} class="fcell2" style="cursor:pointer;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0">${badge}<div style="min-width:0">${evBadge}<h4 title="${escAttr(t.name)}" class="clamp2 tcard-title" style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.5px;line-height:1.15;word-break:break-word">${escHtml(t.name)}</h4></div></div>
-        <span style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${stColor};background:${stColor}14;border:1px solid ${stColor}55;border-radius:99px;padding:3px 9px;white-space:nowrap">${t.live ? `<span style="width:5px;height:5px;border-radius:50%;background:${stColor};animation:blink 1.2s infinite"></span>` : ""}${stLabel}</span>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>${t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 11)}Élite</span>` : ""}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:10px;border-top:1px solid var(--surface-4)">${miniStat("Date", t.date || "Bientôt")}${miniStat("Joueurs", String(t.players))}${miniStat("Récompense", t.cagnotte !== null ? `${t.cagnotte} pts` : "—", t.cagnotte !== null ? "#FBBF24" : undefined)}</div>
-    </div>`;
-  };
   const selStyle = "background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 30px 8px 13px";
   const statusSel = `<select id="tourn-status-sel" style="${selStyle}">${TOURN_STATUSES.map((st) => {
     const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
@@ -1473,17 +1502,33 @@ function pTournois(S: State) {
     <div style="display:flex;align-items:center;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:1.2px;margin:0">${liveT ? "Tous les tournois" : "Tournois"}</h3><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${list.length}</span></div>
     ${filterSelectors}
   </div>`;
-  // Aucun palier choisi : on regroupe la grille en deux sections (Amateur/Élite), comme sur la
-  // maquette — filtrer sur un palier précis retombe sur une simple liste plate, le regroupement
-  // n'ayant plus d'intérêt.
-  const cardGrid = (items: TournCard[]) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px">${items.map(cardV2).join("")}</div>`;
-  const tierSection = (label: string, items: TournCard[]) => items.length ? `<div style="margin-bottom:26px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><h4 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;text-transform:uppercase;margin:0;color:var(--text-muted)">${label}</h4><span style="font-size:11.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${items.length}</span></div>
-    ${cardGrid(items)}
-  </div>` : "";
-  const groupedGrid = S.fmt === "Tous"
-    ? `${tierSection("Amateur", rest.filter((t) => (t.tier || "AMATEUR") !== "ELITE"))}${tierSection("Élite", rest.filter((t) => t.tier === "ELITE"))}`
-    : cardGrid(rest);
+  // Regroupement par événement : l'événement est nommé UNE fois dans un bandeau (au lieu de se répéter, tronqué, sur
+  // chaque carte), puis ses tournois par date. Les tournois sans événement forment un groupe à part.
+  const cardGrid = (items: TournCard[]) => `<div class="tposter-grid">${items.map((t) => tournPoster(t, !t.event)).join("")}</div>`;
+  const byDate = (a: TournCard, b: TournCard) => (a.dateISO ? Date.parse(a.dateISO) : Infinity) - (b.dateISO ? Date.parse(b.dateISO) : Infinity);
+  const groupMap = new Map<string, TournCard[]>();
+  for (const t of rest) { const k = t.event?.id ?? ""; if (!groupMap.has(k)) groupMap.set(k, []); groupMap.get(k)!.push(t); }
+  const shortDate = (iso: string) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  const eventBand = (items: TournCard[]) => {
+    const ev = items[0].event!;
+    const acc = /^#[0-9a-f]{6}$/i.test(ev.accentColor || "") ? ev.accentColor! : "#22D3EE";
+    const ds = items.map((t) => t.dateISO).filter((d): d is string => !!d).sort();
+    const range = ds.length ? (shortDate(ds[0]) === shortDate(ds[ds.length - 1]) ? shortDate(ds[0]) : `${shortDate(ds[0])} → ${shortDate(ds[ds.length - 1])}`) : "";
+    const place = items.find((t) => t.place)?.place ?? "";
+    const bits = [range && `${ic(I.calendar, 13)}${escHtml(range)}`, place && `${ic(I.pin, 13)}${escHtml(place)}`, `${items.length} tournoi${items.length > 1 ? "s" : ""}`].filter(Boolean)
+      .map((b) => `<span style="display:inline-flex;align-items:center;gap:6px">${b}</span>`).join("");
+    return `<div data-openevent="${ev.id}" class="evband" style="--acc:${acc};cursor:pointer">
+      <span class="evband-ico">${ic(I.crown, 20)}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc)">Événement</div>
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(24px,3vw,32px);letter-spacing:1px;line-height:1.05;margin:3px 0 0;overflow-wrap:break-word">${escHtml(ev.name)}</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:12.5px;color:var(--text-muted);font-weight:600">${bits}</div></div>
+      <span class="evband-go">Voir l'événement ${ic(I.arrow, 14)}</span>
+    </div>`;
+  };
+  const groups = [...groupMap.entries()].filter(([k]) => k).map(([, items]) => items.sort(byDate));
+  const solo = (groupMap.get("") ?? []).sort(byDate);
+  const groupedGrid = `${groups.map((items) => `<section style="margin-bottom:38px">${eventBand(items)}${cardGrid(items)}</section>`).join("")}${solo.length
+    ? `<section style="margin-bottom:38px">${groups.length ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><h4 style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;margin:0">Autres tournois</h4><span style="font-size:11.5px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${solo.length}</span></div>` : ""}${cardGrid(solo)}</section>` : ""}`;
   const grid = `<div class="rise d3 page-hpad" style="padding:34px 44px 44px">${source.length ? gridHead : ""}${quickChips}${rest.length ? groupedGrid : empty}</div>`;
 
   return `${head}${form}${featured}${grid}<div class="page-hpad" style="padding:0 44px 40px">${adCarousel(S, "tournois")}</div>`;

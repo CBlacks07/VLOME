@@ -525,3 +525,22 @@ html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
 /* Cartes tournoi : les noms d'une même série sont longs et très proches (« GAL S4 / CHALLENGER - TOURNOI … ») —
    trois lignes évitent de couper juste avant le jeu, seule partie qui les distingue. */
 h4.tcard-title { -webkit-line-clamp: 3; }
+
+/* ===== Refonte cartes : affiches de tournoi + bandeau d'événement (2026-10-12) ===== */
+.tposter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 18px; }
+@media (max-width: 640px) { .tposter-grid { grid-template-columns: 1fr; gap: 14px; } }
+.tposter:hover { border-color: rgba(34, 211, 238, .45) !important; }
+/* Appel à l'action : bouton plein (inscription / direct) ou contour discret (résultats). La carte entière est cliquable,
+   ce « bouton » est le repère visuel de l'action — il s'illumine au survol de la carte. */
+.tp-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 11px 14px; font-size: 13px; font-weight: 750; border: 1px solid var(--border-strong); color: var(--text); background: transparent; transition: background .2s ease, color .2s ease, border-color .2s ease; }
+.tp-cta-main { background: rgba(34, 211, 238, .12); border-color: rgba(34, 211, 238, .5); color: #22D3EE; }
+.tposter:hover .tp-cta { background: #22D3EE; border-color: #22D3EE; color: #04222a; }
+.tposter:hover .tp-cta svg { transform: translateX(3px); }
+.tp-cta svg { transition: transform .2s ease; }
+@media (hover: none) { .tposter:hover .tp-cta { background: transparent; border-color: var(--border-strong); color: var(--text); } .tposter:hover .tp-cta-main { background: rgba(34, 211, 238, .12); border-color: rgba(34, 211, 238, .5); color: #22D3EE; } }
+/* Bandeau d'événement : nom unique, dates, lieu, nombre de tournois. */
+.evband { display: flex; align-items: center; gap: 16px; padding: 18px 22px; margin-bottom: 18px; border: 1px solid var(--border); border-left: 3px solid var(--acc); border-radius: 16px; background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 14%, var(--surface)), var(--surface) 75%); transition: border-color .2s ease; }
+.evband:hover { border-color: var(--acc); }
+.evband-ico { display: grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 13px; color: var(--acc); background: color-mix(in srgb, var(--acc) 16%, transparent); border: 1px solid color-mix(in srgb, var(--acc) 40%, transparent); }
+.evband-go { display: inline-flex; align-items: center; gap: 8px; flex: none; font-size: 12.5px; font-weight: 750; color: var(--acc); border: 1px solid color-mix(in srgb, var(--acc) 45%, transparent); border-radius: 10px; padding: 9px 14px; }
+@media (max-width: 640px) { .evband { flex-wrap: wrap; padding: 16px; } .evband-go { width: 100%; justify-content: center; } }

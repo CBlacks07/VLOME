@@ -499,11 +499,11 @@ function railMobileBars(S: State, activeKey: string): string {
   const top = `<div class="rail-mobile-top" style="position:sticky;top:0;z-index:45;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--surface-3);background:var(--bar-bg-2);backdrop-filter:blur(10px)">
     <div data-go="accueil" style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;min-width:0">${brandLogo(S, 28, 16)}<span style="font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(S.site?.brand?.name1 ?? "Miabe")} <span style="color:#22D3EE">${escHtml(S.site?.brand?.name2 ?? "ESPORT")}</span></span></div>
     ${themeToggleBtn(S, 36, 15)}
-    <button data-cart-open="1" title="Panier" style="position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.cart, 16)}
+    <button data-cart-open="1" title="Panier" aria-label="Panier" style="position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.cart, 16)}
       ${S.cartItems.length ? `<span style="position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:9.5px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
     ${S.user
-      ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;border:0;cursor:pointer;flex:none">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
-      : `<button data-auth-open="1" title="Connexion" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.user, 16)}</button>`}
+      ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;border:0;cursor:pointer;flex:none">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
+      : `<button data-auth-open="1" title="Connexion" aria-label="Connexion" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.user, 16)}</button>`}
   </div>`;
   const tabs = RAIL_NAV.map(([key, label, icon]) => {
     const on = key === activeKey;
@@ -1443,10 +1443,10 @@ function pTournois(S: State) {
       ? `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:url('${mediaUrl(t.imageUrl)}') center/cover;border:1px solid var(--border-strong)"></div>`
       : `<div style="width:44px;height:44px;flex:none;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);display:grid;place-items:center"><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:800;color:#22D3EE">${escHtml(gameAbbrev(t.game))}</span></div>`;
     const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-    const evBadge = t.event ? `<div style="margin-bottom:2px"><span style="font-size:9.5px;font-weight:700;color:#7C82FF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:160px">${escHtml(t.event.name)}</span></div>` : "";
+    const evBadge = t.event ? `<div style="margin-bottom:2px"><span title="${escAttr(t.event.name)}" style="font-size:9.5px;font-weight:700;color:#7C82FF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%">${escHtml(t.event.name)}</span></div>` : "";
     return `<div ${openAttr} class="fcell2" style="cursor:pointer;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:12px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0">${badge}<div style="min-width:0">${evBadge}<h4 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.5px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</h4></div></div>
+        <div style="display:flex;align-items:center;gap:12px;min-width:0">${badge}<div style="min-width:0">${evBadge}<h4 title="${escAttr(t.name)}" class="clamp2" style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.5px;line-height:1.15;word-break:break-word">${escHtml(t.name)}</h4></div></div>
         <span style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${stColor};background:${stColor}14;border:1px solid ${stColor}55;border-radius:99px;padding:3px 9px;white-space:nowrap">${t.live ? `<span style="width:5px;height:5px;border-radius:50%;background:${stColor};animation:blink 1.2s infinite"></span>` : ""}${stLabel}</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>${t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 11)}Élite</span>` : ""}</div>
@@ -2312,7 +2312,16 @@ function consoleOverview(S: State) {
     <div><div style="font-weight:700;font-size:13.5px;color:#FBBF24">Sessions instables : secret de session non configuré</div>
     <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.6">L'API n'a pas de variable <b style="color:var(--text)">JWT_SECRET</b> et en génère une au hasard à chaque redémarrage : les membres sont déconnectés sans raison. À définir sur le projet d'hébergement de l'API (environnement Production), puis redéployer.</div></div>
   </div>` : "";
-  return organizerStatusBanner(S) + secretWarn + kpis + table + todo;
+  // Écart compteur / liste : la liste publique masque les tournois d'un événement encore en brouillon, alors que le
+  // compteur de l'aperçu les inclut. Sans explication, l'admin voit « 10 tournois » au-dessus d'un tableau vide.
+  const hiddenCount = isAdmin && ov ? Math.max(0, ov.tournaments - tourns.length) : 0;
+  const hiddenNote = hiddenCount > 0 ? `<div class="hidden-note">
+    <span style="color:#7C82FF;flex:none;margin-top:1px">${ic(I.crown, 18)}</span>
+    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13.5px">${hiddenCount} tournoi${hiddenCount > 1 ? "s" : ""} masqué${hiddenCount > 1 ? "s" : ""} de la liste</div>
+    <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.6">Ces tournois sont rattachés à un événement encore en brouillon : ils n'apparaissent pas sur le site tant que l'événement n'est pas publié.</div></div>
+    <button data-admintab="events" class="btn-ghost" style="flex:none;border:1px solid var(--border-strong);background:transparent;color:var(--text);border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">Voir les événements</button>
+  </div>` : "";
+  return organizerStatusBanner(S) + secretWarn + kpis + hiddenNote + table + todo;
 }
 
 /** Tournoi en direct épinglé en haut de la sidebar (organisateur : ses tournois seulement ; admin : tous). */

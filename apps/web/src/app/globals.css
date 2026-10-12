@@ -474,3 +474,50 @@ input:focus, select:focus { outline: none; border-color: #22D3EE !important; box
 @media (max-width: 1024px) {
   .reg-sticky { display: block; position: fixed; left: 0; right: 0; bottom: 64px; z-index: 44; padding: 10px 16px; background: linear-gradient(180deg, transparent, var(--bar-bg-3) 40%); }
 }
+
+/* ===== Améliorations UX (passe 2, 2026-10-12) ===== */
+
+/* Confort général : défilement doux vers les ancres, sélection aux couleurs de la marque, pas de flash gris au toucher. */
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+::selection { background: rgba(34, 211, 238, .28); color: var(--text); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Écrans tactiles : pas de « survol collant » (carte restée soulevée / bouton restée décalée après un tap). */
+@media (hover: none) {
+  .hcard:hover { transform: none; box-shadow: none; }
+  .hcard:hover .zoom, .fcell:hover .zoom { transform: none; }
+  .btn-primary:hover, .btn-ghost:hover, .more-cta:hover { transform: none; filter: none; }
+}
+
+/* Mobile : barre d'onglets du bas qui respecte la zone sûre (encoche / barre d'accueil iOS) au lieu de rogner les
+   icônes, et bouton d'inscription fixe recalé au-dessus d'elle. L'onglet actif gagne un filet lumineux : repère
+   plus net que la seule couleur du libellé. */
+@media (max-width: 1024px) {
+  .rail-mobile-bottom { height: calc(64px + env(safe-area-inset-bottom)) !important; }
+  .rail-content { padding-bottom: calc(74px + env(safe-area-inset-bottom)) !important; }
+  .reg-sticky { bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .rail-mobile-bottom [aria-current="page"] { box-shadow: inset 0 2px 0 #22D3EE; background: linear-gradient(180deg, rgba(34, 211, 238, .1), transparent 70%); }
+  .rail-mobile-bottom button { -webkit-tap-highlight-color: transparent; }
+}
+
+/* Cibles tactiles : le bandeau haut mobile (thème, panier, profil) passe de 36 à 42 px — proche des 44 px
+   recommandés sans épaissir le bandeau. */
+@media (max-width: 1024px) and (pointer: coarse) {
+  .rail-mobile-top button { width: 42px !important; height: 42px !important; }
+  .console-mobile-top button { min-width: 42px; min-height: 42px; }
+}
+
+/* Mobile : un champ dont le texte fait moins de 16 px déclenche le zoom automatique d'iOS au focus, et la page
+   reste zoomée après la saisie. On impose 16 px sur les champs de texte (pas les cases à cocher, ni la saisie
+   de score de la régie qui a sa propre taille). */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.scorenum),
+  select, textarea { font-size: 16px !important; }
+}
+
+/* Fenêtres modales : le défilement du contenu ne « traverse » plus vers la page en arrière-plan. */
+.wiz-overlay, .console-sidebar { overscroll-behavior: contain; }
+
+/* Avertissement admin : tournois présents en base mais masqués de la liste publique. */
+.hidden-note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: 12px; margin-bottom: 18px; background: rgba(124, 130, 255, .08); border: 1px solid rgba(124, 130, 255, .35); }
+@media (max-width: 640px) { .hidden-note { flex-direction: column; } }

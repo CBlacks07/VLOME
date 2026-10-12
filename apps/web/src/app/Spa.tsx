@@ -603,7 +603,7 @@ function tournTitleParts(t: TournCard): { main: string; sub: string } {
 }
 /** Affiche de tournoi (accueil + page Tournois) : visuel du jeu en tête (image du tournoi, sinon aplat généré à la couleur
  * du jeu), jeu en gros titre, puis date / inscrits / frais et un appel à l'action explicite. Toute la carte ouvre la fiche. */
-function tournPoster(t: TournCard, showPlace = false): string {
+function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const { main, sub } = tournTitleParts(t);
   const hue = gameHue(t.game || t.name);
   const finished = t.status === "Terminé";
@@ -617,30 +617,27 @@ function tournPoster(t: TournCard, showPlace = false): string {
   const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
   const paid = !!t.entryFeeXof && t.entryFeeXof > 0;
   const fee = paid ? money(t.entryFeeXof!) : "Gratuit";
-  const cta: [string, boolean] = t.live ? ["Suivre le direct", true] : finished ? ["Voir les résultats", false] : ["S'inscrire", true];
+  const goLabel = t.live ? "Suivre le direct" : finished ? "Voir les résultats" : "S'inscrire";
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
-  const meta = (icon: string, text: string, color = "var(--text-muted)") => `<span style="display:inline-flex;align-items:center;gap:6px;color:${color};font-size:12.5px;font-weight:600;white-space:nowrap">${ic(icon, 14)}${text}</span>`;
+  const meta = (icon: string, text: string, color = "var(--text-muted)", tip = "") => `<span ${tip ? `title="${tip}"` : ""} style="display:inline-flex;align-items:center;gap:5px;color:${color};font-size:12px;font-weight:700;white-space:nowrap">${ic(icon, 13)}${text}</span>`;
+  const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 9px;white-space:nowrap">${text}</span>`;
   return `<div ${openAttr} class="hcard tposter" title="${escAttr(t.name)}" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:var(--surface);display:flex;flex-direction:column">
-    <div class="zoom" style="position:relative;min-height:158px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;${art}">
+    <div class="zoom" style="position:relative;min-height:150px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;${art}">
       ${mark}
-      <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${statusChip}${elite}</div>
-      <div style="position:relative">
+      <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;${menu ? "padding-right:38px" : ""}">${statusChip}${elite}</div>
+      <div style="position:relative;padding-right:46px">
         <div class="clamp2" style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.8px;line-height:1;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.55);word-break:break-word">${escHtml(main)}</div>
         ${sub ? `<div style="margin-top:5px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.78);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sub)}</div>` : ""}
       </div>
+      <span class="tp-go${finished ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
     </div>
-    <div style="padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;flex:1">
-      <div style="display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap">
-        ${meta(I.calendar, escHtml(t.date || "Date à venir"), t.date ? "var(--text)" : "var(--text-faint)")}
-        ${meta(I.users, `${t.players} inscrit${t.players > 1 ? "s" : ""}`)}
-        ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--surface-3);border-radius:99px;padding:4px 10px">${escHtml(t.format)}</span>
-        <span style="font-size:11px;font-weight:800;color:${paid ? "var(--text)" : "#34D399"};background:var(--surface-3);border-radius:99px;padding:4px 10px">${fee}</span>
-        ${t.cagnotte !== null ? `<span style="font-size:11px;font-weight:800;color:#FBBF24;background:rgba(251,191,36,.1);border-radius:99px;padding:4px 10px">${t.cagnotte} pts</span>` : ""}
-      </div>
-      <span class="tp-cta${cta[1] ? " tp-cta-main" : ""}" style="margin-top:auto">${cta[0]}${ic(I.arrow, 14)}</span>
+    <div style="padding:11px 14px 13px;display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap">
+      ${meta(I.calendar, escHtml(t.date || "À venir"), t.date ? "var(--text)" : "var(--text-faint)")}
+      ${meta(I.users, String(t.players), "var(--text-muted)", "Inscrits")}
+      ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}
+      ${pill(escHtml(t.format), "var(--text-muted)")}
+      ${pill(fee, paid ? "var(--text)" : "#34D399")}
+      ${t.cagnotte !== null ? pill(`${t.cagnotte} pts`, "#FBBF24", "rgba(251,191,36,.1)") : ""}
     </div>
   </div>`;
 }
@@ -5410,8 +5407,10 @@ function eventCard(ev: Detail): string {
       <div style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc)">Événement</div>
       <h4 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:clamp(26px,3vw,34px);letter-spacing:1px;line-height:1.05;color:var(--text);overflow-wrap:break-word">${escHtml(ev.name)}</h4>
       ${ev.tagline ? `<div style="color:var(--text-muted);font-size:13.5px;line-height:1.5">${escHtml(ev.tagline)}</div>` : ""}
-      <div style="display:flex;flex-wrap:wrap;gap:8px 18px">${chip(I.calendar, dates || "Dates à venir")}${ev.place ? chip(I.pin, ev.place) : ""}${chip(I.flame, count)}</div>
-      <span class="evcard-cta" style="margin-top:auto">Découvrir l'événement ${ic(I.arrow, 14)}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;margin-top:auto">
+        <div style="display:flex;flex-wrap:wrap;gap:6px 16px">${chip(I.calendar, dates || "Dates à venir")}${ev.place ? chip(I.pin, ev.place) : ""}${chip(I.flame, count)}</div>
+        <span class="evcard-cta">Découvrir ${ic(I.arrow, 14)}</span>
+      </div>
     </div></div>`;
 }
 
@@ -5509,19 +5508,11 @@ function eventTournStateBadge(t: Detail): string {
 /** Carte d'un tournoi d'événement — utilisée par la grille plate (console et page publique). evId renseigné :
  * menu « Retirer de l'événement » (console uniquement, jamais passé par la page publique). */
 function eventTournCard(t: Detail, evId: string | null): string {
-  return `<div style="position:relative;border:1px solid var(--border);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden">
-      <div data-open="${t.id}" style="cursor:pointer;padding:14px 16px 12px;flex:1">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:#7C82FF;font-weight:800;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.game || "Jeu libre")}</span>${t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;flex:none;white-space:nowrap;font-size:9.5px;font-weight:800;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:3px 8px">${ic(I.crown, 9)}Élite</span>` : ""}${eventTournStateBadge(t)}</div>
-        <div style="font-weight:700;font-size:14.5px;line-height:1.35">${escHtml(t.name)}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px">${[t.format, `${t.players} joueur${t.players > 1 ? "s" : ""}`, t.date, t.place].filter(Boolean).map(escHtml).join(" · ")}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--surface-4);background:var(--surface-2)">
-        ${btnSm(`data-open="${t.id}"`, t.live ? (evId ? "Ouvrir la régie" : "Voir en direct") : "Ouvrir", "#22D3EE", "rgba(34,211,238,.35)")}
-        <span style="flex:1"></span>
-${evId ? `<details style="position:relative"><summary title="Plus d'actions" style="list-style:none;cursor:pointer;display:grid;place-items:center;width:30px;height:28px;border-radius:8px;border:1px solid var(--border);color:var(--text-muted);font-size:16px;font-weight:800;line-height:1">⋯</summary>
-          <div style="position:absolute;right:0;bottom:34px;z-index:5;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${evId}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>` : ""}
-      </div>
-    </div>`;
+  // Même affiche que la page Tournois. En console (evId renseigné), le menu « ⋯ » vit HORS de la carte cliquable,
+  // posé par-dessus l'angle de l'affiche : ouvrir le menu ne doit pas ouvrir le tournoi.
+  const menu = evId ? `<details style="position:absolute;top:10px;right:10px;z-index:5"><summary title="Plus d'actions" style="list-style:none;cursor:pointer;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:rgba(8,8,14,.6);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:16px;font-weight:800;line-height:1">⋯</summary>
+    <div style="position:absolute;right:0;top:34px;min-width:190px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.45)">${btnSm(`data-evdetach="${evId}|${t.id}"`, "Retirer de l'événement", "#FB7185", "rgba(251,113,133,.35)")}</div></details>` : "";
+  return `<div style="position:relative">${tournPoster(t as TournCard, false, !!evId)}${menu}</div>`;
 }
 /** Résumé chiffré + filtre par jeu (puces), partagés par la grille plate et le calendrier — un événement de
  * plus d'une dizaine de tournois devient vite illisible sans ce tri. */

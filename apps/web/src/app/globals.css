@@ -521,3 +521,7 @@ html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
 /* Avertissement admin : tournois présents en base mais masqués de la liste publique. */
 .hidden-note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: 12px; margin-bottom: 18px; background: rgba(124, 130, 255, .08); border: 1px solid rgba(124, 130, 255, .35); }
 @media (max-width: 640px) { .hidden-note { flex-direction: column; } }
+
+/* Cartes tournoi : les noms d'une même série sont longs et très proches (« GAL S4 / CHALLENGER - TOURNOI … ») —
+   trois lignes évitent de couper juste avant le jeu, seule partie qui les distingue. */
+.tourn-grid h4.clamp2 { -webkit-line-clamp: 3; }

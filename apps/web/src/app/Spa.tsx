@@ -632,7 +632,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
       <span class="tp-go${finished ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
     </div>
     <div style="padding:11px 12px 13px;display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
-      ${meta(I.calendar, escHtml(t.date || "À venir"), t.date ? "var(--text)" : "var(--text-faint)")}
+      ${t.date ? meta(I.calendar, escHtml(t.date), "var(--text)") : ""}
       ${meta(I.users, String(t.players), "var(--text-muted)", "Inscrits")}
       ${showPlace && t.place ? meta(I.pin, escHtml(t.place)) : ""}
       ${pill(escHtml(t.format), "var(--text-muted)")}

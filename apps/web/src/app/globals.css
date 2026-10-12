@@ -524,4 +524,4 @@ html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
 
 /* Cartes tournoi : les noms d'une même série sont longs et très proches (« GAL S4 / CHALLENGER - TOURNOI … ») —
    trois lignes évitent de couper juste avant le jeu, seule partie qui les distingue. */
-.tourn-grid h4.clamp2 { -webkit-line-clamp: 3; }
+h4.tcard-title { -webkit-line-clamp: 3; }

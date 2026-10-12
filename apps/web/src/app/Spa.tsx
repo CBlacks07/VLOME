@@ -2342,18 +2342,18 @@ function consoleOverview(S: State) {
 
   const tableRows = tourns.length ? tourns.map((t) => `
     <tr data-open="${t.id}" style="border-top:1px solid var(--surface-3);cursor:pointer">
-      <td style="padding:12px 18px"><div style="font-weight:650">${escHtml(t.name)}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(t.date)}${t.place ? " · " + escHtml(t.place) : ""}</div></td>
-      <td style="padding:12px;color:var(--text-muted)">${escHtml(t.game)} · ${escHtml(t.format)}</td>
+      <td style="padding:12px 18px"><div style="font-weight:650">${escHtml(t.name)}</div><div class="m-only" style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${escHtml(t.game)} · ${escHtml(t.format)}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(t.date)}${t.place ? " · " + escHtml(t.place) : ""}</div></td>
+      <td class="col-game" style="padding:12px;color:var(--text-muted)">${escHtml(t.game)} · ${escHtml(t.format)}</td>
       <td style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace">${t.players}</td>
-      <td style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace;color:${t.cagnotte !== null ? "#FBBF24" : "var(--text-faint)"}">${t.cagnotte !== null ? t.cagnotte : "—"}</td>
+      <td class="col-pot" style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace;color:${t.cagnotte !== null ? "#FBBF24" : "var(--text-faint)"}">${t.cagnotte !== null ? t.cagnotte : "—"}</td>
       <td style="padding:12px 18px;text-align:right">${t.live
         ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
         : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--border-strong);border-radius:99px;padding:4px 10px">${escHtml(t.status)}</span>`}</td>
     </tr>`).join("") : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--text-faint)">${isAdmin ? "Aucun tournoi pour l'instant." : "Tu n'as pas encore créé de tournoi."}</td></tr>`;
   const table = `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;margin-bottom:20px">
     <div style="padding:13px 18px;border-bottom:1px solid var(--surface-3);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">${isAdmin ? "Tournois" : "Mes tournois"} (${tourns.length})</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px"><thead><tr style="color:var(--text-faint);font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
-      <th style="text-align:left;padding:10px 18px;font-weight:750">Tournoi</th><th style="text-align:left;padding:10px 12px;font-weight:750">Jeu / Format</th><th style="text-align:right;padding:10px 12px;font-weight:750">Joueurs</th><th style="text-align:right;padding:10px 12px;font-weight:750">Cagnotte</th><th style="text-align:right;padding:10px 18px;font-weight:750">Statut</th>
+    <div style="overflow-x:auto"><table class="console-table" style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px"><thead><tr style="color:var(--text-faint);font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
+      <th style="text-align:left;padding:10px 18px;font-weight:750">Tournoi</th><th class="col-game" style="text-align:left;padding:10px 12px;font-weight:750">Jeu / Format</th><th style="text-align:right;padding:10px 12px;font-weight:750">Joueurs</th><th class="col-pot" style="text-align:right;padding:10px 12px;font-weight:750">Cagnotte</th><th style="text-align:right;padding:10px 18px;font-weight:750">Statut</th>
     </tr></thead><tbody>${tableRows}</tbody></table></div></div>`;
 
   const pending = ov?.pendingPayments ?? 0;
@@ -2441,7 +2441,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
         <button data-go="accueil" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.extlink, 15)}Voir le site</button>
         <button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 16)}Nouveau tournoi</button>
       </div>
-      <div style="padding:22px 28px;flex:1">${body}</div>
+      <div class="console-body" style="padding:22px 28px;flex:1">${body}</div>
     </div>
   </div>`;
 }

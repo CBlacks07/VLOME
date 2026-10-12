@@ -611,3 +611,18 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .kpi-v { font-size: 17px !important; }
   .kpi-k { font-size: 9.5px !important; letter-spacing: .4px !important; margin-top: 0 !important; white-space: nowrap; }
 }
+
+/* Console admin / organisateur sur téléphone : page pleine largeur. Les blocs cadrés occupent tout l'écran (pas de
+   marge, ni bordure ni coins arrondis sur les côtés) ; le reste (titres, pastilles, formulaires) garde 14 px de gouttière. */
+.m-only { display: none; }
+@media (max-width: 640px) {
+  .console-body { padding: 14px 0 28px !important; }
+  .console-body > [style*="border:1px solid"] { border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important; margin-left: 0 !important; margin-right: 0 !important; }
+  .console-body > :not([style*="border:1px solid"]) { padding-left: 14px; padding-right: 14px; }
+  .console-table { min-width: 0 !important; }
+  .console-table .col-game, .console-table .col-pot { display: none; }
+  .console-table .m-only { display: block; }
+  .console-table td, .console-table th { padding-left: 10px !important; padding-right: 10px !important; }
+  .console-table td:first-child, .console-table th:first-child { padding-left: 14px !important; }
+  .console-table td:last-child, .console-table th:last-child { padding-right: 14px !important; }
+}

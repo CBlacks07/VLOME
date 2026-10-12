@@ -741,7 +741,7 @@ function pAccueil(S: State) {
   const homeEvents = (S.events ?? []).filter((e: Detail) => e.state !== "ended").slice(0, 3);
   const eventsSec = homeEvents.length
     ? `<div class="rise d1" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px"><h3 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;display:flex;align-items:center;gap:10px"><span class="enter-grow" style="width:5px;height:22px;border-radius:3px;background:#F43F7E;display:inline-block"></span>Événements${homeEvents.some((e: Detail) => e.state === "live") ? ` <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span>` : ""}</h3><a data-go="evenements" style="font-size:13px;font-weight:700;cursor:pointer">Tout voir →</a></div>
-      <div class="rise d1" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin-bottom:40px">${homeEvents.map((e: Detail, i: number) => `<div class="enter-up" style="animation-delay:${(i * 0.08).toFixed(2)}s;min-width:0">${eventCard(e)}</div>`).join("")}</div>`
+      <div class="rise d1" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:18px;margin-bottom:40px">${homeEvents.map((e: Detail, i: number) => `<div class="enter-up" style="animation-delay:${(i * 0.08).toFixed(2)}s;min-width:0">${eventCard(e)}</div>`).join("")}</div>`
     : "";
   // « Tournois en cours » : seulement les tournois réellement démarrés (live) — une carte « À venir »
   // n'a rien à faire sous ce titre. Section entière masquée s'il n'y en a aucun (déjà couverte par
@@ -766,7 +766,7 @@ function pAccueil(S: State) {
     ? upcoming.map((t) => {
         const [d, moRaw] = t.date.split(" ");
         const mo = (moRaw || "").replace(/\.$/, "");
-        return `<div data-open="${t.id}" style="display:flex;gap:13px;align-items:center;cursor:pointer"><div style="flex:none;width:52px;text-align:center;border:1px solid var(--border);border-radius:11px;padding:7px 4px;background:var(--surface)"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${escHtml(d) || "—"}</div><div style="font-size:9px;letter-spacing:1px;color:var(--text-muted);font-weight:700;text-transform:uppercase">${escHtml(mo)}</div></div><div style="min-width:0"><div style="font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</div><div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.format)}${t.place ? " · " + escHtml(t.place) : ""}</div></div></div>`;
+        return `<div data-open="${t.id}" style="display:flex;gap:13px;align-items:center;cursor:pointer"><div style="flex:none;width:52px;text-align:center;border:1px solid var(--border);border-radius:11px;padding:7px 4px;background:var(--surface)"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1;color:#22D3EE">${escHtml(d) || "—"}</div><div style="font-size:9px;letter-spacing:1px;color:var(--text-muted);font-weight:700;text-transform:uppercase">${escHtml(mo)}</div></div><div style="min-width:0"><div title="${escAttr(t.name)}" style="font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(tournTitleParts(t).main)}</div><div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml([tournTitleParts(t).sub, t.format].filter(Boolean).join(" · "))}</div></div></div>`;
       }).join("")
     : emptyState(I.flame, "Pas de tournoi annoncé", "Les prochaines dates arrivent bientôt. Crée ton compte pour ne rien rater.", S.user ? "" : `<button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY}">Créer mon compte</button>`, "18px 10px");
   // Rien à montrer ni côté classement ni côté tournois : un seul bloc d'invitation plutôt que deux cases vides côte à côte.
@@ -2319,11 +2319,11 @@ function organizerStatusBanner(S: State): string {
 function consoleOverview(S: State) {
   const isAdmin = S.user?.role === "ADMIN";
   const tourns: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
-  const kpiStat = (v: number | string, k: string, color = "var(--text)") => `<div style="background:var(--surface);padding:16px 18px"><div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;color:${color}">${v}</div><div style="font-size:10.5px;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-top:6px">${k}</div></div>`;
+  const kpiStat = (v: number | string, k: string, color = "var(--text)", icon = I.bolt, tab = "") => `<div${tab ? ` data-admintab="${tab}" role="button" tabindex="0"` : ""} class="kpi" style="--kc:${color === "var(--text)" ? "#7C82FF" : color}"><span class="kpi-ico">${ic(icon, 18)}</span><div style="min-width:0"><div class="kpi-v">${v}</div><div class="kpi-k">${k}</div></div></div>`;
   const ov = S.admin?.overview;
   const kpis = isAdmin
-    ? (ov ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--surface-3);border:1px solid var(--surface-3);border-radius:12px;overflow:hidden;margin-bottom:20px">${kpiStat(ov.tournaments, "Tournois", "#22D3EE")}${kpiStat(ov.users, "Utilisateurs", "#7C82FF")}${kpiStat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "var(--text)")}${kpiStat(ov.orders, "Commandes")}${kpiStat(ov.products, "Produits")}</div>` : "")
-    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--surface-3);border:1px solid var(--surface-3);border-radius:12px;overflow:hidden;margin-bottom:20px">${kpiStat(tourns.length, "Mes tournois", "#22D3EE")}${kpiStat((S.myRegs ?? []).length, "Mes inscriptions", "#7C82FF")}${kpiStat((S.myOrders ?? []).length, "Commandes")}${kpiStat(tourns.filter((t) => t.live).length, "En direct", "#FBBF24")}</div>`;
+    ? (ov ? `<div class="kpi-grid">${kpiStat(ov.tournaments, "Tournois", "#22D3EE", I.flame, "events")}${kpiStat(ov.users, "Utilisateurs", "#7C82FF", I.user, "users")}${kpiStat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "var(--text)", I.warn, "paiements")}${kpiStat(ov.orders, "Commandes", "#F43F7E", I.cart, "commandes")}${kpiStat(ov.products, "Produits", "#34D399", I.image, "produits")}</div>` : "")
+    : `<div class="kpi-grid">${kpiStat(tourns.length, "Mes tournois", "#22D3EE", I.flame)}${kpiStat((S.myRegs ?? []).length, "Mes inscriptions", "#7C82FF", I.user)}${kpiStat((S.myOrders ?? []).length, "Commandes", "#F43F7E", I.cart)}${kpiStat(tourns.filter((t) => t.live).length, "En direct", "#FBBF24", I.bolt)}</div>`;
 
   const tableRows = tourns.length ? tourns.map((t) => `
     <tr data-open="${t.id}" style="border-top:1px solid var(--surface-3);cursor:pointer">
@@ -5381,19 +5381,21 @@ function eventStateBadge(ev: Detail, big = false): string {
 
 function eventCard(ev: Detail): string {
   const accent = evAccent(ev);
-  const meta = [fmtEventDates(ev), ev.place].filter(Boolean).map(escHtml).join(" · ");
+  const dates = fmtEventDates(ev);
+  const chip = (icon: string, text: string) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-muted)">${ic(icon, 14)}${escHtml(text)}</span>`;
   const count = `${ev.tournamentCount} tournoi${ev.tournamentCount > 1 ? "s" : ""}${ev.liveCount ? ` · ${ev.liveCount} en direct` : ""}`;
-  return `<div data-openevent="${ev.id}" class="hcard" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:linear-gradient(180deg,var(--surface),var(--surface-2))">
-    <div class="zoom" style="position:relative;height:170px;overflow:hidden;background:var(--surface-2)">${eventMedia(ev, ev.name, "card")}
-      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.05) 30%,rgba(11,11,17,.8))"></div>
+  return `<div data-openevent="${ev.id}" class="hcard evcard" style="--acc:${accent}">
+    <div class="evcard-media zoom">${eventMedia(ev, ev.name, "card")}
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.05) 30%,rgba(11,11,17,.75))"></div>
       <div style="position:absolute;left:14px;top:13px">${eventStateBadge(ev)}</div>
       ${ev.posterUrl && ev.bannerUrl ? `<img src="${mediaUrl(ev.posterUrl)}" alt="" style="position:absolute;right:14px;bottom:-22px;width:70px;height:96px;object-fit:cover;border-radius:8px;border:2px solid var(--surface);box-shadow:0 10px 30px rgba(0,0,0,.55)" />` : ""}
     </div>
-    <div style="padding:16px 16px 18px">
-      <h4 style="margin:0 0 4px;font-size:19px;line-height:1.2;color:var(--text)">${escHtml(ev.name)}</h4>
-      ${ev.tagline ? `<div style="color:#A6A8BC;font-size:13px;margin-bottom:8px;line-height:1.45">${escHtml(ev.tagline)}</div>` : ""}
-      <div style="color:var(--text-muted);font-size:12.5px;line-height:1.7">${meta || "Dates à venir"}</div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;font-weight:700;color:${accent}">${count}</div>
+    <div class="evcard-body">
+      <div style="font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--acc)">Événement</div>
+      <h4 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:clamp(26px,3vw,34px);letter-spacing:1px;line-height:1.05;color:var(--text);overflow-wrap:break-word">${escHtml(ev.name)}</h4>
+      ${ev.tagline ? `<div style="color:var(--text-muted);font-size:13.5px;line-height:1.5">${escHtml(ev.tagline)}</div>` : ""}
+      <div style="display:flex;flex-wrap:wrap;gap:8px 18px">${chip(I.calendar, dates || "Dates à venir")}${ev.place ? chip(I.pin, ev.place) : ""}${chip(I.flame, count)}</div>
+      <span class="evcard-cta" style="margin-top:auto">Découvrir l'événement ${ic(I.arrow, 14)}</span>
     </div></div>`;
 }
 
@@ -5406,7 +5408,7 @@ function pEvenements(S: State) {
   const body = list === null
     ? `<div style="color:var(--text-muted);text-align:center;padding:60px 0">Chargement des événements…</div>`
     : list.length
-      ? `<div class="page-hpad" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px;padding:8px 44px 44px">${list.map(eventCard).join("")}</div>`
+      ? `<div class="page-hpad" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:22px;padding:8px 44px 44px">${list.map(eventCard).join("")}</div>`
       : `<div style="color:var(--text-faint);text-align:center;padding:60px 20px;font-size:14px">Aucun événement pour le moment. Reviens bientôt !</div>`;
   return head + body;
 }

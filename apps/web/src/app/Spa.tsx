@@ -3148,28 +3148,36 @@ function doubleElimFinalStandings(t: Detail, pad = "8px 28px 0"): string {
   const pts = new Map<string, number>((t.standings || []).map((r: Detail) => [r.id, Number(r.pts) || 0]));
   const showPts = [...pts.values()].some((v) => v > 0);
   let rank = 1;
+  const medalOf = (rk: number) => rk === 1 ? "#FBBF24" : rk === 2 ? "#CBD5E1" : rk === 3 ? "#D6A37A" : "var(--text-faint)";
+  const cell = "padding:13px 12px;vertical-align:middle";
+  const mono = "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums";
   const body = groups.map((g) => {
     const rk = rank; rank += g.length;
-    const medal = rk === 1 ? "#FBBF24" : rk === 2 ? "#CBD5E1" : rk === 3 ? "#D6A37A" : "var(--text-faint)";
+    const medal = medalOf(rk);
+    // Podium (1er à 3e) légèrement teinté pour se détacher du reste du tableau.
+    const tint = rk === 1 ? "rgba(251,191,36,.07)" : rk <= 3 ? "rgba(148,163,184,.05)" : "transparent";
     return g.sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name, "fr")).map((r) => {
       const pct = hasScores ? (r.sf + r.sa ? (r.sf / (r.sf + r.sa)) * 100 : 0) : (r.wins + r.losses ? (r.wins / (r.wins + r.losses)) * 100 : 0);
-      const pctTxt = `${Math.round(pct * 100) / 100}%`.replace(".", ",");
-      return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:12px 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;color:${medal};text-align:center;width:48px">${rk}</td>
-        <td style="padding:12px 10px;font-weight:700"><span style="display:inline-flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted)">${escHtml(r.name.charAt(0).toUpperCase())}</span>${escHtml(r.name)}${rk === 1 ? ` <span style="color:#FBBF24">${ic(I.crown, 14)}</span>` : ""}</span></td>
-        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace">${r.wins}</td>
-        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace">${r.losses}</td>
-        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace;color:#34D399">${pctTxt}</td>
-        <td class="fs-lost" style="padding:12px 10px;color:var(--text-muted);font-size:12.5px;line-height:1.5">${r.lostTo.length ? r.lostTo.map((n) => escHtml(n)).join("<br>") : "—"}</td>
-        ${showPts ? `<td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#22D3EE">${pts.get(r.id) ?? 0}</td>` : ""}
+      const pctTxt = `${Math.round(pct * 10) / 10}%`.replace(".", ",");
+      const lost = r.lostTo.length
+        ? `<span style="display:flex;flex-wrap:wrap;gap:5px">${r.lostTo.map((n) => `<span style="font-size:11.5px;font-weight:600;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:2px 9px;white-space:nowrap">${escHtml(n)}</span>`).join("")}</span>`
+        : `<span style="color:var(--text-faint)">—</span>`;
+      return `<tr style="border-top:1px solid var(--border);background:${tint}">
+        <td style="${cell};text-align:center;font-family:'Bebas Neue',sans-serif;font-size:24px;line-height:1;color:${medal}">${rk}</td>
+        <td style="${cell};font-weight:700"><span style="display:flex;align-items:center;gap:10px;min-width:0"><span style="display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:50%;background:var(--surface-4);border:1px solid ${rk <= 3 ? medal : "var(--border)"};font-size:12.5px;font-weight:800;color:${rk <= 3 ? medal : "var(--text-muted)"}">${escHtml(r.name.charAt(0).toUpperCase())}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</span>${rk === 1 ? `<span style="flex:none;color:#FBBF24">${ic(I.crown, 15)}</span>` : ""}</span></td>
+        <td style="${cell};text-align:center;${mono};font-weight:700;color:#34D399">${r.wins}</td>
+        <td style="${cell};text-align:center;${mono};font-weight:700;color:${r.losses ? "#F87171" : "var(--text-faint)"}">${r.losses}</td>
+        <td style="${cell};text-align:center;${mono}">${pctTxt}</td>
+        <td class="fs-lost" style="${cell}">${lost}</td>
+        ${showPts ? `<td style="${cell};text-align:right;${mono};font-weight:800;color:#22D3EE">${pts.get(r.id) ?? 0}</td>` : ""}
       </tr>`;
     }).join("");
   }).join("");
-  const th = (txt: string, right = false, cls = "") => `<th${cls ? ` class="${cls}"` : ""} style="padding:10px;text-align:${right ? "right" : "left"};font-weight:750">${txt}</th>`;
+  const th = (txt: string, w: string, align = "center", cls = "", title = "") => `<th${cls ? ` class="${cls}"` : ""}${title ? ` title="${title}"` : ""} style="padding:11px 12px;text-align:${align};font-weight:750;white-space:nowrap;width:${w}">${txt}</th>`;
   return `<div style="padding:${pad}"><div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden">
-    <div style="padding:13px 16px;border-bottom:1px solid var(--surface-3);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Classement final · ${rows.size} joueur${rows.size > 1 ? "s" : ""}</div>
-    <div style="overflow-x:auto"><table class="final-standings" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr style="color:var(--text-faint);font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
-      ${th("#")}${th("Joueur")}${th("V", true)}${th("D", true)}${th(hasScores ? "Manches gagnées" : "% victoires", true)}${th("Battu par", false, "fs-lost")}${showPts ? th("Points", true) : ""}
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)"><span style="color:#FBBF24;display:grid">${ic(I.medal, 17)}</span><span style="font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text);font-weight:800">Classement final</span><span style="font-size:12px;color:var(--text-faint);font-family:'JetBrains Mono',monospace">${rows.size} joueur${rows.size > 1 ? "s" : ""}</span></div>
+    <div style="overflow-x:auto"><table class="final-standings" style="width:100%;border-collapse:collapse;font-size:14px;table-layout:auto"><thead><tr style="background:var(--surface-2);color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px">
+      ${th("#", "56px")}${th("Joueur", "auto", "left")}${th("V", "64px", "center", "", "Victoires")}${th("D", "64px", "center", "", "Défaites")}${th(hasScores ? "% manches" : "% victoires", "120px", "center", "", hasScores ? "Part des manches gagnées" : "Part des matchs gagnés")}${th("Battu par", "26%", "left", "fs-lost")}${showPts ? th("Points", "90px", "right") : ""}
     </tr></thead><tbody>${body}</tbody></table></div></div></div>`;
 }
 

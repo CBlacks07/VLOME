@@ -3458,14 +3458,21 @@ function poolHistoryList(log: Detail[], poolId: string, manage: boolean): string
 }
 /** Postes et match « à l'antenne » du tournoi affiché (posés au rendu, voir renderPageBody) — lus par les
  * cartes de poule et les cases de bracket, qui n'ont pas accès au tournoi entier. */
-let LIVE_META: { stations: Record<string, string>; stream: string | null } = { stations: {}, stream: null };
+let LIVE_META: { stations: Record<string, string>; stream: string | null; starts: Record<string, number>; minutes: number } = { stations: {}, stream: null, starts: {}, minutes: 0 };
 function liveBadges(key: string | undefined, small = false): string {
   if (!key) return "";
   const station = LIVE_META.stations[key];
   const stream = LIVE_META.stream === key;
-  if (!station && !stream) return "";
+  const startedAt = LIVE_META.starts[key];
+  if (!station && !stream && !startedAt) return "";
   const fs = small ? "8.5px" : "10px";
-  return `${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
+  // Chronomètre du match (démarré depuis la régie) : mis à jour chaque seconde par l'effet « data-timer », rouge
+  // une fois la durée prévue dépassée. Texte initial calculé ici pour éviter un « 00:00 » le temps du 1er tick.
+  const elapsed = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
+  const timer = startedAt
+    ? `<span data-timer="${startedAt}" data-limit="${LIVE_META.minutes || 0}" title="Durée du match${LIVE_META.minutes ? ` (prévue : ${LIVE_META.minutes} min)` : ""}" style="font-family:'JetBrains Mono',monospace;font-size:${fs};font-weight:800;border:1px solid var(--border-strong);border-radius:99px;padding:1px 7px;color:var(--text-muted)">${String(Math.floor(elapsed / 60000)).padStart(2, "0")}:${String(Math.floor((elapsed % 60000) / 1000)).padStart(2, "0")}</span>`
+    : "";
+  return `${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
 }
 function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
   const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log);
@@ -5822,7 +5829,7 @@ function clubPendingBanner(S: State): string {
 }
 function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S) + embedModal(S) + toastHtml(S); }
 function renderPageBody(S: State) {
-  LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null };
+  LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null, starts: (S.detail?.matchStarts as Record<string, number>) || {}, minutes: Number(S.detail?.matchMinutes) || 0 };
   // Mode Show / écran de diffusion : conçus pour être projetés (vidéoprojecteur, écran de LAN) — restent
   // sombres quel que soit le thème choisi pour le reste du site.
   if (S.page === "show") return `<div data-force-theme="dark">${pShow(S)}</div>`;

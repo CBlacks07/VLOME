@@ -3102,7 +3102,7 @@ function logByMatchId(log: Detail[]): Record<string, string> {
  * (1, 2, 3, 4, 5, 5, 7, 7…), victoires/défaites, % de manches gagnées, adversaires qui ont battu le joueur, points.
  * Calculé côté client à partir du bracket : le champion et le finaliste d'abord, puis les éliminés par tour du
  * bracket des perdants (plus le tour est tardif, meilleur est le rang ; même tour = même rang). */
-function doubleElimFinalStandings(t: Detail): string {
+function doubleElimFinalStandings(t: Detail, pad = "8px 28px 0"): string {
   const f = t.finals;
   if (t.status !== "finished" || !t.champion || !f || f.format !== "double") return "";
   const played = (m: Detail) => !!m && !m.bye && m.aId && m.bId && m.winnerId;
@@ -3166,7 +3166,7 @@ function doubleElimFinalStandings(t: Detail): string {
     }).join("");
   }).join("");
   const th = (txt: string, right = false, cls = "") => `<th${cls ? ` class="${cls}"` : ""} style="padding:10px;text-align:${right ? "right" : "left"};font-weight:750">${txt}</th>`;
-  return `<div style="padding:8px 28px 0"><div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden">
+  return `<div style="padding:${pad}"><div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden">
     <div style="padding:13px 16px;border-bottom:1px solid var(--surface-3);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Classement final · ${rows.size} joueur${rows.size > 1 ? "s" : ""}</div>
     <div style="overflow-x:auto"><table class="final-standings" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr style="color:var(--text-faint);font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
       ${th("#")}${th("Joueur")}${th("V", true)}${th("D", true)}${th(hasScores ? "Manches gagnées" : "% victoires", true)}${th("Battu par", false, "fs-lost")}${showPts ? th("Points", true) : ""}
@@ -4761,7 +4761,7 @@ function pTournoi(S: State) {
     } else {
       body = bracketTree(t.finals.rounds, [], manage);
     }
-    const bracketCol = `${champ}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale${fmtLabel}</div>${body}`;
+    const bracketCol = `${champ}${t.finals.format === "double" ? doubleElimFinalStandings(t, "0 0 26px") : ""}<div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="width:5px;height:22px;border-radius:3px;background:#22D3EE"></span>Phase finale${fmtLabel}</div>${body}`;
     // La cagnotte (points distribués par victoire) ne concerne que le mode Survival.
     const cagnotteTracker = t.mainFormat === "survival" ? `<div style="border:1px solid var(--border);border-radius:11px;background:var(--surface);padding:14px">
       <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:10px">Cagnotte</div>

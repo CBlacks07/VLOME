@@ -3098,6 +3098,81 @@ function logByMatchId(log: Detail[]): Record<string, string> {
   return out;
 }
 
+/** Classement final d'un tournoi en double élimination terminé (façon Challonge) : rang avec égalités
+ * (1, 2, 3, 4, 5, 5, 7, 7…), victoires/défaites, % de manches gagnées, adversaires qui ont battu le joueur, points.
+ * Calculé côté client à partir du bracket : le champion et le finaliste d'abord, puis les éliminés par tour du
+ * bracket des perdants (plus le tour est tardif, meilleur est le rang ; même tour = même rang). */
+function doubleElimFinalStandings(t: Detail): string {
+  const f = t.finals;
+  if (t.status !== "finished" || !t.champion || !f || f.format !== "double") return "";
+  const played = (m: Detail) => !!m && !m.bye && m.aId && m.bId && m.winnerId;
+  const wbMatches: Detail[] = ([] as Detail[]).concat(...(f.wb || []).map((r: Detail) => r.matches));
+  const lbRounds: Detail[][] = (f.lb || []).map((r: Detail) => r.matches);
+  const gfMatches: Detail[] = [f.gf, f.gf2].filter(Boolean);
+  const all: Detail[] = [...wbMatches, ...([] as Detail[]).concat(...lbRounds), ...gfMatches].filter(played);
+  if (!all.length) return "";
+  type Row = { id: string; name: string; wins: number; losses: number; sf: number; sa: number; lostTo: string[] };
+  const rows = new Map<string, Row>();
+  const row = (id: string, name: string): Row => { let r = rows.get(id); if (!r) { r = { id, name, wins: 0, losses: 0, sf: 0, sa: 0, lostTo: [] }; rows.set(id, r); } return r; };
+  let hasScores = false;
+  for (const m of all) {
+    const aWon = m.winnerId === m.aId;
+    const a = row(m.aId, m.aName), b = row(m.bId, m.bName);
+    const [w, l] = aWon ? [a, b] : [b, a];
+    w.wins++; l.losses++; l.lostTo.push(w.name);
+    if (typeof m.sa === "number" && typeof m.sb === "number") {
+      hasScores = true;
+      a.sf += m.sa; a.sa += m.sb; b.sf += m.sb; b.sa += m.sa;
+    }
+  }
+  // Rangs : champion, finaliste, puis éliminés par tour du bracket des perdants (du plus tardif au plus précoce).
+  const champ = [...rows.values()].find((r) => r.name === t.champion);
+  if (!champ) return "";
+  const lastGf = [f.gf2, f.gf].find((m: Detail) => played(m));
+  const finalistId = lastGf ? (lastGf.aId === champ.id ? lastGf.bId : lastGf.aId) : null;
+  const groups: Row[][] = [[champ]];
+  const placed = new Set<string>([champ.id]);
+  if (finalistId && rows.get(finalistId)) { groups.push([rows.get(finalistId)!]); placed.add(finalistId); }
+  for (let r = lbRounds.length - 1; r >= 0; r--) {
+    const g: Row[] = [];
+    for (const m of lbRounds[r]) {
+      if (!played(m)) continue;
+      const loserId = m.winnerId === m.aId ? m.bId : m.aId;
+      const lr = rows.get(loserId);
+      if (lr && !placed.has(loserId)) { g.push(lr); placed.add(loserId); }
+    }
+    if (g.length) groups.push(g);
+  }
+  const rest = [...rows.values()].filter((r) => !placed.has(r.id));
+  if (rest.length) groups.push(rest);
+  const pts = new Map<string, number>((t.standings || []).map((r: Detail) => [r.id, Number(r.pts) || 0]));
+  const showPts = [...pts.values()].some((v) => v > 0);
+  let rank = 1;
+  const body = groups.map((g) => {
+    const rk = rank; rank += g.length;
+    const medal = rk === 1 ? "#FBBF24" : rk === 2 ? "#CBD5E1" : rk === 3 ? "#D6A37A" : "var(--text-faint)";
+    return g.sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name, "fr")).map((r) => {
+      const pct = hasScores ? (r.sf + r.sa ? (r.sf / (r.sf + r.sa)) * 100 : 0) : (r.wins + r.losses ? (r.wins / (r.wins + r.losses)) * 100 : 0);
+      const pctTxt = `${Math.round(pct * 100) / 100}%`.replace(".", ",");
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:12px 10px;font-family:'Bebas Neue',sans-serif;font-size:22px;color:${medal};text-align:center;width:48px">${rk}</td>
+        <td style="padding:12px 10px;font-weight:700"><span style="display:inline-flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted)">${escHtml(r.name.charAt(0).toUpperCase())}</span>${escHtml(r.name)}${rk === 1 ? ` <span style="color:#FBBF24">${ic(I.crown, 14)}</span>` : ""}</span></td>
+        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace">${r.wins}</td>
+        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace">${r.losses}</td>
+        <td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace;color:#34D399">${pctTxt}</td>
+        <td class="fs-lost" style="padding:12px 10px;color:var(--text-muted);font-size:12.5px;line-height:1.5">${r.lostTo.length ? r.lostTo.map((n) => escHtml(n)).join("<br>") : "—"}</td>
+        ${showPts ? `<td style="padding:12px 10px;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#22D3EE">${pts.get(r.id) ?? 0}</td>` : ""}
+      </tr>`;
+    }).join("");
+  }).join("");
+  const th = (txt: string, right = false, cls = "") => `<th${cls ? ` class="${cls}"` : ""} style="padding:10px;text-align:${right ? "right" : "left"};font-weight:750">${txt}</th>`;
+  return `<div style="padding:8px 28px 0"><div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);overflow:hidden">
+    <div style="padding:13px 16px;border-bottom:1px solid var(--surface-3);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Classement final · ${rows.size} joueur${rows.size > 1 ? "s" : ""}</div>
+    <div style="overflow-x:auto"><table class="final-standings" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr style="color:var(--text-faint);font-size:10px;text-transform:uppercase;letter-spacing:1.1px">
+      ${th("#")}${th("Joueur")}${th("V", true)}${th("D", true)}${th(hasScores ? "Manches gagnées" : "% victoires", true)}${th("Battu par", false, "fs-lost")}${showPts ? th("Points", true) : ""}
+    </tr></thead><tbody>${body}</tbody></table></div></div></div>`;
+}
+
 /** Battle Royale — classement + saisie des résultats, partagé entre régie et page publique (comme
  * poolCard/journeeCalendar). Onglets de parties (S.brActiveGame) : celles déjà jouées restent
  * consultables (résultat + éliminations), seule la prochaine encore à jouer est éditable — pas de
@@ -4048,6 +4123,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
         <span style="flex:1"></span>${viewToggle}
       </div>
       ${champ}
+      ${doubleElimFinalStandings(t)}
       <div style="padding:22px 28px 30px">${body}${extra}</div>`;
   }
 

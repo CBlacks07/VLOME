@@ -626,3 +626,9 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .console-table td:first-child, .console-table th:first-child { padding-left: 14px !important; }
   .console-table td:last-child, .console-table th:last-child { padding-right: 14px !important; }
 }
+
+/* Classement final (double élimination) : colonne « Battu par » masquée sur téléphone pour garder le tableau lisible sans défilement. */
+@media (max-width: 640px) {
+  .final-standings .fs-lost { display: none; }
+  .final-standings th, .final-standings td { padding-left: 8px !important; padding-right: 8px !important; }
+}

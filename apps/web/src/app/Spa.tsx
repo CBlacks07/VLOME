@@ -167,6 +167,7 @@ type State = {
   // ce même id comme clé, préfixé "c:" pour ne jamais entrer en collision avec un match actif.
   correctingId: string | null;
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
+  poolView: number; // index de la poule affichée (une poule par page, flèches précédent/suivant)
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
   showSlide: number; // diapositive active du Mode Show (classement / matchs en direct / derniers résultats…), tourne automatiquement
@@ -3477,15 +3478,16 @@ function liveBadges(key: string | undefined, small = false): string {
     : "";
   return `${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
 }
-function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
-  const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log);
+function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = [], wide = false): string {
+  const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log, wide);
   const b = p.current || (p.rrmatches || []).some((m: Detail) => m.playable) ? liveBadges(p.id) : "";
   if (!b) return html;
   const i = html.indexOf(">");
   return i < 0 ? html : `${html.slice(0, i + 1)}<div style="display:flex;gap:6px;justify-content:flex-end;padding:0 0 8px">${b}</div>${html.slice(i + 1)}`;
 }
-function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
+function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = [], wide = false): string {
   let body: string;
+  let extra = ""; // arbre du mini-bracket + historique : à droite en mise en page large
   if (poolFormat === "roundrobin") {
     // Calendrier par journées plutôt qu'un seul "match en cours" mis en avant : les journées déjà
     // jouées et à venir restent visibles, comme un vrai calendrier de championnat. Seul le prochain
@@ -3557,17 +3559,17 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
     // case de cet arbre n'a pas d'équivalent dans le moteur pour les poules, contrairement à la phase
     // finale (t.finals, data-activematch). La correction d'un match déjà joué passe par l'historique
     // ci-dessous (poolHistoryList), pas par un crayon sur cet arbre.
-    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false, {}, ["Finale de poule", "Finale de poule · 2e match"])}</div>`;
+    extra += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false, {}, ["Finale de poule", "Finale de poule · 2e match"])}</div>`;
   }
   // Mini-bracket à élimination directe de la poule (poolFormat 'single') : même arbre que le Bracket simple de phase
   // finale (bracketTree), le DTO de p.sbracket ayant la même forme (rounds). Lecture seule, comme celui du mode double :
   // le score se saisit via la carte « match en cours » ci-dessus.
   if (poolFormat === "single" && p.sbracket) {
-    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${bracketTree(p.sbracket.rounds, [], false, PARENTS_ELIM, {})}</div>`;
+    extra += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${bracketTree(p.sbracket.rounds, [], false, PARENTS_ELIM, {})}</div>`;
   }
   // Historique (crayon) : seuls "survival" et "double" en ont besoin ici — Round Robin l'a déjà
   // ajouté à son calendrier plus haut, l'appeler une seconde fois ferait doublon.
-  if (poolFormat !== "roundrobin") body += poolHistoryList(log, p.id, manage);
+  if (poolFormat !== "roundrobin") extra += poolHistoryList(log, p.id, manage);
   // J (joués) / G (gagnés) / P (perdus) : vrai tableau de championnat, comme au football — seul le
   // mode Round Robin produit un classement complet (voir TournamentsService.poolRanking). Diff.
   // (différence de buts/manches) reste conditionnée au réglage "Départager par différence de buts".
@@ -3577,7 +3579,37 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
     <thead><tr style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 4px">#</td><td style="padding:6px 4px">Joueur</td>${isRR ? `<td style="padding:6px 4px;text-align:right">J</td><td style="padding:6px 4px;text-align:right">G</td><td style="padding:6px 4px;text-align:right">P</td>` : `<td style="padding:6px 4px;text-align:right">V</td>`}${hasGd ? `<td style="padding:6px 4px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 4px;text-align:right">Pts</td></tr></thead>
     <tbody>${p.ranking.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 4px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:15px;width:22px">${i + 1}</td><td style="padding:7px 4px;font-weight:600">${escHtml(r.name)}</td>${isRR ? `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.losses}</td>` : `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.wins}</td>`}${hasGd ? `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody>
   </table>`;
-  return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px"><div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${p.name}</div>${body}${rank}</div>`;
+  const title = `<div style="font-family:'Bebas Neue',sans-serif;font-size:${wide ? 28 : 20}px;letter-spacing:1px;margin-bottom:${wide ? 16 : 12}px">${p.name}</div>`;
+  if (wide) {
+    // Pleine largeur : saisie du match + classement à gauche, arbre du mini-bracket + historique à droite (Round Robin :
+    // classement à gauche, calendrier complet à droite). Repasse sur une seule colonne sur petit écran (.pool-wide).
+    const left = poolFormat === "roundrobin" ? rank : body + rank;
+    const right = poolFormat === "roundrobin" ? body : extra;
+    return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px">${title}
+      <div class="pool-wide" style="display:grid;grid-template-columns:minmax(300px,${poolFormat === "roundrobin" ? 380 : 440}px) minmax(0,1fr);gap:28px;align-items:start"><div style="min-width:0">${left}</div><div style="min-width:0;overflow-x:auto">${right}</div></div></div>`;
+  }
+  return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px">${title}${body}${extra}${rank}</div>`;
+}
+
+/** Une poule par page, en pleine largeur, avec flèches précédent/suivant et pastilles A, B, C… pour sauter directement
+ * (au lieu de toutes les poules côte à côte). S.poolView = index de la poule affichée. */
+function poolsPager(S: State, t: Detail, manage: boolean, pools: Detail[]): string {
+  if (!pools.length) return `<div style="color:var(--text-muted);text-align:center;padding:30px 0">Aucune poule.</div>`;
+  const idx = Math.min(Math.max(0, S.poolView || 0), pools.length - 1);
+  const p = pools[idx];
+  const arrow = (dir: "prev" | "next", disabled: boolean) => `<button data-poolnav="${dir}" ${disabled ? "disabled" : ""} aria-label="${dir === "prev" ? "Poule précédente" : "Poule suivante"}" title="${dir === "prev" ? "Poule précédente" : "Poule suivante"}" style="display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:12px;background:var(--surface-3);border:1px solid var(--border-strong);color:${disabled ? "var(--text-faint)" : "var(--text)"};cursor:${disabled ? "default" : "pointer"};opacity:${disabled ? ".45" : "1"}"><span style="display:inline-flex;transform:${dir === "prev" ? "rotate(180deg)" : "none"}">${ic(I.arrow, 18)}</span></button>`;
+  const chips = pools.map((pp, i) => {
+    const on = i === idx;
+    const state = pp.done ? "✓" : pp.current ? "●" : "";
+    return `<button data-poolnav="${i}" class="qchip${on ? " on" : ""}" aria-pressed="${on}" style="white-space:nowrap">${escHtml(String(pp.name).replace(/^Poule\s+/i, "") || String(i + 1))}${state ? ` <span style="font-size:10px;opacity:.85;color:${pp.done ? "#34D399" : "#22D3EE"}">${state}</span>` : ""}</button>`;
+  }).join("");
+  const nav = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    ${arrow("prev", idx === 0)}
+    <div style="display:flex;gap:7px;flex-wrap:wrap;flex:1;min-width:0">${chips}</div>
+    <span style="font-size:12.5px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;flex:none">${idx + 1} / ${pools.length}</span>
+    ${arrow("next", idx === pools.length - 1)}
+  </div>`;
+  return `${nav}<div id="poolcard-${p.id}">${poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log, true)}</div>`;
 }
 
 /** Bracket(s) de la phase finale — rendu générique réutilisé pour les formats single/double/roundrobin/swiss, partagé entre pTournoi et la régie. */
@@ -4096,7 +4128,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
   // autant — troisième onglet du même sélecteur "Arbre/Liste" plutôt qu'un écran séparé à chercher.
   const hasPools = Array.isArray(t.pools) && t.pools.length > 0;
   const poolsToggleBtn = hasPools ? `<span data-bracketview="pools" style="font-size:11.5px;font-weight:${S.bracketView === "pools" ? 750 : 700};color:${S.bracketView === "pools" ? "#04222a" : "var(--text-muted)"};background:${S.bracketView === "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "pools" ? "#22D3EE" : "var(--border)"};border-radius:8px;padding:7px 12px;cursor:pointer">Poules</span>` : "";
-  const poolsGrid = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">${(t.pools || []).map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
+  const poolsGrid = poolsPager(S, t, manage, t.pools || []);
 
   const champ = t.finals?.champion
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin:18px 28px 0"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
@@ -4201,7 +4233,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
       <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Poules</h2></div>
     </div>
     ${pools.length
-      ? `<div class="grid2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:start">${pools.map((p) => `<div id="poolcard-${p.id}">${poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)}</div>`).join("")}</div>`
+      ? poolsPager(S, t, manage, pools)
       : `<div style="color:var(--text-muted);text-align:center;padding:30px 0">Aucune poule.</div>`}
     ${finalsStartPanel(S, t, manage)}
   </div>`;
@@ -4725,7 +4757,7 @@ function pTournoi(S: State) {
     return `<main class="rise tf" style="width:100%"><div class="tf-head" style="padding:28px 44px 0">${head}${predictionsCard(S, t, manage)}${editCard}</div><div style="display:flex;align-items:flex-start;flex-wrap:wrap">${left}${right}</div>${wizModal}</main>${regSticky}`;
   }
 
-  const poolsHtml = `<div class="rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">${t.pools.map((p: Detail) => poolCard(S, p, manage, t.poolFormat, t.countGoalDiff, t.log)).join("")}</div>`;
+  const poolsHtml = `<div class="rise">${poolsPager(S, t, manage, t.pools)}</div>`;
 
   const finalsBtn = finalsStartPanel(S, t, manage);
 
@@ -5882,7 +5914,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -8106,7 +8138,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8266,15 +8298,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // centre (voir regieCenter), donc on se contente d'y faire défiler jusqu'à la carte visée. Si
     // cette poule a un match en cours, elle s'ajoute aussi au panneau de contrôle (même précaution de
     // matérialisation du repli que ci-dessus) — sinon on ne touche pas au contrôle.
+    else if (d.poolnav !== undefined) {
+      const n = (S.detail?.pools || []).length;
+      const cur = Math.min(Math.max(0, S.poolView || 0), Math.max(0, n - 1));
+      const next = d.poolnav === "prev" ? cur - 1 : d.poolnav === "next" ? cur + 1 : parseInt(d.poolnav || "0");
+      if (n && Number.isFinite(next) && next >= 0 && next < n) setS((s) => ({ ...s, poolView: next }));
+    }
     else if (d.viewpool) {
       const t = S.detail;
       const p = t?.pools?.find((pp: Detail) => pp.id === d.viewpool);
+      // Une seule poule est affichée à la fois : on bascule d'abord sur celle choisie dans le rail.
+      const vi = (t?.pools || []).findIndex((pp: Detail) => pp.id === d.viewpool);
+      if (vi >= 0) setS((s) => ({ ...s, poolView: vi }));
       if (t && p?.current) {
         const currentKeys = getActiveMatches(S, t).map(activeKey);
         const next = currentKeys.includes(d.viewpool!) ? currentKeys : [...currentKeys, d.viewpool!];
         setS((s) => ({ ...s, activeMatchIds: next }));
       }
-      document.getElementById(`poolcard-${d.viewpool}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Différé : la carte de cette poule n'existe dans la page qu'après le re-rendu qui bascule sur elle.
+      const targetPool = d.viewpool;
+      setTimeout(() => document.getElementById(`poolcard-${targetPool}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
     else if (d.regiepanel !== undefined) setS((s) => ({ ...s, regiePanel: (d.regiepanel || null) as State["regiePanel"], rosterQ: "" }));
     else if (d.bracketview) setS((s) => ({ ...s, bracketView: d.bracketview as State["bracketView"] }));

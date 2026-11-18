@@ -632,3 +632,8 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .final-standings .fs-lost { display: none; }
   .final-standings th, .final-standings td { padding-left: 8px !important; padding-right: 8px !important; }
 }
+
+/* Poule affichée en pleine largeur : sur écran étroit, saisie/classement et arbre s'empilent en une colonne. */
+@media (max-width: 1024px) {
+  .pool-wide { grid-template-columns: minmax(0, 1fr) !important; gap: 20px !important; }
+}

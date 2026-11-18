@@ -6478,9 +6478,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     try {
       const canManageEvent = !!token() && (S.user?.role === "ORGANIZER" || S.user?.role === "ADMIN");
       let d: Detail | null = null;
+      let managed = false; // vrai seulement si l'API a accepté la lecture « gestion » (propriétaire ou admin)
       if (canManageEvent) {
         const m = await fetch(`${API}/api/events/${id}/manage`, { headers: authHeaders() });
-        if (m.ok) d = await m.json();
+        if (m.ok) { d = await m.json(); managed = true; }
       }
       if (!d) {
         const r = await fetch(`${API}/api/events/${id}`);
@@ -6490,7 +6491,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // Programme (calendrier) : la liste de gestion (brouillon compris) pour l'organisateur, la liste
       // publique sinon — pas d'intérêt à essayer la liste de gestion si l'appel « manage » a déjà échoué.
       try {
-        const sr = await fetch(`${API}/api/events/${id}/schedule${canManageEvent && d ? "/manage" : ""}`, canManageEvent ? { headers: authHeaders() } : undefined);
+        const sr = await fetch(`${API}/api/events/${id}/schedule${managed ? "/manage" : ""}`, managed ? { headers: authHeaders() } : undefined);
         if (sr.ok) { const sched = await sr.json(); setS((s) => (s.openEventId === id ? { ...s, eventSchedule: sched } : s)); }
       } catch { /* ignore */ }
       // Classement cumulé (circuit) : n'a d'intérêt qu'avec au moins deux tournois rattachés.
@@ -6653,6 +6654,13 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   /* ---------- Partage ---------- */
   /** Lien public d'un tournoi/événement : essaie le partage natif du téléphone, sinon ouvre la fenêtre de partage. */
   async function openShare(kind: "tournoi" | "evenement", id: string, title: string) {
+    // Un événement en brouillon n'est visible que de son organisateur : son lien public renvoie « introuvable » à tout
+    // le monde. On le dit plutôt que de laisser partager (ou copier) un lien mort, et on n'affiche pas « lien public ».
+    const ev = S.eventDetail;
+    if (kind === "evenement" && ev && ev.id === id && ev.status && ev.status !== "PUBLISHED") {
+      showToast("Cet événement est en brouillon : publie-le (Gérer l'événement → statut) pour que son lien de partage fonctionne.");
+      return;
+    }
     const url = `${window.location.origin}/${kind === "tournoi" ? "tournois" : "evenements"}/${id}`;
     const nav = navigator as Navigator & { share?: (data: { title?: string; url?: string }) => Promise<void>; canShare?: (data?: { url?: string }) => boolean };
     if (nav.share && (!nav.canShare || nav.canShare({ url }))) {

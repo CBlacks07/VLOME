@@ -25,9 +25,19 @@ export class EventsService {
   constructor(private prisma: PrismaService, private tournaments: TournamentsService) {}
 
   private assertCanManage(ev: { createdById: string | null }, user: JwtUser) {
-    if (ev.createdById && ev.createdById !== user.sub && user.role !== 'ADMIN') {
+    // Propriétaire ou admin, rien d'autre. Un événement sans créateur connu (donnée ancienne ou importée) n'appartient
+    // à aucun organisateur : seul un admin peut alors le gérer (auparavant, n'importe quel organisateur le pouvait).
+    if (user.role === 'ADMIN') return;
+    if (!ev.createdById || ev.createdById !== user.sub) {
       throw new ForbiddenException("Seul l'organisateur de l'événement (ou un admin) peut le gérer.");
     }
+  }
+
+  /** Vue publique : sans l'identifiant interne du compte créateur (réservé aux vues de gestion). */
+  private publicView(ev: EventRow, cards: { live: boolean }[]) {
+    const { createdById: _owner, ...pub } = this.view(ev, cards);
+    void _owner;
+    return pub;
   }
 
   /** Vue commune : champs de l'événement + état calculé (en direct / à venir / terminé) et compteurs. */
@@ -54,7 +64,7 @@ export class EventsService {
 
   async listPublic() {
     const rows = await this.prisma.event.findMany({ where: { status: 'PUBLISHED' }, orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }] });
-    const out = await Promise.all(rows.map(async (r) => this.view(r, await this.cardsOf(r.id))));
+    const out = await Promise.all(rows.map(async (r) => this.publicView(r, await this.cardsOf(r.id))));
     // En direct d'abord, puis à venir, puis terminés.
     const rank = { live: 0, upcoming: 1, ended: 2 } as const;
     return out.sort((a, b) => rank[a.state] - rank[b.state]);
@@ -64,7 +74,7 @@ export class EventsService {
     const ev = await this.prisma.event.findUnique({ where: { id } });
     if (!ev || ev.status !== 'PUBLISHED') throw new NotFoundException('Événement introuvable.');
     const cards = await this.cardsOf(id);
-    return { ...this.view(ev, cards), tournaments: cards };
+    return { ...this.publicView(ev, cards), tournaments: cards };
   }
 
   /** Classement cumulé de l'événement (toutes ses étapes confondues) — public, comme le reste de la fiche. */

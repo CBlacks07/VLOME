@@ -178,7 +178,7 @@ type State = {
     pointsPerPlayer: number; nbPools: number; players: string[]; entryFeeXof: number; maxPlayers?: number; givesLoyaltyPoint: boolean;
     survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus: number;
     finalsFormat: string; // mode de phase finale (Survival) : choisi à la création, non modifiable ensuite (voir wizScoringStep)
-    poolFormat: "survival" | "double" | "roundrobin"; // mode des poules (Survival) : classique ou mini-bracket double élim
+    poolFormat: "survival" | "double" | "single" | "roundrobin"; // mode des poules (Survival) : classique ou mini-bracket double élim
     qualifyPerPool: number; // qualifiés par poule envoyés en phase finale
     streakLength: 3 | 5; // longueur de série pour le bonus striker — un seul palier actif par tournoi
     matchMode: "bo" | "ft"; // format de manche appliqué à tous les matchs — Best of (majorité) ou First To (course)
@@ -364,7 +364,7 @@ function finalsMatchesPreview(q: number, finalsFormat: string): number {
   if (finalsFormat === "double") return 2 * q - 1; // majorant sûr (avec reset)
   return q - 1;
 }
-function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus?: number }, finalsFormat = "double", poolFormat: "survival" | "double" | "roundrobin" = "survival", qualifyPerPool = 2) {
+function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: number, scoring: { survWin: number; loserWin: number; poolFinalWin: number; finalsWin: number; championBonus: number; streakBonus?: number }, finalsFormat = "double", poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", qualifyPerPool = 2) {
   const total = nPlayers * pointsPerPlayer;
   const sizes = balancedSizesPreview(nPlayers, nbPools);
   let surv = 0, los = 0, pf = 0, nRealPools = 0;
@@ -376,6 +376,7 @@ function cagnottePreview(nPlayers: number, nbPools: number, pointsPerPlayer: num
     // Round robin de poule : chacun affronte tous les autres, toutes les rencontres au tarif survWin.
     if (poolFormat === "roundrobin") { surv += (n * (n - 1)) / 2; }
     else if (poolFormat === "double") { surv += n - 1; los += Math.max(0, n - 2); pf += 2; }
+    else if (poolFormat === "single") { surv += n - 1; } // élimination directe : n - 1 rencontres
     else { surv += n - 1; los += Math.max(0, n - 2); pf += 1; }
   });
   // Qualifiés : N par poule, borné seulement par l effectif de la poule, quel que soit le mode de
@@ -869,10 +870,12 @@ const WIZ_POOL_MODES: [string, string, string][] = [
  *  TournamentsService.applyEngineCompat, et la coercition au choix du format ci-dessous). */
 function wizPoolModes(format: string): [string, string, string][] {
   if (format === "SURVIVAL") return WIZ_POOL_MODES;
-  // Hors Survival, « double » n'est PAS une phase de poules jouée séparément : un seul grand bracket où les poules
-  // répartissent seulement le 1er tour (voir Engine.launchGroupedDoubleElim). Libellé explicite pour ne pas surprendre.
-  return WIZ_POOL_MODES.filter(([key]) => key !== "survival").map(([key, label, desc]) =>
-    key === "double" ? [key, "Bracket unique (sans phase de poules)", "Pas de phase de poules jouée à part : un seul grand bracket double élimination où les poules servent juste à répartir le 1er tour."] as [string, string, string] : [key, label, desc]);
+  const rr = WIZ_POOL_MODES.find(([key]) => key === "roundrobin")!;
+  // Le mode « bracket » suit le format choisi à l'étape 1 : chaque poule est jouée dans ce format-là, puis les qualifiés
+  // rejoignent la phase finale — on ne repose donc pas la question du format une seconde fois.
+  if (format === "DOUBLE_ELIM") return [rr, ["double", "Double élimination", "Chaque poule est jouée en mini-bracket double élimination (le format choisi au début), puis les qualifiés rejoignent la phase finale."]];
+  if (format === "SINGLE_ELIM") return [rr, ["single", "Bracket simple", "Chaque poule est jouée en mini-bracket à élimination directe (le format choisi au début), puis les qualifiés rejoignent la phase finale."]];
+  return [rr];
 }
 /** Formats de phase finale — choisis indépendamment du mode des poules, à la création (voir
  *  wizPoolsStep pour les formats pilotés-poules, wizScoringStep pour Survival). "Survival" suppose
@@ -1159,12 +1162,6 @@ function wizPoolsStep(S: State) {
   }
   const isSurvival = d.format === "SURVIVAL";
   const formatLabel = (WIZ_FORMATS.find(([k]) => k === d.format) || WIZ_FORMATS[0])[1];
-  // Poules en double élimination hors Survival : un seul bracket continu (voir
-  // Engine.launchGroupedDoubleElim) — les vainqueurs/perdants de chaque poule s'enchaînent
-  // directement dans le même bracket vainqueurs/perdants, jusqu'à une grande finale unique. Pas de
-  // "qualifiés" à départager (tout le monde y entre dès le 1er tour) ni de format de phase finale à
-  // choisir (ce sera toujours ce même bracket, jusqu'au bout).
-  const isDoubleMerged = !isSurvival && d.poolFormat === "double";
   // Round Robin et Double élim, choisis comme format principal à l'étape 1, SONT eux-mêmes des modes
   // de poule valides (voir wizFormat côté clic) : redemander "Mode des poules" ici serait une
   // question redondante — seul Bracket simple garde un vrai choix indépendant (poules Round Robin ou
@@ -1175,9 +1172,7 @@ function wizPoolsStep(S: State) {
   const maxQ = wizMaxQualify(d.players.length, d.nbPools);
   const qualif = Math.min(d.qualifyPerPool || 2, maxQ);
   const qualifNote = `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
-  const poolModeNote = isDoubleMerged
-    ? "Un seul grand bracket double élimination pour tout le monde : les vainqueurs de chaque poule s'enchaînent entre eux, pareil pour les perdants, jusqu'à une grande finale unique — pas de poules indépendantes à requalifier."
-    : (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2];
+  const poolModeNote = (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2];
   const sizes = balancedSizesPreview(d.players.length, d.nbPools);
   return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
@@ -1196,12 +1191,12 @@ function wizPoolsStep(S: State) {
       </div>
       <p style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${poolModeNote}</p>
     </div>
-    <div id="wiz-qualify-block" style="${(isSurvival || d.nbPools > 1) && !isDoubleMerged ? "" : "display:none;"}margin-top:18px">
+    <div id="wiz-qualify-block" style="${isSurvival || d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Qualifiés par poule</div>
       <input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />
       <p id="wiz-qualify-note" style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>
-    ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 && !isDoubleMerged ? "" : "display:none;"}margin-top:18px">
+    ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Format de la phase finale</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${wizFinalsFormatOptions(d.poolFormat).map(([key, label]) => {
@@ -1348,17 +1343,13 @@ function wizValidateStep(S: State) {
   const structureRow = pooled
     ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
-  // Poules en double élimination fusionné (hors Survival) : ni qualifiés ni format de phase finale
-  // distincts, un seul grand bracket continu (voir Engine.launchGroupedDoubleElim) — ces deux lignes
-  // n'ont alors rien à annoncer.
-  const isDoubleMerged = pooled && !isSurvival && d.poolFormat === "double";
-  // Round Robin/Double élim : le mode de poule est déjà le format principal affiché plus haut (voir
-  // wizPoolsStep, poolModeImplied) — redondant à répéter ici.
+  // Round Robin : le mode de poule est déjà le format principal affiché plus haut (voir wizPoolsStep,
+  // poolModeImplied) — redondant à répéter ici.
   const poolModeImplied = pooled && !isSurvival && d.format === "ROUND_ROBIN";
   const poolRows = pooled && !isSurvival
     ? (poolModeImplied ? "" : row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]))
-      + (isDoubleMerged ? "" : row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools))))
-        + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]))
+      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools))))
+      + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1])
     : "";
   // Nombre de qualifiés réellement choisi (étape Poules), borné comme à la saisie — et non plus
   // "Top 1 + Top 2" écrit en dur, faux dès qu'on en qualifie un autre nombre.
@@ -3486,14 +3477,14 @@ function liveBadges(key: string | undefined, small = false): string {
     : "";
   return `${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
 }
-function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
+function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
   const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log);
   const b = p.current || (p.rrmatches || []).some((m: Detail) => m.playable) ? liveBadges(p.id) : "";
   if (!b) return html;
   const i = html.indexOf(">");
   return i < 0 ? html : `${html.slice(0, i + 1)}<div style="display:flex;gap:6px;justify-content:flex-end;padding:0 0 8px">${b}</div>${html.slice(i + 1)}`;
 }
-function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
+function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = []): string {
   let body: string;
   if (poolFormat === "roundrobin") {
     // Calendrier par journées plutôt qu'un seul "match en cours" mis en avant : les journées déjà
@@ -3508,10 +3499,13 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
     // "survival" ou "double", tous deux dotés d'un vrai survivant/challenger asymétrique.
     const stageLabel: Record<string, string> = poolFormat === "double"
       ? { survival: "Bracket vainqueurs", losers: "Bracket perdants", poolFinal: "Finale de poule" }
-      : { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
+      : poolFormat === "single"
+        ? { survival: "Élimination directe", losers: "Élimination directe", poolFinal: "Finale de poule" }
+        : { survival: "Survival", losers: "Repêchage", poolFinal: "Finale de poule" };
     const stageTitle = `${stageLabel[p.current.stage] || p.current.stage}${p.current.streak > 1 ? " · série " + p.current.streak : ""}`;
-    const subA = p.current.stage === "poolFinal" ? "Champ. vainqueurs" : poolFormat === "double" ? stageLabel[p.current.stage] : "Survivant";
-    const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : poolFormat === "double" ? stageLabel[p.current.stage] : "Challenger";
+    const isBracketPool = poolFormat === "double" || poolFormat === "single";
+    const subA = p.current.stage === "poolFinal" ? "Champ. vainqueurs" : isBracketPool ? stageLabel[p.current.stage] : "Survivant";
+    const subB = p.current.stage === "poolFinal" ? "Champ. perdants" : isBracketPool ? stageLabel[p.current.stage] : "Challenger";
     // Cadre d'un des deux joueurs (survivant/challenger, ou les deux côtés d'un bracket) : partagé par la
     // version organisateur et la version lecture seule. Sans min-width:0, un cadre flex ne rétrécit
     // jamais sous son contenu : « BRACKET VAINQUEURS » se coupait sur deux lignes dès que la carte était
@@ -3564,6 +3558,12 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
     // finale (t.finals, data-activematch). La correction d'un match déjà joué passe par l'historique
     // ci-dessous (poolHistoryList), pas par un crayon sur cet arbre.
     body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${doubleElimTree(p.dbracket, [], false, {}, ["Finale de poule", "Finale de poule · 2e match"])}</div>`;
+  }
+  // Mini-bracket à élimination directe de la poule (poolFormat 'single') : même arbre que le Bracket simple de phase
+  // finale (bracketTree), le DTO de p.sbracket ayant la même forme (rounds). Lecture seule, comme celui du mode double :
+  // le score se saisit via la carte « match en cours » ci-dessus.
+  if (poolFormat === "single" && p.sbracket) {
+    body += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${bracketTree(p.sbracket.rounds, [], false, PARENTS_ELIM, {})}</div>`;
   }
   // Historique (crayon) : seuls "survival" et "double" en ont besoin ici — Round Robin l'a déjà
   // ajouté à son calendrier plus haut, l'appeler une seconde fois ferait doublon.
@@ -4578,25 +4578,19 @@ function pTournoi(S: State) {
     // Quel que soit le mode de poule, la taille réelle de chaque poule (après un rééquilibrage manuel)
     // compte pour savoir combien de joueurs elle peut effectivement envoyer en phase finale.
     const qualifyPerPool = t.qualifyPerPool || 2;
-    // Poules en double élimination hors Survival : un seul bracket continu (voir
-    // Engine.launchGroupedDoubleElim) — pas de "qualifiés" à départager, tout le monde y entre dès le
-    // 1er tour. Même garde que wizPoolsStep (isDoubleMerged) pour ne pas afficher un réglage sans effet.
-    const isDoubleMerged = t.mainFormat !== "survival" && t.poolFormat === "double";
     const poolsPreview = manage && t.usesPools
       ? poolsList.length
         ? `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-top:18px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px"><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Répartition des poules</h3><button data-pools-distribute="${t.id}" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer">Re-répartir au hasard</button></div>
             <p style="color:var(--text-faint);font-size:12.5px;margin:0 0 14px">L'ordre définit qui entre sur le terrain en premier dans chaque poule. Les flèches ◀ ▶ déplacent un joueur vers la poule voisine, pour rééquilibrer manuellement l'effectif.</p>
-            ${isDoubleMerged
-              ? `<p style="color:var(--text-faint);font-size:12.5px;margin-bottom:14px">Un seul grand bracket double élimination pour tout le monde : les vainqueurs de chaque poule s'enchaînent entre eux, pareil pour les perdants, jusqu'à une grande finale unique — pas de poules indépendantes à requalifier.</p>`
-              : `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--surface-5)">
+            <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--surface-5)">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <span style="font-size:12px;color:var(--text-muted);font-weight:650">Qualifiés par poule</span>
                 <input id="pq-input-${t.id}" type="number" min="1" value="${qualifyPerPool}" style="width:76px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:6px 9px" />
                 <button data-poolqualify-apply="${t.id}" style="font-size:12px;font-weight:700;color:#04222a;background:#22D3EE;border:0;border-radius:8px;padding:7px 13px;cursor:pointer">Appliquer</button>
               </div>
               <p style="color:${poolsList.some((p) => p.order.length < qualifyPerPool) ? "#FBBF24" : "var(--text-faint)"};font-size:11.5px;margin:8px 0 0">${poolQualifyNote(poolsList.map((p) => ({ name: p.name, size: p.order.length })), qualifyPerPool)}</p>
-            </div>`}
+            </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${poolsList.map((p, pi) => {
               const short = p.order.length < qualifyPerPool;
               return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px">
@@ -7741,11 +7735,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         // réglage sans conséquence — change en direct avec le nombre de poules, pas seulement au
         // rechargement de l'étape.
         const isSurv = S.wizData.format === "SURVIVAL";
-        // Poules en double élimination fusionné (hors Survival) : ni "qualifiés par poule" ni
-        // "format de la phase finale" n'ont de sens (voir wizPoolsStep) — masqués aussi ici pour
-        // rester cohérent si "Nombre de poules" change après avoir déjà choisi ce mode.
-        const isDoubleMerged = !isSurv && S.wizData.poolFormat === "double";
-        // Round Robin/Double élim comme format principal impliquent eux-mêmes le mode de poule (voir
+        // Round Robin comme format principal implique lui-même le mode de poule (voir
         // wizPoolsStep, poolModeImplied) : le picker "Mode des poules" reste masqué même si "Nombre
         // de poules" repasse au-dessus de 1.
         const poolModeImplied = !isSurv && S.wizData.format === "ROUND_ROBIN";
@@ -7755,8 +7745,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const finalsFmtBlock = document.getElementById("wiz-finalsformat-block");
         if (warn) warn.style.display = (!isSurv && n === 1) ? "" : "none";
         if (modeBlock) modeBlock.style.display = (isSurv || n > 1) && !poolModeImplied ? "" : "none";
-        if (qualifyBlock) qualifyBlock.style.display = (isSurv || n > 1) && !isDoubleMerged ? "" : "none";
-        if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 && !isDoubleMerged ? "" : "none";
+        if (qualifyBlock) qualifyBlock.style.display = isSurv || n > 1 ? "" : "none";
+        if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 ? "" : "none";
         // Le plafond "Qualifiés par poule" suit l'effectif de la plus petite poule, quel que soit le
         // mode de poule : changer le nombre de poules sans repasser par l'étape le laissait figé sur
         // l'ancien max.
@@ -8369,18 +8359,21 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.wiztoggleroster) { const [name, club] = d.wiztoggleroster.split("|"); wizToggleRoster(name, club); }
     else if (d.wizaddall !== undefined) wizAddAllRoster();
     else if (d.wizformat) setS((s) => {
-      // Round Robin et Double élim SONT eux-mêmes des modes de poule valides : redemander "Mode des
-      // poules" séparément serait une question redondante (voir wizPoolsStep, poolModeImplied) — le
-      // mode de poule suit alors automatiquement le format choisi ici, sans repasser par ce picker.
-      // Bracket simple n'a pas cette correspondance directe : il garde un vrai choix de mode de poule
-      // (jamais "survival", masqué hors Survival — voir wizPoolModes) — Round Robin par défaut, le
-      // choix le plus courant pour une phase de groupes.
+      // Round Robin EST lui-même un mode de poule : redemander "Mode des poules" serait redondant (voir wizPoolsStep,
+      // poolModeImplied). Double élim et Bracket simple gardent un vrai choix — Round Robin (poules jouées en championnat)
+      // ou le bracket du format choisi (chaque poule en mini-bracket) ; jamais "survival", réservé au format Survival.
+      // Round Robin est le défaut : le choix le plus courant pour une phase de groupes.
       // Double élim : comme Bracket simple, vrai choix de mode de poule — Round Robin par défaut, pour que les
       // poules soient réellement jouées avant la phase finale (le mode « bracket unique » fusionné, qui saute la
       // phase de poules, reste disponible mais doit être choisi explicitement à l'étape Poules).
-      const nextPoolFormat = d.wizformat === "SURVIVAL" ? s.wizData.poolFormat
+      // Le mode « bracket » des poules suit le format choisi ici : changer de Double élim à Bracket simple (ou
+      // l'inverse) fait suivre aux poules déjà réglées en bracket, sans repasser par l'étape Poules.
+      const bracketPoolMode = d.wizformat === "DOUBLE_ELIM" ? "double" : d.wizformat === "SINGLE_ELIM" ? "single" : "roundrobin";
+      const prevPool = s.wizData.poolFormat;
+      const nextPoolFormat = d.wizformat === "SURVIVAL" ? prevPool
         : d.wizformat === "ROUND_ROBIN" ? "roundrobin"
-        : (s.wizData.poolFormat === "survival" ? "roundrobin" : s.wizData.poolFormat);
+        : prevPool === "double" || prevPool === "single" ? bracketPoolMode
+        : (prevPool === "survival" ? "roundrobin" : prevPool);
       const nextNbPools = d.wizformat === "SURVIVAL" ? 2 : d.wizformat === "BATTLE_ROYALE" ? s.wizData.nbPools : 1;
       const maxQ = wizMaxQualify(s.wizData.players.length, nextNbPools);
       // Format de la phase finale : par défaut celui du format principal (même règle que le moteur,
@@ -8407,7 +8400,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // basculer de mode juste après y avoir tapé une valeur la perdrait au profit de l'état React
       // pas encore synchronisé.
       const captured = wizCapture();
-      const nextPoolFormat = d.wizpoolformat as "survival" | "double" | "roundrobin";
+      const nextPoolFormat = d.wizpoolformat as "survival" | "double" | "single" | "roundrobin";
       // Une phase finale Survival fusionne les qualifiés de poules Round Robin en une seule grande
       // poule (voir Engine.startFinalsSurvivalPool) : en sortir invalide ce choix, retombe sur
       // "double" comme les autres formats à poules non-Round-Robin.

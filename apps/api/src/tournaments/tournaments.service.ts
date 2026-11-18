@@ -1261,6 +1261,9 @@ export class TournamentsService {
     // sur le terrain, wSurvivor/wIndex), changer l'étiquette a posteriori mélangerait le libellé des
     // matchs déjà joués avec un mode qu'ils n'ont jamais suivi.
     if (t.format !== 'survival' && t.poolFormat === 'survival' && t.status === 'setup') t.poolFormat = 'roundrobin';
+    // Compat : un brouillon Bracket simple réglé sur des poules « double » (ancien choix indépendant) suit désormais le
+    // format principal — chaque poule en mini-bracket à élimination directe. Les poules d'un tournoi déjà lancé ne changent pas.
+    if (t.format === 'single' && t.poolFormat === 'double' && t.status === 'setup') t.poolFormat = 'single';
     if (t.scoring && t.scoring.streakBonus === undefined) t.scoring.streakBonus = 0;
     if (!t.streakLength) t.streakLength = Engine.DEFAULT_STREAK_LENGTH;
     // Compat : tournois créés avant l'ouverture des poules aux formats à phase finale.
@@ -1280,6 +1283,7 @@ export class TournamentsService {
     }
     t.pools?.forEach((p) => {
       if (!p.dbracket) p.dbracket = null;
+      if (!p.sbracket) p.sbracket = null;
       if (!p.streaks) p.streaks = {};
       if (!p.streakAwarded) p.streakAwarded = {};
       if (!p.rrmatches) p.rrmatches = null;
@@ -1445,6 +1449,11 @@ export class TournamentsService {
           lb: p.dbracket.lb.map((round, r) => ({ label: 'Manche ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
           gf: this.serializeMatch(t, p.dbracket.gf),
           gf2: p.dbracket.gf2 ? this.serializeMatch(t, p.dbracket.gf2) : null,
+        } : null,
+        // Mini-bracket à élimination directe de la poule (poolFormat 'single') — mêmes rondes que le Bracket
+        // simple de phase finale (rendu par bracketTree), colonnes « Manche N ».
+        sbracket: p.sbracket ? {
+          rounds: p.sbracket.rounds.map((round, r) => ({ label: 'Manche ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
         } : null,
       };
     });

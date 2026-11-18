@@ -32,7 +32,7 @@ export interface Bracket {
      *  et pour les arbres trop petits pour en avoir une (2-3 participants). */
     thirdPlace: BracketMatch | null;
 }
-export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'roundrobin' | 'done';
+export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'single' | 'roundrobin' | 'done';
 /**
  * Mode de déroulement de chaque poule (phase 1 du format Survival) :
  * - survival (par défaut, historique) : le vainqueur reste sur le terrain et enchaîne les challengers,
@@ -45,7 +45,9 @@ export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'doubl
 /** Mode de jeu à l'intérieur d'une poule. 'roundrobin' (chacun affronte tous les autres de sa
  * poule) est la phase de groupes classique, ouverte à tous les formats à phase finale ;
  * 'survival' et 'double' restent les deux modes historiques du format Survival. */
-export type PoolFormat = 'survival' | 'double' | 'roundrobin';
+/** Mode de poule. Hors Survival : 'roundrobin', ou le bracket du format principal — 'double' (chaque poule est un
+ *  mini-bracket double élimination) / 'single' (chaque poule est un mini-bracket à élimination directe). */
+export type PoolFormat = 'survival' | 'double' | 'single' | 'roundrobin';
 export declare const DEFAULT_QUALIFY_PER_POOL = 2;
 /** Borne le nombre de qualifiés par poule (au moins 1, défaut 2). Aucun plafond selon le mode de
  * poule : Round Robin, Survival classique et Double élimination produisent tous un classement
@@ -71,6 +73,8 @@ export interface Pool {
     top2: string | null;
     /** Bracket double élimination de la poule — seulement si le tournoi utilise poolFormat 'double'. */
     dbracket: DoubleFinals | null;
+    /** Bracket à élimination directe de la poule — seulement si le tournoi utilise poolFormat 'single'. */
+    sbracket: Bracket | null;
     /** Rencontres de la poule en mode 'roundrobin' — chacun affronte tous les autres de sa poule. */
     rrmatches: BracketMatch[] | null;
     /** Qualifiés de la poule, dans l'ordre du classement — généralise top1/top2 à N qualifiés (voir
@@ -375,6 +379,10 @@ export declare function rrRanking(t: Tournament): {
     played: number;
     gd: number;
 }[];
+/** Lance un tournoi à poules en mode "double élimination fusionné" (voir groupedDoubleElimIds) :
+ *  t.finals EST le bracket, dès le lancement — pas de phase de poules distincte à faire aboutir
+ *  d'abord (t.pools ne sert plus qu'à la prévisualisation/au rééquilibrage avant lancement). */
+export declare function launchGroupedDoubleElim(t: Tournament): void;
 export declare function startFinals(t: Tournament, format?: FinalsFormat): void;
 /** Toutes les rencontres de la phase finale, quel que soit le format — pour recherche/affichage générique. */
 export declare function allFinalsMatches(t: Tournament): BracketMatch[];

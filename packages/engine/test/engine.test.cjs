@@ -291,3 +291,54 @@ test('phase finale en bracket simple après 2 poules de 6 qualifiés : 11 matchs
   assert.equal(played, 11);
   assert.ok(t.champion);
 });
+
+// Formats Double élim / Bracket simple avec plusieurs poules : chaque poule est jouée (round robin ou mini-bracket
+// dans le format principal) AVANT la phase finale — plus jamais de saut direct vers le bracket final.
+for (const [format, poolFormat] of [['double', 'roundrobin'], ['double', 'double'], ['single', 'roundrobin'], ['single', 'single']]) {
+  for (const [n, nbPools, qualifyPerPool] of [[8, 2, 2], [16, 4, 2], [32, 4, 4], [13, 3, 2]]) {
+    test(`${format} + poules ${poolFormat} (${n} joueurs, ${nbPools} poules, ${qualifyPerPool} qualifiés) : poules jouées d'abord, puis phase finale`, () => {
+      const t = E.newTournament({ format, nbPools, poolFormat, qualifyPerPool, finalsFormat: format });
+      for (let i = 0; i < n; i++) E.addPlayer(t, 'Z' + i);
+      E.distributePools(t);
+      E.launchTournament(t);
+      // Les poules existent et la phase finale n'est PAS encore créée.
+      assert.equal(t.pools.length, nbPools, 'les poules sont conservées au lancement');
+      assert.equal(t.finals, null, 'pas de bracket final avant la fin des poules');
+      assert.equal(t.status, 'live');
+      for (const p of t.pools) {
+        assert.equal(p.phase, poolFormat === 'roundrobin' ? 'roundrobin' : poolFormat, `phase de poule ${poolFormat}`);
+      }
+      playPools(t);
+      assert.ok(E.allPoolsDone(t), 'toutes les poules terminées');
+      for (const p of t.pools) {
+        assert.ok(p.top1, 'chaque poule désigne un vainqueur');
+        assert.equal(E.poolQualified(t, p).length, Math.min(qualifyPerPool, p.playerIds.length), 'qualifiés par poule respectés');
+      }
+      E.startFinals(t);
+      assert.equal(t.finals.format, format, 'phase finale dans le format principal');
+      playAll(t, (m) => m.a);
+      assert.equal(t.status, 'finished', 'tournoi terminé');
+      assert.ok(t.champion, 'un champion est désigné');
+      const distributed = Object.values(t.points).reduce((a, b) => a + b, 0);
+      assert.ok(distributed <= E.cagnotte(t).programmed + 0.01, `distribué ${distributed} <= prévu ${E.cagnotte(t).programmed}`);
+    });
+  }
+}
+
+test('poule en bracket simple : un joueur par poule seul qualifié d\'office, poule de 2 = un seul match', () => {
+  const t = E.newTournament({ format: 'single', nbPools: 2, poolFormat: 'single', qualifyPerPool: 1, finalsFormat: 'single' });
+  for (let i = 0; i < 4; i++) E.addPlayer(t, 'Y' + i);
+  E.distributePools(t);
+  E.launchTournament(t);
+  for (const p of t.pools) {
+    assert.equal(p.playerIds.length, 2);
+    const m = E.currentMatch(p);
+    assert.ok(m, 'un match à jouer');
+    E.reportResult(t, p.id, m.a, 1, 0);
+    assert.equal(p.phase, 'done');
+    assert.equal(p.top1, m.a);
+    assert.equal(p.top2, m.b);
+    assert.equal(E.currentMatch(p), null);
+  }
+  assert.ok(E.allPoolsDone(t));
+});

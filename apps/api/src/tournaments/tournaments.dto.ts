@@ -35,8 +35,8 @@ export class CreateTournamentDto {
   // Mode de la phase finale (Survival uniquement) — fixé dès la création pour que le budget de
   // cagnotte ci-dessus (finalsWin × nb de matchs) soit calculé pour le bon format dès le départ.
   @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
-  // Mode des poules (Survival uniquement) : 'survival' (historique) ou 'double' (mini-bracket double élim par poule).
-  @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
+  // Mode des poules : 'survival' (Survival), 'roundrobin', ou le bracket du format principal — 'double' (mini-bracket double élim par poule) / 'single' (mini-bracket à élimination directe par poule).
+  @IsOptional() @IsIn(['survival', 'double', 'single', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'single' | 'roundrobin';
   // Nombre de qualifiés par poule pour la phase finale, quel que soit le mode de poule : sa seule
   // vraie limite est l'effectif de la poule, appliqué par le moteur (voir Engine.poolQualified).
   // Le plafond ci-dessous n'est qu'un garde-fou anti-abus (payload absurde), pas une limite produit.
@@ -72,7 +72,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsIn(['single', 'double', 'roundrobin', 'survival']) finalsFormat?: 'single' | 'double' | 'roundrobin' | 'survival';
-  @IsOptional() @IsIn(['survival', 'double', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'roundrobin';
+  @IsOptional() @IsIn(['survival', 'double', 'single', 'roundrobin']) poolFormat?: 'survival' | 'double' | 'single' | 'roundrobin';
   // Nombre de qualifiés par poule pour la phase finale (voir CreateTournamentDto) : borné par
   // l'effectif de la poule, pas par son mode.
   @IsOptional() @IsInt() @Min(1) @Max(500) qualifyPerPool?: number;

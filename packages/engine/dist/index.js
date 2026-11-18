@@ -50,6 +50,7 @@ exports.poolQualified = poolQualified;
 exports.qualifiers = qualifiers;
 exports.qualifiersSplit = qualifiersSplit;
 exports.rrRanking = rrRanking;
+exports.launchGroupedDoubleElim = launchGroupedDoubleElim;
 exports.startFinals = startFinals;
 exports.allFinalsMatches = allFinalsMatches;
 exports.findFinalsMatch = findFinalsMatch;
@@ -369,7 +370,7 @@ function distributePools(t) {
             id: uid(), name: 'Poule ' + POOL_NAMES[i], playerIds: [], order: [], phase: 'pending',
             wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
             lBracket: null, lChampion: null, top1: null, top2: null,
-            dbracket: null, streaks: {}, streakAwarded: {},
+            dbracket: null, sbracket: null, streaks: {}, streakAwarded: {},
             rrmatches: null, qualified: [],
         });
     }
@@ -422,6 +423,8 @@ function launch(t) {
             initPoolRoundRobin(p);
         else if (t.poolFormat === 'double')
             initPoolDouble(p);
+        else if (t.poolFormat === 'single')
+            initPoolSingle(p);
         else
             initSurvival(p);
     });
@@ -439,6 +442,34 @@ function initPoolDouble(pool) {
     pool.dbracket = buildDoubleElim(pool.order, false, true);
     pool.phase = 'double';
     checkPoolDoubleChampion(pool); // couronne immédiatement les cas triviaux (2 joueurs : grande finale déjà en bye)
+}
+/** Lance une poule en mini-bracket à élimination directe (poolFormat 'single') : mêmes primitives que le Bracket
+ *  simple / la finale de poule Survival. Classement d'arrivée : finaliste, puis points gagnés dans la poule. */
+function initPoolSingle(pool) {
+    if (pool.order.length < 2) {
+        pool.top1 = pool.order[0] || null;
+        pool.qualified = pool.order.slice(0, 1);
+        pool.phase = 'done';
+        return;
+    }
+    pool.sbracket = buildBracket(pool.order, true);
+    pool.phase = 'single';
+    checkPoolSingleDone(pool); // couronne d'emblée les cas triviaux (effectif réduit à des exempts)
+}
+/** Fin du mini-bracket à élimination directe d'une poule : le vainqueur de la finale est top1, l'autre finaliste top2. */
+function checkPoolSingleDone(pool) {
+    const b = pool.sbracket;
+    if (!b || pool.phase !== 'single')
+        return;
+    const champ = bracketChampion(b);
+    if (!champ)
+        return;
+    const fin = b.rounds[b.rounds.length - 1][0];
+    pool.top1 = champ;
+    pool.top2 = fin.a === champ ? fin.b : fin.a;
+    if (pool.top2 === exports.BYE)
+        pool.top2 = null;
+    pool.phase = 'done';
 }
 /** Détecte la fin du mini-bracket double élim d'une poule (avec reset éventuel) et pose top1/top2. */
 function checkPoolDoubleChampion(pool) {
@@ -545,13 +576,10 @@ function launchTournament(t) {
     if (usesPools(t)) {
         if (!t.pools.length)
             distributePools(t);
-        // Poules en double élimination (hors Survival, qui garde son propre mécanisme de repêchage) :
-        // pas de phase de poules puis re-qualification séparée — un seul bracket continu où les poules
-        // ne servent qu'à grouper les affrontements du 1er tour (voir launchGroupedDoubleElim).
-        if (t.poolFormat === 'double') {
-            launchGroupedDoubleElim(t);
-            return;
-        }
+        // Chaque poule est jouée dans son mode (round robin, ou mini-bracket double / simple élimination selon le
+        // format principal) ; les qualifiés rejoignent ensuite la phase finale. (L'ancien « bracket unique fusionné »,
+        // qui sautait la phase de poules, n'est plus proposé — voir launchGroupedDoubleElim, conservé pour les
+        // tournois déjà lancés sous ce mode.)
         launch(t);
         return;
     }
@@ -738,6 +766,11 @@ function currentMatch(pool) {
         const m = (pool.rrmatches || []).find(x => x.a && x.b && !x.winner && !x.bye);
         return m ? { a: m.a, b: m.b, stage: 'survival', streak: pool.streaks[m.a] || 0, matchId: m.id } : null;
     }
+    if (pool.phase === 'single') {
+        // Mini-bracket à élimination directe : tous les matchs au tarif « victoire en poule » (survWin).
+        const nm = nextBracketMatch(pool.sbracket);
+        return nm ? { a: nm.match.a, b: nm.match.b, stage: 'survival', streak: pool.streaks[nm.match.a] || 0, matchId: nm.match.id } : null;
+    }
     if (pool.phase === 'double') {
         const f = pool.dbracket;
         if (!f)
@@ -807,6 +840,18 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
             }
         }
         checkPoolRoundRobinDone(t, pool);
+    }
+    else if (pool.phase === 'single') {
+        const nm = nextBracketMatch(pool.sbracket);
+        if (nm && nm.match.id === m.matchId) {
+            nm.match.winner = winnerId;
+            if (sa || sb) {
+                nm.match.sa = sa;
+                nm.match.sb = sb;
+            }
+            propagateBracket(pool.sbracket);
+        }
+        checkPoolSingleDone(pool);
     }
     else if (pool.phase === 'double') {
         const f = pool.dbracket;
@@ -1321,7 +1366,7 @@ function startFinalsSurvivalPool(t, ids) {
         id: uid(), name: 'Grande finale', playerIds: ids.slice(), order: ids.slice(), phase: 'pending',
         wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
         lBracket: null, lChampion: null, top1: null, top2: null,
-        dbracket: null, streaks: {}, streakAwarded: {}, rrmatches: null, qualified: [],
+        dbracket: null, sbracket: null, streaks: {}, streakAwarded: {}, rrmatches: null, qualified: [],
     };
     t.pools = [pool];
     t.finals = { format: 'survival' };
@@ -1681,11 +1726,9 @@ function doublePoolMatchCounts(n, compact = false) {
 function cagnotte(t) {
     const total = t.players.length * t.pointsPerPlayer;
     const s = t.scoring;
-    // Poules en double élimination fusionné (hors Survival) : un seul bracket continu sur l'ensemble
-    // des joueurs réels (voir launchGroupedDoubleElim), pas de phase de poules puis de finale séparée
-    // à additionner — chaque match de ce bracket passe par reportFinals, donc au tarif finalsWin
-    // uniquement (aucune des catégories de poule — survWin/loserWin/poolFinalWin — ne s'applique ici).
-    if (t.format !== 'survival' && t.poolFormat === 'double' && usesPools(t)) {
+    // Ancien mode « bracket unique fusionné » (tournois déjà lancés sous ce mode : pas de poules, t.finals EST le
+    // bracket, au tarif finalsWin uniquement) — n'est plus proposé à la création mais reste budgétisé tel quel.
+    if (t.format !== 'survival' && t.poolFormat === 'double' && t.status !== 'setup' && !t.pools.length && t.finals && t.finals.format === 'double') {
         const c = doublePoolMatchCounts(t.players.length);
         const finalsMatches = c.wb + c.lb + c.gf;
         const programmed = Math.round((finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
@@ -1706,6 +1749,9 @@ function cagnotte(t) {
             surv += c.wb;
             los += c.lb;
             pf += c.gf;
+        }
+        else if (t.poolFormat === 'single') {
+            surv += n - 1; // élimination directe : n - 1 rencontres, quel que soit le nombre d'exempts
         }
         else {
             surv += n - 1;

@@ -3796,12 +3796,19 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   const timerChip = startedAt
     ? `<span data-timer="${startedAt}" data-limit="${t.matchMinutes || 0}" title="Durée du match${t.matchMinutes ? ` (prévue : ${t.matchMinutes} min)` : ""}" style="flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;border:1px solid var(--border-strong);border-radius:7px;padding:4px 8px;color:var(--text-muted)">00:00</span>`
     : `<button data-matchstart="${t.id}|${key}" title="Démarrer le chronomètre de ce match" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">▶ Chrono</button>`;
+  // Poule concernée : pastille cliquable (affiche cette poule dans le tableau des poules) — plusieurs matchs de poules
+  // différentes peuvent être en cours en même temps, il faut voir de quelle poule vient chaque panneau.
+  const poolIdx = active.kind === "pool" ? (t.pools || []).findIndex((pp: Detail) => pp.id === active.poolId) : -1;
+  const poolChip = poolIdx >= 0
+    ? `<button data-poolnav="${poolIdx}" title="Afficher cette poule" style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#7C82FF;background:rgba(124,130,255,.12);border:1px solid rgba(124,130,255,.45);border-radius:99px;padding:3px 10px;cursor:pointer">${escHtml(String(t.pools[poolIdx].name))}</button>`
+    : "";
   const onStream = t.streamMatchKey === key;
   const streamBtn = `<button data-streammatch="${t.id}|${key}|${onStream ? "0" : "1"}" title="${onStream ? "Retirer de l'antenne" : "Marquer à l'antenne (mis en avant sur l'écran de diffusion)"}" style="display:inline-flex;align-items:center;gap:5px;flex:none;background:${onStream ? "#F43F7E" : "transparent"};border:1px solid ${onStream ? "#F43F7E" : "var(--border-strong)"};color:${onStream ? "#fff" : "var(--text-muted)"};border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer">${ic(I.tv, 12)}${onStream ? "À l'antenne" : "Stream"}</button>`;
   return `<div style="border:1px solid ${onStream ? "#F43F7E" : "rgba(34,211,238,.4)"};border-radius:12px;background:rgba(34,211,238,.05);overflow:hidden">
     <div style="display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid rgba(34,211,238,.22);flex-wrap:wrap">
       <span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;flex:1">Match en cours</span>
+      ${poolChip}
       ${t.matchFormatLabel ? `<span style="font-size:10px;font-weight:800;letter-spacing:.6px;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:3px 9px">${escHtml(t.matchFormatLabel)}</span>` : ""}
       ${streamBtn}
       ${stationField}
@@ -8211,10 +8218,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.scorestep) {
       const [key, side, dir] = d.scorestep.split("|") as [string, "a" | "b", string];
+      // Si ce match est celui d'une poule, le tableau des poules bascule tout de suite sur elle.
+      const pi = (S.detail?.pools || []).findIndex((pp: Detail) => pp.id === key);
       setS((s) => {
         const cur = s.matchScores[key] || { a: 0, b: 0 };
         const next = { ...cur, [side]: Math.max(0, cur[side] + (dir === "1" ? 1 : -1)) };
-        return { ...s, matchScores: { ...s.matchScores, [key]: next } };
+        return { ...s, matchScores: { ...s.matchScores, [key]: next }, ...(pi >= 0 ? { poolView: pi } : {}) };
       });
     }
     else if (d.matchvalidate) {
@@ -8227,7 +8236,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
           const winnerId = sc.a > sc.b ? active.aId : active.bId;
           const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: sc.a, scoreB: sc.b } : { matchId: active.matchId, winnerId, scoreA: sc.a, scoreB: sc.b };
           act(`${API}/api/tournaments/${t.id}/report`, body);
-          setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms }; });
+          const pi = active.kind === "pool" ? (t.pools || []).findIndex((pp: Detail) => pp.id === active.poolId) : -1;
+          setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms, ...(pi >= 0 ? { poolView: pi } : {}) }; });
         }
       }
     }
@@ -8239,7 +8249,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const winnerId = side === "a" ? active.bId : active.aId;
         const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: 0, scoreB: 0 } : { matchId: active.matchId, winnerId, scoreA: 0, scoreB: 0 };
         act(`${API}/api/tournaments/${t.id}/report`, body);
-        setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms }; });
+        const pi = active.kind === "pool" ? (t.pools || []).findIndex((pp: Detail) => pp.id === active.poolId) : -1;
+        setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms, ...(pi >= 0 ? { poolView: pi } : {}) }; });
       }
     }
     // "Lancer" dans la file d'attente AJOUTE une carte de contrôle de plus (plusieurs confrontations
@@ -8524,7 +8535,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.predexpand !== undefined) setS((s) => ({ ...s, predExpanded: !s.predExpanded }));
     else if (d.gopronos !== undefined) { setS((s) => ({ ...s, page: "classements", classementView: "pronos" })); window.scrollTo({ top: 0 }); void loadPredictors(); }
     else if (d.duplicate) duplicateTournament(d.duplicate);
-    else if (d.matchstart) { const [tid, key] = d.matchstart.split("|"); act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true }); }
+    else if (d.matchstart) {
+      const [tid, key] = d.matchstart.split("|");
+      act(`${API}/api/tournaments/${tid}/match-start`, { key, on: true });
+      const pi = (S.detail?.pools || []).findIndex((pp: Detail) => pp.id === key); // chrono lancé sur un match de poule : on l'affiche
+      if (pi >= 0) setS((s) => ({ ...s, poolView: pi }));
+    }
     else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }
     else if (d.notifymatch) { const [tid, key] = d.notifymatch.split("|"); notifyMatch(tid, key); }
     else if (d.embedclose !== undefined) setS((s) => ({ ...s, embedTarget: null }));

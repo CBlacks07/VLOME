@@ -351,10 +351,12 @@ tr:hover td { background: var(--hover-2); }
   .home-main > [style*="border:1px solid"] { margin-left: 0 !important; margin-right: 0 !important; }
 }
 
-/* Page d'un événement sur téléphone : l'affiche du bandeau prenait la moitié de la largeur et forçait le titre
-   à se couper sur 4 lignes — on la retire du bandeau (elle reste visible sur les cartes d'événement). */
+/* Page d'un événement sur téléphone : l'affiche à côté du titre prenait la moitié de la largeur et le forçait à se couper
+   sur 4 lignes. Elle passe donc SOUS le titre et les infos, centrée, à largeur raisonnable : le titre garde toute la
+   largeur et l'affiche reste visible. */
 @media (max-width: 640px) {
-  .ev-poster { display: none !important; }
+  .ev-hero-row { flex-direction: column !important; align-items: stretch !important; gap: 22px !important; }
+  .ev-poster { align-self: center; width: min(62vw, 250px) !important; height: auto; }
 }
 
 /* Sauts de ligne plus propres partout : titres équilibrés, paragraphes sans mot orphelin en fin de ligne. */

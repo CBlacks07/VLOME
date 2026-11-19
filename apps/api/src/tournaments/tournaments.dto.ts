@@ -2,10 +2,10 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOp
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
-  @IsOptional() @IsString() game?: string;
+  @IsOptional() @IsString() @MaxLength(120) game?: string;
   @IsOptional() @IsString() format?: string;
-  @IsOptional() @IsString() place?: string;
-  @IsOptional() @IsString() date?: string;
+  @IsOptional() @IsString() @MaxLength(160) place?: string;
+  @IsOptional() @IsString() @MaxLength(40) date?: string;
   @IsOptional() @IsInt() @Min(1) nbPools?: number;
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
@@ -58,9 +58,9 @@ export class CreateTournamentDto {
 
 export class UpdateTournamentDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string;
-  @IsOptional() @IsString() game?: string;
-  @IsOptional() @IsString() date?: string;
-  @IsOptional() @IsString() place?: string;
+  @IsOptional() @IsString() @MaxLength(120) game?: string;
+  @IsOptional() @IsString() @MaxLength(40) date?: string;
+  @IsOptional() @IsString() @MaxLength(160) place?: string;
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
   @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @IsOptional() @IsString() @MaxLength(400) prize?: string;

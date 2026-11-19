@@ -4,6 +4,8 @@ import { CreateOrderDto } from './shop.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
+import { RolesGuard } from '../common/roles.guard';
+import { Roles } from '../common/roles.decorator';
 
 @Controller()
 export class ShopController {
@@ -14,7 +16,12 @@ export class ShopController {
     return this.shop.listProducts();
   }
 
+  // Réservé à l'admin : n'insère les produits de démo que si la table est vide (voir
+  // ShopService.seedProducts), mais reste une écriture en base — jamais accessible sans
+  // authentification (voir le même garde sur /tournaments/seed et /news/seed).
   @Post('products/seed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   seed() {
     return this.shop.seedProducts();
   }

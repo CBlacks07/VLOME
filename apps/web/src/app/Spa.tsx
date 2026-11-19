@@ -2205,8 +2205,8 @@ function regsCard(S: State) {
   const rows = regs.length
     ? regs.map((r: Detail) => `<div data-open="${r.tournament.id}" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--surface-4);cursor:pointer">
         <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border);color:#22D3EE;flex:none">${ic(I.crown, 15)}</span>
-        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${r.tournament.name}</div><div style="font-size:12px;color:var(--text-faint)">${r.tournament.game}${r.tournament.date ? " · " + r.tournament.date : ""}${r.tournament.place ? " · " + r.tournament.place : ""}</div></div>
-        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${r.tournament.live ? "#22D3EE" : r.tournament.status === "Terminé" ? "#FBBF24" : "var(--text-muted)"}">${r.tournament.status}</span></div>`).join("")
+        <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(r.tournament.name)}</div><div style="font-size:12px;color:var(--text-faint)">${escHtml(r.tournament.game)}${r.tournament.date ? " · " + escHtml(r.tournament.date) : ""}${r.tournament.place ? " · " + escHtml(r.tournament.place) : ""}</div></div>
+        <span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${r.tournament.live ? "#22D3EE" : r.tournament.status === "Terminé" ? "#FBBF24" : "var(--text-muted)"}">${escHtml(r.tournament.status)}</span></div>`).join("")
     : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">Aucune inscription pour l'instant.<br><button data-go="tournois" style="margin-top:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer">Parcourir les tournois</button></div>`;
   return card(secTitle(`Mes inscriptions (${regs.length})`) + rows);
 }

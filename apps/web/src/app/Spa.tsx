@@ -488,10 +488,13 @@ function railNav(S: State, activeKey: string): string {
   const userBtn = S.user
     ? `<button data-go="profil" data-tip="Mon espace · ${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
     : `<button data-auth-open="1" data-tip="Connexion" aria-label="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.user, 18)}</button>`;
-  return `<div class="rail-desktop" style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;overflow-y:auto;border-right:1px solid var(--surface-3);display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:var(--bg)">
-    <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;margin-bottom:16px;cursor:pointer">${brandLogo(S, 40, 22)}</div>
-    ${items}
-    <div style="width:32px;height:1px;background:var(--surface-3);margin:10px 0"></div>
+  // Le survol des 3 icônes du bas affiche une infobulle qui déborde à droite du rail (88px) — elle doit
+  // rester dans un ancêtre à overflow:visible. Seule la liste de nav (jamais d'infobulle, déjà libellée)
+  // défile si la fenêtre est trop courte : c'est elle, et non tout le rail, qui porte overflow-y:auto.
+  return `<div class="rail-desktop" style="position:fixed;top:0;left:0;bottom:0;width:88px;z-index:40;border-right:1px solid var(--surface-3);display:flex;flex-direction:column;align-items:center;padding:18px 0 24px;gap:6px;background:var(--bg)">
+    <div data-go="accueil" class="hbtn" style="display:grid;place-items:center;margin-bottom:16px;cursor:pointer;flex:none">${brandLogo(S, 40, 22)}</div>
+    <div style="width:100%;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:center;gap:6px">${items}</div>
+    <div style="width:32px;height:1px;background:var(--surface-3);margin:10px 0;flex:none"></div>
     ${themeToggleBtn(S, 38, 17)}
     ${cartBtn}
     ${userBtn}
@@ -1559,7 +1562,7 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}${r.championships > 0 ? ` <span title="Titres remportés" style="color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${r.team ? escHtml((r.team as string[]).join(", ")) : escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:650">${escHtml(r.name)}${r.championships > 0 ? `<span title="Titres remportés" style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${r.team ? escHtml((r.team as string[]).join(", ")) : escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const table = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
   return podiumHtml + table;
 }
@@ -2051,7 +2054,7 @@ function statsByGameCard(me: Detail) {
       <div style="min-width:0;flex:1;font-weight:650;font-size:14px">${escHtml(g.game)}</div>
       <span style="font-size:12px;color:var(--text-muted)">${g.tournamentsPlayed} tournoi${g.tournamentsPlayed > 1 ? "s" : ""}</span>
       <span style="font-size:12px;color:var(--text-muted)">${g.wins} V</span>
-      ${g.championships ? `<span style="font-size:11px;font-weight:800;color:#FBBF24">${ic(I.crown, 11)} ${g.championships}</span>` : ""}
+      ${g.championships ? `<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:11px;font-weight:800;color:#FBBF24">${ic(I.crown, 11)} ${g.championships}</span>` : ""}
       <span style="font-weight:800;color:#22D3EE;font-size:14px;font-family:'JetBrains Mono',monospace">${g.points} pts</span>
     </div>`).join("");
   return `<div style="margin-bottom:16px">${card(secTitle(`Stats par jeu (${byGame.length})`) + rows)}</div>`;

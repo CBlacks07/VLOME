@@ -1,0 +1,62 @@
+name: CI
+
+# Tourne à chaque push sur main (le flux de travail reste : on pousse directement dessus, pas de
+# branche ni de pull request obligatoire) — sert d'alerte après coup si quelque chose casse, pas de
+# verrou avant de pousser. pull_request est aussi écouté : si une PR est ouverte un jour, elle en
+# profite automatiquement, sans rien à changer ici.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vlome
+          POSTGRES_PASSWORD: vlome
+          POSTGRES_DB: vlome
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U vlome"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      # Base jetable du job, détruite avec lui — jamais la base de dev ni de prod. Permet à
+      # l'installation (prisma migrate deploy + generate) et aux tests de l'API de tourner pour de vrai.
+      DATABASE_URL: postgresql://vlome:vlome@localhost:5432/vlome?schema=public
+      JWT_SECRET: ci-secret-jamais-utilise-en-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installe les dépendances (applique les migrations + génère le client Prisma)
+        run: pnpm install --frozen-lockfile
+
+      - name: Moteur — tests
+        run: pnpm --filter @vlome/engine test
+
+      - name: Moteur — vérification des types
+        run: pnpm --filter @vlome/engine exec tsc --noEmit -p .
+
+      - name: API — vérification des types
+        run: pnpm --filter @vlome/api exec tsc --noEmit -p tsconfig.json
+
+      - name: API — tests
+        run: pnpm --filter @vlome/api test
+
+      - name: Web — vérification des types
+        run: pnpm --filter @vlome/web exec tsc --noEmit -p .

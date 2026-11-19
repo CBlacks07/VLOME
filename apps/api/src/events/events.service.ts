@@ -34,19 +34,22 @@ export class EventsService {
   }
 
   /** Vue publique : sans l'identifiant interne du compte créateur (réservé aux vues de gestion). */
-  private publicView(ev: EventRow, cards: { live: boolean }[]) {
+  private publicView(ev: EventRow, cards: { live: boolean; status: string }[]) {
     const { createdById: _owner, ...pub } = this.view(ev, cards);
     void _owner;
     return pub;
   }
 
   /** Vue commune : champs de l'événement + état calculé (en direct / à venir / terminé) et compteurs. */
-  private view(ev: EventRow, cards: { live: boolean }[]) {
+  private view(ev: EventRow, cards: { live: boolean; status: string }[]) {
     const now = Date.now();
     const live = cards.some((c) => c.live);
     const end = ev.endDate ?? ev.startDate;
-    // Un événement sans tournoi en cours est « terminé » une fois sa date de fin (ou de début, à défaut) passée de plus d'un jour.
-    const ended = !live && !!end && end.getTime() + 24 * 3600 * 1000 < now;
+    // Un événement sans tournoi en cours est « terminé » une fois sa date de fin (ou de début, à défaut) passée de
+    // plus d'un jour — ou dès que tous ses tournois sont eux-mêmes terminés (ex: joués en avance), sans attendre
+    // cette date : sinon un événement entièrement clos reste affiché « à venir » jusqu'à son échéance calendaire.
+    const allFinished = cards.length > 0 && cards.every((c) => c.status === 'Terminé');
+    const ended = !live && (allFinished || (!!end && end.getTime() + 24 * 3600 * 1000 < now));
     return {
       id: ev.id, name: ev.name, tagline: ev.tagline, description: ev.description,
       startDate: ev.startDate ? ev.startDate.toISOString() : null,

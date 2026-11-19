@@ -5801,7 +5801,7 @@ function consoleEvents(S: State) {
     const tRows = evTournamentsView(S, ts, ed.id);
     const attach = attachable.length
       ? `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--surface-4)"><select id="ev-attach-sel" style="${inp};margin-top:0;max-width:340px;flex:1">${attachable.map((t: Detail) => `<option value="${t.id}">${escHtml(t.name)}${t.game ? " · " + escHtml(t.game) : ""}</option>`).join("")}</select>
-          <button data-evattach="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">Rattacher ce tournoi</button></div>`
+          <button data-evattach="1" ${S.busy ? "disabled" : ""} style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:11px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${S.busy ? "Rattachement…" : "Rattacher ce tournoi"}</button></div>`
       : "";
     manage = card(`<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">${secTitle(`Tournois de l'événement (${ts.length})`).replace("margin:0 0 14px", "margin:0")}<span style="flex:1"></span>
         <button data-act="create-open" data-evid="${ed.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Créer un tournoi dans cet événement</button></div>
@@ -6606,13 +6606,18 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   async function eventTournamentLink(eventId: string, tournamentId: string, attach: boolean) {
     // On garde ce qui a été saisi dans le formulaire avant de recharger l'éditeur.
     const f = readEventForm();
+    // busy : deux requêtes séquentielles (rattacher puis recharger la fiche) peuvent prendre une
+    // bonne seconde — sans ça, le bouton « Rattacher ce tournoi » ne donnait aucun signe de vie et
+    // on le reclique en pensant que le premier clic n'avait rien fait (constaté en test).
+    setS((s) => ({ ...s, busy: true }));
     try {
       const r = await fetch(`${API}/api/events/${eventId}/tournaments/${tournamentId}`, { method: attach ? "POST" : "DELETE", headers: authHeaders() });
-      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
+      if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); setS((s) => ({ ...s, busy: false })); return; }
       const m = await fetch(`${API}/api/events/${eventId}/manage`, { headers: authHeaders() });
-      if (m.ok) { const d = await m.json(); setS((s) => ({ ...s, eventManage: d, eventEdit: { ...f, id: eventId } })); }
+      if (m.ok) { const d = await m.json(); setS((s) => ({ ...s, busy: false, eventManage: d, eventEdit: { ...f, id: eventId } })); }
+      else setS((s) => ({ ...s, busy: false }));
       loadMyEvents(); loadEvents(); loadTournaments();
-    } catch { /* ignore */ }
+    } catch { setS((s) => ({ ...s, busy: false })); }
   }
 
   /* ---------- Écran de diffusion d'un événement ---------- */

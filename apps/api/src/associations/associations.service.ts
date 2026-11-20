@@ -96,6 +96,24 @@ export class AssociationsService {
     return { id: playerId };
   }
 
+  /** Prévient l'association qu'un joueur demande à rejoindre son club (e-mail au responsable). Best-effort : ne bloque jamais l'inscription. */
+  async notifyJoinRequest(clubId: string, playerName: string): Promise<void> {
+    try {
+      const club = await this.prisma.club.findUnique({ where: { id: clubId }, select: { name: true, contactEmail: true, owner: { select: { email: true } } } });
+      const to = club?.owner?.email || club?.contactEmail;
+      if (!club || !to) return;
+      await this.mail.send(
+        to,
+        `Nouvelle demande d'adhésion à ${club.name} — Miabe Esport`,
+        this.mail.layout(
+          "Une demande d'adhésion t'attend",
+          `<p><b>${escapeHtml(playerName)}</b> demande à rejoindre <b>${escapeHtml(club.name)}</b>.</p><p>Accepte ou refuse sa demande depuis ton espace <b>Mon club</b> : le club apparaît sur sa fiche joueur dès que tu l'acceptes.</p>`,
+          { label: 'Ouvrir Mon club', url: `${this.mail.siteUrl}/#profil/club` },
+        ),
+      );
+    } catch { /* best-effort */ }
+  }
+
   /* ---------- Côté admin de la plateforme : intégration des associations ---------- */
 
   /** Clubs déjà dans la base mais sans compte association : l'admin peut leur en rattacher un. */

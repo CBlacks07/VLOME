@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { uniqueClubSlug } from '../common/slug';
+import { AssociationsService } from '../associations/associations.service';
 
 interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; }
 
@@ -15,7 +16,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomBytes(9).toString('ba
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private prisma: PrismaService, private jwt: JwtService, private mail: MailService) {}
+  constructor(private prisma: PrismaService, private jwt: JwtService, private mail: MailService, private assoc: AssociationsService) {}
 
   /** Crée un compte ADMIN par défaut au démarrage s'il n'en existe aucun. */
   async onModuleInit() {
@@ -67,6 +68,7 @@ export class AuthService implements OnModuleInit {
       },
     });
     if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city, undefined);
+    await this.sendWelcome(u, role, chosenClub);
     return { token: this.sign(u), user: this.safe(u) };
   }
 
@@ -89,7 +91,30 @@ export class AuthService implements OnModuleInit {
       });
       return user;
     });
+    await this.sendWelcome(u, 'ASSOCIATION', null, name);
     return { token: this.sign(u), user: this.safe(u) };
+  }
+
+  /** E-mails automatiques de l'inscription : accusé de réception au nouvel inscrit, et prévenance de ceux qui ont une décision à prendre
+   *  (équipe Miabe pour un organisateur/une association, association pour un joueur qui demande son club). Best-effort : jamais bloquant. */
+  private async sendWelcome(u: { email: string; displayName: string }, role: string, chosenClub: { id: string; name: string } | null, associationName?: string) {
+    const name = escapeHtml(u.displayName);
+    try {
+      if (role === 'ORGANIZER') {
+        await this.mail.send(u.email, 'Ta demande d\'organisateur est bien reçue — Miabe Esport', this.mail.layout('Demande reçue',
+          `<p>Bonjour ${name},</p><p>Ton compte est créé. Pour créer des tournois, il doit d'abord être <b>validé par l'équipe Miabe</b> : nous examinons ta demande et tu reçois un e-mail dès qu'elle est traitée. En attendant, tu peux utiliser tout le site comme un joueur.</p>`));
+        await this.mail.notifyTeam(`Nouvelle demande d'organisateur : ${u.displayName}`, 'Demande d\'organisateur à valider', `<p><b>${name}</b> (${escapeHtml(u.email)}) demande à devenir organisateur.</p>`, { label: 'Ouvrir l\'administration', url: `${this.mail.siteUrl}/#profil/organisateurs` });
+      } else if (role === 'ASSOCIATION') {
+        await this.mail.send(u.email, 'Ton association est bien reçue — Miabe Esport', this.mail.layout('Demande reçue',
+          `<p>Bonjour ${name},</p><p>Le compte de l'association <b>${escapeHtml(associationName)}</b> est créé. L'équipe Miabe l'examine avant de l'intégrer à la liste des clubs : tu reçois un e-mail dès que c'est fait, et tu pourras alors valider l'adhésion de tes joueurs et afficher tes tournois sur ton site.</p>`));
+        await this.mail.notifyTeam(`Nouvelle association à intégrer : ${associationName}`, 'Association à intégrer', `<p>L'association <b>${escapeHtml(associationName)}</b> (${escapeHtml(u.email)}) demande à être intégrée.</p>`, { label: 'Ouvrir l\'administration', url: `${this.mail.siteUrl}/#profil/users` });
+      } else {
+        await this.mail.send(u.email, 'Bienvenue sur Miabe Esport', this.mail.layout('Bienvenue sur Miabe Esport',
+          `<p>Bonjour ${name},</p><p>Ton compte est créé : tu peux t'inscrire aux tournois, suivre tes matchs en direct, grimper dans les classements et commander à la boutique.</p>${chosenClub ? `<p>Ta demande pour rejoindre <b>${escapeHtml(chosenClub.name)}</b> a été transmise à l'association : le club apparaîtra sur ta fiche dès qu'elle l'aura acceptée.</p>` : ''}`,
+          { label: 'Voir les tournois', url: `${this.mail.siteUrl}/#tournois` }));
+      }
+      if (chosenClub) await this.assoc.notifyJoinRequest(chosenClub.id, u.displayName);
+    } catch { /* best-effort */ }
   }
 
   /** Retrouve (insensible à la casse) ou crée le club du catalogue portant ce nom. */

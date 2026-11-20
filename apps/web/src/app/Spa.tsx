@@ -706,8 +706,8 @@ function pAccueil(S: State) {
   const heroSubColor = heroBg ? "rgba(255,255,255,.78)" : "var(--text-muted)";
   const heroStatColor = heroBg ? "rgba(255,255,255,.7)" : "var(--text-muted)";
   // Même règle pour la carte « À la une » : texte clair fixe si elle a une image, sinon suit le thème.
-  const slideTextColor = s.imageUrl ? "#fff" : "var(--text)";
-  const slideSubColor = s.imageUrl ? "rgba(255,255,255,.78)" : "var(--text-muted)";
+  const slideTextColor = "var(--text)";
+  const slideSubColor = "var(--text-muted)";
   const heroMedia = heroBg
     ? (heroIsVideo
       ? `<video class="heromedia" src="${mediaUrl(heroBg)}" autoplay muted loop playsinline></video>`
@@ -727,19 +727,24 @@ function pAccueil(S: State) {
       <div class="enter-up" style="animation-delay:.34s;display:flex;gap:36px;margin-top:32px;flex-wrap:wrap;padding-top:22px;border-top:1px solid ${heroBg ? "rgba(255,255,255,.14)" : "var(--border)"}">
         ${heroStats.map((st, i) => `<div><div class="hero-stat-v" style="font-family:'Bebas Neue',sans-serif;font-size:46px;line-height:1;color:${i === 0 ? "#22D3EE" : heroTextColor}">${escHtml(st.v)}</div><div style="font-size:11.5px;letter-spacing:1px;text-transform:uppercase;color:${heroStatColor};font-weight:700;margin-top:4px">${escHtml(st.k)}</div></div>`).join("")}</div>
       </div></div>
-    <div style="border-radius:20px;border:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px;display:flex;flex-direction:column;position:relative;overflow:hidden">
+    <div style="border-radius:20px;border:1px solid var(--border);background:linear-gradient(180deg,var(--surface),var(--surface-2));display:flex;flex-direction:column;position:relative;overflow:hidden">
       ${s.imageUrl
-        ? `<div class="kb" style="position:absolute;inset:0;background-image:url('${mediaUrl(s.imageUrl)}');background-size:cover;background-position:center"></div><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,17,.62),rgba(11,11,17,.94) 72%);pointer-events:none"></div>`
+        ? `<div style="position:relative;flex:none;height:clamp(180px,24vw,280px);overflow:hidden;background:var(--surface-4)">
+            <div aria-hidden="true" style="position:absolute;inset:-24px;background:url('${mediaUrl(s.imageUrl)}') center/cover no-repeat;filter:blur(24px) brightness(.62) saturate(1.25)"></div>
+            <img src="${mediaUrl(s.imageUrl)}" alt="${escAttr(s.title)}" style="position:relative;display:block;width:100%;height:100%;object-fit:contain" />
+            <div style="position:absolute;top:14px;left:16px;right:16px;display:flex;align-items:center;justify-content:space-between;pointer-events:none"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800;background:rgba(11,11,17,.72);backdrop-filter:blur(6px);border-radius:99px;padding:5px 11px">À la une</span><span style="font-size:11px;color:#E8E9F4;font-weight:700;background:rgba(11,11,17,.72);backdrop-filter:blur(6px);border-radius:99px;padding:5px 10px">${S.slide + 1} / ${slides.length}</span></div>
+          </div>`
         : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(34,211,238,.14),transparent 55%);pointer-events:none"></div>`}
-      <div style="display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:var(--text-faint);font-weight:600">${S.slide + 1} / ${slides.length}</span></div>
-      <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 4px;position:relative;z-index:1;min-height:240px">
+      <div style="display:flex;flex-direction:column;flex:1;padding:${s.imageUrl ? "18px 22px 20px" : "22px"};position:relative;z-index:1">
+      ${s.imageUrl ? "" : `<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE;font-weight:800">À la une</span><span style="font-size:11px;color:var(--text-faint);font-weight:600">${S.slide + 1} / ${slides.length}</span></div>`}
+      <div class="slidein" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:${s.imageUrl ? "0 0 14px" : "26px 4px"};min-height:${s.imageUrl ? "0" : "240px"}">
         <span style="align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:5px 11px">${escHtml(s.tag)}</span>
-        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,4vw,46px);letter-spacing:1px;line-height:.95;margin:14px 0 8px;color:${slideTextColor};${s.imageUrl ? "text-shadow:0 2px 14px rgba(0,0,0,.6)" : ""}">${escHtml(s.title)}</h2>
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,3.6vw,42px);letter-spacing:1px;line-height:.95;margin:12px 0 8px;color:${slideTextColor}">${escHtml(s.title)}</h2>
         <p style="color:${slideSubColor};font-size:14px;line-height:1.55;margin:0">${escHtml(s.sub)}</p>
         ${s.linkUrl
           ? `<a href="${escAttr(s.linkUrl)}" ${/^https?:\/\//i.test(s.linkUrl) ? 'target="_blank" rel="noopener"' : ""} style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none">${escHtml(s.cta)} ${ic(I.arrow, 16)}</a>`
-          : `<button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button>`}</div>
-      <div style="display:flex;gap:8px;position:relative;z-index:1">${dots}</div></div></section>`;
+          : `<button data-go="tournois" style="align-self:flex-start;margin-top:20px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">${escHtml(s.cta)} ${ic(I.arrow, 16)}</button>`}      </div>
+      <div style="display:flex;gap:8px">${dots}</div></div></div></section>`;
 
   // Tournoi en direct : barre fixe bien visible (au lieu du bandeau défilant) — sinon repli sur le bandeau des tournois à venir.
   const liveT = tourns.filter((t) => t.live);

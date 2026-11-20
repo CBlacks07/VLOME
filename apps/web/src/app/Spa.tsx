@@ -1208,16 +1208,7 @@ function wizPoolsStep(S: State) {
       <input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />
       <p id="wiz-qualify-note" style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>
-    ${!isSurvival && S.wizEditId ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
-      <div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Format de la phase finale</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${wizFinalsFormatOptions(d.poolFormat).map(([key, label]) => {
-          const on = d.finalsFormat === key;
-          return `<button data-wizfinalsformat="${key}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:8px 14px;cursor:pointer;background:${on ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};color:${on ? "#22D3EE" : "var(--text-muted)"}">${label}</button>`;
-        }).join("")}
-      </div>
-      <p style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${(FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[2]} Indépendant du mode des poules ci-dessus : les qualifiés de chaque poule se retrouvent dans ce format-là, quel que soit celui utilisé pour les départager en poule.</p>
-    </div>` : ""}`)}
+    `)}
   ${wizFoot("Retour", S.wizEditId ? 1 : 2, isSurvival ? 4 : 5, isSurvival ? "Continuer" : "Validation")}`;
 }
 
@@ -4765,7 +4756,6 @@ function pTournoi(S: State) {
     </div>`;
     // "Changer le format" (brouillon uniquement) : rouvre l'assistant complet plutôt que d'obliger à
     // supprimer et recréer le tournoi pour changer de type — les participants déjà saisis sont conservés.
-    const changeFormatBtn = manage ? `<button data-changeformat="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border-strong);color:var(--text-muted);border-radius:10px;padding:8px 14px;font-weight:700;font-size:12.5px;cursor:pointer;margin-bottom:30px">${ic(I.arrow, 13)}Changer le format</button>` : "";
     const actionRail = `<div id="reg-rail" style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
       <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? "Prêt à démarrer" : "Inscription"}</div>
       ${feeBadge}${pointBadge}
@@ -4773,7 +4763,7 @@ function pTournoi(S: State) {
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${changeFormatBtn}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
+    const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     // Sur téléphone, le bloc d'inscription est tout en bas de la page : bouton fixe qui y mène (inscription encore possible seulement).
     const regSticky = !manage && !isReg && !isPending && !full

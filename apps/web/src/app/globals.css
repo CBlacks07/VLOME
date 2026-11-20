@@ -658,8 +658,9 @@ h4.tcard-title { -webkit-line-clamp: 3; }
 }
 @media (max-width: 480px) {
   .site-footer { padding: 36px 18px 22px; }
-  .foot-grid { grid-template-columns: 1fr; }
-  .foot-links-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+  /* Explorer et Informations côte à côte, deux colonnes de largeur égale, liens empilés dans chacune. */
+  .foot-grid { grid-template-columns: 1fr 1fr; gap: 28px 20px; }
+  .foot-link { width: auto; max-width: 100%; text-align: left; line-height: 1.35; }
   .foot-bottom { flex-direction: column-reverse; align-items: flex-start; }
 }
 

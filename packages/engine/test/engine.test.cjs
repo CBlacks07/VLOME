@@ -342,3 +342,39 @@ test('poule en bracket simple : un joueur par poule seul qualifié d\'office, po
   }
   assert.ok(E.allPoolsDone(t));
 });
+
+/** Phase finale Round Robin minimale à 3 joueurs : A, B, C ont chacun 1 victoire (cycle A>B>C>A), seuls les scores les séparent. */
+function cyclicRR(extra) {
+  const t = E.newTournament({ format: 'roundrobin', ...extra });
+  t.finals = {
+    format: 'roundrobin', players: ['A', 'B', 'C'], champion: null,
+    matches: [
+      { id: 'm1', a: 'A', b: 'B', winner: 'A', sa: 3, sb: 0 },
+      { id: 'm2', a: 'B', b: 'C', winner: 'B', sa: 2, sb: 1 },
+      { id: 'm3', a: 'C', b: 'A', winner: 'C', sa: 1, sb: 0 },
+    ],
+  };
+  return t;
+}
+test('départage : par défaut différence de buts puis marqués (comportement historique)', () => {
+  const t = cyclicRR({});
+  assert.deepEqual(E.effectiveTiebreakers(t), ['gd', 'gf', 'h2h']);
+  // A : +2 (3-0, 0-1), B : -2... A=+2, B=-1+... A: 3-0 puis 0-1 => +2 ; B: 0-3 puis 2-1 => -2 ; C: 1-2 puis 1-0 => 0
+  assert.deepEqual(E.rrRanking(t).map((r) => r.id), ['A', 'C', 'B']);
+});
+test('départage : liste vide = seules les victoires comptent (ordre initial conservé)', () => {
+  const t = cyclicRR({ tiebreakers: [] });
+  assert.equal(t.countGoalDiff, false);
+  assert.deepEqual(E.rrRanking(t).map((r) => r.id), ['A', 'B', 'C']);
+});
+test('départage : buts encaissés (moins = mieux) et ordre des critères respecté', () => {
+  // encaissés : A 0+1=1, B 3+1=4, C 2+0=2  => A, C, B
+  assert.deepEqual(E.rrRanking(cyclicRR({ tiebreakers: ['ga'] })).map((r) => r.id), ['A', 'C', 'B']);
+  // marqués : A 3+0=3, B 0+2=2, C 1+1=2 => A devant, B/C égalité (ordre initial)
+  assert.equal(E.rrRanking(cyclicRR({ tiebreakers: ['gf'] }))[0].id, 'A');
+});
+test('départage : liste nettoyée (inconnus et doublons ignorés), confrontation directe seule ne montre pas la colonne Diff.', () => {
+  assert.deepEqual(E.normalizeTiebreakers(['gd', 'x', 'gd', 'h2h']), ['gd', 'h2h']);
+  assert.equal(E.newTournament({ tiebreakers: ['h2h'] }).countGoalDiff, false);
+  assert.equal(E.newTournament({ tiebreakers: ['h2h', 'gd'] }).countGoalDiff, true);
+});

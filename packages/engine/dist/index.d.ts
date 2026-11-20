@@ -202,6 +202,11 @@ export interface Tournament {
      *  restent saisis et affichés, juste ignorés pour le classement). Absent sur d'anciennes données :
      *  traiter comme true (comportement historique). */
     countGoalDiff: boolean;
+    /** Critères de départage des égalités de victoires (Round Robin — poules et phase finale), DANS L'ORDRE où ils
+     *  s'appliquent : 'h2h' confrontation directe, 'gd' différence de buts/manches, 'gf' buts/manches marqués,
+     *  'ga' buts/manches encaissés (moins = mieux). Liste vide : seules les victoires comptent. Absent sur d'anciennes
+     *  données : déduit de countGoalDiff (voir effectiveTiebreakers). */
+    tiebreakers?: Tiebreaker[];
     /** Battle Royale (format 'battle_royale' uniquement) : barème réglable avant lancement — palier de
      *  points par classement de partie (index 0 = 1er) et bonus par élimination. Consommés une seule
      *  fois, au lancement, dans finals.pointsTable/killPoints (voir launchTournament) — comme
@@ -226,6 +231,15 @@ export declare function clampMatchFormat(v?: Partial<MatchFormat> | null): Match
 export declare function winsNeeded(f: MatchFormat): number;
 /** Étiquette courte affichée sur les match(s) et l'en-tête de phase — "Bo3", "Ft10". */
 export declare function matchFormatLabel(f: MatchFormat): string;
+/** Critères de départage disponibles (voir Tournament.tiebreakers). */
+export type Tiebreaker = 'h2h' | 'gd' | 'gf' | 'ga';
+export declare const TIEBREAKERS: Tiebreaker[];
+/** Nettoie une liste de critères reçue de l'extérieur : valeurs connues, sans doublon, ordre conservé. undefined si ce n'est pas un tableau. */
+export declare function normalizeTiebreakers(v: unknown): Tiebreaker[] | undefined;
+/** Critères réellement appliqués : la liste choisie, sinon (anciennes données) le comportement historique selon countGoalDiff. */
+export declare function effectiveTiebreakers(t: Pick<Tournament, 'countGoalDiff' | 'tiebreakers'>): Tiebreaker[];
+/** Vrai si au moins un critère chiffré (écart/marqués/encaissés) est actif — pilote l'affichage de la colonne « Diff. ». */
+export declare function usesScoreTiebreak(tbs: Tiebreaker[]): boolean;
 export declare function uid(): string;
 export declare function newTournament(cfg?: Partial<Tournament>): Tournament;
 /** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */
@@ -372,7 +386,9 @@ export declare function qualifiersSplit(t: Tournament): {
     top: string[];
     bottom: string[];
 };
-/** Classement round robin : victoires puis différence de manches puis points. */
+/** Classement round robin : victoires, puis les critères de départage choisis (voir Tournament.tiebreakers), puis points.
+ *  La confrontation directe ne tranche qu'entre deux joueurs qui se sont affrontés — un blocage à 3+ retombe sur le
+ *  critère suivant, comme la plupart des règlements amateurs qui n'ouvrent pas de mini-poule. */
 export declare function rrRanking(t: Tournament): {
     id: string;
     wins: number;

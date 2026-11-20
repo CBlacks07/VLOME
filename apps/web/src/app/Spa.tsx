@@ -186,6 +186,7 @@ type State = {
     streakLength: 3 | 5; // longueur de série pour le bonus striker — un seul palier actif par tournoi
     matchMode: "bo" | "ft"; // format de manche appliqué à tous les matchs — Best of (majorité) ou First To (course)
     matchValue: number; // Bo1/3/5/7/9, ou la cible en First To
+    tiebreakers: string[]; // critères de départage dans l'ordre d'application (h2h, gd, gf, ga) — liste vide : seules les victoires comptent
     countGoalDiff: boolean; // départage des égalités de victoires par différence de buts (Round Robin — poules et phase finale)
     brPoints: number[]; // Battle Royale : points par palier de classement (index 0 = 1er), réglable avant lancement (voir wizScoringStep)
     brKillPoints: number; // Battle Royale : points par élimination, en plus du palier de classement
@@ -945,6 +946,29 @@ function poolQualifyNote(pools: { name: string; size: number }[], q: number): st
 }
 
 /** Patch envoyé à l'API quand on change de format DEPUIS LA PAGE du tournoi (mêmes règles que le choix de format de l'assistant). */
+/** Critères de départage (Round Robin) — dans l'ordre où ils s'appliquent après les victoires. */
+const TB_LABELS: [string, string, string][] = [
+  ["h2h", "Confrontation directe", "Entre deux joueurs à égalité, celui qui a gagné le match qui les opposait passe devant (ne tranche pas un blocage à 3 ou plus : on passe au critère suivant)."],
+  ["gd", "Différence de buts/manches", "Le meilleur écart entre buts (ou manches) marqués et encaissés passe devant."],
+  ["gf", "Buts/manches marqués", "Celui qui en a marqué le plus passe devant."],
+  ["ga", "Buts/manches encaissés", "Celui qui en a encaissé le moins passe devant."],
+];
+/** Ajoute le critère en fin de liste (il s'applique en dernier), ou le retire s'il y est déjà. */
+function toggleTb(list: string[], key: string): string[] {
+  return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+}
+function tiebreakPicker(list: string[], attr: string): string {
+  const pills = TB_LABELS.map(([key, label]) => {
+    const idx = list.indexOf(key), on = idx >= 0;
+    return `<button ${attr}="${key}" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:${on ? 700 : 600};border-radius:10px;padding:8px 13px;cursor:pointer;font-family:inherit;background:${on ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};color:${on ? "#22D3EE" : "var(--text-muted)"}">${on ? `<span style="display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#22D3EE;color:#04222a;font-size:10.5px;font-weight:800">${idx + 1}</span>` : ""}${label}</button>`;
+  }).join("");
+  const order = list.length ? list.map((k, i) => `${i + 1}. ${(TB_LABELS.find(([x]) => x === k) || [k, k])[1]}`).join(" → ") : "aucun critère : seules les victoires comptent, une égalité reste une égalité";
+  const notes = TB_LABELS.filter(([k]) => list.includes(k)).map(([, label, note]) => `<b style="color:var(--text-muted)">${label}</b> : ${note}`).join("<br>");
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap">${pills}</div>
+    <p style="color:var(--text-faint);font-size:11.5px;margin:9px 0 0;line-height:1.6">À égalité de victoires, appliqués dans l'ordre où tu les sélectionnes : <b style="color:var(--text)">${order}</b>. Clique de nouveau pour retirer un critère.</p>
+    ${notes ? `<p style="color:var(--text-faint);font-size:11px;margin:6px 0 0;line-height:1.6">${notes}</p>` : ""}`;
+}
+
 function cfgFormatPatch(t: Detail, key: string): Detail {
   const prev: string = t.poolFormat || "survival";
   const bracketPoolMode = key === "DOUBLE_ELIM" ? "double" : key === "SINGLE_ELIM" ? "single" : "roundrobin";
@@ -1006,11 +1030,16 @@ function setupConfigCard(S: State, t: Detail): string {
       + saveBtn("pools", "Appliquer les poules"));
   }
 
+  // Départage des égalités : seulement quand un Round Robin est en jeu (format principal, poules ou phase finale).
+  const usesRR = fmtKey === "ROUND_ROBIN" || (pooled && !isSurv ? (poolFormat === "roundrobin" && nbPools > 1) || (nbPools > 1 && finalsFormat === "roundrobin") : isSurv && (poolFormat === "roundrobin" || finalsFormat === "roundrobin"));
+  const tbList: string[] = Array.isArray(t.tiebreakers) ? t.tiebreakers : (t.countGoalDiff === false ? [] : ["gd", "gf", "h2h"]);
+  const tiebreakBlock = usesRR ? sect(head("3", "Départage des égalités", "À égalité de victoires dans un Round Robin (poules ou phase finale). Un clic enregistre aussitôt.") + tiebreakPicker(tbList, "data-cfgtb")) : "";
+  const nDet = usesRR ? "4" : "3", nPart = usesRR ? "5" : "4";
   // 3) Détails + barème
   const sc = (t.scoring || {}) as Record<string, number>;
   // Le barème n'existe qu'en Survival : masqué pour tous les autres formats.
   const scoringFields = isSurv ? WIZ_SCORING_FIELDS : [];
-  const detailsBlock = sect(head(isBR ? "3" : "3", "Détails", (isSurv ? "Nom, jeu, lieu, frais d'inscription, places et barème de points." : "Nom, jeu, lieu, frais d'inscription et nombre de places."))
+  const detailsBlock = sect(head(nDet, "Détails", (isSurv ? "Nom, jeu, lieu, frais d'inscription, places et barème de points." : "Nom, jeu, lieu, frais d'inscription et nombre de places."))
     + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
         ${wizField("Nom", `<input id="cfg-name" value="${escAttr(t.name || "")}" style="${WIZ_INP}" />`)}
         ${wizField("Jeu", `<input id="cfg-game" autocomplete="off" value="${escAttr(t.game || "")}" placeholder="EA FC 26, Tekken 8…" style="${WIZ_INP}" /><div id="cfg-game-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${cfgGameChips(S, t.game || "")}</div>`, "Jeux du catalogue — commence à taper pour filtrer.")}
@@ -1025,7 +1054,7 @@ function setupConfigCard(S: State, t: Detail): string {
   // 4) Participants : ajout multiple + base de joueurs
   let partsBlock = "";
   if (t.teamSize) {
-    partsBlock = sect(head("4", "Participants", `Tournoi par équipes de ${t.teamSize} : ajoute chaque équipe (nom + joueurs) avec le champ « Ajouter » de la liste ci-dessous.`));
+    partsBlock = sect(head(nPart, "Participants", `Tournoi par équipes de ${t.teamSize} : ajoute chaque équipe (nom + joueurs) avec le champ « Ajouter » de la liste ci-dessous.`));
   } else {
     const have = new Set((Array.isArray(t.players) ? t.players : []).map((p: Detail) => String(p.name).toLowerCase()));
     const roster: Detail[] = S.roster ?? [];
@@ -1035,7 +1064,7 @@ function setupConfigCard(S: State, t: Detail): string {
       if (taken) return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 11px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3);color:#34D399">✓ ${label}</span>`;
       return `<button data-cfgpick="${escAttr(`${p.name}|${p.clubName || ""}`)}" data-search="${escAttr(`${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase())}" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 11px;cursor:pointer;font-family:inherit;background:var(--surface-3);border:1px solid var(--border);color:var(--text-muted)">${ic(I.plus, 11)}${label}</button>`;
     }).join("");
-    partsBlock = sect(head("4", `Participants (${(Array.isArray(t.players) ? t.players.length : 0)})`, "Ajoute plusieurs participants d'un coup, ou pioche dans la base de joueurs. Les doublons sont ignorés.")
+    partsBlock = sect(head(nPart, `Participants (${(Array.isArray(t.players) ? t.players.length : 0)})`, "Ajoute plusieurs participants d'un coup, ou pioche dans la base de joueurs. Les doublons sont ignorés.")
       + `<div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
           <div>
             <label style="${WIZ_LBL}">Un nom par ligne</label>
@@ -1057,7 +1086,7 @@ function setupConfigCard(S: State, t: Detail): string {
 
   return `<div data-cfgcard="1" style="border:1px solid rgba(34,211,238,.35);border-radius:16px;background:linear-gradient(180deg,rgba(34,211,238,.05),var(--surface-2));padding:20px 22px 6px;margin-bottom:30px">
     <h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}Configuration du tournoi</h3>
-    ${formatBlock}${poolsBlock}${detailsBlock}${partsBlock}
+    ${formatBlock}${poolsBlock}${tiebreakBlock}${detailsBlock}${partsBlock}
   </div>`;
 }
 
@@ -1201,8 +1230,8 @@ function wizInfosStep(S: State) {
         <p id="wiz-matchfmt-note" style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${matchFormatNote(d.matchMode, d.matchValue)}</p>
       </div>
       <div style="margin-top:14px">
-        <label style="display:flex;align-items:center;gap:8px;height:20px;cursor:pointer"><input id="wz-goaldiff" type="checkbox" ${d.countGoalDiff !== false ? "checked" : ""} style="width:16px;height:16px;accent-color:#22D3EE" /><span style="font-size:13px;color:var(--text)">Départager les égalités par différence de buts/manches</span></label>
-        <p style="color:var(--text-faint);font-size:11.5px;margin-top:6px">Round Robin (poules et phase finale) : à égalité de victoires, celui qui a le meilleur écart entre buts marqués et encaissés passe devant. Décoché, seules les victoires comptent.</p>
+        <label style="${WIZ_LBL}">Départage des égalités (Round Robin — poules et phase finale)</label>
+        ${tiebreakPicker(d.tiebreakers, "data-wiztb")}
       </div>
       ${formatPicker}`)}
     ${wizCard(`<h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.warn, 16)}Comment créer un tournoi</h3>
@@ -6244,7 +6273,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     editingPlayerId: null, brActiveGame: null,
     activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
-    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
+    wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
     roster: null, clubs: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
@@ -8336,7 +8365,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       d.givesLoyaltyPoint = (document.getElementById("wz-loyalty") as HTMLInputElement | null)?.checked ?? true;
       { const tv = val("wz-tier"); d.tier = tv === "ELITE" ? "ELITE" : tv === "AMATEUR" ? "AMATEUR" : null; }
       if (d.matchMode === "ft") d.matchValue = Math.max(1, Math.min(99, parseInt(val("wz-matchvalue")) || d.matchValue));
-      d.countGoalDiff = (document.getElementById("wz-goaldiff") as HTMLInputElement | null)?.checked ?? true;
+      d.countGoalDiff = d.tiebreakers.some((k) => k !== "h2h");
     } else if (S.wizStep === 2) {
       d.players = val("wz-players").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     } else if (S.wizStep === 3) {
@@ -8573,7 +8602,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }),
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
       qualifyPerPool: d.qualifyPerPool,
-      matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff,
+      matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff, tiebreakers: d.tiebreakers,
       brPointsTable: d.brPoints, brKillPoints: d.brKillPoints,
       // Déjà envoyée à Cloudinary/au stockage dès le choix du fichier (étape 1) — voir onChange.
       ...(d.imageUrl ? { imageUrl: d.imageUrl } : {}),
@@ -8606,7 +8635,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (S.user?.role === "ORGANIZER") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
       }));
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
@@ -8640,7 +8669,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       ...(d.format === "BATTLE_ROYALE" ? { brPointsTable: d.brPoints, brKillPoints: d.brKillPoints } : {}),
       // Format des matchs (Bo/Ft) : concerne tous les formats, modifiable tant que le tournoi n'est
       // pas lancé (voir TournamentsService.update).
-      matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff,
+      matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff, tiebreakers: d.tiebreakers,
       // Format envoyé uniquement depuis "Changer le format" (assistant complet) — le raccourci abrégé
       // ne le propose pas, pas la peine de le renvoyer à chaque enregistrement de barème.
       ...(S.wizFullEdit ? { format: d.format } : {}),
@@ -8678,7 +8707,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8914,6 +8943,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
             matchMode: t.matchFormat?.mode === "ft" ? "ft" : "bo",
             matchValue: t.matchFormat?.value || 1,
             countGoalDiff: t.countGoalDiff ?? true,
+            tiebreakers: Array.isArray(t.tiebreakers) ? t.tiebreakers : (t.countGoalDiff === false ? [] : ["gd", "gf", "h2h"]),
             brPoints: (t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : DEFAULT_BR_POINTS).slice(),
             brKillPoints: t.brKillPoints ?? DEFAULT_BR_KILL_POINTS,
             imageUrl: t.imageUrl || null,
@@ -9065,6 +9095,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const [mode, value] = d.wizmatchfmt.split("|");
       const captured = wizCapture();
       setS((s) => ({ ...s, wizData: { ...captured, matchMode: mode as "bo" | "ft", matchValue: parseInt(value) || 1 } }));
+    }
+    else if (d.wiztb) setS((s) => { const tb = toggleTb(s.wizData.tiebreakers, d.wiztb!); return { ...s, wizData: { ...s.wizData, tiebreakers: tb, countGoalDiff: tb.some((k) => k !== "h2h") } }; });
+    else if (d.cfgtb) {
+      const cur: string[] = Array.isArray(S.detail?.tiebreakers) ? S.detail!.tiebreakers : ["gd", "gf", "h2h"];
+      void cfgSave({ tiebreakers: toggleTb(cur, d.cfgtb) });
     }
     else if (d.wizqualify) setS((s) => ({ ...s, wizData: { ...s.wizData, qualifyPerPool: parseInt(d.wizqualify!) || 2 } }));
     else if (d.wizstreaklen) setS((s) => ({ ...s, wizData: { ...s.wizData, streakLength: (d.wizstreaklen === "3" ? 3 : 5) } }));
@@ -9396,7 +9431,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }
       setS((s) => ({
         ...s, creating: true, wizEventId: d.evid || null, wizStep: 1, wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
+        wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
       }));
       loadRoster();
     }

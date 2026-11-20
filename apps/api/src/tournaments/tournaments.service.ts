@@ -154,7 +154,7 @@ export class TournamentsService {
       qualifyPerPool: dto.qualifyPerPool,
       streakLength: dto.streakLength,
       matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : undefined,
-      countGoalDiff: dto.countGoalDiff,
+      countGoalDiff: dto.countGoalDiff, tiebreakers: dto.tiebreakers,
       brPointsTable: dto.brPointsTable, brKillPoints: dto.brKillPoints,
       ...(hasScoring ? {
         scoring: {
@@ -231,7 +231,7 @@ export class TournamentsService {
         qualifyPerPool: dto.qualifyPerPool,
         streakLength: dto.streakLength,
         matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : prev?.matchFormat,
-        countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff,
+        countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff, tiebreakers: dto.tiebreakers ?? prev?.tiebreakers,
         brPointsTable: dto.brPointsTable ?? prev?.brPointsTable, brKillPoints: dto.brKillPoints ?? prev?.brKillPoints,
         ...(hasScoring ? {
           scoring: {
@@ -253,7 +253,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
+    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.tiebreakers !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
@@ -265,7 +265,8 @@ export class TournamentsService {
       if (dto.streakLength !== undefined) t.streakLength = dto.streakLength;
       if (dto.qualifyPerPool !== undefined) t.qualifyPerPool = Engine.clampQualifyPerPool(dto.qualifyPerPool);
       if (dto.matchMode !== undefined) t.matchFormat = Engine.clampMatchFormat({ mode: dto.matchMode, value: dto.matchValue });
-      if (dto.countGoalDiff !== undefined) t.countGoalDiff = dto.countGoalDiff;
+      if (dto.countGoalDiff !== undefined) { t.countGoalDiff = dto.countGoalDiff; if (!dto.countGoalDiff && dto.tiebreakers === undefined) t.tiebreakers = []; }
+      if (dto.tiebreakers !== undefined) { t.tiebreakers = Engine.normalizeTiebreakers(dto.tiebreakers) ?? []; t.countGoalDiff = Engine.usesScoreTiebreak(t.tiebreakers); }
       if (dto.brPointsTable !== undefined) t.brPointsTable = dto.brPointsTable;
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
@@ -972,7 +973,7 @@ export class TournamentsService {
       survWin: t.scoring.survWin, loserWin: t.scoring.loserWin, poolFinalWin: t.scoring.poolFinalWin,
       finalsWin: t.scoring.finalsWin, championBonus: t.scoring.championBonus, streakBonus: t.scoring.streakBonus,
       streakLength: t.streakLength, finalsFormat: t.finalsFormat, poolFormat: t.poolFormat, qualifyPerPool: t.qualifyPerPool,
-      matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff,
+      matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff, tiebreakers: Engine.effectiveTiebreakers(t),
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
       rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
       tier: (r.tier ?? undefined) as 'AMATEUR' | 'ELITE' | undefined,
@@ -1508,6 +1509,7 @@ export class TournamentsService {
       matchFormat: t.matchFormat,
       matchFormatLabel: Engine.matchFormatLabel(t.matchFormat),
       countGoalDiff: t.countGoalDiff,
+      tiebreakers: Engine.effectiveTiebreakers(t),
       // Battle Royale : barème pré-lancement (préremplissage de l'assistant en édition) — une fois
       // lancé, la valeur qui compte réellement est celle figée dans finals.pointsTable/killPoints
       // (voir serializeFinals), ces deux-là ne représentent alors plus que le réglage figé au départ.

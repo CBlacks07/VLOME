@@ -50,6 +50,9 @@ export class CreateTournamentDto {
   // Départage des égalités de victoires par différence de buts/manches (Round Robin — poules et
   // phase finale). Activé par défaut ; désactivé, seules les victoires comptent.
   @IsOptional() @IsBoolean() countGoalDiff?: boolean;
+  // Critères de départage, DANS L'ORDRE d'application (h2h confrontation directe, gd différence, gf marqués, ga encaissés).
+  // Liste vide : seules les victoires comptent. Remplace countGoalDiff (gardé pour compatibilité).
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsIn(['h2h', 'gd', 'gf', 'ga'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga')[];
   // Battle Royale uniquement : palier de points par classement de partie (index 0 = 1er) et bonus par
   // élimination — réglables avant lancement, valeurs par défaut du moteur sinon (Engine.DEFAULT_BR_POINTS / 1).
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
@@ -81,6 +84,9 @@ export class UpdateTournamentDto {
   @IsOptional() @IsIn(['bo', 'ft']) matchMode?: 'bo' | 'ft';
   @IsOptional() @IsInt() @Min(1) @Max(99) matchValue?: number;
   @IsOptional() @IsBoolean() countGoalDiff?: boolean;
+  // Critères de départage, DANS L'ORDRE d'application (h2h confrontation directe, gd différence, gf marqués, ga encaissés).
+  // Liste vide : seules les victoires comptent. Remplace countGoalDiff (gardé pour compatibilité).
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsIn(['h2h', 'gd', 'gf', 'ga'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga')[];
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
   @IsOptional() @IsIn(['SURVIVAL', 'SINGLE_ELIM', 'DOUBLE_ELIM', 'SWISS', 'ROUND_ROBIN', 'BATTLE_ROYALE']) format?: string;

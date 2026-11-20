@@ -5,11 +5,14 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.DEFAULT_MATCH_FORMAT = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
+exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.TIEBREAKERS = exports.DEFAULT_MATCH_FORMAT = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
 exports.clampQualifyPerPool = clampQualifyPerPool;
 exports.clampMatchFormat = clampMatchFormat;
 exports.winsNeeded = winsNeeded;
 exports.matchFormatLabel = matchFormatLabel;
+exports.normalizeTiebreakers = normalizeTiebreakers;
+exports.effectiveTiebreakers = effectiveTiebreakers;
+exports.usesScoreTiebreak = usesScoreTiebreak;
 exports.uid = uid;
 exports.newTournament = newTournament;
 exports.swissRoundCount = swissRoundCount;
@@ -94,6 +97,42 @@ function winsNeeded(f) {
 function matchFormatLabel(f) {
     return f.mode === 'ft' ? `Ft${f.value}` : `Bo${f.value}`;
 }
+exports.TIEBREAKERS = ['h2h', 'gd', 'gf', 'ga'];
+/** Nettoie une liste de critères reçue de l'extérieur : valeurs connues, sans doublon, ordre conservé. undefined si ce n'est pas un tableau. */
+function normalizeTiebreakers(v) {
+    if (!Array.isArray(v))
+        return undefined;
+    const out = [];
+    for (const k of v)
+        if (exports.TIEBREAKERS.includes(k) && !out.includes(k))
+            out.push(k);
+    return out;
+}
+/** Critères réellement appliqués : la liste choisie, sinon (anciennes données) le comportement historique selon countGoalDiff. */
+function effectiveTiebreakers(t) {
+    return normalizeTiebreakers(t.tiebreakers) ?? (t.countGoalDiff === false ? [] : ['gd', 'gf', 'h2h']);
+}
+/** Vrai si au moins un critère chiffré (écart/marqués/encaissés) est actif — pilote l'affichage de la colonne « Diff. ». */
+function usesScoreTiebreak(tbs) {
+    return tbs.some((k) => k !== 'h2h');
+}
+/** Compare deux joueurs à égalité de victoires selon les critères actifs (négatif = x devant). 0 = toujours à égalité. */
+function tbCompare(tbs, x, y, st) {
+    for (const k of tbs) {
+        let c = 0;
+        if (k === 'gd')
+            c = st[y].gd - st[x].gd;
+        else if (k === 'gf')
+            c = st[y].gf - st[x].gf;
+        else if (k === 'ga')
+            c = st[x].ga - st[y].ga;
+        else if (k === 'h2h')
+            c = (st[y].beat.has(x) ? 1 : 0) - (st[x].beat.has(y) ? 1 : 0);
+        if (c)
+            return c;
+    }
+    return 0;
+}
 const POOL_NAMES = 'ABCDEFGHIJKL'.split('');
 const MAX_UNDO = 25;
 function uid() {
@@ -132,7 +171,8 @@ function newTournament(cfg = {}) {
         // CreateTournamentDto.finalsFormat), ce défaut ne s'applique que si rien n'est précisé.
         finalsFormat: cfg.finalsFormat || (cfg.format === 'double' || cfg.format === 'roundrobin' ? cfg.format : 'single'),
         matchFormat: clampMatchFormat(cfg.matchFormat),
-        countGoalDiff: cfg.countGoalDiff ?? true,
+        ...(normalizeTiebreakers(cfg.tiebreakers) ? { tiebreakers: normalizeTiebreakers(cfg.tiebreakers) } : {}),
+        countGoalDiff: normalizeTiebreakers(cfg.tiebreakers) ? usesScoreTiebreak(normalizeTiebreakers(cfg.tiebreakers)) : (cfg.countGoalDiff ?? true),
         brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : exports.DEFAULT_BR_POINTS.slice(),
         brKillPoints: cfg.brKillPoints ?? 1,
         champion: null, _undo: [],
@@ -506,22 +546,29 @@ function initPoolRoundRobin(pool) {
  *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
 function poolRRRanking(t, pool) {
     const ids = pool.order.length ? pool.order : pool.playerIds;
-    const wins = {}, played = {}, gd = {};
-    ids.forEach(id => { wins[id] = 0; played[id] = 0; gd[id] = 0; });
+    const wins = {}, played = {}, st = {};
+    ids.forEach(id => { wins[id] = 0; played[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set() }; });
     (pool.rrmatches || []).forEach(m => {
         if (!m.winner || !m.a || !m.b)
             return;
         wins[m.winner] = (wins[m.winner] || 0) + 1;
         played[m.a] = (played[m.a] || 0) + 1;
         played[m.b] = (played[m.b] || 0) + 1;
-        if (m.sa !== undefined && m.sb !== undefined) {
-            gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
-            gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
+        if (st[m.winner])
+            st[m.winner].beat.add(m.winner === m.a ? m.b : m.a);
+        if (m.sa !== undefined && m.sb !== undefined && st[m.a] && st[m.b]) {
+            st[m.a].gd += m.sa - m.sb;
+            st[m.b].gd += m.sb - m.sa;
+            st[m.a].gf += m.sa;
+            st[m.b].gf += m.sb;
+            st[m.a].ga += m.sb;
+            st[m.b].ga += m.sa;
         }
     });
+    const tbs = effectiveTiebreakers(t);
     return ids.slice()
-        .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || (t.countGoalDiff ? (gd[y] || 0) - (gd[x] || 0) : 0) || (t.points[y] || 0) - (t.points[x] || 0))
-        .map(id => ({ id, wins: wins[id] || 0, played: played[id] || 0, gd: gd[id] || 0 }));
+        .sort((x, y) => (wins[y] || 0) - (wins[x] || 0) || tbCompare(tbs, x, y, st) || (t.points[y] || 0) - (t.points[x] || 0))
+        .map(id => ({ id, wins: wins[id] || 0, played: played[id] || 0, gd: st[id].gd }));
 }
 /** Fin d'une poule round robin : toutes les rencontres jouées — classement, qualifiés, top1/top2. */
 function checkPoolRoundRobinDone(t, pool) {
@@ -1021,36 +1068,35 @@ function buildRoundRobin(ids) {
             matches.push({ id: uid(), a: ids[i], b: ids[j], winner: null, bye: false });
     return { players: ids.slice(), matches };
 }
-/** Classement round robin : victoires puis différence de manches puis points. */
+/** Classement round robin : victoires, puis les critères de départage choisis (voir Tournament.tiebreakers), puis points.
+ *  La confrontation directe ne tranche qu'entre deux joueurs qui se sont affrontés — un blocage à 3+ retombe sur le
+ *  critère suivant, comme la plupart des règlements amateurs qui n'ouvrent pas de mini-poule. */
 function rrRanking(t) {
     if (!t.finals || t.finals.format !== 'roundrobin')
         return [];
     const rr = t.finals;
-    const wins = {}, played = {}, gd = {}, gf = {};
-    const beat = {}; // qui a battu qui, pour la confrontation directe
-    rr.players.forEach(id => { wins[id] = 0; played[id] = 0; gd[id] = 0; gf[id] = 0; beat[id] = new Set(); });
+    const wins = {}, played = {}, st = {};
+    rr.players.forEach(id => { wins[id] = 0; played[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set() }; });
     rr.matches.forEach(m => {
         if (!m.winner || !m.a || !m.b)
             return;
         wins[m.winner] = (wins[m.winner] || 0) + 1;
         played[m.a] = (played[m.a] || 0) + 1;
         played[m.b] = (played[m.b] || 0) + 1;
-        beat[m.winner].add(m.winner === m.a ? m.b : m.a);
+        st[m.winner].beat.add(m.winner === m.a ? m.b : m.a);
         if (m.sa != null && m.sb != null) {
-            gd[m.a] = (gd[m.a] || 0) + (m.sa - m.sb);
-            gd[m.b] = (gd[m.b] || 0) + (m.sb - m.sa);
-            gf[m.a] = (gf[m.a] || 0) + m.sa;
-            gf[m.b] = (gf[m.b] || 0) + m.sb;
+            st[m.a].gd += m.sa - m.sb;
+            st[m.b].gd += m.sb - m.sa;
+            st[m.a].gf += m.sa;
+            st[m.b].gf += m.sb;
+            st[m.a].ga += m.sb;
+            st[m.b].ga += m.sa;
         }
     });
-    // Departage standard : victoires, puis difference de buts, puis buts marques, puis confrontation
-    // directe (tranchable seulement entre deux joueurs qui se sont affrontes — un blocage a 3+ retombe
-    // sur le critere precedent, comme la plupart des reglements amateurs qui n'ouvrent pas de mini-poule).
+    const tbs = effectiveTiebreakers(t);
     return rr.players.slice()
-        .sort((x, y) => wins[y] - wins[x]
-        || (t.countGoalDiff ? gd[y] - gd[x] || gf[y] - gf[x] || (beat[y].has(x) ? 1 : 0) - (beat[x].has(y) ? 1 : 0) : 0)
-        || (t.points[y] || 0) - (t.points[x] || 0))
-        .map(id => ({ id, wins: wins[id], played: played[id], gd: gd[id] }));
+        .sort((x, y) => wins[y] - wins[x] || tbCompare(tbs, x, y, st) || (t.points[y] || 0) - (t.points[x] || 0))
+        .map(id => ({ id, wins: wins[id], played: played[id], gd: st[id].gd }));
 }
 function placeSlot(m, slot, val) {
     const key = slot ? 'b' : 'a';

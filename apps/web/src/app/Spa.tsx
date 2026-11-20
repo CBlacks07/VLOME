@@ -8367,7 +8367,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // "Changer le format" (d.changeformat) rouvre l'assistant COMPLET (wizFullEdit) — toutes les
       // étapes, y compris le choix du format — plutôt que le raccourci abrégé (barème uniquement).
       const t = S.detail;
-      const fullEdit = d.changeformat !== undefined;
+      // « Modifier » ouvre désormais lui aussi l'assistant COMPLET (format, nombre de poules, mode des poules, qualifiés…) :
+      // le raccourci abrégé sautait l'étape Poules sur les formats à poules, donc impossible d'y changer le mode. Le format
+      // reste modifiable seulement tant que le tournoi n'est pas lancé (c'est le cas ici : statut « setup »).
+      const fullEdit = true;
       if (t && t.status === "setup") {
         const roster: { name: string; club?: string }[] = Array.isArray(t.players) ? t.players : [];
         setS((s) => ({

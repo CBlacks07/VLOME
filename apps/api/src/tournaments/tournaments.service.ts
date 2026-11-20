@@ -267,6 +267,22 @@ export class TournamentsService {
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
+      this.syncMeta(t, {
+        name: (data.name as string | undefined) ?? r.name,
+        game: data.game !== undefined ? (data.game as string | null) : r.game,
+        place: data.place !== undefined ? (data.place as string | null) : r.place,
+      });
+      data.engineState = JSON.parse(JSON.stringify(t));
+    }
+
+    // Nom / jeu / lieu modifiés seuls : l'état moteur en garde une copie (affichée sur la fiche) — on la met à jour aussi.
+    if ((data.name !== undefined || data.game !== undefined || data.place !== undefined) && data.engineState === undefined && r.engineState) {
+      const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
+      this.syncMeta(t, {
+        name: (data.name as string | undefined) ?? r.name,
+        game: data.game !== undefined ? (data.game as string | null) : r.game,
+        place: data.place !== undefined ? (data.place as string | null) : r.place,
+      });
       data.engineState = JSON.parse(JSON.stringify(t));
     }
 
@@ -1239,7 +1255,20 @@ export class TournamentsService {
   private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
-    return { record: r, t: this.applyEngineCompat(r.engineState as unknown as Engine.Tournament) };
+    const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
+    // Nom, jeu et lieu sont modifiables depuis la base (PATCH /tournaments/:id) : la copie qu'en garde l'état moteur peut
+    // être périmée (tournoi renommé ou dupliqué puis modifié). La base fait foi, à chaque lecture — sinon la fiche, le
+    // formulaire de modification (pré-rempli depuis cette fiche) et les écrans de diffusion montrent l'ancien nom/jeu.
+    this.syncMeta(t, r);
+    return { record: r, t };
+  }
+
+  /** Aligne sur la base les métadonnées dupliquées dans l'état moteur (nom, jeu, lieu). */
+  private syncMeta(t: Engine.Tournament, src: { name: string; game: string | null; place: string | null }): Engine.Tournament {
+    t.name = src.name;
+    t.game = src.game || '';
+    t.place = src.place || '';
+    return t;
   }
 
   /** Complète un état moteur persisté avant l'ajout de certains champs, pour qu'il soit exploitable

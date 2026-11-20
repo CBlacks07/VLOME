@@ -568,8 +568,9 @@ function siteFooter(S?: State): string {
       <div class="foot-grid">
         <div class="foot-brand">
           <div style="display:flex;align-items:center;gap:12px">${logo}<span style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;color:var(--text);line-height:1">${name1} <span style="color:#22D3EE">${name2}</span></span></div>
-          <p style="margin:14px 0 0;line-height:1.6;max-width:340px">Le hub de l'esport togolais &amp; ouest-africain : compétitions, classements, communauté et boutique.</p>
-          <p style="margin:10px 0 0;display:flex;align-items:center;gap:7px;color:var(--text-muted)"><span style="color:#22D3EE;display:inline-flex">${ic(I.pin, 15)}</span>Lomé, Togo</p>
+          <p style="margin:16px 0 0;font-size:15px;font-weight:700;line-height:1.4;color:var(--text);max-width:460px;text-wrap:balance">Le hub de l'esport togolais &amp; ouest-africain</p>
+          <p style="margin:6px 0 0;line-height:1.6;max-width:460px;text-wrap:pretty">Compétitions, classements, communauté et boutique, au même endroit.</p>
+          <p style="margin:14px 0 0;display:flex;align-items:center;gap:7px;color:var(--text-muted)"><span style="color:#22D3EE;display:inline-flex">${ic(I.pin, 15)}</span>Lomé, Togo</p>
           ${cta}
         </div>
         <nav aria-label="Pied de page : explorer"><h4 class="foot-h">Explorer</h4><div class="foot-links foot-links-two">${nav}</div></nav>

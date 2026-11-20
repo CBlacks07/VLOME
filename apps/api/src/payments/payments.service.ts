@@ -24,8 +24,10 @@ export class PaymentsService {
   private get fedaBase() { return process.env.FEDAPAY_ENV === 'sandbox' ? 'https://sandbox-api.fedapay.com/v1' : 'https://api.fedapay.com/v1'; }
   /** Plafond par transaction imposé par le compte FedaPay (XOF) — 0 = inconnu. Se relève après vérification (KYC) du compte chez FedaPay. */
   private get fedaMax() { const n = Number(process.env.FEDAPAY_MAX_XOF); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; }
+  /** Message pour le CLIENT : aucun détail interne (plafond, compte FedaPay). Le plafond exact est dans les journaux et le diagnostic admin. */
   private limitMessage(max: number) {
-    return `Le paiement en ligne est limité à ${max.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F par transaction (limite du compte FedaPay). Choisis un autre moyen de paiement, ou règle en plusieurs fois.`;
+    this.log.warn(`Montant refusé : au-dessus du plafond FedaPay de ${max} F par transaction.`);
+    return "Ce montant ne peut pas être réglé en ligne pour le moment. Choisis un autre moyen de paiement (Flooz, Mixx…) ou contacte l'équipe Miabe.";
   }
   private get siteUrl() { return (process.env.SITE_URL?.trim() || 'https://www.miabe-esport.community').replace(/\/$/, ''); }
 

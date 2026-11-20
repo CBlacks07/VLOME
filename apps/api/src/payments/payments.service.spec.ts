@@ -55,11 +55,11 @@ describe('PaymentsService — plafond FedaPay et statuts automatiques', () => {
   }
   const fedaReply = (status: string, amount = 50000) => new Response(JSON.stringify({ 'v1/transaction': { id: 1, status, amount } }), { status: 200 });
 
-  it('FedaPay refuse un montant trop élevé : message clair avec le plafond (pas « momentanément indisponible »)', async () => {
+  it('FedaPay refuse un montant trop élevé : message clair et neutre pour le client, sans détail interne', async () => {
     jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ message: 'La création de la transaction a échoué', errors: { amount: ['Le montant maximum de transactions autorisées est 20000.'] } }), { status: 400 }));
     const { svc } = build();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await expect((svc as any).feda('POST', '/transactions', {})).rejects.toThrow(/limité à 20.000 F/);
+    await expect((svc as any).feda('POST', '/transactions', {})).rejects.toThrow(/ne peut pas être réglé en ligne/);
   });
 
   it('plafond connu (FEDAPAY_MAX_XOF) : exposé à la config publique', () => {

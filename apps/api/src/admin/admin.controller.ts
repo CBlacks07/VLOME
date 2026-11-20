@@ -8,15 +8,28 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AssociationsService } from '../associations/associations.service';
+import { MailService } from '../mail/mail.service';
 import { AttachOwnerDto } from '../associations/associations.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService) {}
+  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService, private readonly mail: MailService) {}
 
   /** Tableau de bord de pilotage (temps réel) — réservé à l'admin comme tout ce contrôleur. */
+  /** Messagerie : réglages présents + connexion SMTP (sans envoyer). */
+  @Get('mail')
+  mailStatus() {
+    return this.mail.diagnose();
+  }
+
+  /** Envoie un e-mail de test à l'adresse du compte admin connecté. */
+  @Post('mail/test')
+  mailTest(@CurrentUser() user: JwtUser) {
+    return this.mail.diagnose(user.email);
+  }
+
   @Get('dashboard')
   dashboardData() {
     return this.dashboard.get();

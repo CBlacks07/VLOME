@@ -18,6 +18,8 @@ export class MailService {
   readonly configured: boolean;
   private readonly from: string;
   readonly siteUrl: string;
+  private readonly host: string;
+  private readonly port: number;
 
   constructor() {
     const host = process.env.SMTP_HOST?.trim();
@@ -25,6 +27,8 @@ export class MailService {
     const pass = process.env.SMTP_PASS;
     this.siteUrl = (process.env.SITE_URL?.trim() || 'https://www.miabe-esport.community').replace(/\/$/, '');
     this.from = process.env.MAIL_FROM?.trim() || (user ? `Miabe Esport <${user}>` : '');
+    this.host = host || '';
+    this.port = Number(process.env.SMTP_PORT) || 465;
     this.configured = !!(host && user && pass);
     if (!this.configured) {
       this.logger.warn("SMTP non configuré : aucun e-mail ne sera envoyé (mot de passe oublié, confirmations…).");
@@ -48,6 +52,29 @@ export class MailService {
     } catch (e) {
       this.logger.error(`Envoi impossible vers ${to} (« ${subject} ») : ${(e as Error).message}`);
       return false;
+    }
+  }
+
+  /** Diagnostic pour l'admin (jamais de secret) : réglages présents, connexion au serveur SMTP, et — si `to` est fourni — envoi réel d'un
+   *  e-mail de test avec le message d'erreur exact du serveur en cas d'échec. */
+  async diagnose(to?: string): Promise<{ configured: boolean; host: string; port: number; from: string; siteUrl: string; connection: 'ok' | 'error' | 'unconfigured'; error?: string; sent?: boolean }> {
+    const base = { configured: this.configured, host: this.host, port: this.port, from: this.from, siteUrl: this.siteUrl };
+    if (!this.transporter) return { ...base, connection: 'unconfigured', error: 'Aucun réglage SMTP : il manque SMTP_HOST, SMTP_USER ou SMTP_PASS sur le serveur.' };
+    try {
+      await this.transporter.verify();
+    } catch (e) {
+      return { ...base, connection: 'error', error: (e as Error).message };
+    }
+    if (!to) return { ...base, connection: 'ok' };
+    try {
+      await this.transporter.sendMail({
+        from: this.from, to, subject: 'Test de messagerie — Miabe Esport',
+        html: this.layout('La messagerie fonctionne', '<p>Si tu lis ce message, le site peut envoyer des e-mails (mot de passe oublié, validations, confirmations…).</p>'),
+        text: 'Si tu lis ce message, le site peut envoyer des e-mails.',
+      });
+      return { ...base, connection: 'ok', sent: true };
+    } catch (e) {
+      return { ...base, connection: 'ok', sent: false, error: (e as Error).message };
     }
   }
 

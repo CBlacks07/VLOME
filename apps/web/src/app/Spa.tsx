@@ -203,6 +203,7 @@ type State = {
   // Associations : clubs validés (liste d'inscription), espace « Mon club » d'un compte association, associations à valider (admin).
   publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; adminAssocs: Detail[] | null; adminUnowned: Detail[] | null;
   // Modale « Rattacher un compte association » (admin) : formulaire puis identifiants créés.
+  mailStatus: Detail | null; mailTest: { busy: boolean; ok: boolean; msg: string } | null;
   attachModal: { clubId: string; name: string; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
   classementView: "joueurs" | "clubs" | "equipes" | "pronos"; // bascule joueurs / clubs sur la page Classements
@@ -2932,7 +2933,22 @@ function adminSite(S: State) {
     ${S.siteMsg ? `<span style="color:${ok ? "#34D399" : "#FB7185"};font-size:13px;font-weight:700">${S.siteMsg}</span>` : ""}
   </div>`;
 
-  return identite + heroSec + slidesSec + partnersSec + adsSec + saveBar;
+  const ms = S.mailStatus;
+  const mt = S.mailTest;
+  const mailOk = !!ms && ms.connection === "ok";
+  const dot = (color: string) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px"></span>`;
+  const mailSec = sec("Messagerie · e-mails du site", !ms
+    ? `<div style="color:var(--text-muted);font-size:13px">Vérification de la messagerie…</div>`
+    : `<div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px">
+        <div>${dot(ms.configured ? "#34D399" : "#FB7185")}<b>${ms.configured ? "Réglages présents" : "Messagerie non configurée"}</b>${ms.host ? ` <span style="color:var(--text-faint)">· ${escHtml(ms.host)}:${ms.port}</span>` : ""}</div>
+        <div>${dot(mailOk ? "#34D399" : ms.connection === "unconfigured" ? "var(--text-faint)" : "#FB7185")}Connexion au serveur d'envoi : <b>${mailOk ? "OK" : ms.connection === "unconfigured" ? "non testée" : "échec"}</b></div>
+        ${ms.from ? `<div style="color:var(--text-muted)">Expéditeur : <span style="color:var(--text)">${escHtml(ms.from)}</span></div>` : ""}
+        ${ms.error && !mt ? `<div style="color:#FB7185;font-size:12.5px;line-height:1.5;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:10px 12px">${escHtml(ms.error)}</div>` : ""}
+        <p style="margin:0;color:var(--text-faint);font-size:12.5px;line-height:1.6">Le site envoie automatiquement : mot de passe oublié et réinitialisation, validation des organisateurs / clubs / associations, confirmations d'inscription et de commande, achats de crédits.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button data-mailtest="1" ${mt?.busy || !ms.configured ? "disabled" : ""} style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:${mt?.busy || !ms.configured ? "default" : "pointer"};opacity:${mt?.busy || !ms.configured ? ".6" : "1"};font-family:inherit">${mt?.busy ? "Envoi…" : "Envoyer un e-mail de test"}</button><span style="color:var(--text-faint);font-size:12px">à l'adresse de ton compte admin</span></div>
+        ${mt && !mt.busy ? `<div style="color:${mt.ok ? "#34D399" : "#FB7185"};font-size:12.5px;line-height:1.5;background:${mt.ok ? "rgba(52,211,153,.07)" : "rgba(251,113,133,.06)"};border:1px solid ${mt.ok ? "rgba(52,211,153,.3)" : "rgba(251,113,133,.3)"};border-radius:10px;padding:10px 12px">${escHtml(mt.msg)}</div>` : ""}
+      </div>`);
+  return mailSec + identite + heroSec + slidesSec + partnersSec + adsSec + saveBar;
 }
 
 function adminOverview(a: NonNullable<State["admin"]>) {
@@ -6406,7 +6422,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -7417,6 +7433,29 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       void loadAdmin();
     } catch { fail("Rattachement impossible — réessaie dans un instant."); }
   }
+  /** Admin : état de la messagerie (réglages + connexion SMTP). */
+  async function loadMailStatus() {
+    try {
+      const r = await fetch(`${API}/api/admin/mail`, { headers: authHeaders() });
+      const mailStatus = r.ok ? await r.json() : { configured: false, connection: "error", error: "Impossible de lire l'état de la messagerie." };
+      setS((s) => ({ ...s, mailStatus }));
+    } catch { setS((s) => ({ ...s, mailStatus: { configured: false, connection: "error", error: "API injoignable." } })); }
+  }
+  async function sendMailTest() {
+    if (S.mailTest?.busy) return;
+    setS((s) => ({ ...s, mailTest: { busy: true, ok: false, msg: "" } }));
+    try {
+      const r = await fetch(`${API}/api/admin/mail/test`, { method: "POST", headers: authHeaders() });
+      const d = await r.json().catch(() => ({} as Detail));
+      const ok = r.ok && d.sent === true;
+      const msg = ok ? `E-mail de test envoyé à ${S.user?.email || "ton adresse"}. Vérifie ta boîte de réception (et les indésirables).` : `Échec de l'envoi : ${d.error || "erreur inconnue."}`;
+      setS((s) => ({ ...s, mailTest: { busy: false, ok, msg } }));
+    } catch { setS((s) => ({ ...s, mailTest: { busy: false, ok: false, msg: "API injoignable — réessaie dans un instant." } })); }
+  }
+  useEffect(() => {
+    if (S.page === "profil" && S.user?.role === "ADMIN" && S.adminTab === "site" && !S.mailStatus) void loadMailStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.user?.role, S.adminTab, S.mailStatus]);
   async function assocRemoveMember(playerId: string) {
     try {
       const r = await fetch(`${API}/api/association/members/${playerId}`, { method: "DELETE", headers: authHeaders() });
@@ -8912,7 +8951,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9425,6 +9464,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.assocreview) { const [uid, decision] = d.assocreview.split("|"); void assocReview(uid, decision); }
     else if (d.assocsave !== undefined) { void assocSave(); }
+    else if (d.mailtest !== undefined) { void sendMailTest(); }
     else if (d.assocattach) { openAttachAssociation(d.assocattach); }
     else if (d.attachgo !== undefined) { void submitAttachAssociation(); }
     else if (d.attachclose !== undefined) { setS((st) => ({ ...st, attachModal: null })); }

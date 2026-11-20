@@ -2528,6 +2528,53 @@ function agoLabel(ts: number, now = Date.now()): string {
  * création de tournoi…). Les rafraîchissements et défilements AUTOMATIQUES (carrousel d'annonces, « à la une », tableau de bord…)
  * redessinent toute la page : ils doivent alors passer leur tour, sinon ils effacent ce que la personne est en train de taper.
  */
+/* ================= Messages d'information du site (remplace les fenêtres natives du navigateur) =================
+ * `alert` est redéfini pour tout ce module : les ~70 messages d'erreur / de confirmation du site s'affichent dans une vraie fenêtre
+ * à l'identité du site (thème clair/sombre, bouton OK) au lieu de « www.miabe-esport.community indique ». La fenêtre est posée à part,
+ * hors du rendu de la page : afficher un message ne redessine rien et n'efface donc jamais ce que la personne est en train de saisir. */
+type NoticeTone = "error" | "info" | "success";
+function noticeTone(message: string): NoticeTone {
+  if (/impossible|échec|echec|erreur|refus|invalide|injoignable|n'a pas pu|interdit|réservé|insuffisan|obligatoire|incorrect|expiré|doit |manqu|corrige|choisis|saisis|indique/i.test(message)) return "error";
+  if (/enregistré|créé|envoyé|ajouté|copié|bien pris en compte|succès|mis à jour/i.test(message)) return "success";
+  return "info";
+}
+function showNotice(message: string, opts: { title?: string; tone?: NoticeTone; copy?: { label: string; value: string } } = {}): void {
+  if (typeof document === "undefined") return;
+  const tone = opts.tone ?? noticeTone(message);
+  const color = tone === "error" ? "#FB7185" : tone === "success" ? "#34D399" : "#22D3EE";
+  const title = opts.title ?? (tone === "error" ? "Action impossible" : tone === "success" ? "C'est fait" : "Information");
+  const icon = tone === "error" ? I.warn : tone === "success" ? I.plus : I.bolt;
+  const layer = document.createElement("div");
+  layer.setAttribute("data-notice-layer", "1");
+  layer.style.cssText = "position:fixed;inset:0;z-index:400;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px);font-family:Inter,system-ui,sans-serif;color:var(--text)";
+  const copy = opts.copy
+    ? `<div style="text-align:left;margin-top:14px"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:6px">${escHtml(opts.copy.label)}</div>
+        <div style="display:flex;gap:8px"><input readonly data-notice-copy value="${escAttr(opts.copy.value)}" style="flex:1;min-width:0;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;padding:10px 12px" />
+        <button data-notice-copybtn style="flex:none;background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:0 14px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">Copier</button></div></div>`
+    : "";
+  layer.innerHTML = `<div role="dialog" aria-modal="true" style="width:100%;max-width:420px;background:linear-gradient(180deg,var(--surface),var(--surface-2));border:1px solid var(--border-strong);border-radius:20px;padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6);text-align:center;animation:fadeUp .18s ease both">
+    <div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:${color}1a;border:1px solid ${color}66;color:${color};margin:0 auto 14px">${ic(icon, 24)}</div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:8px">${escHtml(title)}</div>
+    <p style="color:var(--text-muted);font-size:14px;line-height:1.6;margin:0;white-space:pre-line;word-break:break-word">${escHtml(message)}</p>
+    ${copy}
+    <button data-notice-ok style="width:100%;margin-top:20px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer;font-family:inherit">OK</button>
+  </div>`;
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const close = () => { layer.remove(); document.removeEventListener("keydown", onKey, true); };
+  layer.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t === layer || t.closest("[data-notice-ok]")) { close(); return; }
+    if (t.closest("[data-notice-copybtn]")) {
+      const input = layer.querySelector<HTMLInputElement>("[data-notice-copy]");
+      if (input) { input.select(); try { void navigator.clipboard.writeText(input.value); } catch { document.execCommand("copy"); } (t.closest("[data-notice-copybtn]") as HTMLElement).textContent = "Copié"; }
+    }
+  });
+  document.addEventListener("keydown", onKey, true);
+  document.body.appendChild(layer);
+  layer.querySelector<HTMLElement>("[data-notice-ok]")?.focus();
+}
+function alert(message?: unknown): void { showNotice(String(message ?? "")); }
+
 function userIsBusy(): boolean {
   if (typeof document === "undefined") return false;
   const ae = document.activeElement as HTMLElement | null;
@@ -5562,7 +5609,7 @@ function attachModal(S: State): string {
 function confirmModal(S: State) {
   const c = S.confirmBox;
   if (!c) return "";
-  const danger = c.action !== "logout" && !(c.action.startsWith("setrole|") && !c.action.endsWith("|ADMIN")) && !c.action.endsWith("|approve");
+  const danger = c.action !== "logout" && c.action !== "gocredits" && !(c.action.startsWith("setrole|") && !c.action.endsWith("|ADMIN")) && !c.action.endsWith("|approve");
   const okColor = danger
     ? "background:linear-gradient(135deg,#FB7185,#e35065);color:#fff"
     : "background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a";
@@ -7810,12 +7857,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const r = await fetch(`${API}/api/admin/users/${id}/reset-password`, { method: "POST", headers: authHeaders() });
       const d = await r.json();
       if (!r.ok) { alert(d.message || "Réinitialisation impossible."); return; }
-      alert(
-        `Mot de passe temporaire pour ${d.email} :\n\n${d.password}\n\n` +
-        (d.emailed
-          ? "Il vient aussi de lui être envoyé par e-mail."
-          : "La messagerie n'étant pas configurée, transmets-le-lui toi-même.") +
+      showNotice(
+        (d.emailed ? "Il vient aussi de lui être envoyé par e-mail." : "La messagerie n'étant pas configurée, transmets-le-lui toi-même.") +
         "\n\nIl doit le changer depuis « Mon compte » après connexion.",
+        { title: "Mot de passe temporaire", tone: d.emailed ? "success" : "info", copy: { label: `Mot de passe temporaire pour ${d.email}`, value: d.password } },
       );
     } catch { alert("API injoignable."); }
   }
@@ -8902,11 +8947,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const err = await r.json().catch(() => ({} as Detail));
         setS((s) => ({ ...s, busy: false }));
         if (r.status === 409 && /crédit/i.test(err.message || "")) {
-          if (confirm(`${err.message}\n\nOuvrir l'onglet Crédits pour en acheter ?`)) {
-            setS((s) => ({ ...s, creating: false, page: "profil", adminTab: "credits" }));
-            window.scrollTo({ top: 0 });
-            loadCreditsMe();
-          }
+          setS((s) => ({ ...s, confirmBox: { title: "Crédits insuffisants", message: `${err.message} Ouvrir l'onglet Crédits pour en acheter ?`, okLabel: "Ouvrir les Crédits", action: "gocredits" } }));
         } else {
           alert(err.message || "Création impossible.");
         }
@@ -9681,6 +9722,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "evdel") deleteEvent(arg);
         else if (kind === "evdetach") { const [eid, tid] = arg.split("|"); eventTournamentLink(eid, tid, false); }
         else if (kind === "scheddel") { const [eid, iid] = rest; deleteScheduleItem(eid, iid); }
+        else if (kind === "gocredits") { setS((st) => ({ ...st, creating: false, page: "profil", adminTab: "credits" })); window.scrollTo({ top: 0 }); loadCreditsMe(); }
         else if (kind === "assocrm") assocRemoveMember(arg);
         else if (kind === "assocadmin") { const [aid, decision] = arg.split("|"); adminAct(`associations/${aid}/${decision}`, "POST"); }
         else if (kind === "clubreview") { const [uid, decision] = arg.split("|"); adminAct(`club-requests/${uid}/${decision}`, "POST"); }

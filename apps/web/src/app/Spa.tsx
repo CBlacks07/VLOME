@@ -897,12 +897,19 @@ const FINALS_FORMATS: [string, string, string][] = [
 function wizFinalsFormatOptions(poolFormat: string): [string, string, string][] {
   return poolFormat === "roundrobin" ? FINALS_FORMATS : FINALS_FORMATS.filter(([k]) => k !== "survival");
 }
-/** Quel que soit le mode de poule (Round Robin, Survival classique, Double élimination), chaque poule
- *  produit un classement complet (voir Engine.poolQualified) : aucun plafond arbitraire, la seule vraie
- *  limite est l'effectif de la plus petite poule — impossible d'en qualifier plus qu'il n'y a de joueurs. */
-function wizMaxQualify(nPlayers: number, nbPools: number): number {
-  const sizes = balancedSizesPreview(Math.max(nPlayers, 1), nbPools);
-  return Math.max(1, Math.min(...sizes));
+/** Plafond de « Qualifiés par poule ». À la création, les inscrits ne sont pas connus (les joueurs s'inscrivent ensuite) :
+ *  tant qu'aucun nombre maximum de participants n'est fixé, on ne plafonne PAS d'après la liste saisie (qui peut être vide
+ *  ou partielle) — sinon le choix de l'organisateur est rogné en silence (ex. 2 → 1 avec 4 noms en 8 poules). Le moteur
+ *  borne de toute façon au lancement : une poule plus petite que la valeur qualifie tous ses joueurs (voir Engine.poolQualified).
+ *  Avec un maximum d'inscrits connu, la seule vraie limite est l'effectif de la plus petite poule de cette capacité. */
+function wizMaxQualify(_nPlayers: number, nbPools: number, maxPlayers = 0): number {
+  if (maxPlayers > 0) return Math.max(1, Math.min(...balancedSizesPreview(maxPlayers, nbPools)));
+  return 64;
+}
+function wizQualifyNote(qualif: number, nbPools: number, maxQ: number, capacityKnown: boolean): string {
+  return capacityKnown
+    ? `${qualif * nbPools} qualifiés au total (${qualif} × ${nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (d'après le nombre maximum d'inscrits).`
+    : `${qualif} qualifié${qualif > 1 ? "s" : ""} par poule (${qualif * nbPools} au total avec ${nbPools} poules) rejoignent la phase finale. Si une poule compte moins de ${qualif} joueurs, tous ses joueurs sont qualifiés.`;
 }
 /** Conseil affiché sous le réglage "Qualifiés par poule" une fois les poules réellement constituées
  * (tailles connues, pas seulement estimées) — dit précisément quelles poules sont trop petites pour
@@ -923,8 +930,8 @@ function wizSteps(S: State) {
   const editing = !!S.wizEditId;
   const subtitle = (n: number): string => {
     if (n === 1) return d.name || "—";
-    if (n === 2) return `${d.players.length} joueur${d.players.length > 1 ? "s" : ""}`;
-    if (n === 3) return isBR ? `${d.nbPools} partie${d.nbPools > 1 ? "s" : ""}` : `${d.nbPools} poule${d.nbPools > 1 ? "s" : ""} · ${balancedSizesPreview(d.players.length, d.nbPools).join("/")}`;
+    if (n === 2) return d.players.length ? `${d.players.length} joueur${d.players.length > 1 ? "s" : ""}` : "Inscriptions ouvertes";
+    if (n === 3) return isBR ? `${d.nbPools} partie${d.nbPools > 1 ? "s" : ""}` : `${d.nbPools} poule${d.nbPools > 1 ? "s" : ""}${d.players.length ? ` · ${balancedSizesPreview(d.players.length, d.nbPools).join("/")}` : ""}`;
     if (n === 4) return "Barème réglé";
     return "";
   };
@@ -1134,7 +1141,8 @@ function wizParticipantsStep(S: State) {
       <p style="color:var(--text-faint);font-size:11.5px;margin:10px 0 0">${selCount} / ${fullRoster.length} sélectionné${selCount > 1 ? "s" : ""}. Clique un joueur pour l'ajouter ou le retirer.</p>`)
     : wizCard(`<h3 style="margin:0 0 8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Base de joueurs</h3><p style="color:var(--text-faint);font-size:12.5px">La base est vide pour l'instant. Les participants saisis ici pourront l'alimenter — gère-la depuis Admin → Joueurs.</p>`);
   const dupes = findDuplicateNames(d.players);
-  const participantsCard = wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants</h3>
+  const participantsCard = wizCard(`<h3 style="margin:0 0 16px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.user, 17)}Étape 2 — Participants <span style="font-size:12px;color:var(--text-muted);font-family:Inter,system-ui,sans-serif;letter-spacing:0;font-weight:600">(facultatif)</span></h3>
+      <p style="margin:-6px 0 14px;font-size:12.5px;color:var(--text-muted);line-height:1.6">Tu peux laisser cette liste vide : le tournoi sera créé avec les inscriptions ouvertes, et les joueurs s'inscriront eux-mêmes depuis la page du tournoi.</p>
       ${wizField("Un nom par ligne", `<textarea id="wz-players" rows="8" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${WIZ_INP};resize:vertical">${escHtml(names)}</textarea>`, "Doublons fusionnés. Club optionnel avec la syntaxe « Nom @Club ».")}
       <div style="display:flex;align-items:center;gap:10px;margin-top:12px"><span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#22D3EE;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:99px;padding:6px 13px">${ic(I.user, 13)}<span id="wiz-players-count">${d.players.length}</span> <span id="wiz-players-word">participant${d.players.length > 1 ? "s" : ""}</span></span></div>
       <div id="wiz-players-dupe-warning" style="${dupes.length ? "" : "display:none;"}margin-top:10px;font-size:12px;color:#FBBF24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${dupeWarningHtml(dupes)}</div>`);
@@ -1173,17 +1181,17 @@ function wizPoolsStep(S: State) {
   const poolModeImplied = !isSurvival && d.format === "ROUND_ROBIN";
   // Aucun plafond produit, quel que soit le mode de poule : à toi de choisir, jusqu'à l'effectif de
   // la plus petite poule (chaque mode classe toute la poule, voir Engine.poolQualified).
-  const maxQ = wizMaxQualify(d.players.length, d.nbPools);
+  const maxQ = wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers);
   const qualif = Math.min(d.qualifyPerPool || 2, maxQ);
-  const qualifNote = `${qualif * d.nbPools} qualifiés au total (${qualif} × ${d.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+  const qualifNote = wizQualifyNote(qualif, d.nbPools, maxQ, (d.maxPlayers ?? 0) > 0);
   const poolModeNote = (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[2];
   const sizes = balancedSizesPreview(d.players.length, d.nbPools);
   return `${wizCard(`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <h3 style="margin:0;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.tv, 17)}Étape 3 — Poules</h3>
       <div style="display:flex;align-items:center;gap:9px"><label style="font-size:12.5px;color:var(--text-muted);font-weight:600">Nombre de poules</label><select id="wz-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option value="${n}" ${n === d.nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>
     </div>
-    <p style="color:var(--text-muted);font-size:13px;line-height:1.7">Répartition automatique équilibrée : <b id="wiz-pools-sizes" style="color:var(--text)">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}. L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
-    <div id="wiz-pools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${poolSizeBoxesHtml(sizes)}</div>
+    <p style="color:var(--text-muted);font-size:13px;line-height:1.7">${d.players.length ? `Répartition automatique équilibrée : <b id="wiz-pools-sizes" style="color:var(--text)">${sizes.join(" / ")}</b> joueur${d.players.length > 1 ? "s" : ""}.` : `Les poules seront réparties automatiquement <b id="wiz-pools-sizes" style="color:var(--text)">au lancement, selon les joueurs inscrits</b>.`} L'ordre de passage définit qui entre sur le terrain en premier — le 1er affronte le 2e, le vainqueur affronte le 3e, etc. Tu pourras prévisualiser et réordonner les poules juste avant de lancer le tournoi, une fois créé.</p>
+    <div id="wiz-pools-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">${d.players.length ? poolSizeBoxesHtml(sizes) : ""}</div>
     <p id="wiz-nopool-warning" style="${!isSurvival && d.nbPools === 1 ? "" : "display:none;"}color:#FBBF24;font-size:11.5px;margin-top:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:9px;padding:8px 12px">${ic(I.warn, 12)} Avec une seule poule il n'y a pas de phase de groupes : tous les participants vont directement en <span id="wiz-nopool-format">${escHtml(formatLabel)}</span>, opposés au hasard. Choisis plusieurs poules ci-dessus pour ajouter une phase de groupes avant.</p>
     <div id="wiz-poolmode-block" style="${(isSurvival || d.nbPools > 1) && !poolModeImplied ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Mode des poules</div>
@@ -1335,7 +1343,10 @@ function wizValidateStep(S: State) {
   // scoringOk : chaque valeur de "victoire" doit être ≥ 0,25 (voir WIZ_SCORING_FLOOR) — sinon l'API
   // refuse la création avec un message technique brut ; on bloque ici avec une raison compréhensible.
   const scoringOk = isBR || wizScoringValid(d);
-  const canSubmit = scoringOk && (isSurvival ? c.valid : true) && d.name.trim().length > 0 && (editing || d.teamSize > 0 || d.players.length >= 2);
+  // Aucun minimum de participants : le tournoi peut être créé sans liste de noms, les joueurs s'inscrivent ensuite. Le barème
+  // Survival n'est vérifié que s'il y a déjà des joueurs (sans eux la cagnotte vaut 0 : rien à vérifier — l'API réajuste le
+  // barème à chaque inscription).
+  const canSubmit = scoringOk && (isSurvival ? c.valid || d.players.length === 0 : true) && d.name.trim().length > 0;
   const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:var(--text-muted);font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
   // Hors Survival, seuls finalsWin/championBonus s'appliquent (voir wizScoringStep) — le reste ne concerne pas ce format.
   const scoringFields = isSurvival ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
@@ -1345,21 +1356,21 @@ function wizValidateStep(S: State) {
   // que plus d une poule est demandee (miroir de Engine.usesPools).
   const pooled = wizHasPools(d.format) && (isSurvival || d.nbPools > 1);
   const structureRow = pooled
-    ? row("Poules", `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})`)
+    ? row("Poules", d.players.length ? `${d.nbPools} (${balancedSizesPreview(d.players.length, d.nbPools).join(" / ")})` : `${d.nbPools} (réparties au lancement)`)
     : isBR ? row("Parties", String(d.nbPools)) : "";
   // Round Robin : le mode de poule est déjà le format principal affiché plus haut (voir wizPoolsStep,
   // poolModeImplied) — redondant à répéter ici.
   const poolModeImplied = pooled && !isSurvival && d.format === "ROUND_ROBIN";
   const poolRows = pooled && !isSurvival
     ? (poolModeImplied ? "" : row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]))
-      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools))))
+      + row("Qualifiés par poule", String(Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers))))
       + row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1])
     : "";
   // Nombre de qualifiés réellement choisi (étape Poules), borné comme à la saisie — et non plus
   // "Top 1 + Top 2" écrit en dur, faux dès qu'on en qualifie un autre nombre.
-  const qualifN = Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools));
+  const qualifN = Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers));
   const qualifSurvivalLabel = `${qualifN === 1 ? "Le 1er" : `Les ${qualifN} premiers`} de chaque poule (${qualifN * d.nbPools} qualifié${qualifN * d.nbPools > 1 ? "s" : ""} au total) → phase finale`;
-  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", String(d.players.length))}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
+  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
@@ -1387,9 +1398,8 @@ function wizValidateStep(S: State) {
       ${canSubmit ? (editing ? "" : `<p style="color:var(--text-faint);font-size:11.5px;text-align:center;margin-top:9px">${isSurvival ? "Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page." : "Tu pourras lancer le tournoi depuis sa page."}</p>`) : (() => {
         const reasons: string[] = [];
         if (!d.name.trim()) reasons.push("le nom du tournoi");
-        if (!editing && !d.teamSize && d.players.length < 2) reasons.push("au moins 2 participants");
         if (!scoringOk) reasons.push("le barème (une victoire ne peut pas valoir 0 point — 0,25 minimum)");
-        if (isSurvival && !c.valid) reasons.push("le barème (dépasse la cagnotte disponible)");
+        if (isSurvival && d.players.length > 0 && !c.valid) reasons.push("le barème (dépasse la cagnotte disponible)");
         return `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige ${reasons.join(", ")} avant de ${editing ? "enregistrer" : "créer"}.</p>`;
       })()}`)}
     ${isSurvival ? wizGaugeCard(c) : ""}
@@ -7783,8 +7793,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const sizes = balancedSizesPreview(S.wizData.players.length, n);
         const sizesEl = document.getElementById("wiz-pools-sizes");
         const grid = document.getElementById("wiz-pools-grid");
-        if (sizesEl) sizesEl.textContent = sizes.join(" / ");
-        if (grid) grid.innerHTML = poolSizeBoxesHtml(sizes);
+        const hasRoster = S.wizData.players.length > 0;
+        if (sizesEl) sizesEl.textContent = hasRoster ? sizes.join(" / ") : "au lancement, selon les joueurs inscrits";
+        if (grid) grid.innerHTML = hasRoster ? poolSizeBoxesHtml(sizes) : "";
         // Une seule poule = pas de phase de groupes (voir Engine.usesPools) : "Mode des poules" et
         // "Qualifiés par poule" n'ont alors aucun effet, on les masque plutôt que de laisser un
         // réglage sans conséquence — change en direct avec le nombre de poules, pas seulement au
@@ -7808,11 +7819,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const qtyInput = document.getElementById("wz-qualify") as HTMLInputElement | null;
         const note = document.getElementById("wiz-qualify-note");
         if (qtyInput && note) {
-          const maxQ = wizMaxQualify(S.wizData.players.length, n);
+          const maxQ = wizMaxQualify(S.wizData.players.length, n, S.wizData.maxPlayers);
           qtyInput.max = String(maxQ);
           const qualif = Math.min(parseInt(qtyInput.value) || 2, maxQ);
           qtyInput.value = String(qualif);
-          note.textContent = `${qualif * n} qualifiés au total (${qualif} × ${n} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+          note.textContent = wizQualifyNote(qualif, n, maxQ, (S.wizData.maxPlayers ?? 0) > 0);
         }
       }
     };
@@ -7828,10 +7839,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const el = document.getElementById("wz-qualify") as HTMLInputElement | null;
     const note = document.getElementById("wiz-qualify-note");
     if (!el || !note) return;
-    const maxQ = wizMaxQualify(S.wizData.players.length, S.wizData.nbPools);
+    const maxQ = wizMaxQualify(S.wizData.players.length, S.wizData.nbPools, S.wizData.maxPlayers);
     const recalc = () => {
       const qualif = Math.max(1, Math.min(parseInt(el.value) || 1, maxQ));
-      note.textContent = `${qualif * S.wizData.nbPools} qualifiés au total (${qualif} × ${S.wizData.nbPools} poules) rejoignent la phase finale — jusqu'à ${maxQ} par poule (effectif de la plus petite).`;
+      note.textContent = wizQualifyNote(qualif, S.wizData.nbPools, maxQ, (S.wizData.maxPlayers ?? 0) > 0);
     };
     el.addEventListener("input", recalc);
     return () => el.removeEventListener("input", recalc);
@@ -7930,7 +7941,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // "Qualifiés par poule" est une saisie libre quel que soit le mode de poule, bornée par
       // l'effectif réel de la plus petite poule (voir wizMaxQualify).
       {
-        const maxQ = wizMaxQualify(d.players.length, d.nbPools);
+        const maxQ = wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers);
         const raw = parseInt(val("wz-qualify"));
         d.qualifyPerPool = Math.max(1, Math.min(Number.isFinite(raw) ? raw : (d.qualifyPerPool || 2), maxQ));
       }
@@ -8019,7 +8030,6 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const d = wizCapture();
     // L'étape Participants n'existe que dans le flux de création pur : en modification (abrégée ou
     // via "Changer le format"), les participants déjà saisis sont conservés tels quels.
-    if (!S.wizEditId && next >= 3 && !d.teamSize && d.players.length < 2) { alert("Ajoute au moins 2 participants."); setS((s) => ({ ...s, wizData: d })); return; }
     setS((s) => ({ ...s, wizData: d, wizStep: next }));
     window.scrollTo({ top: 0 });
   }
@@ -8047,7 +8057,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
   async function submitCreate() {
     const d = S.wizData;
-    if (!d.name.trim() || (!d.teamSize && d.players.length < 2)) return;
+    if (!d.name.trim()) return;
     const body: Detail = {
       name: d.name, game: d.game, format: d.format, place: d.place,
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.teamSize ? [] : d.players,
@@ -8448,7 +8458,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         : prevPool === "double" || prevPool === "single" ? bracketPoolMode
         : (prevPool === "survival" ? "roundrobin" : prevPool);
       const nextNbPools = d.wizformat === "SURVIVAL" ? 2 : d.wizformat === "BATTLE_ROYALE" ? s.wizData.nbPools : 1;
-      const maxQ = wizMaxQualify(s.wizData.players.length, nextNbPools);
+      const maxQ = wizMaxQualify(s.wizData.players.length, nextNbPools, s.wizData.maxPlayers);
       // Format de la phase finale : par défaut celui du format principal (même règle que le moteur,
       // voir Engine.newTournament) — reste un choix libre ensuite via le sélecteur dédié (étape
       // Poules pour les formats à bracket, étape Barème pour Survival, qui garde sa propre valeur ici).

@@ -167,7 +167,8 @@ export class TournamentsService {
     // Le barème doit tenir dans la cagnotte (participants × points/joueur) — calculé pour le
     // format de phase finale réellement choisi, sinon un double élim sous-budgété comme un
     // bracket simple peut distribuer largement plus de points que la cagnotte annoncée.
-    if (t.format === 'survival' && !Engine.cagnotte(t).valid) {
+    // Sans joueur (tournoi créé « inscriptions ouvertes »), la cagnotte vaut 0 : rien à vérifier — le barème est réajusté à chaque inscription.
+    if (t.format === 'survival' && t.players.length > 0 && !Engine.cagnotte(t).valid) {
       throw new ConflictException('Le barème de points dépasse la cagnotte disponible (participants × points/joueur) pour ce mode de phase finale.');
     }
     const r = await this.prisma.tournament.create({
@@ -238,7 +239,7 @@ export class TournamentsService {
         } : {}),
       });
       Engine.setPlayers(nt, (prev?.players || []).map((p) => (p.club ? `${p.name} @${p.club}` : p.name)));
-      if (nt.format === 'survival' && !Engine.cagnotte(nt).valid) Engine.autoFitScoring(nt);
+      if (nt.format === 'survival' && nt.players.length > 0 && !Engine.cagnotte(nt).valid) Engine.autoFitScoring(nt);
       data.format = dto.format as unknown;
       data.nbPools = nbPools;
       data.pointsPerPlayer = pointsPerPlayer;
@@ -266,7 +267,7 @@ export class TournamentsService {
       if (dto.brPointsTable !== undefined) t.brPointsTable = dto.brPointsTable;
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
-      if (t.format === 'survival' && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
+      if (t.format === 'survival' && t.players.length > 0 && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       this.syncMeta(t, {
         name: (data.name as string | undefined) ?? r.name,
         game: data.game !== undefined ? (data.game as string | null) : r.game,

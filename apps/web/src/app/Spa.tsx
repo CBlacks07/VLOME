@@ -117,7 +117,7 @@ type State = {
   creditsMe: { balance: number; freeTournamentsUsed: number; freeTournaments: number; priceXof: number; history: Detail[]; purchases: Detail[] } | null;
   creditBuyQty: number; creditBuyPay: string; creditBuyBusy: boolean;
   // Passerelles de paiement en ligne activées côté API (GET /api/payments/config) — null tant que non chargé.
-  payConfig: { fedapay: boolean; kkiapay: { publicKey: string; sandbox: boolean } | null } | null;
+  payConfig: { fedapay: boolean; fedapayMaxXof?: number | null; kkiapay: { publicKey: string; sandbox: boolean } | null } | null;
   // Fenêtre « Choisis ton moyen de paiement » ouverte depuis l'inscription, le panier ou l'achat de crédits.
   payModal: "reg" | "cart" | "credit" | null;
   // Événements : liste publique, page ouverte, et gestion (console organisateur/admin).
@@ -231,7 +231,13 @@ const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espè
 /** Moyens de paiement en ligne (passerelles) — le libellé est aussi la valeur enregistrée dans paymentMethod côté API. */
 const ONLINE_PAY = ["FedaPay", "KkiaPay"];
 /** Moyens proposés à l'utilisateur : paiement en ligne (seulement les passerelles configurées) puis moyens manuels. */
-function onlinePayOn(S: State): boolean { const c = S.payConfig; return !!(c && (c.fedapay || c.kkiapay)); }
+/** Paiement en ligne possible pour ce montant ? FedaPay plafonne chaque transaction (limite du compte, `fedapayMaxXof`) : au-delà, on propose les autres moyens plutôt que d'échouer à l'étape finale. */
+function onlinePayOn(S: State, amount = 0): boolean {
+  const c = S.payConfig;
+  if (!c) return false;
+  const feda = c.fedapay && !(c.fedapayMaxXof && amount > c.fedapayMaxXof);
+  return !!(feda || c.kkiapay);
+}
 /** Fenêtre de partage d'un tournoi ou d'un événement — le lien pointe vers sa page publique (/tournois/<id>
  * ou /evenements/<id>), consultable par n'importe qui sans compte, comme un lien de partage Challonge. */
 function shareModal(S: State): string {
@@ -301,11 +307,11 @@ function payChoiceModal(S: State): string {
       <div style="display:flex;flex-direction:column;gap:10px">${options}</div>
     </div></div>`;
 }
-function payMethods(S: State): string[] {
+function payMethods(S: State, amount = 0): string[] {
   const c = S.payConfig;
   // KkiaPay retiré de la sélection (option désactivée à la demande — l'intégration reste en place,
   // voir startOnlinePay/verifyOnlinePayment, pour une réactivation future sans tout reconstruire).
-  const online = c?.fedapay ? ["FedaPay"] : [];
+  const online = c?.fedapay && !(c.fedapayMaxXof && amount > c.fedapayMaxXof) ? ["FedaPay"] : [];
   return [...online, ...PAYMENTS];
 }
 
@@ -2281,8 +2287,8 @@ function organizerCredits(S: State) {
   `);
   const qty = Math.max(1, S.creditBuyQty || 1);
   const total = qty * c.priceXof;
-  const payChips = payMethods(S).map((m) => `<button data-creditbuypay="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.creditBuyPay === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.creditBuyPay === m ? "#22D3EE" : "var(--border)"};color:${S.creditBuyPay === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("");
-  const canBuy = (onlinePayOn(S) || !!S.creditBuyPay) && !S.creditBuyBusy;
+  const payChips = payMethods(S, total).map((m) => `<button data-creditbuypay="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.creditBuyPay === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.creditBuyPay === m ? "#22D3EE" : "var(--border)"};color:${S.creditBuyPay === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("");
+  const canBuy = (onlinePayOn(S, total) || !!S.creditBuyPay) && !S.creditBuyBusy;
   const buyCard = card(`
     ${secTitle("Acheter des crédits")}
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
@@ -2291,10 +2297,10 @@ function organizerCredits(S: State) {
       <button data-creditbuyqty="${qty + 1}" style="width:36px;height:36px;border-radius:9px;background:var(--surface-3);border:1px solid var(--border);color:var(--text);cursor:pointer;font-size:16px">+</button>
       <span style="flex:1;text-align:right;color:var(--text-muted);font-size:13px">Total : <b style="color:#22D3EE;font-family:'JetBrains Mono',monospace">${money(total)}</b></span>
     </div>
-    ${onlinePayOn(S) ? "" : `<div style="color:var(--text-muted);font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
+    ${onlinePayOn(S, total) ? "" : `<div style="color:var(--text-muted);font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">${payChips}</div>`}
-    <button ${onlinePayOn(S) ? `data-payopen="credit"` : `data-creditbuy="1"`} ${canBuy ? "" : "disabled"} style="background:${canBuy ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${canBuy ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:${canBuy ? "pointer" : "default"}">${S.creditBuyBusy ? "Envoi…" : onlinePayOn(S) ? "Payer" : "Demander"}</button>
-    <p style="color:var(--text-faint);font-size:12px;margin:12px 0 0">${onlinePayOn(S) ? "Tes crédits sont ajoutés dès que le paiement est confirmé." : "Pas de paiement en ligne : l'équipe Miabe te contacte pour confirmer, puis crédite ton compte."}</p>
+    <button ${onlinePayOn(S, total) ? `data-payopen="credit"` : `data-creditbuy="1"`} ${canBuy ? "" : "disabled"} style="background:${canBuy ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${canBuy ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:12px 22px;font-weight:750;font-size:14px;cursor:${canBuy ? "pointer" : "default"}">${S.creditBuyBusy ? "Envoi…" : onlinePayOn(S) ? "Payer" : "Demander"}</button>
+    <p style="color:var(--text-faint);font-size:12px;margin:12px 0 0">${onlinePayOn(S, total) ? "Tes crédits sont ajoutés dès que le paiement est confirmé." : "Pas de paiement en ligne : l'équipe Miabe te contacte pour confirmer, puis crédite ton compte."}</p>
   `);
   const pendingPurchases = (c.purchases ?? []).filter((p: Detail) => p.status === "pending");
   const pendingCard = pendingPurchases.length ? card(`${secTitle("Demandes en attente")}${pendingPurchases.map((p: Detail) => `
@@ -3575,8 +3581,14 @@ function adminOrders(a: NonNullable<State["admin"]>) {
   const rows = orders.length ? orders.map((o: Detail) => {
     const [sl, sc] = ORDER_STATUS[o.status] || [o.status, "var(--text-muted)"];
     const items = Array.isArray(o.items) ? o.items.map((i: Detail) => i.name).join(", ") : "";
-    const stBtns = ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
-      .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
+    // Paiement en ligne (FedaPay / KkiaPay) : « Payée » et « Annulée » viennent du paiement lui-même (réussi, refusé, abandonné) — pas de
+    // bouton manuel qui permettrait de déclarer payé ce qui ne l'est pas. Reste la livraison, qui est bien manuelle.
+    const online = ONLINE_PAY.includes(o.paymentMethod);
+    const stBtns = online
+      ? (o.status === "paid" ? btnSm(`data-ordstatus="${o.id}|delivered"`, ORDER_STATUS.delivered[0], ORDER_STATUS.delivered[1], ORDER_STATUS.delivered[1] + "55") : "")
+        + (o.status === "pending" ? `<span style="font-size:11.5px;color:var(--text-faint)">en attente du paiement…</span>` : "")
+      : ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
+        .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference} <span style="color:var(--text-faint);font-weight:400;font-size:12px">· ${o.user ? escHtml(o.user.displayName) + " (" + escHtml(o.user.email) + ")" : "invité"}</span></div>
       <div style="font-size:12px;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items || o.paymentMethod || "Aucun article")} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>
@@ -5081,7 +5093,7 @@ function pTournoi(S: State) {
     } else if (isReg) {
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px"><span style="display:inline-flex;align-items:center;gap:8px;color:#34D399;font-weight:750;font-size:15px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.4);border-radius:12px;padding:12px 22px">${ic(I.crown, 17)}Tu es inscrit à ce tournoi</span><button data-unreg="${t.id}" style="background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer">Se désinscrire</button>${ticketCard(t, myReg!)}</div>`;
     } else if (fee > 0) {
-      const chips = payMethods(S).map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.payPick === m ? "#22D3EE" : "var(--border)"};color:${S.payPick === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("");
+      const chips = payMethods(S, fee).map((m) => `<button data-paypick="${m}" style="font-size:12.5px;font-weight:700;border-radius:10px;padding:9px 14px;cursor:pointer;background:${S.payPick === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.payPick === m ? "#22D3EE" : "var(--border)"};color:${S.payPick === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("");
       const ly = S.loyaltySettings || { pointValueXof: 100, maxRedeemPercent: 50 };
       const maxXof = Math.floor((fee * ly.maxRedeemPercent) / 100);
       const maxPoints = Math.max(0, Math.min(S.loyaltyBalance, Math.floor(maxXof / ly.pointValueXof)));
@@ -5102,9 +5114,9 @@ function pTournoi(S: State) {
         ${discount > 0 ? `<div style="margin-top:8px;font-size:12.5px;color:#34D399;font-weight:700">− ${money(discount)} appliqués</div>` : ""}
       </div>` : "";
       action = `<div style="display:flex;flex-direction:column;align-items:center;gap:14px">
-        ${onlinePayOn(S) ? "" : `<div><div style="color:var(--text-muted);font-size:12.5px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${chips}</div></div>`}
+        ${onlinePayOn(S, netFee) ? "" : `<div><div style="color:var(--text-muted);font-size:12.5px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">${chips}</div></div>`}
         ${loyaltyBox}
-        <button ${onlinePayOn(S) && netFee > 0 ? `data-payopen="reg"` : `data-reg="${t.id}" ${S.payPick || netFee === 0 ? "" : "disabled"}`} style="display:inline-flex;align-items:center;gap:8px;background:${onlinePayOn(S) || S.payPick || netFee === 0 ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${onlinePayOn(S) || S.payPick || netFee === 0 ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${onlinePayOn(S) || S.payPick || netFee === 0 ? "pointer" : "default"};box-shadow:${onlinePayOn(S) || S.payPick || netFee === 0 ? "0 0 34px rgba(34,211,238,.24)" : "none"}">${ic(I.plus, 18)}${onlinePayOn(S) && netFee > 0 ? "Payer l'inscription" : "S'inscrire"} · ${discount > 0 ? `<span style="text-decoration:line-through;opacity:.6;font-weight:600;font-size:13px">${money(fee)}</span> ` : ""}${money(netFee)}</button>
+        <button ${onlinePayOn(S, netFee) && netFee > 0 ? `data-payopen="reg"` : `data-reg="${t.id}" ${S.payPick || netFee === 0 ? "" : "disabled"}`} style="display:inline-flex;align-items:center;gap:8px;background:${onlinePayOn(S) || S.payPick || netFee === 0 ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${onlinePayOn(S) || S.payPick || netFee === 0 ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${onlinePayOn(S) || S.payPick || netFee === 0 ? "pointer" : "default"};box-shadow:${onlinePayOn(S) || S.payPick || netFee === 0 ? "0 0 34px rgba(34,211,238,.24)" : "none"}">${ic(I.plus, 18)}${onlinePayOn(S) && netFee > 0 ? "Payer l'inscription" : "S'inscrire"} · ${discount > 0 ? `<span style="text-decoration:line-through;opacity:.6;font-weight:600;font-size:13px">${money(fee)}</span> ` : ""}${money(netFee)}</button>
       </div>`;
     } else {
       action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
@@ -5685,9 +5697,9 @@ function cartDrawer(S: State) {
   const rows = S.cartItems.length
     ? S.cartItems.map((i, idx) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--surface-4)"><div><div style="font-weight:600;font-size:14px">${escHtml(i.name)}</div><div style="font-size:12.5px;color:#22D3EE;font-weight:700;font-family:'JetBrains Mono',monospace">${money(i.price)}</div></div><button data-cart-remove="${idx}" style="display:grid;place-items:center;width:32px;height:32px;background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--text-muted);cursor:pointer">${ic(I.trash, 15)}</button></div>`).join("")
     : `<div style="color:var(--text-faint);font-size:14px;text-align:center;padding:40px 0">Ton panier est vide.<br>Ajoute des articles depuis la boutique.</div>`;
-  const payChips = S.cartItems.length && !onlinePayOn(S) ? `<div style="margin-bottom:14px">
+  const payChips = S.cartItems.length && !onlinePayOn(S, total) ? `<div style="margin-bottom:14px">
     <div style="color:var(--text-muted);font-size:12px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Moyen de paiement</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap">${payMethods(S).map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "var(--border)"};color:${S.cartPayPick === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("")}</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">${payMethods(S, total).map((m) => `<button data-cartpaypick="${m}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 12px;cursor:pointer;background:${S.cartPayPick === m ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${S.cartPayPick === m ? "#22D3EE" : "var(--border)"};color:${S.cartPayPick === m ? "#22D3EE" : "var(--text-muted)"}">${m}</button>`).join("")}</div>
   </div>` : "";
   // Réduction en points fidélité : uniquement sur la part du panier composée d'articles éligibles (choix admin).
   const eligibleSubtotal = S.cartItems.reduce((a, i) => {
@@ -5713,7 +5725,7 @@ function cartDrawer(S: State) {
     </div>
     ${discount > 0 ? `<div style="margin-top:8px;font-size:12.5px;color:#34D399;font-weight:700">− ${money(discount)} appliqués</div>` : ""}
   </div>` : "";
-  const canOrder = S.cartItems.length > 0 && (onlinePayOn(S) || !!S.cartPayPick) && !S.cartBusy;
+  const canOrder = S.cartItems.length > 0 && (onlinePayOn(S, total) || !!S.cartPayPick) && !S.cartBusy;
   return `<div data-cart-close="1" style="position:fixed;inset:0;z-index:200;background:rgba(6,6,10,.6);backdrop-filter:blur(4px)">
     <div data-stop="1" style="position:absolute;top:0;right:0;height:100%;width:min(420px,92vw);background:var(--surface-2);border-left:1px solid var(--border);padding:22px;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px">Panier</span><span data-cart-close="1" style="color:var(--text-muted);cursor:pointer">${ic(I.x, 20)}</span></div>
@@ -5722,7 +5734,7 @@ function cartDrawer(S: State) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="color:var(--text-muted);font-size:14px">Total</span><span style="text-align:right">${discount > 0 ? `<div style="font-size:13px;color:var(--text-faint);text-decoration:line-through">${money(total)}</div>` : ""}<span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:#22D3EE">${money(netTotal)}</span></span></div>
         ${loyaltyBox}
         ${payChips}
-        <button ${canOrder ? "" : "disabled"} ${onlinePayOn(S) ? `data-payopen="cart"` : `data-checkout="1"`} style="width:100%;background:${canOrder ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${canOrder ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${canOrder ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">${S.cartBusy ? "Envoi…" : onlinePayOn(S) ? "Payer" : "Commander"}</button>
+        <button ${canOrder ? "" : "disabled"} ${onlinePayOn(S, total) ? `data-payopen="cart"` : `data-checkout="1"`} style="width:100%;background:${canOrder ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${canOrder ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:13px;font-weight:750;font-size:15px;cursor:${canOrder ? "pointer" : "default"};opacity:${S.cartItems.length ? "1" : ".5"}">${S.cartBusy ? "Envoi…" : onlinePayOn(S) ? "Payer" : "Commander"}</button>
         ${S.cartItems.length ? `<button data-cart-clear="1" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text-muted);border-radius:12px;padding:11px;font-weight:600;font-size:13px;cursor:pointer">Vider le panier</button>` : ""}
       </div>
     </div></div>`;

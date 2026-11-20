@@ -9,13 +9,14 @@ import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AssociationsService } from '../associations/associations.service';
 import { MailService } from '../mail/mail.service';
+import { PaymentsService } from '../payments/payments.service';
 import { AttachOwnerDto } from '../associations/associations.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService, private readonly mail: MailService) {}
+  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService, private readonly mail: MailService, private readonly onlinePayments: PaymentsService) {}
 
   /** Tableau de bord de pilotage (temps réel) — réservé à l'admin comme tout ce contrôleur. */
   /** Messagerie : réglages présents + connexion SMTP (sans envoyer). */
@@ -174,7 +175,9 @@ export class AdminController {
   /* ---------- Commandes ---------- */
 
   @Get('orders')
-  orders() {
+  async orders() {
+    // Statuts alignés sur la réalité des paiements (payé / refusé / abandonné) avant d'afficher la liste.
+    await this.onlinePayments.reconcile().catch(() => undefined);
     return this.admin.recentOrders();
   }
 

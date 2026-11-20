@@ -6,9 +6,10 @@ import { CreditsModule } from '../credits/credits.module';
 import { DashboardService } from './dashboard.service';
 import { VisitsModule } from '../visits/visits.module';
 import { AssociationsModule } from '../associations/associations.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
-  imports: [CreditsModule, VisitsModule, AssociationsModule],
+  imports: [CreditsModule, VisitsModule, AssociationsModule, PaymentsModule],
   controllers: [AdminController, SettingsController],
   providers: [AdminService, DashboardService],
 })

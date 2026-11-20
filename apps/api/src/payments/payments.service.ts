@@ -26,6 +26,11 @@ export class PaymentsService {
   private get kkiaPrivate() { return process.env.KKIAPAY_PRIVATE_KEY?.trim() || ''; }
   private get kkiaSecret() { return process.env.KKIAPAY_SECRET_KEY?.trim() || ''; }
   private get kkiaSandbox() { return process.env.KKIAPAY_SANDBOX === 'true'; }
+  /** Plafond par transaction imposé par le compte FedaPay (XOF) — 0 = inconnu. Se relève après vérification (KYC) du compte chez FedaPay. */
+  private get fedaMax() { const n = Number(process.env.FEDAPAY_MAX_XOF); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; }
+  private limitMessage(max: number) {
+    return `Le paiement en ligne est limité à ${max.toLocaleString('fr-FR').replace(/\u202f|\u00a0/g, ' ')} F par transaction (limite du compte FedaPay). Choisis un autre moyen de paiement, ou règle en plusieurs fois.`;
+  }
   private get siteUrl() { return (process.env.SITE_URL?.trim() || 'https://www.miabe-esport.community').replace(/\/$/, ''); }
 
   /** Origine de retour : celle du navigateur si elle est de confiance (site officiel, localhost, aperçus Vercel), sinon SITE_URL. */
@@ -45,6 +50,7 @@ export class PaymentsService {
   publicConfig() {
     return {
       fedapay: !!this.fedaKey,
+      fedapayMaxXof: this.fedaMax || null,
       kkiapay: this.kkiaPublic && this.kkiaSecret ? { publicKey: this.kkiaPublic, sandbox: this.kkiaSandbox } : null,
     };
   }
@@ -115,6 +121,7 @@ export class PaymentsService {
     }
 
     if (!this.fedaKey) throw new ServiceUnavailableException("FedaPay n'est pas configuré.");
+    if (this.fedaMax && target.amountXof > this.fedaMax) throw new BadRequestException(this.limitMessage(this.fedaMax));
     const u = await this.prisma.user.findUnique({ where: { id: user.sub } });
     const callback = `${this.returnBase(dto.returnOrigin)}/?pay=fedapay&kind=${dto.kind}&ref=${encodeURIComponent(dto.refId)}`;
     const created = await this.feda('POST', '/transactions', {
@@ -178,9 +185,12 @@ export class PaymentsService {
     const pay = await this.prisma.onlinePayment.findUnique({ where: { providerTxId: id } });
     if (!pay || pay.provider !== 'fedapay' || pay.status === 'paid') return { ok: true };
     try {
-      if (await this.fedaApproved(id, pay.amountXof)) {
+      const tx = await this.fedaTx(id);
+      if (tx.status === 'approved' && tx.amount >= pay.amountXof) {
         await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { status: 'paid' } });
         await this.finalize(pay.kind as Kind, pay.refId);
+      } else if (['declined', 'canceled', 'cancelled', 'refunded', 'expired'].includes(tx.status) && pay.status === 'pending') {
+        await this.markFailed(pay);
       }
     } catch (e) {
       this.log.warn(`Webhook FedaPay ${id} : ${(e as Error).message}`);
@@ -198,15 +208,75 @@ export class PaymentsService {
     const data: any = await r.json().catch(() => ({}));
     if (!r.ok) {
       this.log.warn(`FedaPay ${method} ${path} → ${r.status} ${JSON.stringify(data).slice(0, 300)}`);
+      // Refus « métier » de FedaPay (montant au-dessus du plafond du compte, champ invalide…) : on le dit clairement au lieu d'un
+      // « momentanément indisponible » trompeur — ce n'est pas une panne, réessayer ne servira à rien.
+      if ((r.status === 400 || r.status === 422) && data?.errors && typeof data.errors === 'object') {
+        const msgs: string[] = Object.values(data.errors as Record<string, unknown>).flat().map(String);
+        const limit = msgs.map((m) => /maximum[^\d]*(\d[\d\s.]*)/i.exec(m)?.[1]).find(Boolean);
+        if (limit) throw new BadRequestException(this.limitMessage(Number(limit.replace(/\D/g, ''))));
+        throw new BadRequestException(`FedaPay a refusé la transaction : ${msgs.join(' ')}`);
+      }
       throw new ServiceUnavailableException('Le paiement en ligne est momentanément indisponible.');
     }
     return data;
   }
 
-  private async fedaApproved(txId: string, expectedXof: number): Promise<boolean> {
+  /** Statut et montant d'une transaction chez FedaPay (relus à chaque fois : on ne croit jamais ce que dit le navigateur). */
+  private async fedaTx(txId: string): Promise<{ status: string; amount: number }> {
     const d = await this.feda('GET', `/transactions/${txId}`);
     const tx = d['v1/transaction'] ?? d.transaction ?? d;
-    return tx?.status === 'approved' && Number(tx?.amount) >= expectedXof;
+    return { status: String(tx?.status ?? ''), amount: Number(tx?.amount) };
+  }
+
+  private async fedaApproved(txId: string, expectedXof: number): Promise<boolean> {
+    const tx = await this.fedaTx(txId);
+    return tx.status === 'approved' && tx.amount >= expectedXof;
+  }
+
+  /** Un paiement refusé / annulé : la tentative passe en « failed » et, pour une commande, la commande est annulée toute seule. */
+  private async markFailed(pay: { id: string; kind: string; refId: string }): Promise<void> {
+    await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { status: 'failed' } });
+    if (pay.kind === 'order') await this.prisma.order.updateMany({ where: { id: pay.refId, status: 'pending' }, data: { status: 'cancelled' } });
+  }
+
+  /**
+   * Remet les statuts d'accord avec la réalité du paiement, sans intervention de l'admin :
+   *  - transaction FedaPay approuvée → payée (commande « Payée », inscription validée…) ;
+   *  - transaction refusée / annulée → tentative échouée et commande « Annulée » ;
+   *  - commande en ligne jamais réglée au bout de 24 h → « Annulée » (paiement abandonné).
+   * Appelée au chargement de la liste des commandes et par le webhook ; chaque élément est traité isolément (une erreur n'arrête pas les autres).
+   */
+  async reconcile(): Promise<{ paid: number; failed: number; expired: number }> {
+    const out = { paid: 0, failed: 0, expired: 0 };
+    if (this.fedaKey) {
+      const pending = await this.prisma.onlinePayment.findMany({
+        where: { provider: 'fedapay', status: 'pending', providerTxId: { not: null }, createdAt: { gt: new Date(Date.now() - 3 * 24 * 3600 * 1000) } },
+        orderBy: { createdAt: 'desc' }, take: 20,
+      });
+      await Promise.all(pending.map(async (pay) => {
+        try {
+          const tx = await this.fedaTx(pay.providerTxId!);
+          if (tx.status === 'approved' && tx.amount >= pay.amountXof) {
+            await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { status: 'paid' } });
+            await this.finalize(pay.kind as Kind, pay.refId);
+            out.paid++;
+          } else if (['declined', 'canceled', 'cancelled', 'refunded', 'expired'].includes(tx.status)) {
+            await this.markFailed(pay);
+            out.failed++;
+          }
+        } catch (e) { this.log.warn(`Rapprochement ${pay.id} : ${(e as Error).message}`); }
+      }));
+    }
+    const abandoned = await this.prisma.order.findMany({
+      where: { status: 'pending', paymentMethod: { in: ['FedaPay', 'KkiaPay'] }, createdAt: { lt: new Date(Date.now() - 24 * 3600 * 1000) } },
+      select: { id: true }, take: 50,
+    });
+    for (const o of abandoned) {
+      await this.prisma.order.updateMany({ where: { id: o.id, status: 'pending' }, data: { status: 'cancelled' } });
+      await this.prisma.onlinePayment.updateMany({ where: { kind: 'order', refId: o.id, status: 'pending' }, data: { status: 'failed' } });
+      out.expired++;
+    }
+    return out;
   }
 
   private async kkiaSuccess(txId: string, expectedXof: number): Promise<boolean> {

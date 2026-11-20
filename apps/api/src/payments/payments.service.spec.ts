@@ -35,3 +35,68 @@ describe('PaymentsService.finalize', () => {
     expect(m.prisma.order.updateMany).toHaveBeenCalledWith({ where: { id: 'o1', status: 'pending' }, data: { status: 'paid' } });
   });
 });
+
+/** Rapprochement automatique des statuts avec la réalité du paiement + message clair quand FedaPay refuse le montant. */
+describe('PaymentsService — plafond FedaPay et statuts automatiques', () => {
+  const saved = { key: process.env.FEDAPAY_SECRET_KEY, max: process.env.FEDAPAY_MAX_XOF };
+  beforeEach(() => { process.env.FEDAPAY_SECRET_KEY = 'sk_test'; delete process.env.FEDAPAY_MAX_XOF; });
+  afterEach(() => { process.env.FEDAPAY_SECRET_KEY = saved.key; if (saved.max === undefined) delete process.env.FEDAPAY_MAX_XOF; else process.env.FEDAPAY_MAX_XOF = saved.max; jest.restoreAllMocks(); });
+
+  function build(prismaOver: Record<string, unknown> = {}) {
+    const prisma = {
+      order: { updateMany: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
+      onlinePayment: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({}) },
+      creditPurchase: { findUnique: jest.fn() },
+      ...prismaOver,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = new PaymentsService(prisma as any, { confirmRegistrationPaidOnline: jest.fn() } as any, { confirmPurchase: jest.fn() } as any);
+    return { svc, prisma };
+  }
+  const fedaReply = (status: string, amount = 50000) => new Response(JSON.stringify({ 'v1/transaction': { id: 1, status, amount } }), { status: 200 });
+
+  it('FedaPay refuse un montant trop élevé : message clair avec le plafond (pas « momentanément indisponible »)', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ message: 'La création de la transaction a échoué', errors: { amount: ['Le montant maximum de transactions autorisées est 20000.'] } }), { status: 400 }));
+    const { svc } = build();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await expect((svc as any).feda('POST', '/transactions', {})).rejects.toThrow(/limité à 20.000 F/);
+  });
+
+  it('plafond connu (FEDAPAY_MAX_XOF) : exposé à la config publique', () => {
+    process.env.FEDAPAY_MAX_XOF = '20000';
+    expect(build().svc.publicConfig()).toMatchObject({ fedapay: true, fedapayMaxXof: 20000 });
+  });
+
+  it('transaction refusée/annulée : tentative échouée ET commande annulée automatiquement', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => fedaReply('declined'));
+    const { svc, prisma } = build();
+    prisma.onlinePayment.findMany.mockResolvedValue([{ id: 'p1', kind: 'order', refId: 'o1', providerTxId: '1', amountXof: 50000 }]);
+    expect(await svc.reconcile()).toMatchObject({ failed: 1, paid: 0 });
+    expect(prisma.onlinePayment.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { status: 'failed' } });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({ where: { id: 'o1', status: 'pending' }, data: { status: 'cancelled' } });
+  });
+
+  it('transaction approuvée : commande passée en payée automatiquement', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => fedaReply('approved'));
+    const { svc, prisma } = build();
+    prisma.onlinePayment.findMany.mockResolvedValue([{ id: 'p1', kind: 'order', refId: 'o1', providerTxId: '1', amountXof: 50000 }]);
+    expect(await svc.reconcile()).toMatchObject({ paid: 1, failed: 0 });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({ where: { id: 'o1', status: 'pending' }, data: { status: 'paid' } });
+  });
+
+  it('transaction encore en attente chez FedaPay : on ne touche à rien', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => fedaReply('pending'));
+    const { svc, prisma } = build();
+    prisma.onlinePayment.findMany.mockResolvedValue([{ id: 'p1', kind: 'order', refId: 'o1', providerTxId: '1', amountXof: 50000 }]);
+    expect(await svc.reconcile()).toMatchObject({ paid: 0, failed: 0 });
+    expect(prisma.onlinePayment.update).not.toHaveBeenCalled();
+  });
+
+  it('commande en ligne jamais réglée depuis plus de 24 h : annulée (paiement abandonné)', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async () => fedaReply('pending'));
+    const { svc, prisma } = build();
+    prisma.order.findMany.mockResolvedValue([{ id: 'o9' }]);
+    expect(await svc.reconcile()).toMatchObject({ expired: 1 });
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({ where: { id: 'o9', status: 'pending' }, data: { status: 'cancelled' } });
+  });
+});

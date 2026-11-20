@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Post } from '@nestjs/common';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { VisitsService } from './visits.service';
 
@@ -6,26 +6,25 @@ class PingDto {
   @IsOptional() @IsString() @MaxLength(64) sid?: string;
 }
 
-/** Compteur de visiteurs du site — public, sans connexion, aucune donnée personnelle (juste un numéro). */
+/** Comptage des visiteurs du site — écriture publique et anonyme ; la lecture des chiffres est réservée à l'admin (tableau de bord). */
 @Controller('visits')
 export class VisitsController {
   constructor(private readonly visits: VisitsService) {}
 
-  /** Nombre total de visiteurs. */
-  @Get()
-  async total() {
-    return { total: await this.visits.total() };
-  }
-
-  /** Nouveau visiteur : incrémente le compteur et renvoie son numéro (appelé une seule fois par navigateur). */
+  /**
+   * Nouveau visiteur : incrémente le compteur (appelé une seule fois par navigateur). Le total n'est PAS renvoyé : il n'est
+   * visible que dans le tableau de bord admin. Le numéro sert seulement de repère au navigateur pour ne pas se recompter.
+   */
   @Post()
-  register(@Headers('user-agent') userAgent?: string) {
-    return this.visits.register(userAgent);
+  async register(@Headers('user-agent') userAgent?: string) {
+    const r = await this.visits.register(userAgent);
+    return { number: r.number };
   }
 
-  /** Signe de vie d'un navigateur ouvert sur le site (alimente « en ligne maintenant » du tableau de bord admin). */
+  /** Signe de vie d'un navigateur ouvert sur le site (alimente « en ligne maintenant » du tableau de bord admin). Rien de chiffré n'est renvoyé. */
   @Post('ping')
-  ping(@Body() dto: PingDto, @Headers('user-agent') userAgent?: string) {
-    return this.visits.ping(dto?.sid, userAgent);
+  async ping(@Body() dto: PingDto, @Headers('user-agent') userAgent?: string) {
+    await this.visits.ping(dto?.sid, userAgent);
+    return { ok: true };
   }
 }

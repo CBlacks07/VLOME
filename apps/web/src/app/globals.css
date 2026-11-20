@@ -670,11 +670,6 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .foot-brand p { max-width: none !important; text-wrap: pretty !important; }
   .site-footer { padding-left: 16px; padding-right: 16px; }
 }
-
-/* Compteur de visiteurs (pied de page) */
-.foot-visitor { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 0; padding: 7px 14px; border-radius: 99px; background: rgba(34, 211, 238, .08); border: 1px solid rgba(34, 211, 238, .28); color: var(--text-muted); font-size: 12.5px; line-height: 1.4; }
-.foot-visitor b { color: #22D3EE; font-weight: 800; }
-
 /* ===== Tableau de bord de pilotage (admin) ===== */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .dv-wrap { display: flex; flex-direction: column; gap: 18px; }

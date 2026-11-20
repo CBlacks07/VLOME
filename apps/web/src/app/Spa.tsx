@@ -169,7 +169,6 @@ type State = {
   correctingId: string | null;
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
   dash: { data: Detail | null; at: number; err: boolean; busy?: boolean } | null; // tableau de bord de pilotage (admin), actualisé en continu
-  visitor: { n: number | null; total: number | null } | null; // compteur de visiteurs : mon numéro (null si inconnu) et le total
   poolView: number; // index de la poule affichée (une poule par page, flèches précédent/suivant)
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
   rosterQ: string; // recherche dans le panneau Joueurs de la régie
@@ -561,11 +560,6 @@ function siteFooter(S?: State): string {
   const name1 = escHtml(S?.site?.brand?.name1 ?? "Miabe");
   const name2 = escHtml(S?.site?.brand?.name2 ?? "ESPORT");
   const logo = S ? brandLogo(S, 40, 22) : "";
-  const fr = (n: number) => n.toLocaleString("fr-FR");
-  const v = S?.visitor;
-  const visitorPill = v && (v.n || v.total)
-    ? `<p class="foot-visitor">${v.n ? `Bonjour <span aria-hidden="true">👋</span> Vous êtes le visiteur <b>n° ${fr(v.n)}</b>` : `<b>${fr(v.total ?? 0)}</b> visiteurs`}${v.n && v.total && v.total > v.n ? ` · <span>${fr(v.total)} visiteurs au total</span>` : ""}</p>`
-    : "";
   // Invitation à rejoindre la communauté (visiteur) ou raccourci vers son espace (connecté).
   const cta = !S ? "" : S.user
     ? `<button data-go="profil" class="btn-ghost" style="${BTN_GHOST};margin-top:18px">Mon espace ${ic(I.arrow, 15)}</button>`
@@ -577,7 +571,6 @@ function siteFooter(S?: State): string {
           <div style="display:flex;align-items:center;gap:12px">${logo}<span style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;color:var(--text);line-height:1">${name1} <span style="color:#22D3EE">${name2}</span></span></div>
           <p style="margin:14px 0 0;line-height:1.6;max-width:460px;text-wrap:pretty">Le hub de l'esport togolais &amp; ouest-africain&nbsp;: compétitions, classements, communauté et boutique.</p>
           <p style="margin:10px 0 0;display:flex;align-items:center;gap:7px;color:var(--text-muted)"><span style="color:#22D3EE;display:inline-flex">${ic(I.pin, 15)}</span>Lomé, Togo</p>
-          ${visitorPill}
           ${cta}
         </div>
         <nav aria-label="Pied de page : explorer"><h4 class="foot-h">Explorer</h4><div class="foot-links foot-links-two">${nav}</div></nav>
@@ -6109,7 +6102,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, visitor: null, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -7741,72 +7734,23 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     applyHash(h);
   }, []);
 
-  // Compteur de visiteurs : chaque navigateur reçoit UN numéro, retenu dans localStorage (ni cookie ni donnée personnelle). Un
-  // visiteur de retour revoit son numéro d'origine ; le total s'affiche à tous. Sans stockage local disponible, on ne compte
-  // pas (sinon chaque page vue serait comptée) : on affiche seulement le total.
+  // Comptage des visiteurs (invisible pour le public, visible seulement dans le tableau de bord admin) : un navigateur est compté
+  // UNE fois, grâce à un repère dans localStorage (ni cookie ni donnée personnelle). Sans stockage local disponible, on ne compte pas
+  // (sinon chaque page vue serait comptée).
   const visitStarted = useRef(false);
   useEffect(() => {
     if (visitStarted.current) return;
     visitStarted.current = true;
     (async () => {
       try {
-        let storageOk = true;
-        try { localStorage.setItem("vlome_probe", "1"); localStorage.removeItem("vlome_probe"); } catch { storageOk = false; }
-        let n = storageOk ? Number(localStorage.getItem("vlome_visitor_no")) || 0 : 0;
-        let total: number | null = null;
-        let isNew = false;
-        if (!n && storageOk) {
-          const r = await fetch(`${API}/api/visits`, { method: "POST" });
-          if (r.ok) {
-            const d = await r.json();
-            total = typeof d.total === "number" ? d.total : null;
-            if (typeof d.number === "number" && d.number > 0) { n = d.number; isNew = true; localStorage.setItem("vlome_visitor_no", String(n)); }
-          }
-        } else {
-          const r = await fetch(`${API}/api/visits`);
-          if (r.ok) { const d = await r.json(); total = typeof d.total === "number" ? d.total : null; }
-        }
-        setS((st) => ({ ...st, visitor: { n: n || null, total } }));
-        if (isNew && n) showToast(`Bonjour 👋 Vous êtes le visiteur n° ${n.toLocaleString("fr-FR")} !`);
-      } catch { /* compteur indisponible : sans effet sur le reste du site */ }
+        try { localStorage.setItem("vlome_probe", "1"); localStorage.removeItem("vlome_probe"); } catch { return; }
+        if (Number(localStorage.getItem("vlome_visitor_no")) > 0) return;
+        const r = await fetch(`${API}/api/visits`, { method: "POST" });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (typeof d.number === "number" && d.number > 0) localStorage.setItem("vlome_visitor_no", String(d.number));
+      } catch { /* compteur indisponible : sans effet sur le site */ }
     })();
-  }, []);
-
-  // Tableau de bord de pilotage : actualisé toutes les 15 s tant que l'admin le regarde (onglet visible), et dès qu'il revient sur l'onglet.
-  useEffect(() => {
-    if (!(S.page === "profil" && S.adminTab === "apercu" && S.user?.role === "ADMIN")) return;
-    const tick = () => { if (document.visibilityState === "visible") void loadDashboard(); };
-    tick();
-    const id = setInterval(tick, 15000);
-    document.addEventListener("visibilitychange", tick);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [S.page, S.adminTab, S.user?.role]);
-
-  // « il y a 12 s » : mis à jour directement dans la page toutes les 5 s, sans re-rendu.
-  useEffect(() => {
-    const tick = () => document.querySelectorAll<HTMLElement>("[data-ago]").forEach((el) => { const ts = Number(el.dataset.ago); if (ts) el.textContent = agoLabel(ts); });
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Signal de présence : « ce navigateur est ouvert sur le site » (identifiant de session aléatoire, aucune donnée personnelle),
-  // toutes les 45 s tant que l'onglet est visible — alimente « En ligne maintenant » du tableau de bord admin.
-  useEffect(() => {
-    let sid = "";
-    try { sid = sessionStorage.getItem("vlome_sid") || ""; } catch { /* ignore */ }
-    if (!sid) {
-      sid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
-      try { sessionStorage.setItem("vlome_sid", sid); } catch { /* ignore */ }
-    }
-    const ping = () => {
-      if (document.visibilityState !== "visible") return;
-      fetch(`${API}/api/visits/ping`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid }), keepalive: true }).catch(() => { /* signal perdu : sans importance */ });
-    };
-    ping();
-    const id = setInterval(ping, 45000);
-    document.addEventListener("visibilitychange", ping);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", ping); };
   }, []);
 
   // Le bouton précédent/suivant du navigateur (ou l'édition manuelle du hash) rouvre la bonne page.

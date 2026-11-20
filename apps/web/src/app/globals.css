@@ -749,3 +749,7 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .dv-title { font-size: 26px; }
 }
 @media (prefers-reduced-motion: reduce) { .dv-dot { animation: none; } }
+
+/* Icônes insérées au fil d'un texte (⚠ devant une phrase…) : le reset de Tailwind passe les <svg> en display:block, ce qui les
+   envoyait sur leur propre ligne au-dessus du texte. Dans un paragraphe/une liste/un libellé, elles restent sur la ligne. */
+p > svg, li > svg, label > svg, td > svg, small > svg { display: inline-block; vertical-align: -0.2em; margin-right: .3em; }

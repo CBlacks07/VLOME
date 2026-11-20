@@ -202,6 +202,8 @@ type State = {
   roster: Detail[] | null; clubs: Detail[] | null;
   // Associations : clubs validés (liste d'inscription), espace « Mon club » d'un compte association, associations à valider (admin).
   publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; adminAssocs: Detail[] | null; adminUnowned: Detail[] | null;
+  // Modale « Rattacher un compte association » (admin) : formulaire puis identifiants créés.
+  attachModal: { clubId: string; name: string; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
   classementView: "joueurs" | "clubs" | "equipes" | "pronos"; // bascule joueurs / clubs sur la page Classements
   // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
@@ -2836,7 +2838,7 @@ function consolePage(S: State): string {
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
   const shell = consoleShell(S, tabs, activeLabel, editor + body);
-  return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + playerDetailModal(S);
+  return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S) + attachModal(S) + matchCorrectModal(S) + playerDetailModal(S);
 }
 
 /** Onglet Site : identité (logo/nom), héro, slider « À la une », partenaires. */
@@ -5470,6 +5472,37 @@ function playerDetailModal(S: State) {
 }
 
 /** Modale de confirmation (suppression, déconnexion…). */
+/** Modale « Rattacher un compte association » (admin) : saisie de l'e-mail du responsable, puis identifiants du compte créé. */
+function attachModal(S: State): string {
+  const m = S.attachModal;
+  if (!m) return "";
+  const field = (id: string, label: string, value: string) => `<div style="text-align:left;margin-top:12px"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:6px">${label}</div>
+    <div style="display:flex;gap:8px"><input id="${id}" readonly value="${escAttr(value)}" style="flex:1;min-width:0;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;padding:10px 12px" />
+    <button data-copytext="${id}" style="flex:none;background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:0 14px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">Copier</button></div></div>`;
+  const r = m.result;
+  const body = r
+    ? `<div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);color:#34D399;margin:0 auto 14px">${ic(I.plus, 24)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:6px">${r.created ? "Compte créé" : "Compte rattaché"}</div>
+      <p style="color:var(--text-muted);font-size:13.5px;line-height:1.55;margin:0">${r.created ? `Le compte association de <b style="color:var(--text)">${escHtml(m.name)}</b> est prêt.` : `Le compte existant pilote maintenant <b style="color:var(--text)">${escHtml(m.name)}</b>.`}</p>
+      ${field("att-r-email", "Identifiant", r.email)}
+      ${r.password ? field("att-r-pass", "Mot de passe temporaire", r.password) : ""}
+      ${r.password ? `<p style="display:flex;gap:8px;align-items:flex-start;text-align:left;color:${r.emailed ? "var(--text-faint)" : "#FBBF24"};font-size:12px;line-height:1.55;margin:14px 0 0"><span style="flex:none;margin-top:1px">${ic(I.warn, 14)}</span><span>${r.emailed ? "Ces informations ont aussi été envoyées par e-mail. " : "L'e-mail n'a pas pu partir : transmets-lui ces informations toi-même. "}Note le mot de passe maintenant, il ne sera plus affiché. Le responsable pourra le changer dans « Mon compte ».</span></p>` : ""}
+      <div style="display:flex;margin-top:20px"><button data-attachclose="1" style="flex:1;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer;font-family:inherit">Terminé</button></div>`
+    : `<div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:rgba(124,130,255,.1);border:1px solid rgba(124,130,255,.4);color:#7C82FF;margin:0 auto 14px">${ic(I.user, 24)}</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:6px">Rattacher un compte</div>
+      <p style="color:var(--text-muted);font-size:13.5px;line-height:1.55;margin:0">Club : <b style="color:var(--text)">${escHtml(m.name)}</b></p>
+      <div style="text-align:left;margin-top:16px"><label for="att-email" style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:6px">E-mail du responsable</label>
+        <input id="att-email" type="email" autocomplete="off" value="${escAttr(m.email)}" placeholder="contact@mon-association.org" style="width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 13px" />
+        <p style="color:var(--text-faint);font-size:11.5px;line-height:1.55;margin:8px 0 0">Un compte association est créé avec cette adresse (ou repris s'il existe déjà) et rattaché au club. Un mot de passe temporaire est généré et envoyé par e-mail.</p></div>
+      ${m.error ? `<div style="display:flex;align-items:flex-start;gap:8px;text-align:left;color:#FB7185;font-size:12.5px;line-height:1.5;margin-top:12px;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:10px 12px"><span style="flex:none;margin-top:1px">${ic(I.warn, 14)}</span><span>${escHtml(m.error)}</span></div>` : ""}
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button data-attachclose="1" style="flex:1;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">Annuler</button>
+        <button data-attachgo="1" ${m.busy ? "disabled" : ""} style="flex:1;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 18px;font-weight:750;font-size:14px;cursor:${m.busy ? "default" : "pointer"};opacity:${m.busy ? ".6" : "1"};font-family:inherit">${m.busy ? "…" : "Rattacher"}</button>
+      </div>`;
+  return `<div data-attachclose="1" style="position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:20px;background:rgba(6,6,10,.72);backdrop-filter:blur(6px)">
+    <div data-stop="1" style="width:100%;max-width:440px;background:linear-gradient(180deg,var(--surface),var(--surface-2));border:1px solid var(--border-strong);border-radius:20px;padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6);text-align:center;animation:fadeUp .18s ease both">${body}</div></div>`;
+}
+
 function confirmModal(S: State) {
   const c = S.confirmBox;
   if (!c) return "";
@@ -6372,7 +6405,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -7363,20 +7396,25 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       await loadAssoc(); loadPublicClubs();
     } catch { alert("Action impossible — réessaie dans un instant."); }
   }
-  /** Admin : rattache un compte association (créé si besoin) à un club existant sans propriétaire. */
-  async function attachAssociation(clubId: string) {
+  /** Admin : ouvre la modale de rattachement d'un compte association à un club existant sans propriétaire. */
+  function openAttachAssociation(clubId: string) {
     const club = (S.adminUnowned ?? []).find((c: Detail) => c.id === clubId);
-    const email = (prompt(`E-mail du responsable de « ${club?.name || "ce club"} » (un compte association sera créé avec cette adresse) :`) || "").trim();
-    if (!email) return;
+    setS((st) => ({ ...st, attachModal: { clubId, name: club?.name || "ce club", email: "", busy: false, error: "", result: null } }));
+  }
+  async function submitAttachAssociation() {
+    const m = S.attachModal;
+    if (!m || m.busy || m.result) return;
+    const email = ((document.getElementById("att-email") as HTMLInputElement | null)?.value || "").trim();
+    const fail = (error: string) => setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, email, busy: false, error } } : st));
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fail("Saisis une adresse e-mail valide."); return; }
+    setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, email, busy: true, error: "" } } : st));
     try {
-      const r = await fetch(`${API}/api/admin/associations/${clubId}/attach-owner`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ email }) });
+      const r = await fetch(`${API}/api/admin/associations/${m.clubId}/attach-owner`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ email }) });
       const e = await r.json().catch(() => ({} as Detail));
-      if (!r.ok) { alert(Array.isArray(e.message) ? e.message.join("\n") : e.message || "Rattachement impossible."); return; }
-      await loadAdmin();
-      alert(e.created
-        ? `Compte créé pour « ${club?.name || ""} ».\n\nIdentifiant : ${e.email}\nMot de passe temporaire : ${e.password}\n\n${e.emailed ? "Ces informations ont aussi été envoyées par e-mail." : "L'e-mail n'a pas pu partir : transmets-lui ces informations toi-même."}\nNote-le maintenant : il ne sera plus affiché.`
-        : `Le compte association existant (${e.email}) pilote maintenant « ${club?.name || ""} ».`);
-    } catch { alert("Rattachement impossible — réessaie dans un instant."); }
+      if (!r.ok) { fail(Array.isArray(e.message) ? e.message.join(" ") : e.message || "Rattachement impossible."); return; }
+      setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, busy: false, result: { email: e.email, password: e.password ?? null, created: !!e.created, emailed: !!e.emailed } } } : st));
+      void loadAdmin();
+    } catch { fail("Rattachement impossible — réessaie dans un instant."); }
   }
   async function assocRemoveMember(playerId: string) {
     try {
@@ -8873,7 +8911,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9386,7 +9424,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.assocreview) { const [uid, decision] = d.assocreview.split("|"); void assocReview(uid, decision); }
     else if (d.assocsave !== undefined) { void assocSave(); }
-    else if (d.assocattach) { void attachAssociation(d.assocattach); }
+    else if (d.assocattach) { openAttachAssociation(d.assocattach); }
+    else if (d.attachgo !== undefined) { void submitAttachAssociation(); }
+    else if (d.attachclose !== undefined) { setS((st) => ({ ...st, attachModal: null })); }
     else if (d.assocrm) {
       const m = (S.assoc?.members ?? []).find((x: Detail) => x.id === d.assocrm);
       setS((s) => ({ ...s, confirmBox: { title: "Retirer du club", message: `« ${m?.name || "Ce joueur"} » ne fera plus partie de ton club. Il pourra en redemander l'adhésion.`, okLabel: "Retirer", action: `assocrm|${d.assocrm}` } }));
@@ -9679,6 +9719,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   /** Bouton d'action principal correspondant au champ saisi : valider par Entrée revient à cliquer
    * ce bouton, ce qui réutilise toute la logique déjà branchée sur le dispatcher (aucun doublon). */
   function enterTargetSelector(id: string): string | null {
+    if (id === "att-email") return "[data-attachgo]";
     if (id.startsWith("a-")) return "[data-auth-submit]";
     if (id.startsWith("pw-")) return "[data-passsave]";
     if (id.startsWith("p-")) return "[data-profilesave]";

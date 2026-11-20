@@ -367,7 +367,8 @@ export class AdminService {
   async getSettings() {
     const rows = await this.prisma.setting.findMany();
     const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
-    rows.forEach((r) => { out[r.key] = r.value; });
+    // Le compteur de visiteurs (voir VisitsService) vit dans la même table mais n'est pas un réglage du site : il ne sort pas ici.
+    rows.filter((r) => r.key !== 'visitors').forEach((r) => { out[r.key] = r.value; });
     return out;
   }
 

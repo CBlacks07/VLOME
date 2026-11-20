@@ -1,7 +1,7 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class SetRoleDto {
-  @IsIn(['PLAYER', 'ORGANIZER', 'ADMIN'])
+  @IsIn(['PLAYER', 'ORGANIZER', 'ADMIN', 'ASSOCIATION'])
   role!: string;
 }
 

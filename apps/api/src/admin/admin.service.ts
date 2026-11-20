@@ -64,14 +64,26 @@ export class AdminService {
 
   /* ---------- Utilisateurs ---------- */
 
-  listUsers() {
-    return this.prisma.user.findMany({
+  async listUsers() {
+    const rows = await this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
-      select: { id: true, email: true, displayName: true, role: true, createdAt: true },
+      select: { id: true, email: true, displayName: true, role: true, createdAt: true, ownedClub: { select: { id: true } } },
     });
+    // ownsClub : ce compte pilote une association (même si son rôle a été changé par erreur — l'admin peut alors le rétablir).
+    return rows.map(({ ownedClub, ...u }) => ({ ...u, ownsClub: !!ownedClub }));
   }
 
-  setRole(id: string, role: string) {
+  /** Change le rôle d'un compte. Un compte qui pilote une association ne peut pas devenir joueur/organisateur/admin (il perdrait son espace
+   *  « Mon club » et le club resterait sans responsable) ; à l'inverse, « Association » n'est accordé qu'à un compte qui pilote un club. */
+  async setRole(id: string, role: string) {
+    const u = await this.prisma.user.findUnique({ where: { id }, select: { ownedClub: { select: { name: true } } } });
+    if (!u) throw new NotFoundException('Utilisateur introuvable.');
+    if (role === 'ASSOCIATION' && !u.ownedClub) {
+      throw new BadRequestException('Aucune association n\'est rattachée à ce compte : utilise « Rattacher un compte » sur un club sans association.');
+    }
+    if (role !== 'ASSOCIATION' && u.ownedClub) {
+      throw new BadRequestException(`Ce compte pilote l'association « ${u.ownedClub.name} » : son rôle ne peut pas être changé.`);
+    }
     return this.prisma.user.update({
       where: { id },
       data: { role: role as any },

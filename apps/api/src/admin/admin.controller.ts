@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
+import { DashboardService } from './dashboard.service';
 import { NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, ReviewOrganizerDto, SetRoleDto } from './admin.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
@@ -11,7 +12,13 @@ import { CurrentUser } from '../common/current-user.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService) {}
+
+  /** Tableau de bord de pilotage (temps réel) — réservé à l'admin comme tout ce contrôleur. */
+  @Get('dashboard')
+  dashboardData() {
+    return this.dashboard.get();
+  }
 
   @Get('overview')
   overview() {

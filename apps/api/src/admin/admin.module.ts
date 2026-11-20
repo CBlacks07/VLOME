@@ -3,10 +3,12 @@ import { AdminController } from './admin.controller';
 import { SettingsController } from './settings.controller';
 import { AdminService } from './admin.service';
 import { CreditsModule } from '../credits/credits.module';
+import { DashboardService } from './dashboard.service';
+import { VisitsModule } from '../visits/visits.module';
 
 @Module({
-  imports: [CreditsModule],
+  imports: [CreditsModule, VisitsModule],
   controllers: [AdminController, SettingsController],
-  providers: [AdminService],
+  providers: [AdminService, DashboardService],
 })
 export class AdminModule {}

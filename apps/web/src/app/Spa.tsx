@@ -168,6 +168,7 @@ type State = {
   // ce même id comme clé, préfixé "c:" pour ne jamais entrer en collision avec un match actif.
   correctingId: string | null;
   regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
+  dash: { data: Detail | null; at: number; err: boolean; busy?: boolean } | null; // tableau de bord de pilotage (admin), actualisé en continu
   visitor: { n: number | null; total: number | null } | null; // compteur de visiteurs : mon numéro (null si inconnu) et le total
   poolView: number; // index de la poule affichée (une poule par page, flèches précédent/suivant)
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
@@ -2315,7 +2316,7 @@ function consoleAccountHeader(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Aperçu"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["pronostics", "Pronostics"], ["paliers", "Paliers"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Pilotage"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["pronostics", "Pronostics"], ["paliers", "Paliers"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
   // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
   // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
   ["legal", "Pages légales"], ["compte", "Mon compte"],
@@ -2363,6 +2364,158 @@ function organizerStatusBanner(S: State): string {
     <div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">${pending ? "L'équipe Miabe examine ta demande — tu pourras créer des tournois une fois approuvé." : "Contacte l'équipe Miabe si tu penses qu'il s'agit d'une erreur."}</div></div>
   </div>`;
 }
+/* ================= Tableau de bord de pilotage (admin) ================= */
+/** « il y a 12 s », « il y a 3 min »… — recalculé toutes les quelques secondes par l'effet [data-ago] (sans re-rendu). */
+function agoLabel(ts: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ts) / 1000));
+  if (s < 10) return "à l'instant";
+  if (s < 60) return `il y a ${s} s`;
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  if (s < 7 * 86400) return `il y a ${Math.floor(s / 86400)} j`;
+  return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+const dvFmt = (n: number) => Math.round(n).toLocaleString("fr-FR");
+const dvSum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+
+/** Courbe miniature d'une tuile : trait 2 px, léger voile, point final de 8 px cerclé de la couleur du fond (taille fixe, jamais étirée). */
+function dvSpark(values: number[], color: string): string {
+  const W = 200, H = 34, pad = 6;
+  if (values.length < 2) return "";
+  const max = Math.max(...values, 1);
+  const x = (i: number) => pad + (i * (W - 2 * pad)) / (values.length - 1);
+  const y = (v: number) => H - pad - (v / max) * (H - 2 * pad);
+  const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const last = values.length - 1;
+  return `<svg class="dv-spark" width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMid meet" aria-hidden="true">
+    <polygon points="${pad},${H - pad} ${pts.join(" ")} ${x(last).toFixed(1)},${H - pad}" fill="${color}" fill-opacity=".1" />
+    <polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx="${x(last).toFixed(1)}" cy="${y(values[last]).toFixed(1)}" r="4.5" fill="${color}" stroke="var(--surface)" stroke-width="2" />
+  </svg>`;
+}
+
+/** Variation entre deux périodes : flèche + texte (jamais la couleur seule). */
+function dvDelta(cur: number, prev: number): string {
+  if (!cur && !prev) return "";
+  if (!prev) return `<span class="dv-delta up">▲ nouveau</span>`;
+  const pct = Math.round(((cur - prev) / prev) * 100);
+  if (pct === 0) return `<span class="dv-delta flat">= stable</span>`;
+  return `<span class="dv-delta ${pct > 0 ? "up" : "down"}">${pct > 0 ? "▲ +" : "▼ "}${pct} %</span>`;
+}
+
+/** Tuile de chiffre clé : valeur, variation, ligne de contexte et courbe sur 14 jours. */
+function dvTile(o: { label: string; value: string; sub?: string; delta?: string; spark?: number[]; color: string; tab?: string; live?: boolean }): string {
+  return `<div class="dv-tile${o.tab ? " dv-click" : ""}" style="--dv:${o.color}"${o.tab ? ` data-admintab="${o.tab}" role="button" tabindex="0"` : ""}>
+    <div class="dv-tile-top"><span class="dv-tile-label">${o.live ? `<span class="dv-dot"></span>` : ""}${o.label}</span></div>
+    <div class="dv-tile-val">${o.value}</div>
+    <div class="dv-tile-sub">${o.delta || ""}<span>${o.sub || ""}</span></div>
+    ${o.spark ? dvSpark(o.spark, o.color) : ""}
+  </div>`;
+}
+
+/** Plus petit « beau » maximum d'axe au-dessus d'une valeur (4, 5, 10, 20, 25, 50, 100…). */
+function dvNiceMax(v: number): number {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return ([1, 2, 2.5, 5, 10].find((m) => v <= m * p) ?? 10) * p;
+}
+
+/** Graphique en colonnes sur 14 jours : une série, colonnes fines à bout arrondi, aujourd'hui en plein, infobulle au survol. */
+function dvChart(o: { title: string; unit: string; values: number[]; days: string[]; color: string; money?: boolean }): string {
+  const max = dvNiceMax(Math.max(...o.values, 0));
+  const fmtV = (v: number) => (o.money ? `${dvFmt(v)} F` : dvFmt(v));
+  const dayLabel = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const total = dvSum(o.values);
+  const cols = o.values.map((v, i) => `<div class="dv-col" tabindex="0" data-tip="${escAttr(dayLabel(o.days[i]))} · ${escAttr(fmtV(v))} ${escAttr(o.unit)}"><i class="dv-bar" style="height:${v ? Math.max(3, (v / max) * 100) : 0}%"></i></div>`).join("");
+  const xs = o.days.map((d, i) => `<span>${i % 2 === (o.days.length - 1) % 2 ? Number(d.slice(8)) : ""}</span>`).join("");
+  const table = `<table class="sr-only"><caption>${escHtml(o.title)}</caption><thead><tr><th>Jour</th><th>${escHtml(o.unit)}</th></tr></thead><tbody>${o.values.map((v, i) => `<tr><td>${o.days[i]}</td><td>${v}</td></tr>`).join("")}</tbody></table>`;
+  return `<div class="dv-card" style="--dv:${o.color}">
+    <div class="dv-card-head"><h3>${escHtml(o.title)}</h3><span class="dv-muted">${fmtV(total)} sur 14 j</span></div>
+    <div class="dv-chart" role="img" aria-label="${escAttr(o.title)}, 14 derniers jours, total ${escAttr(fmtV(total))}">
+      <div class="dv-ygrid"><span style="bottom:100%"><em>${o.money ? dvFmt(max) : dvFmt(max)}</em></span><span style="bottom:50%"><em>${dvFmt(max / 2)}</em></span><span style="bottom:0"><em>0</em></span></div>
+      <div class="dv-cols">${cols}</div>
+      <div class="dv-xaxis">${xs}</div>
+    </div>${table}
+  </div>`;
+}
+
+const DV_ACT_ICON: Record<string, string> = { user: I.user, registration: I.crown, order: I.cart, credits: I.bolt, tournament: I.flame, result: I.medal };
+
+/** Tableau de bord de pilotage de l'admin : remplace l'ancien « Aperçu ». Données temps réel (S.dash, actualisé toutes les 15 s). */
+function adminDashboard(S: State): string {
+  const dash = S.dash;
+  const d = dash?.data;
+  const head = (right: string) => `<div class="dv-top"><div><h2 class="dv-title">Pilotage</h2><p class="dv-muted" style="margin:4px 0 0">Ce qui se passe sur le site, en direct.</p></div>${right}</div>`;
+  if (!d) {
+    return `<div class="dv-wrap" aria-busy="true">${head(`<div class="dv-live"><span class="dv-dot"></span>${dash?.err ? "Données indisponibles — nouvelle tentative…" : "Chargement…"}</div>`)}
+      <div class="dv-kpis">${Array.from({ length: 6 }, () => `<div class="skel" style="height:112px;border-radius:14px"></div>`).join("")}</div>
+      <div class="dv-two"><div class="skel" style="height:260px;border-radius:14px"></div><div class="skel" style="height:260px;border-radius:14px"></div></div>
+    </div>`;
+  }
+  const sr = d.series;
+  const last7 = (a: number[]) => dvSum(a.slice(-7)), prev7 = (a: number[]) => dvSum(a.slice(-14, -7));
+  const regs7 = last7(sr.registrations), signups7 = last7(sr.signups), rev7 = last7(sr.revenue);
+  const todo: { tone: string; icon: string; text: string; tab: string }[] = [];
+  const t = d.todo;
+  if (t.pendingRegistrations) todo.push({ tone: "warn", icon: I.warn, text: `${t.pendingRegistrations} paiement${t.pendingRegistrations > 1 ? "s" : ""} d'inscription à confirmer`, tab: "paiements" });
+  if (t.pendingOrders) todo.push({ tone: "warn", icon: I.cart, text: `${t.pendingOrders} commande${t.pendingOrders > 1 ? "s" : ""} à traiter`, tab: "commandes" });
+  if (t.organizersPending) todo.push({ tone: "warn", icon: I.user, text: `${t.organizersPending} organisateur${t.organizersPending > 1 ? "s" : ""} à valider`, tab: "organisateurs" });
+  if (t.outOfStock) todo.push({ tone: "bad", icon: I.warn, text: `${t.outOfStock} produit${t.outOfStock > 1 ? "s" : ""} en rupture de stock`, tab: "produits" });
+  if (t.lowStock) todo.push({ tone: "warn", icon: I.warn, text: `${t.lowStock} produit${t.lowStock > 1 ? "s" : ""} bientôt épuisé${t.lowStock > 1 ? "s" : ""} (3 en stock ou moins)`, tab: "produits" });
+  if (d.events.draft) todo.push({ tone: "info", icon: I.crown, text: `${d.events.draft} événement${d.events.draft > 1 ? "s" : ""} en brouillon, non visible${d.events.draft > 1 ? "s" : ""} du public`, tab: "events" });
+  if (d.sessionSecretConfigured === false) todo.push({ tone: "bad", icon: I.warn, text: "Sessions instables : la variable JWT_SECRET n'est pas configurée sur l'API (les membres sont déconnectés à chaque redémarrage)", tab: "" });
+  const todoRows = todo.length
+    ? todo.map((x) => `<div class="dv-row${x.tab ? " dv-click" : ""} dv-tone-${x.tone}"${x.tab ? ` data-admintab="${x.tab}" role="button" tabindex="0"` : ""}><span class="dv-ico">${ic(x.icon, 15)}</span><span class="dv-row-main">${escHtml(x.text)}</span>${x.tab ? `<span class="dv-go">${ic(I.arrow, 14)}</span>` : ""}</div>`).join("")
+    : `<div class="dv-empty"><span class="dv-ico dv-tone-good">${ic(I.crown, 15)}</span>Tout est à jour : rien à traiter.</div>`;
+
+  const phaseLabel = (p: string) => (p === "finals" ? "Phase finale" : "Poules");
+  const liveRows = d.live.length
+    ? d.live.map((l: Detail) => `<div class="dv-row dv-click" data-open="${escAttr(l.id)}" role="button" tabindex="0">
+        <span class="dv-dot"></span>
+        <span class="dv-row-main"><b>${escHtml(l.name)}</b><span class="dv-muted"> · ${escHtml(l.game || "—")} · ${phaseLabel(l.phase)}</span></span>
+        <span class="dv-muted dv-nowrap">${l.players} joueurs · ${l.played} match${l.played > 1 ? "s" : ""}${l.lastTs ? ` · <span data-ago="${l.lastTs}">${agoLabel(l.lastTs, d.now)}</span>` : ""}</span>
+      </div>`).join("")
+    : `<div class="dv-empty">Aucun tournoi en direct pour le moment.</div>`;
+
+  const acts = (d.activity as Detail[]).slice(0, 14);
+  const actRows = acts.length
+    ? acts.map((a) => `<div class="dv-act dv-tone-${a.tone}"><span class="dv-ico">${ic(DV_ACT_ICON[a.type] || I.bolt, 15)}</span>
+        <div class="dv-row-main"><div class="dv-act-title">${escHtml(a.title)}</div>${a.detail ? `<div class="dv-muted">${escHtml(a.detail)}</div>` : ""}</div>
+        <span class="dv-muted dv-nowrap" data-ago="${a.ts}">${agoLabel(a.ts, d.now)}</span></div>`).join("")
+    : `<div class="dv-empty">Aucune activité récente.</div>`;
+
+  const tv = d.totals;
+  const refreshing = !!dash?.busy;
+  return `<div class="dv-wrap">
+    ${head(`<div class="dv-live"><span class="dv-dot"></span><span>En direct · mis à jour <b data-ago="${dash?.at || d.now}">${agoLabel(dash?.at || d.now)}</b></span>${dash?.err ? `<span class="dv-warn">connexion instable</span>` : ""}<button data-act="dashrefresh" class="dv-btn" ${refreshing ? "disabled" : ""}>${refreshing ? "…" : "Actualiser"}</button></div>`)}
+    <div class="dv-kpis">
+      ${dvTile({ label: "En ligne maintenant", value: dvFmt(d.online), sub: "visiteurs actifs (2 dernières min)", color: "#22D3EE", live: true })}
+      ${dvTile({ label: "Visiteurs aujourd'hui", value: dvFmt(d.visitors.today), sub: `hier : ${dvFmt(d.visitors.yesterday)} · total ${dvFmt(d.visitors.total)}`, delta: dvDelta(d.visitors.today, d.visitors.yesterday), spark: sr.visitors, color: "#22D3EE" })}
+      ${dvTile({ label: "Inscriptions · 7 j", value: dvFmt(regs7), sub: `${dvFmt(tv.registrations)} inscription${tv.registrations > 1 ? "s" : ""} au total`, delta: dvDelta(regs7, prev7(sr.registrations)), spark: sr.registrations, color: "#7C82FF", tab: "paiements" })}
+      ${dvTile({ label: "Chiffre d'affaires · 7 j", value: `${dvFmt(rev7)} F`, sub: `${dvFmt(tv.revenue)} F au total`, delta: dvDelta(rev7, prev7(sr.revenue)), spark: sr.revenue, color: "#34D399", tab: "commandes" })}
+      ${dvTile({ label: "Nouveaux comptes · 7 j", value: dvFmt(signups7), sub: `${dvFmt(tv.users)} compte${tv.users > 1 ? "s" : ""} au total`, delta: dvDelta(signups7, prev7(sr.signups)), spark: sr.signups, color: "#F43F7E", tab: "users" })}
+      ${dvTile({ label: "Tournois en direct", value: dvFmt(d.tournaments.live), sub: `${dvFmt(d.tournaments.draft)} à venir · ${dvFmt(d.tournaments.finished)} terminé${d.tournaments.finished > 1 ? "s" : ""}`, color: "#FBBF24", tab: "events" })}
+    </div>
+    <div class="dv-two">
+      <div class="dv-stack">
+        ${dvChart({ title: "Visiteurs par jour", unit: "visiteurs", values: sr.visitors, days: sr.days, color: "#22D3EE" })}
+        <div class="dv-pair">
+          ${dvChart({ title: "Inscriptions", unit: "inscriptions", values: sr.registrations, days: sr.days, color: "#7C82FF" })}
+          ${dvChart({ title: "Chiffre d'affaires", unit: "", values: sr.revenue, days: sr.days, color: "#34D399", money: true })}
+        </div>
+      </div>
+      <div class="dv-card dv-feed">
+        <div class="dv-card-head"><h3>Activité en direct</h3><span class="dv-muted">${acts.length ? `${acts.length} dernier${acts.length > 1 ? "s" : ""} événement${acts.length > 1 ? "s" : ""}` : ""}</span></div>
+        <div class="dv-list">${actRows}</div>
+      </div>
+    </div>
+    <div class="dv-two dv-two-even">
+      <div class="dv-card"><div class="dv-card-head"><h3>À traiter</h3>${todo.length ? `<span class="dv-badge">${todo.length}</span>` : ""}</div><div class="dv-list">${todoRows}</div></div>
+      <div class="dv-card"><div class="dv-card-head"><h3>Tournois en direct</h3>${d.live.length ? `<span class="dv-badge">${d.live.length}</span>` : ""}</div><div class="dv-list">${liveRows}</div></div>
+    </div>
+  </div>`;
+}
+
 function consoleOverview(S: State) {
   const isAdmin = S.user?.role === "ADMIN";
   const tourns: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
@@ -2506,7 +2659,7 @@ function consolePage(S: State): string {
       S.adminTab === "paiements" ? adminPayments(S) :
       S.adminTab === "commandes" ? adminOrders(a) :
       S.adminTab === "legal" ? adminLegal(S) :
-      consoleOverview(S);
+      adminDashboard(S);
   } else {
     body = S.adminTab === "compte" ? accountBody()
       : S.adminTab === "credits" ? organizerCredits(S)
@@ -5956,7 +6109,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, visitor: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, visitor: null, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -6933,6 +7086,19 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       }
     } catch { /* ignore */ }
   }
+  /** Tableau de bord de pilotage (admin) : une seule requête qui rassemble chiffres clés, courbes, activité et tournois en direct. */
+  async function loadDashboard() {
+    if (!token()) return;
+    setS((s) => ({ ...s, dash: { data: s.dash?.data ?? null, at: s.dash?.at ?? 0, err: false, busy: true } }));
+    try {
+      const r = await fetch(`${API}/api/admin/dashboard`, { headers: authHeaders() });
+      if (!r.ok) throw new Error(String(r.status));
+      const data = await r.json();
+      setS((s) => ({ ...s, dash: { data, at: Date.now(), err: false, busy: false } }));
+    } catch {
+      setS((s) => ({ ...s, dash: { data: s.dash?.data ?? null, at: s.dash?.at ?? 0, err: true, busy: false } }));
+    }
+  }
   /** Envoie le fichier choisi dans <input type=file> et renvoie son URL (/uploads/…). */
   /** Envoie UN fichier déjà obtenu (utile pour les sélections multiples, où l'on ne peut pas se
    * contenter du premier fichier du champ). Lève une erreur explicite, sans alerte. */
@@ -7604,6 +7770,43 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (isNew && n) showToast(`Bonjour 👋 Vous êtes le visiteur n° ${n.toLocaleString("fr-FR")} !`);
       } catch { /* compteur indisponible : sans effet sur le reste du site */ }
     })();
+  }, []);
+
+  // Tableau de bord de pilotage : actualisé toutes les 15 s tant que l'admin le regarde (onglet visible), et dès qu'il revient sur l'onglet.
+  useEffect(() => {
+    if (!(S.page === "profil" && S.adminTab === "apercu" && S.user?.role === "ADMIN")) return;
+    const tick = () => { if (document.visibilityState === "visible") void loadDashboard(); };
+    tick();
+    const id = setInterval(tick, 15000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.adminTab, S.user?.role]);
+
+  // « il y a 12 s » : mis à jour directement dans la page toutes les 5 s, sans re-rendu.
+  useEffect(() => {
+    const tick = () => document.querySelectorAll<HTMLElement>("[data-ago]").forEach((el) => { const ts = Number(el.dataset.ago); if (ts) el.textContent = agoLabel(ts); });
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Signal de présence : « ce navigateur est ouvert sur le site » (identifiant de session aléatoire, aucune donnée personnelle),
+  // toutes les 45 s tant que l'onglet est visible — alimente « En ligne maintenant » du tableau de bord admin.
+  useEffect(() => {
+    let sid = "";
+    try { sid = sessionStorage.getItem("vlome_sid") || ""; } catch { /* ignore */ }
+    if (!sid) {
+      sid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+      try { sessionStorage.setItem("vlome_sid", sid); } catch { /* ignore */ }
+    }
+    const ping = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch(`${API}/api/visits/ping`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid }), keepalive: true }).catch(() => { /* signal perdu : sans importance */ });
+    };
+    ping();
+    const id = setInterval(ping, 45000);
+    document.addEventListener("visibilitychange", ping);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", ping); };
   }, []);
 
   // Le bouton précédent/suivant du navigateur (ou l'édition manuelle du hash) rouvre la bonne page.
@@ -8902,6 +9105,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
     else if (d.act === "scroll-reg") { document.getElementById("reg-rail")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    else if (d.act === "dashrefresh") { void loadDashboard(); }
     else if (d.act === "totop") { window.scrollTo({ top: 0, behavior: "smooth" }); }
     else if (d.act === "reload") { window.location.reload(); }
     else if (d.act === "tstatus") { setS((s) => ({ ...s, tournStatus: d.v || "Tous", fmt: d.v === "Tous" ? "Tous" : s.fmt, q: d.v === "Tous" ? "" : s.q })); }

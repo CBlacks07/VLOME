@@ -25,6 +25,7 @@ const PUBLIC_ALLOWLIST = new Set<string>([
   'auth/reset-password',
   'payments/fedapay/webhook', // notification serveur FedaPay : jamais crue sur parole, revérifiée auprès de FedaPay dans le handler
   'visits/', // compteur de visiteurs : incrémente un simple nombre (aucune donnée personnelle), public par nature — les visiteurs ne sont pas connectés ; robots filtrés dans VisitsService
+  'visits/ping', // signe de vie anonyme d'un navigateur (identifiant aléatoire + heure) pour « en ligne maintenant » : public par nature, robots filtrés dans VisitsService
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {

@@ -51,3 +51,46 @@ describe('VisitsService', () => {
     expect(await makeService(7).svc.total()).toBe(7);
   });
 });
+
+describe('VisitsService — présence et jours', () => {
+  const browser = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
+  function svcWith(presence: Record<string, number> | null, days: Record<string, number> | null) {
+    const prisma = {
+      setting: { findUnique: jest.fn().mockImplementation(async ({ where }: { where: { key: string } }) => {
+        if (where.key === 'presence') return presence ? { key: 'presence', value: presence } : null;
+        return days ? { key: 'visitors', value: { count: 3, days } } : null;
+      }) },
+      $queryRaw: jest.fn().mockResolvedValue([{ online: 4 }]),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { svc: new VisitsService(prisma as any), prisma };
+  }
+
+  it('online() ne compte que les signes de vie récents', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const { svc } = svcWith({ a: now - 10, b: now - 100, c: now - 400, d: now - 99999 }, null);
+    expect(await svc.online()).toBe(2);
+    expect(await svcWith(null, null).svc.online()).toBe(0);
+  });
+
+  it('days() renvoie le détail par jour, ou {} sans données', async () => {
+    expect(await svcWith(null, { '2026-11-20': 7 }).svc.days()).toEqual({ '2026-11-20': 7 });
+    expect(await svcWith(null, null).svc.days()).toEqual({});
+  });
+
+  it('ping() : identifiant invalide, robot ou sans User-Agent => rien n\'est écrit', async () => {
+    const { svc, prisma } = svcWith({}, null);
+    await svc.ping('x', browser);                 // trop court
+    await svc.ping('bad id with spaces!!', browser);
+    await svc.ping('abcdefgh1234', 'Googlebot/2.1');
+    await svc.ping('abcdefgh1234', undefined);
+    await svc.ping(undefined, browser);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('ping() : un identifiant valide enregistre la présence et renvoie le nombre en ligne', async () => {
+    const { svc, prisma } = svcWith({}, null);
+    expect(await svc.ping('abcdefgh1234', browser)).toEqual({ online: 4 });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+});

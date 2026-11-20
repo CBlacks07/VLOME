@@ -8510,6 +8510,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!root) return;
     const onIn = (e: Event) => {
       const el = e.target as HTMLInputElement;
+      // « Qualifiés par poule » existe à deux endroits (panneau de configuration et répartition des poules) : toujours la même valeur.
+      if (el && (el.id === "cfg-qualify" || el.id.startsWith("pq-input-"))) {
+        const twins = el.id === "cfg-qualify" ? Array.from(root.querySelectorAll<HTMLInputElement>('[id^="pq-input-"]')) : [document.getElementById("cfg-qualify") as HTMLInputElement | null];
+        twins.forEach((o) => { if (o && o !== el) o.value = el.value; });
+        return;
+      }
       if (el && el.id === "cfg-game") {
         const box = document.getElementById("cfg-game-suggestions");
         if (box) box.innerHTML = cfgGameChips({ games: S.games } as State, el.value);

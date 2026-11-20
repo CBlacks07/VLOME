@@ -2355,7 +2355,7 @@ function profileEditor(S: State) {
   const esc = (v: string | null | undefined) => (v || "").replace(/"/g, "&quot;");
   const nameLocked = !!me.nextNameChangeAt;
   const nameHelp = nameLocked
-    ? `<span style="display:block;font-size:11px;color:#FBBF24;margin-top:5px">${ic(I.warn, 11)} Modifiable à nouveau le ${new Date(me.nextNameChangeAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</span>`
+    ? `<span style="display:flex;align-items:center;gap:7px;font-size:11px;color:#FBBF24;margin-top:5px">${ic(I.warn, 11)} Modifiable à nouveau le ${new Date(me.nextNameChangeAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}</span>`
     : `<span style="display:block;font-size:11px;color:var(--text-faint);margin-top:5px">Une fois par mois maximum</span>`;
   return `<div style="border:1px solid rgba(34,211,238,.3);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-bottom:16px">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Mon profil</div>
@@ -3585,7 +3585,7 @@ function adminOrders(a: NonNullable<State["admin"]>, showArchived = false) {
     const online = ONLINE_PAY.includes(o.paymentMethod);
     // Statuts figés : encaissée → seule la livraison reste possible ; livrée et annulée ne bougent plus (voir AdminService.setOrderStatus).
     const nextBtn = (s: string) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55");
-    const locked = `<span style="font-size:11.5px;color:var(--text-faint)">${ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 12)}verrouillée</span>`;
+    const locked = `<span style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-faint)">${ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 12)}verrouillée</span>`;
     const stBtns = o.status === "paid" ? nextBtn("delivered")
       : o.status === "pending" ? (online ? `<span style="font-size:11.5px;color:var(--text-faint)">en attente du paiement…</span>` : nextBtn("paid") + nextBtn("cancelled"))
       : locked;
@@ -3751,7 +3751,7 @@ function doubleElimFinalStandings(t: Detail, pad = "8px 28px 0"): string {
 function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   const f = t.finals;
   const champ = f.champion
-    ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(f.champion)}</div></div>`
+    ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(f.champion)}</div></div>`
     : "";
   const games: Detail[] = f.games;
   const nextGame = games.find((g: Detail) => !g.played) || null;
@@ -4704,7 +4704,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
   const poolsGrid = poolsPager(S, t, manage, t.pools || []);
 
   const champ = t.finals?.champion
-    ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin:18px 28px 0"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
+    ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin:18px 28px 0"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
     : "";
 
   if (t.finals && (t.finals.format === "single" || t.finals.format === "double")) {
@@ -5339,7 +5339,7 @@ function pTournoi(S: State) {
     finalsHtml = `<div class="rise" style="margin-top:26px">${battleRoyaleCenter(S, t, manage)}</div>`;
   } else if (t.finals) {
     const champ = t.finals.champion
-      ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
+      ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
       : "";
     let body: string;
     let fmtLabel = "";
@@ -5561,7 +5561,7 @@ function playerDetailModal(S: State) {
       ${infoRow("Membre de la base depuis", new Date(p.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }))}
     </div>`;
     if (!p.linked || !acc) {
-      return roster + `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:10px 0">${ic(I.warn, 13)} Pas de compte relié — ajouté manuellement, ou pas encore inscrit sur le site.</div>`;
+      return roster + `<div style="display:flex;align-items:center;gap:7px;justify-content:center;color:var(--text-faint);font-size:13px;text-align:center;padding:10px 0">${ic(I.warn, 13)} Pas de compte relié — ajouté manuellement, ou pas encore inscrit sur le site.</div>`;
     }
     const rc = ROLE_COLOR[acc.role] || "#22D3EE";
     const accountCard = `<div style="border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:16px">

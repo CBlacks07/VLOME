@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { DashboardService } from './dashboard.service';
-import { NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, ReviewOrganizerDto, SetRoleDto } from './admin.dto';
+import { ArchiveOrderDto, NewsDto, NewsUpdateDto, OrderStatusDto, ProductDto, ProductUpdateDto, ReviewOrganizerDto, SetRoleDto } from './admin.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -179,6 +179,16 @@ export class AdminController {
     // Statuts alignés sur la réalité des paiements (payé / refusé / abandonné) avant d'afficher la liste.
     await this.onlinePayments.reconcile().catch(() => undefined);
     return this.admin.recentOrders();
+  }
+
+  @Patch('orders/:id/archive')
+  archiveOrder(@Param('id') id: string, @Body() dto: ArchiveOrderDto) {
+    return this.admin.setOrderArchived(id, dto.archived);
+  }
+
+  @Delete('orders/:id')
+  deleteOrder(@Param('id') id: string) {
+    return this.admin.deleteOrder(id);
   }
 
   @Patch('orders/:id/status')

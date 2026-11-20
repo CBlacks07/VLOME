@@ -1,5 +1,10 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
+export class ArchiveOrderDto {
+  @IsBoolean()
+  archived!: boolean;
+}
+
 export class SetRoleDto {
   @IsIn(['PLAYER', 'ORGANIZER', 'ADMIN', 'ASSOCIATION'])
   role!: string;

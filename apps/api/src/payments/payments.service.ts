@@ -6,7 +6,7 @@ import type { JwtUser } from '../common/jwt-auth.guard';
 import type { CheckoutDto, VerifyDto } from './payments.dto';
 
 type Kind = 'registration' | 'order' | 'credit';
-type Provider = 'fedapay' | 'kkiapay';
+type Provider = 'fedapay';
 interface Target { amountXof: number; description: string; userId: string | null }
 
 @Injectable()
@@ -22,10 +22,6 @@ export class PaymentsService {
   /* ---------- configuration (clés dans l'environnement, jamais dans le code) ---------- */
   private get fedaKey() { return process.env.FEDAPAY_SECRET_KEY?.trim() || ''; }
   private get fedaBase() { return process.env.FEDAPAY_ENV === 'sandbox' ? 'https://sandbox-api.fedapay.com/v1' : 'https://api.fedapay.com/v1'; }
-  private get kkiaPublic() { return process.env.KKIAPAY_PUBLIC_KEY?.trim() || ''; }
-  private get kkiaPrivate() { return process.env.KKIAPAY_PRIVATE_KEY?.trim() || ''; }
-  private get kkiaSecret() { return process.env.KKIAPAY_SECRET_KEY?.trim() || ''; }
-  private get kkiaSandbox() { return process.env.KKIAPAY_SANDBOX === 'true'; }
   /** Plafond par transaction imposé par le compte FedaPay (XOF) — 0 = inconnu. Se relève après vérification (KYC) du compte chez FedaPay. */
   private get fedaMax() { const n = Number(process.env.FEDAPAY_MAX_XOF); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; }
   private limitMessage(max: number) {
@@ -51,13 +47,12 @@ export class PaymentsService {
     return {
       fedapay: !!this.fedaKey,
       fedapayMaxXof: this.fedaMax || null,
-      kkiapay: this.kkiaPublic && this.kkiaSecret ? { publicKey: this.kkiaPublic, sandbox: this.kkiaSandbox } : null,
     };
   }
 
   /* ---------- élément à payer (montant relu en base) ---------- */
   private async target(kind: Kind, refId: string, user: JwtUser, provider: Provider): Promise<Target> {
-    const wanted = provider === 'fedapay' ? 'FedaPay' : 'KkiaPay';
+    const wanted = provider === 'fedapay' ? 'FedaPay' : '';
     if (kind === 'registration') {
       const reg = await this.prisma.registration.findUnique({ where: { id: refId }, include: { tournament: { select: { name: true } } } });
       if (!reg) throw new NotFoundException('Inscription introuvable.');
@@ -111,15 +106,6 @@ export class PaymentsService {
     const target = await this.target(dto.kind, dto.refId, user, dto.provider);
     if (target.amountXof <= 0) throw new BadRequestException('Montant nul : rien à payer en ligne.');
 
-    if (dto.provider === 'kkiapay') {
-      if (!(this.kkiaPublic && this.kkiaSecret)) throw new ServiceUnavailableException("KkiaPay n'est pas configuré.");
-      const pay = await this.prisma.onlinePayment.create({
-        data: { provider: 'kkiapay', kind: dto.kind, refId: dto.refId, userId: user.sub, amountXof: target.amountXof },
-      });
-      // Widget côté navigateur : pas de redirection, la transaction est vérifiée au retour du widget (verify).
-      return { provider: 'kkiapay', paymentId: pay.id, amountXof: target.amountXof, publicKey: this.kkiaPublic, sandbox: this.kkiaSandbox, description: target.description };
-    }
-
     if (!this.fedaKey) throw new ServiceUnavailableException("FedaPay n'est pas configuré.");
     if (this.fedaMax && target.amountXof > this.fedaMax) throw new BadRequestException(this.limitMessage(this.fedaMax));
     const u = await this.prisma.user.findUnique({ where: { id: user.sub } });
@@ -155,24 +141,15 @@ export class PaymentsService {
     }
     if (!target) return { paid: true, already: true };
 
-    let pay = await this.prisma.onlinePayment.findFirst({
+    const pay = await this.prisma.onlinePayment.findFirst({
       where: { provider: dto.provider, kind: dto.kind, refId: dto.refId, userId: user.sub, status: 'pending' },
       orderBy: { createdAt: 'desc' },
     });
     if (!pay) throw new NotFoundException('Aucun paiement en cours pour cet élément.');
 
-    let ok = false;
-    if (dto.provider === 'fedapay') {
-      // L'identifiant enregistré à la création fait foi ; celui de l'URL ne peut que le confirmer.
-      if (dto.transactionId && pay.providerTxId && dto.transactionId !== pay.providerTxId) throw new BadRequestException('Transaction inattendue.');
-      ok = await this.fedaApproved(pay.providerTxId!, pay.amountXof);
-    } else {
-      if (!dto.transactionId) throw new BadRequestException('Identifiant de transaction manquant.');
-      const used = await this.prisma.onlinePayment.findUnique({ where: { providerTxId: dto.transactionId } });
-      if (used && used.id !== pay.id) throw new ConflictException('Cette transaction a déjà servi.');
-      ok = await this.kkiaSuccess(dto.transactionId, pay.amountXof);
-      if (ok) pay = await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { providerTxId: dto.transactionId } });
-    }
+    // L'identifiant enregistré à la création fait foi ; celui de l'URL ne peut que le confirmer.
+    if (dto.transactionId && pay.providerTxId && dto.transactionId !== pay.providerTxId) throw new BadRequestException('Transaction inattendue.');
+    const ok = await this.fedaApproved(pay.providerTxId!, pay.amountXof);
     if (!ok) return { paid: false };
     await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { status: 'paid' } });
     const fin = await this.finalize(dto.kind, dto.refId);
@@ -268,7 +245,7 @@ export class PaymentsService {
       }));
     }
     const abandoned = await this.prisma.order.findMany({
-      where: { status: 'pending', paymentMethod: { in: ['FedaPay', 'KkiaPay'] }, createdAt: { lt: new Date(Date.now() - 24 * 3600 * 1000) } },
+      where: { status: 'pending', paymentMethod: { in: ['FedaPay', 'KkiaPay'] } /* KkiaPay : anciennes commandes, plus proposé */, createdAt: { lt: new Date(Date.now() - 24 * 3600 * 1000) } },
       select: { id: true }, take: 50,
     });
     for (const o of abandoned) {
@@ -279,16 +256,5 @@ export class PaymentsService {
     return out;
   }
 
-  private async kkiaSuccess(txId: string, expectedXof: number): Promise<boolean> {
-    const base = this.kkiaSandbox ? 'https://api-sandbox.kkiapay.me' : 'https://api.kkiapay.me';
-    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-api-key': this.kkiaPublic, 'x-secret-key': this.kkiaSecret };
-    if (this.kkiaPrivate) headers['x-private-key'] = this.kkiaPrivate;
-    const r = await fetch(`${base}/api/v1/transactions/status`, { method: 'POST', headers, body: JSON.stringify({ transactionId: txId }) });
-    const d: any = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      this.log.warn(`KkiaPay status ${txId} → ${r.status} ${JSON.stringify(d).slice(0, 300)}`);
-      return false;
-    }
-    return d?.status === 'SUCCESS' && Number(d?.amount) >= expectedXof;
-  }
+
 }

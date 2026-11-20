@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -410,6 +410,28 @@ export class AdminService {
       take: 50,
       include: { user: { select: { email: true, displayName: true } } },
     });
+  }
+
+  /** Masque (ou ré-affiche) une commande dans la liste admin. Rien n'est supprimé : elle reste dans les chiffres et l'historique du client. */
+  async setOrderArchived(id: string, archived: boolean) {
+    const o = await this.prisma.order.findUnique({ where: { id }, select: { id: true } });
+    if (!o) throw new NotFoundException('Commande introuvable');
+    return this.prisma.order.update({ where: { id }, data: { archived } });
+  }
+
+  /** Supprime définitivement une commande qui n'a jamais abouti (annulée ou jamais payée). Une commande payée/livrée est une pièce
+   *  comptable : elle ne se supprime pas, on l'archive. */
+  async deleteOrder(id: string) {
+    const o = await this.prisma.order.findUnique({ where: { id } });
+    if (!o) throw new NotFoundException('Commande introuvable');
+    if (o.status === 'paid' || o.status === 'delivered') {
+      throw new ConflictException('Une commande payée ou livrée ne peut pas être supprimée : archive-la pour la masquer de la liste.');
+    }
+    await this.prisma.$transaction([
+      this.prisma.onlinePayment.deleteMany({ where: { kind: 'order', refId: id } }),
+      this.prisma.order.delete({ where: { id } }),
+    ]);
+    return { id, deleted: true };
   }
 
   async setOrderStatus(id: string, status: string) {

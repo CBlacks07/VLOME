@@ -137,7 +137,7 @@ export class DashboardService {
       this.prisma.tournament.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.event.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.registration.count({ where: { paymentStatus: 'pending' } }),
-      this.prisma.order.count({ where: { status: 'pending' } }),
+      this.prisma.order.count({ where: { status: 'pending', archived: false } }),
       this.prisma.user.count({ where: { role: 'ORGANIZER', organizerStatus: 'PENDING' } }),
       this.prisma.product.count({ where: { stock: { gt: 0, lte: 3 } } }),
       this.prisma.product.count({ where: { stock: { lte: 0 } } }),

@@ -1,7 +1,7 @@
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CheckoutDto {
-  @IsIn(['fedapay', 'kkiapay']) provider!: 'fedapay' | 'kkiapay';
+  @IsIn(['fedapay']) provider!: 'fedapay';
   @IsIn(['registration', 'order', 'credit']) kind!: 'registration' | 'order' | 'credit';
   @IsString() @MaxLength(60) refId!: string;
   // Origine du site d'où l'utilisateur paie (ex. https://www.exemple.com). FedaPay le ramène exactement là :
@@ -10,10 +10,10 @@ export class CheckoutDto {
 }
 
 export class VerifyDto {
-  @IsIn(['fedapay', 'kkiapay']) provider!: 'fedapay' | 'kkiapay';
+  @IsIn(['fedapay']) provider!: 'fedapay';
   @IsIn(['registration', 'order', 'credit']) kind!: 'registration' | 'order' | 'credit';
   @IsString() @MaxLength(60) refId!: string;
-  // FedaPay : renvoyé dans l'URL de retour ; KkiaPay : renvoyé par le widget. Facultatif pour FedaPay
+  // FedaPay : renvoyé dans l'URL de retour. Facultatif
   // (l'identifiant enregistré à la création de la transaction fait foi).
   @IsOptional() @IsString() @MaxLength(80) transactionId?: string;
 }

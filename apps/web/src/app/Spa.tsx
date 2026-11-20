@@ -117,7 +117,7 @@ type State = {
   creditsMe: { balance: number; freeTournamentsUsed: number; freeTournaments: number; priceXof: number; history: Detail[]; purchases: Detail[] } | null;
   creditBuyQty: number; creditBuyPay: string; creditBuyBusy: boolean;
   // Passerelles de paiement en ligne activées côté API (GET /api/payments/config) — null tant que non chargé.
-  payConfig: { fedapay: boolean; fedapayMaxXof?: number | null; kkiapay: { publicKey: string; sandbox: boolean } | null } | null;
+  payConfig: { fedapay: boolean; fedapayMaxXof?: number | null } | null;
   // Fenêtre « Choisis ton moyen de paiement » ouverte depuis l'inscription, le panier ou l'achat de crédits.
   payModal: "reg" | "cart" | "credit" | null;
   // Événements : liste publique, page ouverte, et gestion (console organisateur/admin).
@@ -203,6 +203,7 @@ type State = {
   // Associations : clubs validés (liste d'inscription), espace « Mon club » d'un compte association, associations à valider (admin).
   publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; adminAssocs: Detail[] | null; adminUnowned: Detail[] | null;
   // Modale « Rattacher un compte association » (admin) : formulaire puis identifiants créés.
+  ordersArchived: boolean; // liste des commandes (admin) : affiche les commandes archivées plutôt que les actives
   usersFilter: string; roleMenu: string | null; // liste des comptes (admin) : filtre par rôle et menu de changement de rôle ouvert
   mailStatus: Detail | null; mailTest: { busy: boolean; ok: boolean; msg: string } | null;
   attachModal: { clubId: string; name: string; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
@@ -229,14 +230,13 @@ const PARTNERS = ["Gaming Arena Lomé", "Yas Togo", "Moov Africa", "Université 
 
 const PAYMENTS = ["Flooz", "Mixx by Yas", "Visa", "Mastercard", "PayPal", "Espèces"];
 /** Moyens de paiement en ligne (passerelles) — le libellé est aussi la valeur enregistrée dans paymentMethod côté API. */
-const ONLINE_PAY = ["FedaPay", "KkiaPay"];
+const ONLINE_PAY = ["FedaPay"];
 /** Moyens proposés à l'utilisateur : paiement en ligne (seulement les passerelles configurées) puis moyens manuels. */
 /** Paiement en ligne possible pour ce montant ? FedaPay plafonne chaque transaction (limite du compte, `fedapayMaxXof`) : au-delà, on propose les autres moyens plutôt que d'échouer à l'étape finale. */
 function onlinePayOn(S: State, amount = 0): boolean {
   const c = S.payConfig;
   if (!c) return false;
-  const feda = c.fedapay && !(c.fedapayMaxXof && amount > c.fedapayMaxXof);
-  return !!(feda || c.kkiapay);
+  return !!(c.fedapay && !(c.fedapayMaxXof && amount > c.fedapayMaxXof));
 }
 /** Fenêtre de partage d'un tournoi ou d'un événement — le lien pointe vers sa page publique (/tournois/<id>
  * ou /evenements/<id>), consultable par n'importe qui sans compte, comme un lien de partage Challonge. */
@@ -294,8 +294,6 @@ function payChoiceModal(S: State): string {
       <span style="flex:none;width:8px;align-self:stretch;border-radius:99px;background:${color}"></span>
       <span style="flex:1;min-width:0"><span style="display:block;font-weight:750;font-size:15px">${title}</span><span style="display:block;font-size:12.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">${sub}</span></span>
       <span style="flex:none;color:#22D3EE;font-weight:800">›</span></button>`;
-  // KkiaPay retiré de la sélection (option désactivée à la demande — l'intégration reste en place,
-  // voir startOnlinePay/verifyOnlinePayment, pour une réactivation future sans tout reconstruire).
   const options = [
     c?.fedapay ? opt("FedaPay", "FedaPay", "Paiement mobile de la sous-région (Mobile Money : Flooz, Mixx by Yas, MTN, Moov…).", "#22D3EE") : "",
     c?.fedapay ? opt("Visa", "Visa · carte bancaire", "Carte Visa ou Mastercard, réglée sur la page sécurisée de FedaPay.", "#34D399") : "",
@@ -309,8 +307,6 @@ function payChoiceModal(S: State): string {
 }
 function payMethods(S: State, amount = 0): string[] {
   const c = S.payConfig;
-  // KkiaPay retiré de la sélection (option désactivée à la demande — l'intégration reste en place,
-  // voir startOnlinePay/verifyOnlinePayment, pour une réactivation future sans tout reconstruire).
   const online = c?.fedapay && !(c.fedapayMaxXof && amount > c.fedapayMaxXof) ? ["FedaPay"] : [];
   return [...online, ...PAYMENTS];
 }
@@ -2880,7 +2876,7 @@ function consolePage(S: State): string {
       S.adminTab === "paliers" ? adminTierPoints(S) :
       S.adminTab === "credits" ? adminCredits(S) :
       S.adminTab === "paiements" ? adminPayments(S) :
-      S.adminTab === "commandes" ? adminOrders(a) :
+      S.adminTab === "commandes" ? adminOrders(a, S.ordersArchived) :
       S.adminTab === "legal" ? adminLegal(S) :
       adminDashboard(S);
   } else if (isAssoc) {
@@ -3570,18 +3566,21 @@ const ORDER_STATUS: Record<string, [string, string]> = {
   pending: ["En attente", "#FBBF24"], paid: ["Payée", "#34D399"], delivered: ["Livrée", "#22D3EE"], cancelled: ["Annulée", "#FB7185"],
 };
 
-function adminOrders(a: NonNullable<State["admin"]>) {
+function adminOrders(a: NonNullable<State["admin"]>, showArchived = false) {
   const orders = a.orders as Detail[];
+  // Les commandes archivées sont masquées de la liste mais comptent toujours dans les chiffres.
+  const archivedCount = orders.filter((o) => o.archived).length;
   const confirmed = orders.filter((o) => o.status === "paid" || o.status === "delivered");
   const revenue = confirmed.reduce((sum, o) => sum + o.totalXof, 0);
-  const pending = orders.filter((o) => o.status === "pending").length;
+  const pending = orders.filter((o) => o.status === "pending" && !o.archived).length;
   const stat = (v: string | number, k: string, color = "var(--text)") => `<div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px"><div style="font-family:'Bebas Neue',sans-serif;font-size:28px;line-height:1;color:${color}">${v}</div><div style="font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-top:6px">${k}</div></div>`;
   const summary = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:18px">
     ${stat(orders.length, "Commandes")}${stat(money(revenue), "Revenu confirmé", "#34D399")}${stat(pending, "En attente", pending > 0 ? "#FBBF24" : "var(--text)")}</div>`;
-  const rows = orders.length ? orders.map((o: Detail) => {
+  const shownOrders = orders.filter((o) => !!o.archived === !!showArchived);
+  const rows = shownOrders.length ? shownOrders.map((o: Detail) => {
     const [sl, sc] = ORDER_STATUS[o.status] || [o.status, "var(--text-muted)"];
     const items = Array.isArray(o.items) ? o.items.map((i: Detail) => i.name).join(", ") : "";
-    // Paiement en ligne (FedaPay / KkiaPay) : « Payée » et « Annulée » viennent du paiement lui-même (réussi, refusé, abandonné) — pas de
+    // Paiement en ligne (FedaPay) : « Payée » et « Annulée » viennent du paiement lui-même (réussi, refusé, abandonné) — pas de
     // bouton manuel qui permettrait de déclarer payé ce qui ne l'est pas. Reste la livraison, qui est bien manuelle.
     const online = ONLINE_PAY.includes(o.paymentMethod);
     const stBtns = online
@@ -3589,14 +3588,21 @@ function adminOrders(a: NonNullable<State["admin"]>) {
         + (o.status === "pending" ? `<span style="font-size:11.5px;color:var(--text-faint)">en attente du paiement…</span>` : "")
       : ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
         .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
+    // Rangement : archiver masque la commande de la liste (elle reste en base et dans les chiffres) ; supprimer n'est possible que pour une
+    // commande qui n'a jamais abouti (annulée ou jamais payée) — une commande payée est une pièce comptable.
+    const tidy = btnSm(`data-ordarchive="${o.id}|${o.archived ? 0 : 1}"`, o.archived ? "Désarchiver" : "Archiver", "var(--text-muted)", "var(--border)")
+      + (o.status === "cancelled" || o.status === "pending" ? btnSm(`data-orddel="${o.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)") : "");
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference} <span style="color:var(--text-faint);font-weight:400;font-size:12px">· ${o.user ? escHtml(o.user.displayName) + " (" + escHtml(o.user.email) + ")" : "invité"}</span></div>
       <div style="font-size:12px;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items || o.paymentMethod || "Aucun article")} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>
       <span style="font-weight:800;color:#22D3EE;white-space:nowrap">${money(o.totalXof)}</span>
       <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${sc};background:${sc}14;border:1px solid ${sc}55;border-radius:99px;padding:4px 10px">${sl}</span>
-      <div style="display:inline-flex;gap:6px">${stBtns}</div></div>`;
-  }).join("") : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">Aucune commande.</div>`;
-  return summary + card(secTitle(`Commandes (${orders.length})`) + scrollBox(rows));
+      <div style="display:inline-flex;gap:6px;flex-wrap:wrap">${stBtns}</div><div style="display:inline-flex;gap:6px;padding-left:10px;border-left:1px solid var(--border)">${tidy}</div></div>`;
+  }).join("") : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">${showArchived ? "Aucune commande archivée." : "Aucune commande."}</div>`;
+  const toggle = archivedCount || showArchived
+    ? `<button data-ordarchtoggle="1" style="font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;font-family:inherit;background:${showArchived ? "rgba(34,211,238,.1)" : "transparent"};border:1px solid ${showArchived ? "#22D3EE" : "var(--border)"};color:${showArchived ? "#22D3EE" : "var(--text-muted)"}">${showArchived ? "← Retour aux commandes" : `Archivées (${archivedCount})`}</button>`
+    : "";
+  return summary + card(`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`${showArchived ? "Commandes archivées" : "Commandes"} (${shownOrders.length})`).replace("margin:0 0 14px", "margin:0")}${toggle}</div>` + scrollBox(rows));
 }
 
 /** Premier match jouable de la phase finale (tous formats confondus) — utilisé par le panneau d'arbitrage et le Mode Show. */
@@ -6520,7 +6526,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, usersFilter: "ALL", roleMenu: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, ordersArchived: false, usersFilter: "ALL", roleMenu: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -7391,7 +7397,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (res.ok) loadRegsPanel(tid);
   }
 
-  /* ---------- Paiement en ligne (FedaPay / KkiaPay) ---------- */
+  /* ---------- Paiement en ligne (FedaPay) ---------- */
   type PayKind = "registration" | "order" | "credit";
   /** Recharge ce qu'un paiement confirmé vient de modifier (profil, inscriptions, crédits, liste des tournois). */
   async function refreshAfterPayment() {
@@ -7399,7 +7405,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     await Promise.all([loadRegIds(), loadCreditsMe(), loadTournaments()]);
   }
   /** Demande au serveur de vérifier la transaction auprès du prestataire : c'est lui qui valide, jamais le navigateur. */
-  async function verifyOnlinePayment(provider: "fedapay" | "kkiapay", kind: PayKind, refId: string, transactionId?: string): Promise<boolean> {
+  async function verifyOnlinePayment(provider: "fedapay", kind: PayKind, refId: string, transactionId?: string): Promise<boolean> {
     try {
       const r = await fetch(`${API}/api/payments/verify`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -7418,27 +7424,17 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       return false;
     } catch { alert("Vérification du paiement impossible pour le moment."); return false; }
   }
-  /** Lance le paiement en ligne d'un élément déjà créé « en attente » : FedaPay redirige vers sa page, KkiaPay ouvre son widget. */
-  async function startOnlinePay(kind: PayKind, refId: string, method: string) {
-    const provider = method === "KkiaPay" ? "kkiapay" : "fedapay";
+  /** Lance le paiement en ligne d'un élément déjà créé « en attente » : redirige vers la page sécurisée de FedaPay. */
+  async function startOnlinePay(kind: PayKind, refId: string, _method?: string) {
     try {
       const r = await fetch(`${API}/api/payments/checkout`, {
         method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ provider, kind, refId, returnOrigin: window.location.origin }),
+        body: JSON.stringify({ provider: "fedapay", kind, refId, returnOrigin: window.location.origin }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { alert(d.message || "Paiement en ligne impossible. Ta demande reste enregistrée, l'équipe peut la confirmer manuellement."); return; }
-      if (d.provider === "fedapay") { window.location.href = d.url; return; }
-      await new Promise<void>((resolve, reject) => {
-        if ((window as unknown as Detail).openKkiapayWidget) { resolve(); return; }
-        const sc = document.createElement("script");
-        sc.src = "https://cdn.kkiapay.me/k.js"; sc.onload = () => resolve(); sc.onerror = () => reject(new Error("kkiapay"));
-        document.head.appendChild(sc);
-      });
-      const w = window as unknown as Detail;
-      w.removeKkiapayListener?.("success");
-      w.addKkiapayListener("success", (resp: { transactionId?: string }) => { void verifyOnlinePayment("kkiapay", kind, refId, resp?.transactionId); });
-      w.openKkiapayWidget({ amount: d.amountXof, api_key: d.publicKey, sandbox: !!d.sandbox, name: S.user?.displayName || "", email: S.user?.email || "", data: d.paymentId });
+      if (d.url) { window.location.href = d.url; return; }
+      alert("Paiement en ligne impossible. Ta demande reste enregistrée, l'équipe peut la confirmer manuellement.");
     } catch { alert("Impossible d'ouvrir le paiement en ligne. Ta demande reste enregistrée, l'équipe peut la confirmer manuellement."); }
   }
   async function buyCredits(method?: string) {
@@ -9045,7 +9041,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9462,7 +9458,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.payretry) { const [k, id, m] = d.payretry.split("|"); void startOnlinePay(k as PayKind, id, m); }
     else if (d.payclose !== undefined) setS((s) => ({ ...s, payModal: null }));
     else if (d.paychoose) {
-      // « Visa » : la carte se règle sur la page FedaPay ; FedaPay / KkiaPay = paiements mobiles.
+      // « Visa » : la carte se règle sur la page FedaPay, comme les paiements mobiles.
       const method = d.paychoose === "Visa" ? "FedaPay" : d.paychoose;
       const kind = S.payModal;
       setS((s) => ({ ...s, payModal: null }));
@@ -9717,6 +9713,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const p = S.admin?.products.find((x: Detail) => x.id === d.proddel);
       setS((s) => ({ ...s, confirmBox: { title: "Supprimer le produit", message: `« ${p?.name || "Ce produit"} » sera retiré définitivement de la boutique.`, okLabel: "Supprimer", action: `proddel|${d.proddel}` } }));
     }
+    else if (d.ordarchtoggle !== undefined) { setS((st) => ({ ...st, ordersArchived: !st.ordersArchived })); }
+    else if (d.ordarchive) { const [oid, v] = d.ordarchive.split("|"); adminAct(`orders/${oid}/archive`, "PATCH", { archived: v === "1" }); }
+    else if (d.orddel) {
+      const o = (S.admin?.orders ?? []).find((x: Detail) => x.id === d.orddel);
+      setS((st) => ({ ...st, confirmBox: { title: "Supprimer la commande", message: `La commande ${o?.reference || ""} sera définitivement supprimée, avec ses tentatives de paiement. Elle disparaîtra aussi de l'historique du client. Pour seulement la masquer de la liste, utilise « Archiver ».`, okLabel: "Supprimer", action: `orddel|${d.orddel}` } }));
+    }
     else if (d.ordstatus) { const [oid, st] = d.ordstatus.split("|"); adminAct(`orders/${oid}/status`, "PATCH", { status: st }); }
     else if (d.filepick) (document.getElementById(d.filepick) as HTMLInputElement | null)?.click();
     else if (d.confirmCancel !== undefined) setS((s) => ({ ...s, confirmBox: null }));
@@ -9734,6 +9736,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "evdel") deleteEvent(arg);
         else if (kind === "evdetach") { const [eid, tid] = arg.split("|"); eventTournamentLink(eid, tid, false); }
         else if (kind === "scheddel") { const [eid, iid] = rest; deleteScheduleItem(eid, iid); }
+        else if (kind === "orddel") adminAct(`orders/${arg}`, "DELETE");
         else if (kind === "gocredits") { setS((st) => ({ ...st, creating: false, page: "profil", adminTab: "credits" })); window.scrollTo({ top: 0 }); loadCreditsMe(); }
         else if (kind === "assocrm") assocRemoveMember(arg);
         else if (kind === "assocadmin") { const [aid, decision] = arg.split("|"); adminAct(`associations/${aid}/${decision}`, "POST"); }

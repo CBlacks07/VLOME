@@ -353,6 +353,8 @@ model Order {
   userId         String?
   user           User?    @relation(fields: [userId], references: [id])
   createdAt      DateTime @default(now())
+  // Masquée de la liste admin (rangement) — la commande reste en base, dans les chiffres et dans l'historique du client.
+  archived       Boolean  @default(false)
 }
 
 // Transaction de paiement en ligne (FedaPay / KkiaPay) rattachée à une inscription, une commande ou un

@@ -8,6 +8,7 @@ import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AssociationsService } from '../associations/associations.service';
+import { AttachOwnerDto } from '../associations/associations.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -60,6 +61,16 @@ export class AdminController {
   @Get('associations')
   pendingAssociations() {
     return this.associations.listPending();
+  }
+
+  @Get('associations/unowned')
+  unownedClubs() {
+    return this.associations.listUnowned();
+  }
+
+  @Post('associations/:id/attach-owner')
+  attachOwner(@Param('id') id: string, @Body() dto: AttachOwnerDto) {
+    return this.associations.attachOwner(id, dto.email);
   }
 
   @Post('associations/:id/:decision')

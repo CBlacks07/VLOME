@@ -1,4 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { UpdateAssociationDto } from './associations.dto';
@@ -95,6 +97,45 @@ export class AssociationsService {
   }
 
   /* ---------- Côté admin de la plateforme : intégration des associations ---------- */
+
+  /** Clubs déjà dans la base mais sans compte association : l'admin peut leur en rattacher un. */
+  listUnowned() {
+    return this.prisma.club.findMany({ where: { status: 'APPROVED', ownerId: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, city: true, _count: { select: { players: true } } } });
+  }
+
+  /** Rattache un compte association à un club existant. Crée le compte (mot de passe temporaire, renvoyé une seule fois et envoyé par e-mail)
+   *  ou reprend un compte association déjà existant et sans club. Jamais un compte joueur/organisateur/admin : ce serait lui retirer ses droits. */
+  async attachOwner(clubId: string, rawEmail: string) {
+    const email = rawEmail.trim().toLowerCase();
+    const club = await this.prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) throw new NotFoundException('Club introuvable.');
+    if (club.ownerId) throw new ConflictException('Ce club a déjà un compte association.');
+    const existing = await this.prisma.user.findUnique({ where: { email }, include: { ownedClub: true } });
+    if (existing && (existing.role !== 'ASSOCIATION' || existing.ownedClub)) {
+      throw new ConflictException('Cette adresse est déjà utilisée par un autre compte. Utilise une autre adresse pour l\'association.');
+    }
+    let password: string | null = null;
+    let userId = existing?.id;
+    if (!existing) {
+      password = randomBytes(9).toString('base64url');
+      const u = await this.prisma.user.create({ data: { email, passwordHash: await bcrypt.hash(password, 10), displayName: club.name, role: 'ASSOCIATION', city: club.city, phone: null } });
+      userId = u.id;
+    }
+    await this.prisma.club.update({ where: { id: clubId }, data: { ownerId: userId, contactEmail: club.contactEmail ?? email } });
+    let emailed = false;
+    if (password) {
+      emailed = await this.mail.send(
+        email,
+        `Ton espace association ${club.name} — Miabe Esport`,
+        this.mail.layout(
+          'Ton espace association est prêt',
+          `<p>Bonjour,</p><p>Un compte association a été créé pour <b>${escapeHtml(club.name)}</b> sur Miabe Esport. Tu y valides l'adhésion de tes joueurs, gères le profil du club et récupères les codes pour afficher tes tournois sur ton site.</p><p>Identifiant : <b>${escapeHtml(email)}</b><br/>Mot de passe temporaire : <b>${escapeHtml(password)}</b></p><p>Change ce mot de passe dès ta première connexion (Mon compte).</p>`,
+          { label: 'Me connecter', url: `${this.mail.siteUrl}/#connexion` },
+        ),
+      ).then(() => true).catch(() => false);
+    }
+    return { clubId, email, created: !!password, password, emailed };
+  }
 
   listPending() {
     return this.prisma.club.findMany({

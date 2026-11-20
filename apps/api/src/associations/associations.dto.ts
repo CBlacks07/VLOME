@@ -9,6 +9,11 @@ export class UpdateAssociationDto {
   @IsOptional() @IsEmail({}, { message: 'Adresse de contact invalide.' }) contactEmail?: string;
 }
 
+/** Rattache un compte association (créé si besoin) à un club existant sans propriétaire — action admin. */
+export class AttachOwnerDto {
+  @IsEmail({}, { message: 'Adresse e-mail invalide.' }) email!: string;
+}
+
 export class ReviewDecisionDto {
   @IsIn(['approve', 'reject']) decision!: 'approve' | 'reject';
 }

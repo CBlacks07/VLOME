@@ -1004,8 +1004,9 @@ function setupConfigCard(S: State, t: Detail): string {
 
   // 3) Détails + barème
   const sc = (t.scoring || {}) as Record<string, number>;
-  const scoringFields = isBR ? [] : isSurv ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
-  const detailsBlock = sect(head(isBR ? "3" : "3", "Détails", "Nom, jeu, lieu, frais d'inscription, places et barème de points.")
+  // Le barème n'existe qu'en Survival : masqué pour tous les autres formats.
+  const scoringFields = isSurv ? WIZ_SCORING_FIELDS : [];
+  const detailsBlock = sect(head(isBR ? "3" : "3", "Détails", (isSurv ? "Nom, jeu, lieu, frais d'inscription, places et barème de points." : "Nom, jeu, lieu, frais d'inscription et nombre de places."))
     + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
         ${wizField("Nom", `<input id="cfg-name" value="${escAttr(t.name || "")}" style="${WIZ_INP}" />`)}
         ${wizField("Jeu", `<input id="cfg-game" value="${escAttr(t.game || "")}" style="${WIZ_INP}" />`)}

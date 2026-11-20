@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import PwaSetup from "./pwa";
 import { fetchBrand, logoVersion } from "./site-logo";
@@ -64,6 +65,8 @@ export default function RootLayout({
       <body>
         {children}
         <PwaSetup />
+        {/* Statistiques de fréquentation Vercel (sans cookie) : visites et pages vues, visibles dans l'onglet Analytics du projet. */}
+        <Analytics />
       </body>
     </html>
   );

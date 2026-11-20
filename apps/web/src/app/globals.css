@@ -662,3 +662,10 @@ h4.tcard-title { -webkit-line-clamp: 3; }
   .foot-links-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
   .foot-bottom { flex-direction: column-reverse; align-items: flex-start; }
 }
+
+/* Pied de page sur téléphone : les textes de la marque utilisent toute la largeur disponible (pas de largeur maximale ni de
+   retour à la ligne « équilibré » qui les resserre au centre de la ligne). */
+@media (max-width: 640px) {
+  .foot-brand p { max-width: none !important; text-wrap: pretty !important; }
+  .site-footer { padding-left: 16px; padding-right: 16px; }
+}

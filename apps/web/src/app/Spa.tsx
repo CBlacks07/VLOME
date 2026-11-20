@@ -535,7 +535,7 @@ function railShell(S: State, activeKey: string, body: string): string {
   <div class="rail-content" style="margin-left:88px;min-height:100vh;display:flex;flex-direction:column">
     ${railLiveBar(S)}
     <div style="flex:1;min-width:0">${content}</div>
-    ${siteFooter()}
+    ${siteFooter(S)}
   </div>`;
 }
 
@@ -552,19 +552,33 @@ function pageSkeleton(): string {
 /** Pied de page du site : mentions légales obligatoires. Partagé entre le shell rail (accueil,
  * tournois, galerie, boutique, classements) et la page d'accueil de repli — il était auparavant
  * cantonné à cette dernière, donc invisible sur toutes les pages réellement visitées. */
-function siteFooter(): string {
-  const link = (page: string, label: string) =>
-    `<button data-go="${page}" style="background:none;border:0;color:var(--text-muted);font-size:13px;font-family:inherit;cursor:pointer;padding:0">${label}</button>`;
-  const legal = (page: string, label: string) =>
-    `<button data-go="${page}" style="background:none;border:0;color:var(--text-muted);font-size:12.5px;font-family:inherit;cursor:pointer;text-decoration:underline;padding:0">${label}</button>`;
-  return `<footer style="border-top:1px solid var(--border);padding:34px 22px 28px;color:var(--text-muted);font-size:12.5px">
-    <div style="max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:26px 48px;justify-content:space-between;align-items:flex-start">
-      <div style="min-width:220px;flex:1"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;color:var(--text)">MIABE <span style="color:#22D3EE">ESPORT</span></div><p style="margin:8px 0 0;line-height:1.55;max-width:340px">Le hub de l'esport togolais &amp; ouest-africain.<br>Lomé, Togo</p></div>
-      <nav aria-label="Pied de page" style="display:flex;flex-wrap:wrap;gap:12px 26px;align-items:center">${link("tournois", "Tournois")}${link("evenements", "Événements")}${link("classements", "Classements")}${link("galerie", "Galerie")}${link("boutique", "Boutique")}</nav>
-    </div>
-    <div style="max-width:1100px;margin:22px auto 0;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:space-between;color:var(--text-faint)">
-      <span>© ${new Date().getFullYear()} MIABE ESPORT</span>
-      <span style="display:flex;gap:18px;flex-wrap:wrap">${legal("mentions-legales", "Mentions légales")}${legal("confidentialite", "Politique de confidentialité")}</span>
+function siteFooter(S?: State): string {
+  const nav = RAIL_NAV.filter(([k]) => k !== "accueil").map(([key, label, icon]) =>
+    `<button data-go="${key}" class="foot-link"><span style="color:#22D3EE;display:inline-flex">${ic(icon, 15)}</span>${label}</button>`).join("");
+  const legal = (page: string, label: string) => `<button data-go="${page}" class="foot-link">${label}</button>`;
+  const name1 = escHtml(S?.site?.brand?.name1 ?? "Miabe");
+  const name2 = escHtml(S?.site?.brand?.name2 ?? "ESPORT");
+  const logo = S ? brandLogo(S, 40, 22) : "";
+  // Invitation à rejoindre la communauté (visiteur) ou raccourci vers son espace (connecté).
+  const cta = !S ? "" : S.user
+    ? `<button data-go="profil" class="btn-ghost" style="${BTN_GHOST};margin-top:18px">Mon espace ${ic(I.arrow, 15)}</button>`
+    : `<button data-auth-open="1" class="btn-primary" style="${BTN_PRIMARY};margin-top:18px">Rejoindre la communauté ${ic(I.arrow, 15)}</button>`;
+  return `<footer class="site-footer">
+    <div class="foot-inner">
+      <div class="foot-grid">
+        <div class="foot-brand">
+          <div style="display:flex;align-items:center;gap:12px">${logo}<span style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.2px;color:var(--text);line-height:1">${name1} <span style="color:#22D3EE">${name2}</span></span></div>
+          <p style="margin:14px 0 0;line-height:1.6;max-width:340px">Le hub de l'esport togolais &amp; ouest-africain : compétitions, classements, communauté et boutique.</p>
+          <p style="margin:10px 0 0;display:flex;align-items:center;gap:7px;color:var(--text-muted)"><span style="color:#22D3EE;display:inline-flex">${ic(I.pin, 15)}</span>Lomé, Togo</p>
+          ${cta}
+        </div>
+        <nav aria-label="Pied de page : explorer"><h4 class="foot-h">Explorer</h4><div class="foot-links foot-links-two">${nav}</div></nav>
+        <nav aria-label="Pied de page : informations"><h4 class="foot-h">Informations</h4><div class="foot-links">${legal("mentions-legales", "Mentions légales")}${legal("confidentialite", "Politique de confidentialité")}</div></nav>
+      </div>
+      <div class="foot-bottom">
+        <span>© ${new Date().getFullYear()} MIABE ESPORT · Tous droits réservés</span>
+        <button data-act="totop" class="foot-top" aria-label="Revenir en haut de la page">${`<span style="display:inline-flex;transform:rotate(-90deg)">${ic(I.arrow, 13)}</span>`}Haut de page</button>
+      </div>
     </div>
   </footer>`;
 }
@@ -5908,7 +5922,7 @@ function renderPageBody(S: State) {
     : S.page === "mentions-legales" ? pLegal(S, "legal")
     : S.page === "confidentialite" ? pLegal(S, "privacy")
     : pAccueil(S);
-  const footer = siteFooter();
+  const footer = siteFooter(S);
   return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);
 }
 
@@ -8850,6 +8864,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.showclose !== undefined) { goBack(() => { const id = S.openId; if (id) openDetail(id); else setS((s) => ({ ...s, page: "accueil", openId: null, detail: null })); }); }
     else if (d.act === "scroll-reg") { document.getElementById("reg-rail")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    else if (d.act === "totop") { window.scrollTo({ top: 0, behavior: "smooth" }); }
     else if (d.act === "reload") { window.location.reload(); }
     else if (d.act === "tstatus") { setS((s) => ({ ...s, tournStatus: d.v || "Tous", fmt: d.v === "Tous" ? "Tous" : s.fmt, q: d.v === "Tous" ? "" : s.q })); }
     else if (d.act === "create-open") {

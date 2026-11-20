@@ -639,3 +639,26 @@ h4.tcard-title { -webkit-line-clamp: 3; }
 @media (max-width: 1024px) {
   .pool-wide { grid-template-columns: minmax(0, 1fr) !important; gap: 20px !important; }
 }
+
+/* ===== Pied de page ===== */
+.site-footer { position: relative; border-top: 1px solid var(--border); padding: 46px 22px 26px; color: var(--text-muted); font-size: 13.5px; background: linear-gradient(180deg, transparent, rgba(34, 211, 238, .035)); }
+.site-footer::before { content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #22D3EE, #7C82FF, transparent); opacity: .55; pointer-events: none; }
+.foot-inner { max-width: 1100px; margin: 0 auto; }
+.foot-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 34px 48px; }
+.foot-h { margin: 0 0 15px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-faint); font-weight: 800; }
+.foot-links { display: flex; flex-direction: column; gap: 12px; }
+.foot-link { display: inline-flex; align-items: center; gap: 9px; width: fit-content; background: none; border: 0; padding: 0; font-family: inherit; font-size: 13.5px; color: var(--text-muted); cursor: pointer; transition: color .15s ease, transform .15s ease; }
+.foot-link:hover { color: #22D3EE; transform: translateX(3px); }
+.foot-bottom { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center; justify-content: space-between; color: var(--text-faint); font-size: 12.5px; }
+.foot-top { display: inline-flex; align-items: center; gap: 7px; background: transparent; border: 1px solid var(--border-strong); border-radius: 99px; padding: 7px 14px; color: var(--text-muted); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.foot-top:hover { color: #22D3EE; border-color: #22D3EE; }
+@media (max-width: 820px) {
+  .foot-grid { grid-template-columns: 1fr 1fr; gap: 30px 24px; }
+  .foot-brand { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .site-footer { padding: 36px 18px 22px; }
+  .foot-grid { grid-template-columns: 1fr; }
+  .foot-links-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+  .foot-bottom { flex-direction: column-reverse; align-items: flex-start; }
+}

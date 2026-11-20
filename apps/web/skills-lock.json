@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "tailwind-animations": {
+      "source": "midudev/tailwind-animations",
+      "sourceType": "github",
+      "skillPath": "skills/tailwind-animations/SKILL.md",
+      "computedHash": "80951e753db32f9d3e43f20f4c0ce591785b9cfed71d183ea00a30c8e1510d8b"
+    }
+  }
+}

@@ -1040,7 +1040,9 @@ function wizInfosStep(S: State) {
   const full = wizFullFlow(S);
   const isSurvival = d.format === "SURVIVAL";
   const isBR = d.format === "BATTLE_ROYALE";
-  const formatPicker = !full ? "" : `<div style="margin-top:14px">
+  // À la création, plus de choix du format : le tournoi est créé au format par défaut (Survival) et le format se change ensuite avec
+  // « Modifier » (qui rouvre l'assistant complet). Le sélecteur ci-dessous n'est donc proposé qu'en modification.
+  const formatPicker = !(full && editing) ? "" : `<div style="margin-top:14px">
     <label style="${WIZ_LBL}">Format</label>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
       ${WIZ_FORMATS.map(([key, label]) => {
@@ -1090,8 +1092,8 @@ function wizInfosStep(S: State) {
       <div style="color:var(--text-muted);font-size:13px;line-height:1.9">${editing ? WIZ_EDIT_GUIDE : WIZ_CREATE_GUIDE}</div>`)}
   </div>${wizFoot("Annuler", 0, nextStep)}`;
 }
-const WIZ_CREATE_GUIDE = `Un tournoi se crée en quelques étapes, dans l'ordre : <b style="color:var(--text)">Informations générales</b> (ici — nom, jeu, format…), <b style="color:var(--text)">Participants</b> (saisis à la main ou depuis la base de joueurs), puis selon le format, <b style="color:var(--text)">Poules et barème de points</b>, et enfin <b style="color:var(--text)">Validation</b> avant de lancer.<br><br>Rien n'est figé tant que le tournoi n'est pas lancé : tu peux revenir en arrière à tout moment et tout ajuster, y compris changer de format.`;
-const WIZ_EDIT_GUIDE = `Les réglages généraux d'un tournoi restent modifiables tant qu'il n'est pas lancé — participants, poules, barème de points, et même le format lui-même (« Changer le format », qui rouvre l'assistant complet en conservant les participants déjà saisis).<br><br>Une fois lancé, seuls les paramètres qui ne changent pas le déroulé (nom, lieu, frais…) restent modifiables ; poules et barème se figent.`;
+const WIZ_CREATE_GUIDE = `Un tournoi se crée en quelques étapes, dans l'ordre : <b style="color:var(--text)">Informations générales</b> (ici — nom, jeu, date, frais…), <b style="color:var(--text)">Participants</b> (saisis à la main ou depuis la base de joueurs), puis selon le format, <b style="color:var(--text)">Poules et barème de points</b>, et enfin <b style="color:var(--text)">Validation</b> avant de lancer.<br><br>Rien n'est figé tant que le tournoi n'est pas lancé : tu peux revenir en arrière à tout moment et tout ajuster. Le format se change ensuite avec « Modifier ».`;
+const WIZ_EDIT_GUIDE = `Les réglages généraux d'un tournoi restent modifiables tant qu'il n'est pas lancé — participants, poules, barème de points, et même le format lui-même (le choix du format est en haut de la première étape ; les participants déjà saisis sont conservés).<br><br>Une fois lancé, seuls les paramètres qui ne changent pas le déroulé (nom, lieu, frais…) restent modifiables ; poules et barème se figent.`;
 
 const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
   SURVIVAL: `<b style="color:var(--text)">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras à l'étape 4.<br><br><b style="color:var(--text)">Déroulé</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.`,

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { uniqueClubSlug } from '../common/slug';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 
 /**
@@ -13,11 +14,12 @@ import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
  */
 @Injectable()
 export class RosterService {
-  constructor(private prisma: PrismaService, private users: UsersService) {}
+  constructor(private prisma: PrismaService, private users: UsersService, private tournaments: TournamentsService) {}
 
-  private toPlayerDto(p: { id: string; name: string; city: string | null; elo: number; points: number; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }) {
+  private toPlayerDto(p: { id: string; name: string; city: string | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
     return {
-      id: p.id, name: p.name, city: p.city, elo: p.elo, points: p.points,
+      // points/matchs : RÉELS (calculés sur les tournois joués), pas les anciennes colonnes de la base qui n'ont jamais été alimentées.
+      id: p.id, name: p.name, city: p.city, points: totals?.points ?? 0, matches: totals?.matches ?? 0,
       clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
     };
   }
@@ -27,7 +29,8 @@ export class RosterService {
       orderBy: { name: 'asc' },
       include: { club: { select: { id: true, name: true, logoUrl: true } } },
     });
-    return rows.map((p) => this.toPlayerDto(p));
+    const totals = await this.tournaments.playerTotals();
+    return rows.map((p) => this.toPlayerDto(p, totals.get(p.name.toLowerCase())));
   }
 
   /** Ajoute un joueur — fusionne (met à jour le club) si un joueur du même nom existe déjà. */

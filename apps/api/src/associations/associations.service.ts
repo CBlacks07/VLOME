@@ -4,13 +4,23 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { UpdateAssociationDto } from './associations.dto';
+import { TournamentsService } from '../tournaments/tournaments.service';
 
 const MAX_PUBLIC_TOURNAMENTS = 40;
 const TOURNAMENT_SELECT = { id: true, name: true, game: true, status: true, date: true, place: true, imageUrl: true } as const;
 
 @Injectable()
 export class AssociationsService {
-  constructor(private prisma: PrismaService, private mail: MailService) {}
+  constructor(private prisma: PrismaService, private mail: MailService, private tournaments: TournamentsService) {}
+
+  /** Points / victoires / matchs RÉELS de chaque membre (tous jeux confondus), calculés sur les tournois — pas les colonnes de la base, jamais alimentées. */
+  private async withStats<T extends { name: string }>(players: T[]) {
+    const totals = await this.tournaments.playerTotals();
+    return players
+      .map((p) => ({ p, t: totals.get(p.name.toLowerCase()) ?? { points: 0, wins: 0, matches: 0 } }))
+      .sort((x, y) => y.t.points - x.t.points || y.t.wins - x.t.wins || x.p.name.localeCompare(y.p.name))
+      .map(({ p, t }) => ({ ...p, points: t.points, wins: t.wins, matches: t.matches }));
+  }
 
   /** Clubs validés, proposés dans la liste de l'inscription et du profil joueur (lecture publique). */
   publicClubs() {
@@ -35,9 +45,10 @@ export class AssociationsService {
         where: { clubRequestedId: club.id, clubStatus: 'PENDING' }, orderBy: { createdAt: 'asc' },
         select: { id: true, displayName: true, email: true, city: true, createdAt: true },
       }),
-      this.prisma.player.findMany({ where: { clubId: club.id }, orderBy: [{ points: 'desc' }, { name: 'asc' }], select: { id: true, name: true, city: true, elo: true, points: true, userId: true } }),
+      this.prisma.player.findMany({ where: { clubId: club.id }, select: { id: true, name: true, city: true, userId: true } }),
     ]);
-    return { club: this.toProfile(club), pending, members: members.map((m) => ({ id: m.id, name: m.name, city: m.city, elo: m.elo, points: m.points, hasAccount: !!m.userId })) };
+    const ranked = await this.withStats(members);
+    return { club: this.toProfile(club), pending, members: ranked.map((m) => ({ id: m.id, name: m.name, city: m.city, points: m.points, wins: m.wins, matches: m.matches, hasAccount: !!m.userId })) };
   }
 
   async updateMe(ownerId: string, dto: UpdateAssociationDto) {
@@ -188,9 +199,10 @@ export class AssociationsService {
     const club = await this.prisma.club.findUnique({ where: { slug } });
     if (!club || club.status !== 'APPROVED') throw new NotFoundException('Association introuvable.');
     const players = await this.prisma.player.findMany({
-      where: { clubId: club.id }, orderBy: [{ points: 'desc' }, { elo: 'desc' }, { name: 'asc' }],
-      select: { id: true, name: true, city: true, elo: true, points: true, userId: true, user: { select: { role: true } } },
+      where: { clubId: club.id },
+      select: { id: true, name: true, city: true, userId: true, user: { select: { role: true } } },
     });
+    const ranked = await this.withStats(players);
     const memberUserIds = players.map((p) => p.userId).filter((x): x is string => !!x);
     const creatorIds = [club.ownerId, ...players.filter((p) => p.user?.role === 'ORGANIZER').map((p) => p.userId)].filter((x): x is string => !!x);
     // Jamais un tournoi rattaché à un événement non publié.
@@ -206,7 +218,7 @@ export class AssociationsService {
     return {
       club: { name: club.name, slug: club.slug, city: club.city, logoUrl: club.logoUrl, website: club.website, description: club.description },
       stats: { members: players.length, organized: organized.length },
-      members: players.map((p, i) => ({ rank: i + 1, name: p.name, city: p.city, elo: p.elo, points: p.points })),
+      members: ranked.map((p, i) => ({ rank: i + 1, name: p.name, city: p.city, points: p.points, wins: p.wins, matches: p.matches })),
       tournaments: [...organized.map((t) => toCard(t, true)), ...played.filter((t) => !organizedIds.has(t.id)).map((t) => toCard(t, false))],
     };
   }

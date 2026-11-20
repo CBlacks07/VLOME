@@ -17,7 +17,7 @@ function setup(opts: { clubStatus?: string; user?: Record<string, unknown> | nul
     },
   };
   const mail = { send: async (to: string) => { calls.mails.push(to); }, layout: (t: string, b: string) => `${t}${b}` };
-  return { svc: new AssociationsService(prisma as never, mail as never), calls };
+  return { svc: new AssociationsService(prisma as never, mail as never, { playerTotals: async () => new Map() } as never), calls };
 }
 
 describe('AssociationsService.reviewMember', () => {
@@ -80,7 +80,7 @@ describe('AssociationsService.attachOwner', () => {
       },
     };
     const mail = { send: async () => { calls.mails++; return true; }, layout: (t: string, b: string) => t + b, siteUrl: 'https://x' };
-    return { svc: new AssociationsService(prisma as never, mail as never), calls };
+    return { svc: new AssociationsService(prisma as never, mail as never, { playerTotals: async () => new Map() } as never), calls };
   }
 
   it('crée un compte ASSOCIATION avec mot de passe temporaire haché et le rattache au club', async () => {

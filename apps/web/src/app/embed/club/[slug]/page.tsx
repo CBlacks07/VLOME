@@ -13,7 +13,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 type ClubData = {
   club: { name: string; slug: string; city: string | null; logoUrl: string | null; website: string | null; description: string | null };
   stats: { members: number; organized: number };
-  members: { rank: number; name: string; city: string | null; elo: number; points: number }[];
+  members: { rank: number; name: string; city: string | null; points: number; wins: number; matches: number }[];
   tournaments: { id: string; name: string; game: string | null; status: string; date: string | null; place: string | null; imageUrl: string | null; organizedByClub: boolean }[];
 };
 
@@ -137,7 +137,7 @@ export default function ClubEmbed() {
               <div key={m.rank + m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderTop: m.rank === 1 ? "none" : `1px solid ${c.border}` }}>
                 <span style={{ width: 26, textAlign: "right", color: m.rank <= 3 ? "#d99a00" : c.faint, fontWeight: 800 }}>{m.rank}</span>
                 <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
-                <span style={{ color: c.faint, fontSize: 12 }}>ELO {m.elo}</span>
+                <span style={{ color: c.faint, fontSize: 12 }}>{m.matches} match{m.matches > 1 ? "s" : ""}</span>
                 <span style={{ fontWeight: 800, fontSize: 14, color: "#0891b2", minWidth: 64, textAlign: "right" }}>{m.points} pts</span>
               </div>
             ))}

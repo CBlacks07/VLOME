@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeElo, ELO_START } from './elo';
+import type { EloMatch } from './elo';
 import * as Engine from '@vlome/engine';
 import * as ExcelJS from 'exceljs';
 import { CorrectResultDto, CreateTournamentDto, RegisterDto, ReportDto, UpdateTournamentDto } from './tournaments.dto';
@@ -305,9 +307,9 @@ export class TournamentsService {
   }
 
   /**
-   * Classement par jeu : agrège les résultats réels (points, victoires, titres) de
+   * Classement par jeu : agrège les résultats réels (points, victoires, titres, ELO) de
    * tous les tournois, poule par poule, joueur par joueur — aucune donnée inventée
-   * (pas d'ELO ni de winrate fictifs, tout vient de l'état du moteur).
+   * (tout vient de l'état du moteur ; l'ELO est rejoué match après match, voir elo.ts).
    * Un même joueur peut apparaître une fois par jeu : les stats ne sont jamais
    * mélangées entre jeux différents (un point en Free Fire n'a rien à voir avec
    * un point en Tekken 8).
@@ -333,15 +335,32 @@ export class TournamentsService {
     return new Map(regs.map((r) => [`${r.tournamentId}|${r.playerName}`, r.userId]));
   }
 
-  private async computeLeaderboard(where: { eventId?: string }) {
+  /** Totaux réels d'un joueur, tous jeux confondus, par nom (insensible à la casse) — pour les listes qui n'ont pas de classement par jeu
+   *  (base de joueurs, page d'une association). Les équipes sont ignorées. */
+  async playerTotals(): Promise<Map<string, { points: number; wins: number; matches: number }>> {
+    const rows = await this.computeLeaderboard({}, 100000);
+    const totals = new Map<string, { points: number; wins: number; matches: number }>();
+    for (const r of rows) {
+      if (r.team) continue;
+      const k = r.name.toLowerCase();
+      const t = totals.get(k) ?? { points: 0, wins: 0, matches: 0 };
+      t.points = Math.round((t.points + r.points) * 10) / 10; t.wins += r.wins; t.matches += r.matches;
+      totals.set(k, t);
+    }
+    return totals;
+  }
+
+  private async computeLeaderboard(where: { eventId?: string }, limit = 300) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
       select: { id: true, game: true, engineState: true, teams: true, tier: true },
     });
     const acct = await this.accountMap();
     const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
-    type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string> };
+    type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string>; eloKey: string };
     const agg = new Map<string, Agg>();
+    // Matchs de chaque jeu, pour rejouer l'ELO dans l'ordre chronologique (un classement ELO par jeu, jamais mélangé).
+    const eloMatches = new Map<string, EloMatch[]>();
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st || !st.players?.length) continue;
@@ -350,6 +369,20 @@ export class TournamentsService {
       // Palier : purement un badge par défaut (multiplicateurs à 1), mais réglable depuis Admin →
       // Paliers si l'équipe veut vraiment pondérer le classement par palier.
       const tierMult = t.tier === 'ELITE' ? eliteMultiplier : amateurMultiplier;
+      // Clé ELO de chaque concurrent de CE tournoi (l'équipe en tournoi par équipes, sinon le joueur — par compte quand il y en a un).
+      const eloKeyOf = new Map<string, string>();
+      for (const p of st.players) {
+        const uid0 = acct.get(`${t.id}|${p.name}`) ?? null;
+        eloKeyOf.set(p.id, teams[p.name] ? `team:${p.name}||${game}` : `${uid0 ? 'u:' + uid0 : p.name}||${game}`);
+      }
+      for (const l of st.log) {
+        if (!l.a || !l.b || !l.winner) continue;
+        const ka = eloKeyOf.get(l.a), kb = eloKeyOf.get(l.b);
+        if (!ka || !kb) continue;
+        const list = eloMatches.get(game) ?? [];
+        list.push({ ts: l.ts, a: ka, b: kb, winner: l.winner === l.a ? 'a' : 'b' });
+        eloMatches.set(game, list);
+      }
       for (const p of st.players) {
         const uid = acct.get(`${t.id}|${p.name}`) ?? null;
         const points = (st.points?.[p.id] || 0) * tierMult;
@@ -362,11 +395,12 @@ export class TournamentsService {
         // Tournoi par équipes : l'équipe a sa ligne (marquée « team »), et chaque membre reçoit les MÊMES stats
         // sur sa propre ligne de joueur.
         const members = teams[p.name];
-        const targets: { key: string; name: string; uid: string | null; team?: string[] }[] = members
-          ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members }, ...members.map((m) => ({ key: `${m}||${game}`, name: m, uid: null }))]
-          : [{ key: `${uid ? 'u:' + uid : p.name}||${game}`, name: p.name, uid }];
+        // eloKey : la clé sous laquelle l'ELO de ce concurrent est calculé (un membre d'équipe reprend l'ELO de son équipe).
+        const targets: { key: string; name: string; uid: string | null; team?: string[]; eloKey: string }[] = members
+          ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members, eloKey: `team:${p.name}||${game}` }, ...members.map((m) => ({ key: `${m}||${game}`, name: m, uid: null, eloKey: `team:${p.name}||${game}` }))]
+          : [{ key: `${uid ? 'u:' + uid : p.name}||${game}`, name: p.name, uid, eloKey: `${uid ? 'u:' + uid : p.name}||${game}` }];
         for (const tg of targets) {
-          const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set() };
+          const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set(), eloKey: tg.eloKey };
           entry.points += points; entry.wins += wins; entry.matches += matches;
           if (champion) entry.championships++;
           if (matches > 0) entry.tournaments.add(t.id);
@@ -385,6 +419,9 @@ export class TournamentsService {
     const clubByName = new Map<string, string>();
     for (const p of rosterPlayers) if (p.club && !clubByName.has(p.name.toLowerCase())) clubByName.set(p.name.toLowerCase(), p.club.name);
 
+    const eloByGame = new Map<string, Map<string, number>>();
+    for (const [g, list] of eloMatches) eloByGame.set(g, computeElo(list));
+
     return Array.from(agg.values())
       .filter((e) => e.matches > 0)
       .map((e) => ({
@@ -397,13 +434,15 @@ export class TournamentsService {
         losses: e.matches - e.wins,
         matches: e.matches,
         winrate: e.matches ? Math.round((e.wins / e.matches) * 100) : 0,
+        // ELO réel de ce jeu (rejoué sur tous ses matchs) ; 1000 = n'a pas encore été départagé par un adversaire.
+        elo: Math.round(eloByGame.get(e.game)?.get(e.eloKey) ?? ELO_START),
         championships: e.championships,
         tournamentsPlayed: e.tournaments.size,
         city: cityByName.get(e.name) || null,
         club: clubByName.get(e.name.toLowerCase()) || null,
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
-      .slice(0, 300);
+      .slice(0, limit);
   }
 
   /** Le concurrent (côté moteur) que désigne un nom : un joueur/une équipe du tournoi, ou — en tournoi par

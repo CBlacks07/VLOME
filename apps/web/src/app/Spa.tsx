@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
+import { pageview } from "@vercel/analytics";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 /** URL d'un média envoyé (image/vidéo) : le stockage objet (Vercel Blob) renvoie déjà une URL absolue,
@@ -7620,6 +7621,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // clic, redirection après connexion, retour au cockpit…) — un rafraîchissement rouvre donc
   // toujours la bonne section au lieu de retomber sur l'accueil. Le tout premier rendu est ignoré :
   // le hash vient déjà de l'URL chargée, pas besoin de le réécrire.
+  // Statistiques de fréquentation (Vercel Analytics) : <Analytics /> ne voit que les changements d'adresse « réels »
+  // (/tournois, /boutique…). La navigation interne du site passe par le hash (#t=…, #boutique…), donc chaque changement de
+  // page est signalé ici à la main — une fois par page (pas à chaque filtre), sans donnée personnelle : jamais de nom de
+  // joueur, ni la connexion/le profil/les écrans de diffusion. La 1re page est déjà comptée par <Analytics />.
+  const trackInit = useRef(false);
+  const lastVirtualPage = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let path: string | null = null;
+    let route: string | null = null;
+    if (S.page === "tournoi" && S.openId) { route = "/tournois/[id]"; path = `/tournois/${S.openId}`; }
+    else if (S.page === "evenement" && S.openEventId) { route = "/evenements/[id]"; path = `/evenements/${S.openEventId}`; }
+    else if (S.page === "joueur") { route = "/joueur"; path = "/joueur"; }
+    else if (S.page !== "profil" && SIMPLE_PAGES.includes(S.page)) { path = S.page === "accueil" ? "/" : `/${S.page}`; route = path; }
+    if (!trackInit.current) { trackInit.current = true; lastVirtualPage.current = path; return; }
+    if (!path || path === lastVirtualPage.current) return;
+    lastVirtualPage.current = path;
+    try { pageview({ route, path }); } catch { /* statistiques indisponibles : sans effet sur le site */ }
+  }, [S.page, S.openId, S.openEventId]);
+
   const hashSynced = useRef(false);
   useEffect(() => {
     if (typeof window === "undefined") return;

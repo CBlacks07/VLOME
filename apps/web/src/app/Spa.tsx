@@ -944,6 +944,118 @@ function poolQualifyNote(pools: { name: string; size: number }[], q: number): st
   return `${short.length} poule${short.length > 1 ? "s" : ""} trop petite${short.length > 1 ? "s" : ""} pour ${q} qualifiés (${detail}) — ${total} qualifiés au total malgré tout, pas ${q * pools.length}. Choisis ${safeMax} ou moins pour que toutes les poules suivent.`;
 }
 
+/** Patch envoyé à l'API quand on change de format DEPUIS LA PAGE du tournoi (mêmes règles que le choix de format de l'assistant). */
+function cfgFormatPatch(t: Detail, key: string): Detail {
+  const prev: string = t.poolFormat || "survival";
+  const bracketPoolMode = key === "DOUBLE_ELIM" ? "double" : key === "SINGLE_ELIM" ? "single" : "roundrobin";
+  const poolFormat = key === "SURVIVAL" ? prev : key === "ROUND_ROBIN" ? "roundrobin"
+    : prev === "double" || prev === "single" ? bracketPoolMode : (prev === "survival" ? "roundrobin" : prev);
+  const nbPools = key === "SURVIVAL" ? 2 : key === "BATTLE_ROYALE" ? (t.nbPools || 2) : 1;
+  const finalsFormat = key === "SURVIVAL" ? (t.finalsFormat || "double") : key === "DOUBLE_ELIM" ? "double" : key === "ROUND_ROBIN" ? "roundrobin" : "single";
+  return {
+    format: key, nbPools,
+    ...(wizHasPools(key) ? { poolFormat, qualifyPerPool: Math.min(t.qualifyPerPool || 2, wizMaxQualify(0, nbPools, t.maxPlayers || 0)) } : {}),
+    ...(key === "SURVIVAL" || nbPools > 1 ? { finalsFormat } : {}),
+  };
+}
+
+/** Panneau « Configuration du tournoi » affiché directement sur la page d'un tournoi pas encore lancé (organisateur/admin) :
+ *  format, poules et format de la phase finale, détails + barème, ajout de participants en masse ou depuis la base de joueurs.
+ *  Tout s'enregistre ici même — plus besoin de passer par « Modifier ». Chaque bouton enregistre aussitôt (voir cfgSave). */
+function setupConfigCard(S: State, t: Detail): string {
+  const fmtKey: string = ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL";
+  const isSurv = fmtKey === "SURVIVAL", isBR = fmtKey === "BATTLE_ROYALE", pooled = wizHasPools(fmtKey);
+  const nbPools: number = t.nbPools || (isSurv ? 2 : 1);
+  const poolFormat: string = t.poolFormat || "survival";
+  const finalsFormat: string = t.finalsFormat || "single";
+  const maxQ = wizMaxQualify(0, nbPools, t.maxPlayers || 0);
+  const qualify = Math.min(t.qualifyPerPool || 2, maxQ);
+  const showPoolDetail = pooled && (isSurv || nbPools > 1);
+  const pill = (attr: string, key: string, label: string, on: boolean) => `<button ${attr}="${escAttr(key)}" style="font-size:12.5px;font-weight:${on ? 700 : 600};border-radius:10px;padding:8px 14px;cursor:pointer;font-family:inherit;background:${on ? "rgba(34,211,238,.1)" : "var(--surface-3)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};color:${on ? "#22D3EE" : "var(--text-muted)"}">${label}</button>`;
+  const head = (n: string, title: string, sub?: string) => `<div style="margin:0 0 12px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800"><span style="color:#22D3EE">${n}</span> · ${title}</div>${sub ? `<div style="font-size:12px;color:var(--text-faint);margin-top:4px;line-height:1.55">${sub}</div>` : ""}</div>`;
+  const sect = (inner: string) => `<div style="padding:18px 0;border-top:1px solid var(--border)">${inner}</div>`;
+  const saveBtn = (what: string, label: string) => `<button data-cfgsave="${what}" style="margin-top:14px;display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">${label}</button>`;
+  const num = (id: string, val: number | string, w = "100%", step = "1") => `<input id="${id}" type="number" min="0" step="${step}" value="${escAttr(String(val))}" style="${WIZ_INP};width:${w}" />`;
+
+  // 1) Format
+  const formatBlock = head("1", "Format du tournoi", "Un clic suffit : le format s'applique tout de suite et les participants déjà inscrits sont conservés.")
+    + `<div style="display:flex;gap:8px;flex-wrap:wrap">${WIZ_FORMATS.map(([key, label]) => pill("data-cfgformat", key, label, key === fmtKey)).join("")}</div>`;
+
+  // 2) Poules + phase finale
+  let poolsBlock = "";
+  if (isBR) {
+    poolsBlock = sect(head("2", "Parties", "Après chaque partie, tu saisis le classement ; les points se cumulent sur toutes les parties.")
+      + `<div style="display:flex;align-items:center;gap:9px"><label style="font-size:12.5px;color:var(--text-muted);font-weight:600">Nombre de parties</label><select id="cfg-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => `<option value="${n}" ${n === nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>`
+      + saveBtn("pools", "Enregistrer"));
+  } else if (pooled) {
+    const modes = wizPoolModes(fmtKey);
+    const modeNote = (modes.find(([k]) => k === poolFormat) || modes[0])[2];
+    const impliedMode = fmtKey === "ROUND_ROBIN";
+    const finals = wizFinalsFormatOptions(poolFormat);
+    const finalsNote = (finals.find(([k]) => k === finalsFormat) || finals[0])[2];
+    poolsBlock = sect(head("2", "Poules et phase finale", isSurv ? "Les joueurs sont répartis en poules, puis les meilleurs rejoignent la phase finale." : "Une seule poule = pas de phase de groupes : tout le monde va directement en phase finale. Choisis plusieurs poules pour en ajouter une.")
+      + `<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap"><label style="font-size:12.5px;color:var(--text-muted);font-weight:600">Nombre de poules</label><select id="cfg-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option value="${n}" ${n === nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>`
+      + (showPoolDetail ? `
+        ${impliedMode ? "" : `<div style="margin-top:16px"><div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Mode des poules</div><div style="display:flex;gap:8px;flex-wrap:wrap">${modes.map(([k, label]) => pill("data-cfgpoolformat", k, label, k === poolFormat)).join("")}</div><p style="color:var(--text-faint);font-size:11.5px;margin:8px 0 0">${modeNote}</p></div>`}
+        <div style="margin-top:16px"><div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Qualifiés par poule</div>${num("cfg-qualify", qualify, "130px")}<p style="color:var(--text-faint);font-size:11.5px;margin:8px 0 0">${wizQualifyNote(qualify, nbPools, maxQ, (t.maxPlayers || 0) > 0)}</p></div>
+        <div style="margin-top:16px"><div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Format de la phase finale</div><div style="display:flex;gap:8px;flex-wrap:wrap">${finals.map(([k, label]) => pill("data-cfgfinalsformat", k, label, k === finalsFormat)).join("")}</div><p style="color:var(--text-faint);font-size:11.5px;margin:8px 0 0">${finalsNote}</p></div>` : "")
+      + saveBtn("pools", "Appliquer les poules"));
+  }
+
+  // 3) Détails + barème
+  const sc = (t.scoring || {}) as Record<string, number>;
+  const scoringFields = isBR ? [] : isSurv ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
+  const detailsBlock = sect(head(isBR ? "3" : "3", "Détails", "Nom, jeu, lieu, frais d'inscription, places et barème de points.")
+    + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        ${wizField("Nom", `<input id="cfg-name" value="${escAttr(t.name || "")}" style="${WIZ_INP}" />`)}
+        ${wizField("Jeu", `<input id="cfg-game" value="${escAttr(t.game || "")}" style="${WIZ_INP}" />`)}
+        ${wizField("Lieu", `<input id="cfg-place" value="${escAttr(t.place || "")}" placeholder="En ligne, Lomé…" style="${WIZ_INP}" />`)}
+        ${wizField("Frais d'inscription (F CFA)", num("cfg-fee", t.entryFeeXof || 0), "0 = gratuit")}
+        ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
+        ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
+      </div>`
+    + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>` : "")
+    + saveBtn("details", "Enregistrer les détails"));
+
+  // 4) Participants : ajout multiple + base de joueurs
+  let partsBlock = "";
+  if (t.teamSize) {
+    partsBlock = sect(head("4", "Participants", `Tournoi par équipes de ${t.teamSize} : ajoute chaque équipe (nom + joueurs) avec le champ « Ajouter » de la liste ci-dessous.`));
+  } else {
+    const have = new Set((Array.isArray(t.players) ? t.players : []).map((p: Detail) => String(p.name).toLowerCase()));
+    const roster: Detail[] = S.roster ?? [];
+    const chips = roster.map((p: Detail) => {
+      const taken = have.has(String(p.name).toLowerCase());
+      const label = `${escHtml(p.name)}${p.clubName ? ` <span style="font-weight:500;opacity:.7">@${escHtml(p.clubName)}</span>` : ""}`;
+      if (taken) return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 11px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3);color:#34D399">✓ ${label}</span>`;
+      return `<button data-cfgpick="${escAttr(`${p.name}|${p.clubName || ""}`)}" data-search="${escAttr(`${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase())}" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;border-radius:999px;padding:6px 11px;cursor:pointer;font-family:inherit;background:var(--surface-3);border:1px solid var(--border);color:var(--text-muted)">${ic(I.plus, 11)}${label}</button>`;
+    }).join("");
+    partsBlock = sect(head("4", `Participants (${(Array.isArray(t.players) ? t.players.length : 0)})`, "Ajoute plusieurs participants d'un coup, ou pioche dans la base de joueurs. Les doublons sont ignorés.")
+      + `<div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+          <div>
+            <label style="${WIZ_LBL}">Un nom par ligne</label>
+            <textarea id="cfg-bulk" rows="7" placeholder="Marie @Lomé&#10;Paul @Kara&#10;Léa…" style="${WIZ_INP};resize:vertical"></textarea>
+            <span style="display:block;font-size:11px;color:var(--text-faint);margin-top:5px">Club optionnel avec « Nom @Club ».</span>
+            <button data-cfgbulk="1" style="margin-top:12px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px dashed var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">${ic(I.plus, 14)}Ajouter ces participants</button>
+          </div>
+          <div>
+            <label style="${WIZ_LBL}">Depuis la base de joueurs${roster.length ? ` (${roster.length})` : ""}</label>
+            ${roster.length ? `<input id="cfg-roster-search" placeholder="Rechercher un joueur ou un club…" style="${WIZ_INP};margin-bottom:10px" />
+            <div style="max-height:210px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start">${chips}</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px">
+              <button data-cfgpickadd="1" style="display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);border:1px dashed var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">${ic(I.plus, 14)}Ajouter la sélection (<span id="cfg-pick-count">0</span>)</button>
+              <button data-cfgpickall="1" style="font-size:12px;font-weight:700;color:#22D3EE;background:transparent;border:0;cursor:pointer;font-family:inherit">Tout sélectionner</button>
+            </div>` : `<p style="color:var(--text-faint);font-size:12.5px;margin:0">${S.roster ? "La base de joueurs est vide pour l'instant (Admin → Joueurs)." : "Chargement de la base de joueurs…"}</p>`}
+          </div>
+        </div>`);
+  }
+
+  return `<div data-cfgcard="1" style="border:1px solid rgba(34,211,238,.35);border-radius:16px;background:linear-gradient(180deg,rgba(34,211,238,.05),var(--surface-2));padding:20px 22px 6px;margin-bottom:30px">
+    <h3 style="margin:0 0 14px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;display:flex;align-items:center;gap:9px">${ic(I.bolt, 17)}Configuration du tournoi</h3>
+    ${formatBlock}${poolsBlock}${detailsBlock}${partsBlock}
+  </div>`;
+}
+
 function wizSteps(S: State) {
   const d = S.wizData;
   const isSurvival = d.format === "SURVIVAL";
@@ -1092,7 +1204,7 @@ function wizInfosStep(S: State) {
       <div style="color:var(--text-muted);font-size:13px;line-height:1.9">${editing ? WIZ_EDIT_GUIDE : WIZ_CREATE_GUIDE}</div>`)}
   </div>${wizFoot("Annuler", 0, nextStep)}`;
 }
-const WIZ_CREATE_GUIDE = `Un tournoi se crée en quelques étapes, dans l'ordre : <b style="color:var(--text)">Informations générales</b> (ici — nom, jeu, date, frais…), <b style="color:var(--text)">Participants</b> (saisis à la main ou depuis la base de joueurs), puis selon le format, <b style="color:var(--text)">Poules et barème de points</b>, et enfin <b style="color:var(--text)">Validation</b> avant de lancer.<br><br>Rien n'est figé tant que le tournoi n'est pas lancé : tu peux revenir en arrière à tout moment et tout ajuster. Le format se change ensuite avec « Modifier ».`;
+const WIZ_CREATE_GUIDE = `Un tournoi se crée en quelques étapes, dans l'ordre : <b style="color:var(--text)">Informations générales</b> (ici — nom, jeu, date, frais…), <b style="color:var(--text)">Participants</b> (saisis à la main ou depuis la base de joueurs), puis selon le format, <b style="color:var(--text)">Poules et barème de points</b>, et enfin <b style="color:var(--text)">Validation</b> avant de lancer.<br><br>Rien n'est figé tant que le tournoi n'est pas lancé : tu peux revenir en arrière à tout moment et tout ajuster. Le format, les poules, la phase finale et les participants se règlent ensuite sur la page du tournoi.`;
 const WIZ_EDIT_GUIDE = `Les réglages généraux d'un tournoi restent modifiables tant qu'il n'est pas lancé — participants, poules, barème de points, et même le format lui-même (le choix du format est en haut de la première étape ; les participants déjà saisis sont conservés).<br><br>Une fois lancé, seuls les paramètres qui ne changent pas le déroulé (nom, lieu, frais…) restent modifiables ; poules et barème se figent.`;
 
 const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
@@ -4959,7 +5071,7 @@ function pTournoi(S: State) {
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
       ${action}
     </div>`;
-    const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${formatInfo}${participantsAndPools}${pendingPanel}</div>`;
+    const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${formatInfo}${manage && t.status === "setup" ? setupConfigCard(S, t) : ""}${participantsAndPools}${pendingPanel}</div>`;
     const right = `<div class="rise d2 stack-sidebar tf-col" style="width:340px;flex:none;padding:24px 28px 44px">${actionRail}</div>`;
     // Sur téléphone, le bloc d'inscription est tout en bas de la page : bouton fixe qui y mène (inscription encore possible seulement).
     const regSticky = !manage && !isReg && !isPending && !full
@@ -6353,7 +6465,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // Arrivée directe sur /tournois/<id> : S.user n'est pas encore rempli à ce stade (il est lu du navigateur dans le même
     // effet de démarrage) — on regarde donc aussi le compte enregistré, sinon la liste des inscrits ne se chargeait pas.
     const role = S.user?.role ?? storedRole();
-    if (token() && (role === "ORGANIZER" || role === "ADMIN")) loadRegsPanel(id);
+    if (token() && (role === "ORGANIZER" || role === "ADMIN")) { loadRegsPanel(id); if (!S.roster) loadRoster(); }
   }
   async function act(url: string, body?: unknown, method = "POST") {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -8311,6 +8423,96 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }).sort((a: Detail, b: Detail) => b.pts - a.pts);
     board.innerHTML = brLeaderboardTable(preview, games.length);
   }
+  /** Enregistre aussitôt un changement de configuration fait depuis la page du tournoi (format, poules, détails, barème). */
+  async function cfgSave(patch: Detail, scoring?: [string, number][]) {
+    const id = S.openId;
+    if (!id) return;
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    const msg = (e: Detail | null, fallback: string) => (Array.isArray(e?.message) ? e!.message.join("\n") : e?.message) || fallback;
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(patch) });
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
+      if (!r.ok) { alert(msg(await r.json().catch(() => null), "Enregistrement impossible.")); return; }
+      for (const [key, value] of scoring || []) {
+        const rs = await fetch(`${API}/api/tournaments/${id}/scoring`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ key, value }) });
+        if (!rs.ok) { alert(msg(await rs.json().catch(() => null), "Barème refusé.")); break; }
+      }
+      const sr = await fetch(`${API}/api/tournaments/${id}/state`);
+      if (sr.ok) { const dd = await sr.json(); setS((s) => ({ ...s, detail: dd })); }
+      loadTournaments();
+      showToast("Configuration enregistrée.");
+    } catch { alert("Enregistrement impossible — réessaie dans un instant."); }
+  }
+  /** Poules/qualifiés lus dans le panneau de configuration. */
+  function cfgReadPools(): Detail {
+    const t = S.detail || {};
+    const nbEl = document.getElementById("cfg-pools") as HTMLSelectElement | null;
+    const qEl = document.getElementById("cfg-qualify") as HTMLInputElement | null;
+    const nbPools = Math.max(1, parseInt(nbEl?.value || "") || t.nbPools || 1);
+    if (!qEl) return { nbPools };
+    const maxQ = wizMaxQualify(0, nbPools, t.maxPlayers || 0);
+    return { nbPools, qualifyPerPool: Math.max(1, Math.min(parseInt(qEl.value) || t.qualifyPerPool || 2, maxQ)) };
+  }
+  function cfgSaveDetails() {
+    const t = S.detail; if (!t) return;
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const name = val("cfg-name").trim();
+    if (!name) { alert("Le nom du tournoi est obligatoire."); return; }
+    const isSurv = (ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL") === "SURVIVAL";
+    const body: Detail = { name, game: val("cfg-game").trim(), place: val("cfg-place").trim(), entryFeeXof: Math.max(0, parseInt(val("cfg-fee")) || 0), maxPlayers: Math.max(0, parseInt(val("cfg-max")) || 0) };
+    if (isSurv) body.pointsPerPlayer = Math.max(1, parseInt(val("cfg-pts")) || 5);
+    const scoring: [string, number][] = [];
+    for (const [, label, key] of WIZ_SCORING_FIELDS) {
+      const el = document.getElementById(`cfg-sc-${key}`) as HTMLInputElement | null;
+      if (!el) continue;
+      const v = parseFloat(el.value);
+      if (!Number.isFinite(v) || v < WIZ_SCORING_FLOOR[key]) { alert(`${label} : valeur minimale ${WIZ_SCORING_FLOOR[key]}.`); return; }
+      scoring.push([key, v]);
+    }
+    void cfgSave(body, scoring);
+  }
+  /** Ajoute plusieurs participants d'un coup (un appel par nom, les doublons et noms déjà inscrits sont ignorés). */
+  async function cfgAddPlayers(raws: string[]) {
+    const id = S.openId;
+    if (!id) return;
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    const have = new Set((Array.isArray(S.detail?.players) ? S.detail!.players : []).map((p: Detail) => String(p.name).toLowerCase()));
+    const todo: string[] = [];
+    for (const raw of raws) {
+      const k = raw.split("@")[0].trim().toLowerCase();
+      if (!k || have.has(k)) continue;
+      have.add(k); todo.push(raw.trim());
+    }
+    if (!todo.length) { showToast("Rien à ajouter : ces noms sont déjà inscrits."); return; }
+    let ok = 0, lastMsg = "";
+    for (const raw of todo) {
+      const r = await fetch(`${API}/api/tournaments/${id}/players`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ name: raw }) });
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
+      if (r.ok) { ok++; continue; }
+      const e = await r.json().catch(() => null);
+      lastMsg = (Array.isArray(e?.message) ? e.message.join(" ") : e?.message) || "";
+      if (r.status === 409 || r.status === 403) break; // tournoi lancé ou plafond atteint : inutile d'insister
+    }
+    const sr = await fetch(`${API}/api/tournaments/${id}/state`);
+    if (sr.ok) { const dd = await sr.json(); setS((s) => ({ ...s, detail: dd })); }
+    loadTournaments();
+    const failed = todo.length - ok;
+    showToast(`${ok} participant${ok > 1 ? "s" : ""} ajouté${ok > 1 ? "s" : ""}${failed ? ` · ${failed} refusé${failed > 1 ? "s" : ""}${lastMsg ? ` — ${lastMsg}` : ""}` : ""}.`);
+  }
+  // Recherche dans la base de joueurs du panneau de configuration : filtre les pastilles sans redessiner la page (ne perd rien de ce qui est tapé).
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onIn = (e: Event) => {
+      const el = e.target as HTMLInputElement;
+      if (!el || el.id !== "cfg-roster-search") return;
+      const q = el.value.trim().toLowerCase();
+      root.querySelectorAll<HTMLElement>("[data-cfgpick]").forEach((c) => { c.style.display = !q || (c.dataset.search || "").includes(q) ? "" : "none"; });
+    };
+    root.addEventListener("input", onIn);
+    return () => root.removeEventListener("input", onIn);
+  }, []);
+
   function wizGoto(next: number) {
     if (next === 0) { setS((s) => ({ ...s, creating: false, wizEditId: null, wizFullEdit: false })); return; }
     const d = wizCapture();
@@ -8393,7 +8595,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
       else if (created?.id) openDetail(created.id);
-      if (d.format === "SURVIVAL") showToast("Tournoi créé. Règle maintenant les poules et le barème avec « Modifier ».");
+      if (d.format === "SURVIVAL") showToast("Tournoi créé. Choisis le format, règle les poules et ajoute les participants ci-dessous.");
     } catch {
       setS((s) => ({ ...s, busy: false }));
       alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");
@@ -8460,7 +8662,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -8713,6 +8915,45 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const body: Record<string, string | number> = { name: val("e-name"), game: val("e-game"), place: val("e-place"), date: val("e-date"), entryFeeXof: parseInt(val("e-fee")) || 0, maxPlayers: parseInt(val("e-max")) || 0, prize: val("e-prize"), rules: val("e-rules") };
       if (S.detail?.status === "setup") { body.nbPools = parseInt(val("e-pools")) || 1; body.pointsPerPlayer = parseInt(val("e-pts")) || 1; }
       editSave(d.editsave, body);
+    }
+    else if (d.cfgformat) { void cfgSave(cfgFormatPatch(S.detail || {}, d.cfgformat)); }
+    else if (d.cfgpoolformat) {
+      const nextFinals = S.detail?.finalsFormat === "survival" && d.cfgpoolformat !== "roundrobin" ? { finalsFormat: "double" } : {};
+      void cfgSave({ ...cfgReadPools(), poolFormat: d.cfgpoolformat, ...nextFinals });
+    }
+    else if (d.cfgfinalsformat) { void cfgSave({ ...cfgReadPools(), finalsFormat: d.cfgfinalsformat }); }
+    else if (d.cfgsave === "pools") { void cfgSave(cfgReadPools()); }
+    else if (d.cfgsave === "details") { cfgSaveDetails(); }
+    else if (d.cfgpick !== undefined) {
+      // Sélection gérée sans redessiner (rien de ce qui est tapé ailleurs dans le panneau ne s'efface).
+      const on = el.dataset.on !== "1";
+      el.dataset.on = on ? "1" : "";
+      el.style.background = on ? "rgba(34,211,238,.1)" : "var(--surface-3)";
+      el.style.borderColor = on ? "#22D3EE" : "var(--border)";
+      el.style.color = on ? "#22D3EE" : "var(--text-muted)";
+      const c = document.getElementById("cfg-pick-count");
+      if (c) c.textContent = String(document.querySelectorAll('[data-cfgpick][data-on="1"]').length);
+    }
+    else if (d.cfgpickall !== undefined) {
+      document.querySelectorAll<HTMLElement>("[data-cfgpick]").forEach((b) => {
+        if (b.style.display === "none") return;
+        b.dataset.on = "1"; b.style.background = "rgba(34,211,238,.1)"; b.style.borderColor = "#22D3EE"; b.style.color = "#22D3EE";
+      });
+      const c = document.getElementById("cfg-pick-count");
+      if (c) c.textContent = String(document.querySelectorAll('[data-cfgpick][data-on="1"]').length);
+    }
+    else if (d.cfgpickadd !== undefined) {
+      const picked = Array.from(document.querySelectorAll<HTMLElement>('[data-cfgpick][data-on="1"]')).map((b) => {
+        const [name, club] = (b.dataset.cfgpick || "").split("|");
+        return club ? `${name} @${club}` : name;
+      });
+      if (!picked.length) { showToast("Clique d'abord sur les joueurs à ajouter."); return; }
+      void cfgAddPlayers(picked);
+    }
+    else if (d.cfgbulk !== undefined) {
+      const lines = ((document.getElementById("cfg-bulk") as HTMLTextAreaElement | null)?.value || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+      if (!lines.length) { showToast("Saisis au moins un nom (un par ligne)."); return; }
+      void cfgAddPlayers(lines);
     }
     else if (d.pladd) {
       const nameEl = document.getElementById("pl-add-name") as HTMLInputElement | null;

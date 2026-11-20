@@ -10,4 +10,21 @@ if (!process.env.DATABASE_URL) {
   process.exit(0);
 }
 
-execSync('prisma migrate deploy && prisma generate', { stdio: 'inherit' });
+// La base (Neon) se met en veille quand elle est inactive : à la 1re connexion d'un build, elle peut mettre plusieurs secondes à se
+// réveiller et « prisma migrate deploy » échoue alors par délai dépassé (P1002, verrou consultatif) alors que la base va très bien.
+// On réessaie donc quelques fois, avec une pause, avant d'abandonner — si tous les essais échouent, le build échoue quand même
+// (on ne déploie jamais une API sur une base dont les migrations n'ont pas pu être vérifiées).
+const MAX_ATTEMPTS = 4;
+const PAUSE_MS = 8000;
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  try {
+    execSync('prisma migrate deploy && prisma generate', { stdio: 'inherit' });
+    break;
+  } catch (err) {
+    if (attempt === MAX_ATTEMPTS) throw err;
+    console.log(`[@vlome/api] prisma migrate deploy a échoué (essai ${attempt}/${MAX_ATTEMPTS}) — la base est peut-être en train de se réveiller ; nouvel essai dans ${PAUSE_MS / 1000} s…`);
+    sleep(PAUSE_MS);
+  }
+}

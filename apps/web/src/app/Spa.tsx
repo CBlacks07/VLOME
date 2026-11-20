@@ -7753,6 +7753,43 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     })();
   }, []);
 
+  // Tableau de bord de pilotage : actualisé toutes les 15 s tant que l'admin le regarde (onglet visible), et dès qu'il revient sur l'onglet.
+  useEffect(() => {
+    if (!(S.page === "profil" && S.adminTab === "apercu" && S.user?.role === "ADMIN")) return;
+    const tick = () => { if (document.visibilityState === "visible") void loadDashboard(); };
+    tick();
+    const id = setInterval(tick, 15000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.adminTab, S.user?.role]);
+
+  // « il y a 12 s » : mis à jour directement dans la page toutes les 5 s, sans re-rendu.
+  useEffect(() => {
+    const tick = () => document.querySelectorAll<HTMLElement>("[data-ago]").forEach((el) => { const ts = Number(el.dataset.ago); if (ts) el.textContent = agoLabel(ts); });
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Signal de présence : « ce navigateur est ouvert sur le site » (identifiant de session aléatoire, aucune donnée personnelle),
+  // toutes les 45 s tant que l'onglet est visible — alimente « En ligne maintenant » du tableau de bord admin.
+  useEffect(() => {
+    let sid = "";
+    try { sid = sessionStorage.getItem("vlome_sid") || ""; } catch { /* ignore */ }
+    if (!sid) {
+      sid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+      try { sessionStorage.setItem("vlome_sid", sid); } catch { /* ignore */ }
+    }
+    const ping = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch(`${API}/api/visits/ping`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sid }), keepalive: true }).catch(() => { /* signal perdu : sans importance */ });
+    };
+    ping();
+    const id = setInterval(ping, 45000);
+    document.addEventListener("visibilitychange", ping);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", ping); };
+  }, []);
+
   // Le bouton précédent/suivant du navigateur (ou l'édition manuelle du hash) rouvre la bonne page.
   useEffect(() => {
     const onHashChange = () => applyHash(window.location.hash);

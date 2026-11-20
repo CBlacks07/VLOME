@@ -939,13 +939,13 @@ function wizSteps(S: State) {
   // Raccourci abrégé (Modifier) : format figé, Participants/Poules gérés depuis la page du tournoi —
   // on saute directement à Barème. "Changer le format" (wizFullEdit) : même principe mais le format
   // choisi pilote quelles étapes Poules/Barème apparaissent, comme en création (moins Participants).
-  // Création pure : Survival et Battle Royale ont chacun leur propre barème détaillé (toutes les
-  // étapes) ; les autres formats à poules gardent "Poules" mais sautent le barème (rien à y régler) ;
-  // le reste saute les deux.
+  // Création pure : Battle Royale garde toutes ses étapes ; Survival est créé « juste comme ça » (infos + participants
+  // facultatifs) — poules, barème, qualifiés et phase finale se règlent ensuite avec « Modifier » ; les autres formats à
+  // poules gardent "Poules" mais sautent le barème (rien à y régler) ; le reste saute les deux.
   const pooled = wizHasPools(d.format);
   const defs = editing
     ? (!S.wizFullEdit ? (isSurvival || isBR ? [full[0], full[3], full[4]] : [full[0], full[4]]) : isSurvival || isBR ? [full[0], full[2], full[3], full[4]] : pooled ? [full[0], full[2], full[4]] : [full[0], full[4]])
-    : isSurvival || isBR ? full : pooled ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
+    : isBR ? full : isSurvival ? [full[0], full[1], full[4]] : pooled ? [full[0], full[1], full[2], full[4]] : [full[0], full[1], full[4]];
   return `<div style="padding:14px 0">${defs.map(([label, n]) => {
     const active = n === S.wizStep, done = n < S.wizStep;
     const sub = done ? subtitle(n) : active ? "En cours" : "";
@@ -1156,7 +1156,7 @@ function wizParticipantsStep(S: State) {
       <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:var(--text-muted)">Cagnotte totale</span><b id="wiz-cagnotte-total" style="color:#34D399;font-size:18px">${d.players.length * d.pointsPerPlayer}</b></div>`)}</div>`
     : `<div style="margin-bottom:16px">${participantsCard}</div>`;
   return `${cagnotteBlock}
-  ${rosterPanel}${wizFoot("Retour", 1, wizHasPools(d.format) || d.format === "BATTLE_ROYALE" ? 3 : 5)}`;
+  ${rosterPanel}${wizFoot("Retour", 1, d.format === "SURVIVAL" && !S.wizEditId ? 5 : wizHasPools(d.format) || d.format === "BATTLE_ROYALE" ? 3 : 5)}`;
 }
 
 /** Grille des tailles de poule (Bebas Neue + lettre) — factorisée pour être régénérée en direct
@@ -1208,7 +1208,7 @@ function wizPoolsStep(S: State) {
       <input id="wz-qualify" type="number" min="1" max="${maxQ}" value="${qualif}" style="${WIZ_INP};width:130px" />
       <p id="wiz-qualify-note" style="color:var(--text-faint);font-size:11.5px;margin-top:8px">${qualifNote}</p>
     </div>
-    ${!isSurvival ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
+    ${!isSurvival && S.wizEditId ? `<div id="wiz-finalsformat-block" style="${d.nbPools > 1 ? "" : "display:none;"}margin-top:18px">
       <div style="font-size:12px;color:var(--text-muted);font-weight:650;margin-bottom:8px">Format de la phase finale</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${wizFinalsFormatOptions(d.poolFormat).map(([key, label]) => {
@@ -1342,11 +1342,15 @@ function wizValidateStep(S: State) {
   // Le barème détaillé (et sa jauge de validité) ne concerne que Survival — les autres formats n'ont rien à dépasser.
   // scoringOk : chaque valeur de "victoire" doit être ≥ 0,25 (voir WIZ_SCORING_FLOOR) — sinon l'API
   // refuse la création avec un message technique brut ; on bloque ici avec une raison compréhensible.
-  const scoringOk = isBR || wizScoringValid(d);
+  // Survival en création : seules les infos générales sont demandées — poules, barème, qualifiés et phase finale gardent leurs
+  // valeurs par défaut et se règlent après coup (« Modifier » sur la page du tournoi). Rien du barème à contrôler ici : l'API
+  // le fait tenir dans la cagnotte au fil des inscriptions.
+  const survivalLight = !editing && isSurvival;
+  const scoringOk = isBR || survivalLight || wizScoringValid(d);
   // Aucun minimum de participants : le tournoi peut être créé sans liste de noms, les joueurs s'inscrivent ensuite. Le barème
   // Survival n'est vérifié que s'il y a déjà des joueurs (sans eux la cagnotte vaut 0 : rien à vérifier — l'API réajuste le
   // barème à chaque inscription).
-  const canSubmit = scoringOk && (isSurvival ? c.valid || d.players.length === 0 : true) && d.name.trim().length > 0;
+  const canSubmit = scoringOk && (isSurvival && !survivalLight ? c.valid || d.players.length === 0 : true) && d.name.trim().length > 0;
   const row = (label: string, value: string) => `<tr><td style="padding:9px 6px;color:var(--text-muted);font-size:13px">${label}</td><td style="padding:9px 6px;text-align:right;font-weight:650">${value}</td></tr>`;
   // Hors Survival, seuls finalsWin/championBonus s'appliquent (voir wizScoringStep) — le reste ne concerne pas ce format.
   const scoringFields = isSurvival ? WIZ_SCORING_FIELDS : WIZ_SCORING_FIELDS.filter(([, , key]) => key === "finalsWin" || key === "championBonus");
@@ -1370,16 +1374,17 @@ function wizValidateStep(S: State) {
   // "Top 1 + Top 2" écrit en dur, faux dès qu'on en qualifie un autre nombre.
   const qualifN = Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers));
   const qualifSurvivalLabel = `${qualifN === 1 ? "Le 1er" : `Les ${qualifN} premiers`} de chaque poule (${qualifN * d.nbPools} qualifié${qualifN * d.nbPools > 1 ? "s" : ""} au total) → phase finale`;
-  const participantsRows = !wizFullFlow(S) ? "" : `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
+  const participantsRows = !wizFullFlow(S) ? "" : survivalLight ? `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}` : `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
-  const backTarget = !editing ? (isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival || isBR ? 4 : 1) : (isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 1));
+  const backTarget = !editing ? (survivalLight ? 2 : isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 2) : (!S.wizFullEdit ? (isSurvival || isBR ? 4 : 1) : (isSurvival || isBR ? 4 : hasPoolsStep ? 3 : 1));
   // Le barème (points par victoire, bonus champion) ne concerne que Survival — seul format à
   // respecter une cagnotte. Les autres formats gardent des valeurs fixes en interne, jamais montrées
   // ici : ça n'a rien à faire dans un récap Bracket simple/Round Robin/etc. Battle Royale a son propre
   // barème (palier de classement + bonus élimination), réglable depuis wizBrScoringStep.
-  const bareme = isSurvival ? `<hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
+  const bareme = survivalLight ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--text-muted);background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.25);border-radius:10px;padding:10px 12px">${ic(I.bolt, 13)} Poules, barème des points, qualifiés et phase finale gardent leurs valeurs par défaut : tu les règles juste après la création, avec <b style="color:var(--text)">« Modifier »</b> sur la page du tournoi.</p>`
+    : isSurvival ? `<hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>`
     : isBR ? `<hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
@@ -1395,14 +1400,14 @@ function wizValidateStep(S: State) {
       </table>
       ${bareme}
       <button data-act="${editing ? "wiz-update" : "wiz-submit"}" ${!canSubmit || S.busy ? "disabled" : ""} style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:20px;background:${canSubmit ? "linear-gradient(135deg,#22D3EE,#12aec4)" : "var(--surface-4)"};color:${canSubmit ? "#04222a" : "var(--text-faint)"};border:0;border-radius:12px;padding:14px 22px;font-weight:750;font-size:15px;cursor:${canSubmit && !S.busy ? "pointer" : "default"}">${ic(I.bolt, 17)}${S.busy ? (editing ? "Enregistrement…" : "Création…") : (editing ? "Enregistrer les modifications" : "Créer le tournoi")}</button>
-      ${canSubmit ? (editing ? "" : `<p style="color:var(--text-faint);font-size:11.5px;text-align:center;margin-top:9px">${isSurvival ? "Tu pourras répartir/réordonner les poules et lancer le tournoi depuis sa page." : "Tu pourras lancer le tournoi depuis sa page."}</p>`) : (() => {
+      ${canSubmit ? (editing ? "" : `<p style="color:var(--text-faint);font-size:11.5px;text-align:center;margin-top:9px">${isSurvival ? "Tu pourras régler les poules et le barème, répartir/réordonner les poules, puis lancer le tournoi depuis sa page." : "Tu pourras lancer le tournoi depuis sa page."}</p>`) : (() => {
         const reasons: string[] = [];
         if (!d.name.trim()) reasons.push("le nom du tournoi");
         if (!scoringOk) reasons.push("le barème (une victoire ne peut pas valoir 0 point — 0,25 minimum)");
         if (isSurvival && d.players.length > 0 && !c.valid) reasons.push("le barème (dépasse la cagnotte disponible)");
         return `<p style="color:#FB7185;font-size:11.5px;text-align:center;margin-top:9px">${ic(I.warn, 12)} Corrige ${reasons.join(", ")} avant de ${editing ? "enregistrer" : "créer"}.</p>`;
       })()}`)}
-    ${isSurvival ? wizGaugeCard(c) : ""}
+    ${isSurvival && !survivalLight ? wizGaugeCard(c) : ""}
   </div>${wizFoot("Retour", backTarget, 0)}`;
 }
 
@@ -7812,7 +7817,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (warn) warn.style.display = (!isSurv && n === 1) ? "" : "none";
         if (modeBlock) modeBlock.style.display = (isSurv || n > 1) && !poolModeImplied ? "" : "none";
         if (qualifyBlock) qualifyBlock.style.display = isSurv || n > 1 ? "" : "none";
-        if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 ? "" : "none";
+        if (finalsFmtBlock) finalsFmtBlock.style.display = !isSurv && n > 1 && !!S.wizEditId ? "" : "none";
         // Le plafond "Qualifiés par poule" suit l'effectif de la plus petite poule, quel que soit le
         // mode de poule : changer le nombre de poules sans repasser par l'étape le laissait figé sur
         // l'ancien max.
@@ -8063,8 +8068,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       date: d.date || undefined, pointsPerPlayer: d.pointsPerPlayer, players: d.teamSize ? [] : d.players,
       ...(d.teamSize ? { teamSize: d.teamSize } : {}),
       nbPools: d.nbPools, entryFeeXof: d.entryFeeXof, maxPlayers: d.maxPlayers || 0, givesLoyaltyPoint: d.givesLoyaltyPoint, tier: d.tier,
-      survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
-      finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
+      ...(d.format === "SURVIVAL" ? {} : {
+        survWin: d.survWin, loserWin: d.loserWin, poolFinalWin: d.poolFinalWin,
+        finalsWin: d.finalsWin, championBonus: d.championBonus, streakBonus: d.streakBonus,
+      }),
       finalsFormat: d.finalsFormat, poolFormat: d.poolFormat, streakLength: d.streakLength,
       qualifyPerPool: d.qualifyPerPool,
       matchMode: d.matchMode, matchValue: d.matchValue, countGoalDiff: d.countGoalDiff,
@@ -8105,6 +8112,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       loadEvents(); loadMyEvents();
       if (backToEvent) { if (backToEvent.publicPage) openEvent(backToEvent.id); else openEventEditor(backToEvent.id); }
       else if (created?.id) openDetail(created.id);
+      if (d.format === "SURVIVAL") showToast("Tournoi créé. Règle maintenant les poules et le barème avec « Modifier ».");
     } catch {
       setS((s) => ({ ...s, busy: false }));
       alert("Création impossible — l'API est-elle démarrée ? (pnpm dev:api)");

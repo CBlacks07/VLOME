@@ -169,7 +169,9 @@ export class TournamentsService {
     // bracket simple peut distribuer largement plus de points que la cagnotte annoncée.
     // Sans joueur (tournoi créé « inscriptions ouvertes »), la cagnotte vaut 0 : rien à vérifier — le barème est réajusté à chaque inscription.
     if (t.format === 'survival' && t.players.length > 0 && !Engine.cagnotte(t).valid) {
-      throw new ConflictException('Le barème de points dépasse la cagnotte disponible (participants × points/joueur) pour ce mode de phase finale.');
+      // Barème non précisé (création allégée : il se règle ensuite) : on l'ajuste à la cagnotte plutôt que de refuser.
+      if (!hasScoring) Engine.autoFitScoring(t);
+      else throw new ConflictException('Le barème de points dépasse la cagnotte disponible (participants × points/joueur) pour ce mode de phase finale.');
     }
     const r = await this.prisma.tournament.create({
       data: {

@@ -87,6 +87,24 @@ export function toUnplaced(
 
 type DayRow = { d: string; n: number; amt: number };
 
+/** Ligne du fil d'activité pour un nouveau compte : le libellé suit le TYPE de compte (joueur, organisateur, association, admin) —
+ *  plus de « Joueur » partout — et signale ce qui attend une validation. */
+export function accountActivity(u: { displayName: string; role: string; organizerStatus?: string | null; ownedClub?: { status: string } | null }): { tone: 'info' | 'warn'; title: string; detail: string } {
+  const name = u.displayName;
+  if (u.role === 'ORGANIZER') {
+    return u.organizerStatus === 'PENDING'
+      ? { tone: 'warn', title: `${name} demande à devenir organisateur`, detail: 'Organisateur · à valider' }
+      : { tone: 'info', title: `Nouvel organisateur : ${name}`, detail: 'Organisateur' };
+  }
+  if (u.role === 'ASSOCIATION') {
+    return u.ownedClub?.status === 'PENDING'
+      ? { tone: 'warn', title: `${name} demande son intégration`, detail: 'Association · à valider' }
+      : { tone: 'info', title: `Nouvelle association : ${name}`, detail: 'Association' };
+  }
+  if (u.role === 'ADMIN') return { tone: 'info', title: `Nouvel administrateur : ${name}`, detail: 'Administrateur' };
+  return { tone: 'info', title: `Nouveau compte : ${name}`, detail: 'Joueur' };
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService, private visits: VisitsService) {}
@@ -127,7 +145,7 @@ export class DashboardService {
       this.prisma.order.aggregate({ _sum: { totalXof: true }, where: { status: { in: ['paid', 'delivered'] } } }),
       this.prisma.creditPurchase.aggregate({ _sum: { amountXof: true }, where: { status: 'paid' } }),
       this.prisma.tournament.findMany({ where: { status: 'LIVE' }, take: 12, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, game: true, format: true, engineState: true } }),
-      this.prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 8, select: { displayName: true, role: true, organizerStatus: true, createdAt: true } }),
+      this.prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 8, select: { displayName: true, role: true, organizerStatus: true, createdAt: true, ownedClub: { select: { status: true } } } }),
       this.prisma.registration.findMany({ orderBy: { createdAt: 'desc' }, take: 12, select: { playerName: true, amountXof: true, paymentStatus: true, createdAt: true, tournament: { select: { name: true } } } }),
       this.prisma.order.findMany({ orderBy: { createdAt: 'desc' }, take: 8, select: { reference: true, totalXof: true, status: true, createdAt: true, user: { select: { displayName: true } } } }),
       this.prisma.creditPurchase.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { credits: true, amountXof: true, status: true, createdAt: true, user: { select: { displayName: true } } } }),
@@ -162,11 +180,7 @@ export class DashboardService {
     const revenue = keys.map((_, i) => regAmt[i] + orderAmt[i] + creditAmt[i]); // inscriptions payées + commandes payées/livrées + crédits payés
 
     const activity = mergeActivity([
-      recentUsers.map((u) => ({
-        type: 'user' as const, ts: u.createdAt.getTime(), tone: u.organizerStatus === 'PENDING' ? 'warn' as const : 'info' as const,
-        title: u.organizerStatus === 'PENDING' ? `${u.displayName} demande à devenir organisateur` : `Nouveau compte : ${u.displayName}`,
-        detail: u.role === 'ORGANIZER' ? 'Organisateur' : u.role === 'ADMIN' ? 'Admin' : 'Joueur',
-      })),
+      recentUsers.map((u) => ({ type: 'user' as const, ts: u.createdAt.getTime(), ...accountActivity(u) })),
       recentRegs.map((r) => ({
         type: 'registration' as const, ts: r.createdAt.getTime(), tone: r.paymentStatus === 'pending' ? 'warn' as const : 'good' as const,
         title: `${r.playerName} s'inscrit${r.paymentStatus === 'pending' ? ' (paiement en attente)' : ''}`,

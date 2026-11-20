@@ -203,6 +203,7 @@ type State = {
   // Associations : clubs validés (liste d'inscription), espace « Mon club » d'un compte association, associations à valider (admin).
   publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; adminAssocs: Detail[] | null; adminUnowned: Detail[] | null;
   // Modale « Rattacher un compte association » (admin) : formulaire puis identifiants créés.
+  usersFilter: string; roleMenu: string | null; // liste des comptes (admin) : filtre par rôle et menu de changement de rôle ouvert
   mailStatus: Detail | null; mailTest: { busy: boolean; ok: boolean; msg: string } | null;
   attachModal: { clubId: string; name: string; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
@@ -3029,23 +3030,57 @@ function adminUsers(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const all: Detail[] = a.users;
   const users = q ? all.filter((u: Detail) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : all;
-  const roleBtn = (uid: string, role: string, cur: string) => { const on = cur === role; return `<button data-setrole="${uid}|${role}" style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;cursor:pointer;background:${on ? ROLE_COLOR[role] + "18" : "transparent"};border:1px solid ${on ? ROLE_COLOR[role] : "var(--border)"};color:${on ? ROLE_COLOR[role] : "var(--text-muted)"}">${ROLE_LABEL[role]}</button>`; };
-  const th = (label: string, align = "left") => `<th style="text-align:${align};padding:9px 10px;font-size:10.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);white-space:nowrap">${label}</th>`;
-  const date = (d?: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
-  const row = (usr: Detail) => `<tr style="border-top:1px solid var(--surface-4)">
-    <td style="padding:10px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted)">${(usr.displayName || "?").charAt(0).toUpperCase()}</span><span style="font-weight:650">${escHtml(usr.displayName)}${usr.id === S.me?.id ? ` <span style="font-size:10.5px;color:#22D3EE;font-weight:700">(toi)</span>` : ""}</span></div></td>
-    <td style="padding:10px;color:var(--text-muted);font-size:13px">${escHtml(usr.email)}</td>
-    <td style="padding:10px;color:var(--text-faint);font-size:12.5px;white-space:nowrap">${date(usr.createdAt)}</td>
-    <td style="padding:10px">${usr.role === "ASSOCIATION" || usr.ownsClub ? (usr.role === "ASSOCIATION" ? `<span style="font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 10px;border:1px solid #34D399;color:#34D399;background:#34D39918">Association</span>` : `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:11.5px;font-weight:700;color:#FBBF24">Rôle : ${escHtml(ROLE_LABEL[usr.role] || usr.role)}</span>${btnSm(`data-setrole="${usr.id}|ASSOCIATION"`, "Rétablir en association", "#34D399", "rgba(52,211,153,.4)")}</span>`) : `<div style="display:inline-flex;gap:6px;flex-wrap:nowrap">${roleBtn(usr.id, "PLAYER", usr.role)}${roleBtn(usr.id, "ORGANIZER", usr.role)}${roleBtn(usr.id, "ADMIN", usr.role)}</div>`}</td>
-    <td style="padding:10px;text-align:right;white-space:nowrap"><div style="display:inline-flex;gap:6px;flex-wrap:nowrap;white-space:nowrap">${btnSm(`data-userpwd="${usr.id}"`, "Réinit. mot de passe", "#FBBF24", "rgba(251,191,36,.35)")}${usr.id === S.me?.id ? "" : btnSm(`data-userdel="${usr.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></td></tr>`;
-  const section = (title: string, color: string, list: Detail[], emptyMsg: string) => card(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:${color};flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">${title}</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${list.length}</span></div>
-    ${scrollBox(`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:980px;table-layout:fixed"><colgroup><col style="width:19%"><col style="width:19%"><col style="width:10%"><col style="width:26%"><col style="width:26%"></colgroup><thead><tr>${th("Utilisateur")}${th("E-mail")}${th("Inscrit le")}${th("Rôle")}${th("Actions", "right")}</tr></thead><tbody>${list.length ? list.map(row).join("") : `<tr><td colspan="5" style="color:var(--text-faint);font-size:13px;padding:16px 0;text-align:center;border-top:1px solid var(--surface-4)">${emptyMsg}</td></tr>`}</tbody></table></div>`, 420)}`);
-  const admins = users.filter((u: Detail) => u.role === "ADMIN");
-  const organizers = users.filter((u: Detail) => u.role === "ORGANIZER");
   const isAssoc = (u: Detail) => u.role === "ASSOCIATION" || !!u.ownsClub;
-  const associations = users.filter(isAssoc);
-  const players = users.filter((u: Detail) => !isAssoc(u) && u.role !== "ADMIN" && u.role !== "ORGANIZER");
+  // Catégorie d'affichage d'un compte (un propriétaire d'association reste « Association » même si son rôle a été changé par erreur).
+  const kind = (u: Detail): string => (isAssoc(u) ? "ASSOCIATION" : u.role);
+  const KIND_ORDER: Record<string, number> = { ADMIN: 0, ORGANIZER: 1, ASSOCIATION: 2, PLAYER: 3 };
+  const KIND_LABEL: Record<string, string> = { ALL: "Tous", ADMIN: "Admins", ORGANIZER: "Organisateurs", ASSOCIATION: "Associations", PLAYER: "Joueurs" };
+  const counts: Record<string, number> = { ALL: all.length, ADMIN: 0, ORGANIZER: 0, ASSOCIATION: 0, PLAYER: 0 };
+  all.forEach((u: Detail) => { counts[kind(u)] = (counts[kind(u)] ?? 0) + 1; });
+  const filter = S.usersFilter in KIND_LABEL ? S.usersFilter : "ALL";
+  // Tri : rôle (admins d'abord), puis les plus récents en premier (l'API les renvoie déjà par date décroissante).
+  const shown = users.filter((u: Detail) => filter === "ALL" || kind(u) === filter).map((u: Detail, i: number) => ({ u, i })).sort((x: { u: Detail; i: number }, y: { u: Detail; i: number }) => (KIND_ORDER[kind(x.u)] ?? 9) - (KIND_ORDER[kind(y.u)] ?? 9) || x.i - y.i).map((e: { u: Detail }) => e.u);
+  const date = (d?: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+  const orgPending = new Set((a.organizers ?? []).filter((o: Detail) => o.organizerStatus === "PENDING").map((o: Detail) => o.id));
+  const clubPending = new Map<string, Detail>((a.clubRequests ?? []).map((r: Detail) => [r.id, r] as [string, Detail]));
+  const badge = (label: string, color: string, title = "") => `<span ${title ? `title="${escAttr(title)}"` : ""} style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap;color:${color};background:${color}1f;border:1px solid ${color}55">${label}</span>`;
+  const lockIc = ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 15);
+  const iconBtn = (attr: string, title: string, color: string, inner: string) => `<button ${attr} title="${escAttr(title)}" aria-label="${escAttr(title)}" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;cursor:pointer;background:transparent;border:1px solid var(--border);color:${color}">${inner}</button>`;
+  const row = (usr: Detail) => {
+    const mine = usr.id === S.me?.id;
+    const k = kind(usr);
+    const color = ROLE_COLOR[k] || "#22D3EE";
+    const label = ROLE_LABEL[k] || k;
+    let roleCell: string;
+    if (k === "ASSOCIATION") {
+      roleCell = usr.role === "ASSOCIATION"
+        ? badge(label, color)
+        : `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">${badge(`Rôle : ${escHtml(ROLE_LABEL[usr.role] || usr.role)}`, "#FBBF24", "Ce compte pilote une association mais son rôle a été changé")}${btnSm(`data-setrole="${usr.id}|ASSOCIATION"`, "Rétablir", "#34D399", "rgba(52,211,153,.4)")}</span>`;
+    } else if (mine) {
+      roleCell = badge(label, color);
+    } else {
+      const open = S.roleMenu === usr.id;
+      const options = ["PLAYER", "ORGANIZER", "ADMIN"].filter((r) => r !== usr.role).map((r) => `<button data-setrole="${usr.id}|${r}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;color:var(--text);font-size:12.5px;font-weight:650;padding:8px 10px;border-radius:8px;cursor:pointer;font-family:inherit"><span style="width:8px;height:8px;border-radius:50%;background:${ROLE_COLOR[r]};flex:none"></span>${ROLE_LABEL[r]}</button>`).join("");
+      roleCell = `<span style="position:relative;display:inline-block"><button data-rolemenu="${usr.id}" title="Changer le rôle" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:999px;padding:4px 10px;cursor:pointer;font-family:inherit;color:${color};background:${color}1f;border:1px solid ${color}55">${label}<span style="font-size:9px;opacity:.8">▾</span></button>${open ? `<div data-rolemenu-pop="1" style="position:absolute;z-index:20;top:calc(100% + 6px);left:0;min-width:170px;padding:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.45)"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;padding:4px 10px 6px">Passer en…</div>${options}</div>` : ""}</span>`;
+    }
+    const statuses = [
+      orgPending.has(usr.id) ? badge("Organisateur en attente", "#FBBF24") : "",
+      clubPending.has(usr.id) ? badge(clubPending.get(usr.id)!.clubBlocking ? "Club en attente · bloqué" : "Club en attente", "#FB7185") : "",
+    ].join("");
+    return `<div class="ut-row">
+      <div class="ut-user"><span style="display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted)">${(usr.displayName || "?").charAt(0).toUpperCase()}</span>
+        <span style="min-width:0"><span style="display:block;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(usr.displayName)}${mine ? ` <span style="font-size:10.5px;color:#22D3EE;font-weight:700">(toi)</span>` : ""}</span><span style="display:block;color:var(--text-muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(usr.email)}</span></span></div>
+      <div class="ut-role">${roleCell}</div>
+      <div class="ut-status">${statuses}</div>
+      <div class="ut-date">${date(usr.createdAt)}</div>
+      <div class="ut-act">${iconBtn(`data-userpwd="${usr.id}"`, "Réinitialiser le mot de passe", "#FBBF24", lockIc)}${mine ? "" : iconBtn(`data-userdel="${usr.id}"`, "Supprimer le compte", "#FB7185", ic(I.trash, 15))}</div>
+    </div>`;
+  };
+  const pills = ["ALL", "ADMIN", "ORGANIZER", "ASSOCIATION", "PLAYER"].filter((k) => k === "ALL" || counts[k] > 0 || filter === k).map((k) => {
+    const on = filter === k;
+    const c = k === "ALL" ? "#22D3EE" : ROLE_COLOR[k];
+    return `<button data-userfilter="${k}" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;font-family:inherit;background:${on ? c + "1f" : "transparent"};border:1px solid ${on ? c : "var(--border)"};color:${on ? c : "var(--text-muted)"}">${KIND_LABEL[k]}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;opacity:.75">${counts[k]}</span></button>`;
+  }).join("");
   const assocReqs: Detail[] = S.adminAssocs ?? [];
   const assocBox = assocReqs.length ? `<div style="margin-bottom:16px">${card(`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#34D399;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#34D399;font-weight:750">Associations à intégrer</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${assocReqs.length}</span></div>
@@ -3071,13 +3106,17 @@ function adminUsers(S: State) {
       <div style="flex:1;min-width:200px"><div style="font-weight:650">${escHtml(r.displayName)} <span style="font-size:12px;color:var(--text-faint);font-weight:500">${escHtml(r.email)}</span></div><div style="font-size:13px;color:var(--text);margin-top:3px">Club demandé : <b style="color:#FBBF24">${escHtml(r.clubRequested || "")}</b>${r.clubBlocking ? ` <span style="font-size:11px;color:#FB7185;font-weight:700">· compte bloqué</span>` : ""}</div></div>
       <div style="display:flex;gap:8px">${btnSm(`data-clubreview="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-clubreview="${r.id}|approve"`, "Valider le club", "#34D399", "rgba(52,211,153,.4)")}</div>
     </div>`).join("")}`)}</div>` : "";
-  return `${assocBox}${unownedBox}${clubBox}${card(`${secTitle(`Comptes (${all.length})`)}${adminSearchBar(S, "Nom ou email…")}<div style="margin-top:-6px;font-size:12.5px;color:var(--text-faint)">Administrateurs, organisateurs et utilisateurs sont listés séparément ci-dessous. Le bouton du rôle actuel est allumé ; un clic sur un autre rôle déplace le compte de tableau.</div>`)}
-    <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
-      ${section("Administrateurs", "#FBBF24", admins, q ? "Aucun administrateur trouvé." : "Aucun administrateur.")}
-      ${section("Organisateurs", "#7C82FF", organizers, q ? "Aucun organisateur trouvé." : "Aucun organisateur.")}
-      ${associations.length ? section("Associations", "#34D399", associations, "Aucune association.") : ""}
-      ${section("Utilisateurs", "#22D3EE", players, q ? "Aucun utilisateur trouvé." : "Aucun utilisateur.")}
-    </div>`;
+  const list = shown.length
+    ? shown.map(row).join("")
+    : `<div style="color:var(--text-faint);font-size:13px;padding:22px 0;text-align:center">${q ? "Aucun compte ne correspond à cette recherche." : "Aucun compte dans cette catégorie."}</div>`;
+  return `${assocBox}${unownedBox}${clubBox}${card(`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      ${secTitle(`Comptes (${all.length})`).replace("margin:0 0 14px", "margin:0")}
+      <div style="flex:1;min-width:220px;max-width:340px">${adminSearchBar(S, "Nom ou email…").replace("margin-bottom:14px", "margin-bottom:0")}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${pills}</div>
+    <div class="ut-head"><span>Utilisateur</span><span>Rôle</span><span>Statut</span><span>Inscrit le</span><span style="text-align:right">Actions</span></div>
+    <div style="max-height:680px;overflow-y:auto">${list}</div>`)}`;
 }
 
 /** Onglet Joueurs : base de joueurs (roster) + clubs, gérée depuis l'admin — sert aussi à pré-remplir les participants à la création d'un tournoi. */
@@ -6422,7 +6461,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, usersFilter: "ALL", roleMenu: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -8946,12 +8985,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
 
   function onClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
+    // Menu « changer le rôle » ouvert : un clic ailleurs le referme.
+    if (S.roleMenu && !target.closest("[data-rolemenu],[data-rolemenu-pop]")) setS((st) => ({ ...st, roleMenu: null }));
     // déconnexion : sous-élément du bouton utilisateur, à traiter avant data-menu-user
     if (target.closest("[data-logout]")) {
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9498,13 +9539,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         okLabel: ok ? "Valider" : "Refuser", action: `clubreview|${uid}|${decision}`,
       } }));
     }
+    else if (d.userfilter) { setS((st) => ({ ...st, usersFilter: d.userfilter!, roleMenu: null })); }
+    else if (d.rolemenu) { setS((st) => ({ ...st, roleMenu: st.roleMenu === d.rolemenu ? null : d.rolemenu! })); }
     else if (d.setrole) {
       const [uid, role] = d.setrole.split("|");
       const u = S.admin?.users.find((x: Detail) => x.id === uid);
       if (!u || u.role === role) return; // rôle déjà actif : rien à confirmer
       const who = `« ${u.displayName || "Ce compte"} » (${u.email || ""})`;
       const extra = role === "ADMIN" ? " Il aura accès à toute l'administration du site (utilisateurs, paiements, commandes…)." : u.role === "ADMIN" ? " Il perdra l'accès à l'administration." : "";
-      setS((s) => ({ ...s, confirmBox: { title: "Changer le rôle", message: `${who} passera de ${ROLE_LABEL[u.role] || u.role} à ${ROLE_LABEL[role] || role}.${extra}`, okLabel: "Confirmer le changement", action: `setrole|${uid}|${role}` } }));
+      setS((s) => ({ ...s, roleMenu: null, confirmBox: { title: "Changer le rôle", message: `${who} passera de ${ROLE_LABEL[u.role] || u.role} à ${ROLE_LABEL[role] || role}.${extra}`, okLabel: "Confirmer le changement", action: `setrole|${uid}|${role}` } }));
     }
     else if (d.userpwd) {
       const u = S.admin?.users.find((x: Detail) => x.id === d.userpwd);

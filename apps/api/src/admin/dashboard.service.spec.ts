@@ -67,3 +67,17 @@ describe('dashboard — fonctions pures', () => {
     expect(toUnplaced([], [])).toEqual([]);
   });
 });
+
+import { accountActivity } from './dashboard.service';
+describe('accountActivity', () => {
+  it('nomme le type de compte au lieu de « Joueur » partout', () => {
+    expect(accountActivity({ displayName: 'A', role: 'PLAYER' })).toMatchObject({ title: 'Nouveau compte : A', detail: 'Joueur' });
+    expect(accountActivity({ displayName: 'B', role: 'ORGANIZER', organizerStatus: 'APPROVED' })).toMatchObject({ title: 'Nouvel organisateur : B', detail: 'Organisateur' });
+    expect(accountActivity({ displayName: 'C', role: 'ADMIN' })).toMatchObject({ detail: 'Administrateur' });
+  });
+  it('signale les demandes à valider (organisateur, association)', () => {
+    expect(accountActivity({ displayName: 'D', role: 'ORGANIZER', organizerStatus: 'PENDING' })).toMatchObject({ tone: 'warn', detail: 'Organisateur · à valider' });
+    expect(accountActivity({ displayName: 'Gouzepe', role: 'ASSOCIATION', ownedClub: { status: 'PENDING' } })).toMatchObject({ tone: 'warn', title: 'Gouzepe demande son intégration', detail: 'Association · à valider' });
+    expect(accountActivity({ displayName: 'Gouzepe', role: 'ASSOCIATION', ownedClub: { status: 'APPROVED' } })).toMatchObject({ tone: 'info', title: 'Nouvelle association : Gouzepe', detail: 'Association' });
+  });
+});

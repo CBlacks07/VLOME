@@ -3583,15 +3583,16 @@ function adminOrders(a: NonNullable<State["admin"]>, showArchived = false) {
     // Paiement en ligne (FedaPay) : « Payée » et « Annulée » viennent du paiement lui-même (réussi, refusé, abandonné) — pas de
     // bouton manuel qui permettrait de déclarer payé ce qui ne l'est pas. Reste la livraison, qui est bien manuelle.
     const online = ONLINE_PAY.includes(o.paymentMethod);
-    const stBtns = online
-      ? (o.status === "paid" ? btnSm(`data-ordstatus="${o.id}|delivered"`, ORDER_STATUS.delivered[0], ORDER_STATUS.delivered[1], ORDER_STATUS.delivered[1] + "55") : "")
-        + (o.status === "pending" ? `<span style="font-size:11.5px;color:var(--text-faint)">en attente du paiement…</span>` : "")
-      : ["paid", "delivered", "cancelled"].filter((s) => s !== o.status)
-        .map((s) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55")).join("");
+    // Statuts figés : encaissée → seule la livraison reste possible ; livrée et annulée ne bougent plus (voir AdminService.setOrderStatus).
+    const nextBtn = (s: string) => btnSm(`data-ordstatus="${o.id}|${s}"`, ORDER_STATUS[s][0], ORDER_STATUS[s][1], ORDER_STATUS[s][1] + "55");
+    const locked = `<span style="font-size:11.5px;color:var(--text-faint)">${ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 12)}verrouillée</span>`;
+    const stBtns = o.status === "paid" ? nextBtn("delivered")
+      : o.status === "pending" ? (online ? `<span style="font-size:11.5px;color:var(--text-faint)">en attente du paiement…</span>` : nextBtn("paid") + nextBtn("cancelled"))
+      : locked;
     // Rangement : archiver masque la commande de la liste (elle reste en base et dans les chiffres) ; supprimer n'est possible que pour une
-    // commande qui n'a jamais abouti (annulée ou jamais payée) — une commande payée est une pièce comptable.
+    // commande restée en attente — une commande encaissée, livrée ou annulée est une pièce de l'historique, on l'archive.
     const tidy = btnSm(`data-ordarchive="${o.id}|${o.archived ? 0 : 1}"`, o.archived ? "Désarchiver" : "Archiver", "var(--text-muted)", "var(--border)")
-      + (o.status === "cancelled" || o.status === "pending" ? btnSm(`data-orddel="${o.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)") : "");
+      + (o.status === "pending" ? btnSm(`data-orddel="${o.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)") : "");
     return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${o.reference} <span style="color:var(--text-faint);font-weight:400;font-size:12px">· ${o.user ? escHtml(o.user.displayName) + " (" + escHtml(o.user.email) + ")" : "invité"}</span></div>
       <div style="font-size:12px;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${escHtml(items || o.paymentMethod || "Aucun article")} · ${new Date(o.createdAt).toLocaleDateString("fr-FR")}</div></div>

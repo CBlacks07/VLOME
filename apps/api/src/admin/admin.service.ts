@@ -419,13 +419,13 @@ export class AdminService {
     return this.prisma.order.update({ where: { id }, data: { archived } });
   }
 
-  /** Supprime définitivement une commande qui n'a jamais abouti (annulée ou jamais payée). Une commande payée/livrée est une pièce
-   *  comptable : elle ne se supprime pas, on l'archive. */
+  /** Supprime définitivement une commande restée « en attente » (jamais payée, jamais annulée). Une commande encaissée, livrée ou annulée
+   *  est une pièce de l'historique : elle ne se supprime pas, on l'archive pour la masquer de la liste. */
   async deleteOrder(id: string) {
     const o = await this.prisma.order.findUnique({ where: { id } });
     if (!o) throw new NotFoundException('Commande introuvable');
-    if (o.status === 'paid' || o.status === 'delivered') {
-      throw new ConflictException('Une commande payée ou livrée ne peut pas être supprimée : archive-la pour la masquer de la liste.');
+    if (o.status !== 'pending') {
+      throw new ConflictException('Une commande encaissée, livrée ou annulée ne peut pas être supprimée : archive-la pour la masquer de la liste.');
     }
     await this.prisma.$transaction([
       this.prisma.onlinePayment.deleteMany({ where: { kind: 'order', refId: id } }),
@@ -434,9 +434,22 @@ export class AdminService {
     return { id, deleted: true };
   }
 
+  /** Changements de statut permis : en attente → payée ou annulée ; payée → livrée. Une commande encaissée, livrée ou annulée est figée :
+   *  on ne « dépaie » pas, on ne ressuscite pas une commande annulée, on ne change pas une commande livrée. */
   async setOrderStatus(id: string, status: string) {
     const o = await this.prisma.order.findUnique({ where: { id } });
     if (!o) throw new NotFoundException('Commande introuvable');
+    if (o.status === status) return o;
+    const allowed: Record<string, string[]> = { pending: ['paid', 'cancelled'], paid: ['delivered'], delivered: [], cancelled: [] };
+    if (!(allowed[o.status] ?? []).includes(status)) {
+      throw new ConflictException(o.status === 'cancelled'
+        ? 'Une commande annulée ne peut plus être modifiée.'
+        : o.status === 'delivered'
+          ? 'Une commande livrée ne peut plus être modifiée.'
+          : o.status === 'paid'
+            ? 'Une commande encaissée ne peut plus être annulée ni modifiée : seule sa livraison peut être enregistrée.'
+            : 'Changement de statut non autorisé.');
+    }
     return this.prisma.order.update({ where: { id }, data: { status } });
   }
 }

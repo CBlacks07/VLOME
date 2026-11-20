@@ -17,24 +17,31 @@ function svc(order: { id: string; status: string } | null) {
 }
 
 describe('AdminService — rangement des commandes', () => {
-  it('supprime une commande annulée avec ses tentatives de paiement', async () => {
-    const { service, calls } = svc({ id: 'o1', status: 'cancelled' });
+  it('supprime une commande restée en attente avec ses tentatives de paiement', async () => {
+    const { service, calls } = svc({ id: 'o1', status: 'pending' });
     await expect(service.deleteOrder('o1')).resolves.toEqual({ id: 'o1', deleted: true });
     expect(calls.deletedPayments).toEqual({ where: { kind: 'order', refId: 'o1' } });
     expect(calls.deletedOrder).toEqual({ where: { id: 'o1' } });
   });
 
-  it('supprime aussi une commande jamais payée (en attente)', async () => {
-    const { service } = svc({ id: 'o2', status: 'pending' });
-    await expect(service.deleteOrder('o2')).resolves.toMatchObject({ deleted: true });
-  });
-
-  it('refuse de supprimer une commande payée ou livrée (pièce comptable) : il faut l\'archiver', async () => {
-    for (const status of ['paid', 'delivered']) {
+  it("refuse de supprimer une commande encaissée, livrée ou annulée : on l'archive", async () => {
+    for (const status of ['paid', 'delivered', 'cancelled']) {
       const { service, calls } = svc({ id: 'o3', status });
       await expect(service.deleteOrder('o3')).rejects.toBeInstanceOf(ConflictException);
       expect(calls.deletedOrder).toBeUndefined();
     }
+  });
+
+  it('statuts figés : encaissée → livrée seulement ; livrée et annulée ne changent plus', async () => {
+    const ok = svc({ id: 'o5', status: 'paid' });
+    await expect(ok.service.setOrderStatus('o5', 'delivered')).resolves.toBeDefined();
+    for (const [from, to] of [['paid', 'cancelled'], ['paid', 'pending'], ['cancelled', 'paid'], ['cancelled', 'delivered'], ['delivered', 'cancelled'], ['delivered', 'paid']]) {
+      await expect(svc({ id: 'o6', status: from }).service.setOrderStatus('o6', to)).rejects.toBeInstanceOf(ConflictException);
+    }
+  });
+
+  it('en attente : peut passer payée ou annulée', async () => {
+    for (const to of ['paid', 'cancelled']) await expect(svc({ id: 'o7', status: 'pending' }).service.setOrderStatus('o7', to)).resolves.toBeDefined();
   });
 
   it('commande introuvable', async () => {

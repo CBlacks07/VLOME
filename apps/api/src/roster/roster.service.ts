@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { uniqueClubSlug } from '../common/slug';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
@@ -72,6 +73,7 @@ export class RosterService {
 
   async listClubs() {
     const rows = await this.prisma.club.findMany({
+      where: { status: 'APPROVED' },
       orderBy: { name: 'asc' },
       include: { _count: { select: { players: true } } },
     });
@@ -83,7 +85,7 @@ export class RosterService {
     if (!name) throw new BadRequestException('Nom requis.');
     const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
     if (existing) throw new BadRequestException('Un club porte déjà ce nom.');
-    const c = await this.prisma.club.create({ data: { name, city: dto.city?.trim() || null, logoUrl: dto.logoUrl || null } });
+    const c = await this.prisma.club.create({ data: { name, slug: await uniqueClubSlug(this.prisma, name), city: dto.city?.trim() || null, logoUrl: dto.logoUrl || null } });
     return { id: c.id, name: c.name, city: c.city, logoUrl: c.logoUrl, playerCount: 0 };
   }
 

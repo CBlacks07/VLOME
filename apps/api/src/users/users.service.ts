@@ -122,11 +122,14 @@ export class UsersService {
       const wanted = dto.club.trim();
       if (!wanted) {
         clubId = null;
-        Object.assign(data, { clubRequested: null, clubStatus: 'NONE' });
+        Object.assign(data, { clubRequested: null, clubRequestedId: null, clubStatus: 'NONE' });
       } else {
+        const target = await this.prisma.club.findFirst({ where: { name: { equals: wanted, mode: 'insensitive' }, status: 'APPROVED' }, select: { id: true, name: true } });
+        if (!target) throw new BadRequestException('Choisis un club de la liste des associations validées.');
         const player = await this.prisma.player.findFirst({ where: { userId }, select: { club: { select: { name: true } } } });
-        if ((player?.club?.name || '').toLowerCase() !== wanted.toLowerCase()) {
-          Object.assign(data, { clubRequested: wanted, clubStatus: 'PENDING' });
+        if ((player?.club?.name || '').toLowerCase() !== target.name.toLowerCase()) {
+          // C'est l'association du club qui valide l'adhésion (voir AssociationsService.reviewMember).
+          Object.assign(data, { clubRequested: target.name, clubRequestedId: target.id, clubStatus: 'PENDING' });
         }
       }
     }

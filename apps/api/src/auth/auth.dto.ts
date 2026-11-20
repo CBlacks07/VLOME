@@ -45,7 +45,7 @@ export class RegisterDto {
 
   // Rôle demandé à l'inscription (ADMIN n'est jamais auto-attribuable).
   @IsOptional()
-  @IsIn(['PLAYER', 'ORGANIZER'])
+  @IsIn(['PLAYER', 'ORGANIZER', 'ASSOCIATION'])
   role?: string;
 
   @IsOptional()
@@ -69,6 +69,28 @@ export class RegisterDto {
   @IsString()
   @MaxLength(80)
   club?: string;
+
+  // Club choisi dans la liste des clubs validés : crée une demande d'adhésion que l'association du club valide.
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  clubId?: string;
+
+  // Compte association : nom de l'association (devient son club une fois validée par l'équipe Miabe), site web et présentation.
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  associationName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  website?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  description?: string;
 
   // Motivation présentée par un candidat organisateur — lue par l'admin lors de la validation.
   @IsOptional()

@@ -7,6 +7,7 @@ import { DEFAULT_LOYALTY_SETTINGS } from '../loyalty/loyalty.service';
 import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.service';
 import { SESSION_SECRET_CONFIGURED } from '../auth/auth.module';
 import { MailService, escapeHtml } from '../mail/mail.service';
+import { uniqueClubSlug } from '../common/slug';
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
 export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'tierPoints', 'legal', 'privacy'] as const;
@@ -131,12 +132,17 @@ export class AdminService {
 
   /* ---------- Demandes de club ---------- */
 
-  listClubRequests() {
-    return this.prisma.user.findMany({
+  /** Demandes de club « libres » (anciennes inscriptions) ou visant un club sans association propriétaire : l'admin les traite lui-même.
+   *  Les adhésions à un club piloté par une association sont validées par cette association, pas ici. */
+  async listClubRequests() {
+    const rows = await this.prisma.user.findMany({
       where: { clubStatus: 'PENDING' },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, email: true, displayName: true, city: true, createdAt: true, clubRequested: true, clubBlocking: true },
+      select: { id: true, email: true, displayName: true, city: true, createdAt: true, clubRequested: true, clubRequestedId: true, clubBlocking: true },
     });
+    const ids = rows.map((r) => r.clubRequestedId).filter((x): x is string => !!x);
+    const owned = new Set((ids.length ? await this.prisma.club.findMany({ where: { id: { in: ids }, ownerId: { not: null } }, select: { id: true } }) : []).map((c) => c.id));
+    return rows.filter((r) => !r.clubRequestedId || !owned.has(r.clubRequestedId)).map(({ clubRequestedId: _omit, ...rest }) => rest);
   }
 
   /** Valide (le club entre alors dans le catalogue et sur la fiche joueur, le compte est débloqué) ou refuse (compte débloqué, sans club). */
@@ -146,14 +152,14 @@ export class AdminService {
     const name = u.clubRequested.trim();
     if (status === 'APPROVED') {
       const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-      const clubId = existing ? existing.id : (await this.prisma.club.create({ data: { name } })).id;
+      const clubId = existing ? existing.id : (await this.prisma.club.create({ data: { name, slug: await uniqueClubSlug(this.prisma, name) } })).id;
       const player = await this.prisma.player.findFirst({ where: { userId: id } });
       if (player) await this.prisma.player.update({ where: { id: player.id }, data: { clubId } });
       else if (u.role === 'PLAYER') await this.prisma.player.create({ data: { name: u.displayName, city: u.city, userId: id, clubId } });
     }
     await this.prisma.user.update({
       where: { id },
-      data: { clubStatus: status, clubBlocking: false, clubRequested: null, clubReviewedAt: new Date() },
+      data: { clubStatus: status, clubBlocking: false, clubRequested: null, clubRequestedId: null, clubReviewedAt: new Date() },
     });
     await this.notifyClubReviewed(u.email, u.displayName, name, status);
     return { id, status };

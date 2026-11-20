@@ -18,9 +18,10 @@ import { CreditsModule } from './credits/credits.module';
 import { PaymentsModule } from './payments/payments.module';
 import { EventsModule } from './events/events.module';
 import { VisitsModule } from './visits/visits.module';
+import { AssociationsModule } from './associations/associations.module';
 
 @Module({
-  imports: [PrismaModule, MailModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule, RosterModule, LoyaltyModule, CreditsModule, PaymentsModule, EventsModule, VisitsModule],
+  imports: [PrismaModule, MailModule, AuthModule, TournamentsModule, ShopModule, AdminModule, UsersModule, NewsModule, UploadsModule, GalleryModule, RosterModule, LoyaltyModule, CreditsModule, PaymentsModule, EventsModule, VisitsModule, AssociationsModule],
   controllers: [AppController, HealthController],
   providers: [AppService],
 })

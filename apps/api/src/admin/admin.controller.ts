@@ -7,12 +7,13 @@ import type { JwtUser } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
+import { AssociationsService } from '../associations/associations.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService) {}
+  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService) {}
 
   /** Tableau de bord de pilotage (temps réel) — réservé à l'admin comme tout ce contrôleur. */
   @Get('dashboard')
@@ -52,6 +53,18 @@ export class AdminController {
   @Get('club-requests')
   clubRequests() {
     return this.admin.listClubRequests();
+  }
+
+  /* ---------- Intégration des associations ---------- */
+
+  @Get('associations')
+  pendingAssociations() {
+    return this.associations.listPending();
+  }
+
+  @Post('associations/:id/:decision')
+  reviewAssociation(@Param('id') id: string, @Param('decision') decision: string) {
+    return this.associations.review(id, decision === 'approve');
   }
 
   @Post('club-requests/:id/:decision')

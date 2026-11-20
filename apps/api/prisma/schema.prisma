@@ -23,6 +23,7 @@ enum Role {
   PLAYER
   ORGANIZER
   ADMIN
+  ASSOCIATION // compte d'association : pilote son club (membres, profil, intégration)
 }
 
 enum TournamentFormat {
@@ -97,6 +98,7 @@ model User {
   // joueur qu'une fois validé par un admin. clubBlocking = demande faite à l'inscription : le compte ne peut
   // rien faire d'autre que consulter le site tant qu'elle n'est pas traitée.
   clubRequested            String?
+  clubRequestedId          String? // identifiant du club choisi dans la liste (adhésion à valider par l'association du club)
   clubStatus               String    @default("NONE") // 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED'
   clubBlocking             Boolean   @default(false)
   clubReviewedAt           DateTime?
@@ -108,6 +110,7 @@ model User {
   loyaltyTxs          LoyaltyTransaction[]
   creditTxs           CreditTransaction[]
   creditPurchases     CreditPurchase[]
+  ownedClub           Club?                @relation("ClubOwner")
   passwordResets      PasswordReset[]
 }
 
@@ -190,6 +193,15 @@ model Club {
   city    String?
   logoUrl String?
   players Player[]
+  // Association propriétaire : son compte (rôle ASSOCIATION) valide les adhésions et récupère les codes d'intégration.
+  slug         String?  @unique // adresse publique (pages et widgets embarqués)
+  status       String   @default("APPROVED") // 'PENDING' (association à valider par l'admin) | 'APPROVED' | 'REJECTED'
+  website      String?
+  description  String?
+  contactEmail String?
+  ownerId      String?  @unique
+  owner        User?    @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
 }
 
 // Catalogue des jeux (site-wide, géré depuis l'admin) — propose des noms canoniques à la création

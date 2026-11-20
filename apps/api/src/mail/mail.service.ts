@@ -111,7 +111,12 @@ export class MailService {
    *  d'un e-mail de test avec le message d'erreur exact du fournisseur en cas d'échec. */
   async diagnose(to?: string): Promise<{ configured: boolean; provider: MailProvider; host: string; port: number; from: string; replyTo: string; siteUrl: string; connection: 'ok' | 'error' | 'unconfigured'; error?: string; sent?: boolean }> {
     const base = { configured: this.configured, provider: this.provider, host: this.host, port: this.provider === 'resend' ? 443 : this.port, from: this.from, replyTo: this.replyTo, siteUrl: this.siteUrl };
-    if (this.provider === 'none') return { ...base, connection: 'unconfigured', error: 'Aucun réglage de messagerie : ajoute RESEND_API_KEY (ou SMTP_HOST, SMTP_USER, SMTP_PASS) sur le serveur.' };
+    if (this.provider === 'none') {
+      const present = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS'].filter((k) => !!process.env[k]?.trim());
+      const missing = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS'].filter((k) => !present.includes(k));
+      const partial = present.length ? ` Réglages SMTP incomplets : il manque ${missing.join(', ')}.` : '';
+      return { ...base, connection: 'unconfigured', error: `Aucune messagerie active : ajoute RESEND_API_KEY sur le serveur (recommandé).${partial}` };
+    }
     if (this.transporter) {
       try { await this.transporter.verify(); } catch (e) { return { ...base, connection: 'error', error: (e as Error).message }; }
     }

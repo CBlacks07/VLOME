@@ -2368,6 +2368,17 @@ function agoLabel(ts: number, now = Date.now()): string {
   if (s < 7 * 86400) return `il y a ${Math.floor(s / 86400)} j`;
   return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
+/**
+ * Vrai quand l'utilisateur est en train de saisir quelque chose (un champ a le focus) ou qu'un formulaire est ouvert (assistant de
+ * création de tournoi…). Les rafraîchissements et défilements AUTOMATIQUES (carrousel d'annonces, « à la une », tableau de bord…)
+ * redessinent toute la page : ils doivent alors passer leur tour, sinon ils effacent ce que la personne est en train de taper.
+ */
+function userIsBusy(): boolean {
+  if (typeof document === "undefined") return false;
+  const ae = document.activeElement as HTMLElement | null;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable)) return true;
+  return !!document.querySelector(".wiz-overlay");
+}
 const dvFmt = (n: number) => Math.round(n).toLocaleString("fr-FR");
 const dvSum = (a: number[]) => a.reduce((x, y) => x + y, 0);
 
@@ -7605,7 +7616,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page !== "accueil") return;
     const n = S.site?.slides?.length || SLIDES.length;
     if (n < 2) return;
-    const id = setInterval(() => setS((s) => ({ ...s, slide: (s.slide + 1) % n })), 6000);
+    const id = setInterval(() => { if (userIsBusy()) return; setS((s) => ({ ...s, slide: (s.slide + 1) % n })); }, 6000);
     return () => clearInterval(id);
   }, [S.page, S.site]);
 
@@ -7615,7 +7626,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!pageKey) return;
     const n = (S.site?.ads ?? []).filter((a: Detail) => a.imageUrl && (a.page === pageKey || a.page === "toutes")).length;
     if (n < 2) return;
-    const id = setInterval(() => setS((s) => ({ ...s, adSlide: s.adSlide + 1 })), 6000);
+    const id = setInterval(() => { if (userIsBusy()) return; setS((s) => ({ ...s, adSlide: s.adSlide + 1 })); }, 6000);
     return () => clearInterval(id);
   }, [S.page, S.site]);
 
@@ -7661,7 +7672,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const id = S.openId;
     void loadPredictions(id);
     if (S.user) void loadPredictorStats();
-    const t = setInterval(() => { void loadPredictions(id); }, 10000);
+    const t = setInterval(() => { if (!userIsBusy()) void loadPredictions(id); }, 10000);
     return () => clearInterval(t);
   }, [S.page, S.openId, S.detail?.status, S.user?.role]);
 
@@ -7669,7 +7680,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const hasNext = (S.myNext?.length ?? 0) > 0;
   useEffect(() => {
     if (S.page !== "profil" || !hasNext) return;
-    const id = setInterval(() => { void loadMyNext(); }, 8000);
+    const id = setInterval(() => { if (!userIsBusy()) void loadMyNext(); }, 8000);
     return () => clearInterval(id);
   }, [S.page, hasNext]);
 
@@ -7772,7 +7783,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // Tableau de bord de pilotage : actualisé toutes les 15 s tant que l'admin le regarde (onglet visible), et dès qu'il revient sur l'onglet.
   useEffect(() => {
     if (!(S.page === "profil" && S.adminTab === "apercu" && S.user?.role === "ADMIN")) return;
-    const tick = () => { if (document.visibilityState === "visible") void loadDashboard(); };
+    const tick = () => { if (document.visibilityState === "visible" && !userIsBusy()) void loadDashboard(); };
     tick();
     const id = setInterval(tick, 15000);
     document.addEventListener("visibilitychange", tick);

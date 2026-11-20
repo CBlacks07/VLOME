@@ -8462,6 +8462,13 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
+    // Assistant de création/modification ouvert : tout bouton de l'assistant (choix du format, du mode, des qualifiés, d'une
+    // suggestion de jeu…) redessine l'assistant depuis l'état. On relit donc d'abord ce qui a été tapé dans les champs de l'étape
+    // en cours (nom, jeu, date, lieu, frais…) : sans ça, ces saisies sont effacées au moindre clic sur un bouton.
+    if (S.creating && el.closest(".wiz-overlay")) {
+      const typed = wizCapture();
+      setS((s) => (s.creating ? { ...s, wizData: { ...s.wizData, ...typed } } : s));
+    }
     if (d.open) { openDetail(d.open); }
     else if (d.back !== undefined) {
       // Un événement encore en brouillon n'apparaît jamais dans la liste publique : y « remonter »

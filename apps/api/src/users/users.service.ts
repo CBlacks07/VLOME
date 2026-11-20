@@ -4,13 +4,15 @@ import * as Engine from '@vlome/engine';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangePasswordDto, UpdateMeDto } from './users.dto';
 import { AssociationsService } from '../associations/associations.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
+import { ELO_START } from '../tournaments/elo';
 
 /** Le pseudo (displayName) n'est modifiable qu'une fois tous les 30 jours — le club, lui, librement. */
 const NAME_CHANGE_COOLDOWN_DAYS = 30;
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService, private assoc: AssociationsService) {}
+  constructor(private prisma: PrismaService, private assoc: AssociationsService, private tournaments: TournamentsService) {}
 
   /** Profil complet + statistiques (globales et par jeu) du membre connecté. */
   async me(userId: string) {
@@ -81,7 +83,8 @@ export class UsersService {
       if (champion) g.championships++;
       byGameMap.set(game, g);
     }
-    const byGame = Array.from(byGameMap.values()).sort((a, b) => b.points - a.points);
+    const elos = await this.tournaments.playerElos('', userId);
+    const byGame = Array.from(byGameMap.values()).map((g) => ({ ...g, elo: elos.get(g.game) ?? ELO_START })).sort((a, b) => b.points - a.points);
     return { totals: { totalPoints, totalWins, championships, tournamentsPlayed }, breakdown, byGame };
   }
 

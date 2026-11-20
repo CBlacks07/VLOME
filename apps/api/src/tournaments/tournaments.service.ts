@@ -10,7 +10,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CreditsService } from '../credits/credits.service';
 import { LoyaltyReason } from '../../generated/prisma';
 import { MailService, escapeHtml } from '../mail/mail.service';
-import { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS } from '../admin/admin.service';
+import { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS } from '../common/settings-defaults';
 
 const FORMAT_LABEL: Record<string, string> = {
   SURVIVAL: 'Survival', SINGLE_ELIM: 'Bracket simple', DOUBLE_ELIM: 'Double élim',
@@ -350,6 +350,18 @@ export class TournamentsService {
     return totals;
   }
 
+  /** ELO d'un joueur, jeu par jeu (par compte si `uid`, sinon par nom). 1000 pour un jeu sans match départagé. */
+  async playerElos(name: string, uid?: string | null): Promise<Map<string, number>> {
+    const rows = await this.computeLeaderboard({}, 100000);
+    const lower = name.toLowerCase();
+    const out = new Map<string, number>();
+    for (const r of rows) {
+      if (r.team) continue;
+      if (uid ? r.userId === uid : r.name.toLowerCase() === lower) out.set(r.game, r.elo);
+    }
+    return out;
+  }
+
   private async computeLeaderboard(where: { eventId?: string }, limit = 300) {
     const tournaments = await this.prisma.tournament.findMany({
       where,
@@ -508,10 +520,11 @@ export class TournamentsService {
       }
     }
     const { city, club } = await this.cityAndClubForName(name, uid);
+    const elos = await this.playerElos(name, uid);
     return {
       name, userId: uid ?? null, city, club,
       totals: { points: Math.round(points * 10) / 10, wins, losses, matches: wins + losses, winrate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : 0, championships, tournamentsPlayed },
-      byGame: Array.from(byGameMap.values()).sort((a, b) => b.points - a.points),
+      byGame: Array.from(byGameMap.values()).map((g) => ({ ...g, elo: elos.get(g.game) ?? ELO_START })).sort((a, b) => b.points - a.points),
       history: history.sort((a, b) => b.ts - a.ts).slice(0, 50),
     };
   }

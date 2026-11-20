@@ -8,15 +8,11 @@ import { CreditsService, DEFAULT_CREDITS_SETTINGS } from '../credits/credits.ser
 import { SESSION_SECRET_CONFIGURED } from '../auth/auth.module';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { uniqueClubSlug } from '../common/slug';
+import { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS } from '../common/settings-defaults';
+export { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS };
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
 export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'tierPoints', 'legal', 'privacy'] as const;
-/** Barème des pronostics (carte « Qui va gagner ? ») : points par bon pronostic, et bonus si le choix
- * était outsider (moins de X % des voix) au moment où le pronostic a été fait. */
-export const DEFAULT_PREDICTIONS_SETTINGS = { basePoints: 10, outsiderThreshold: 40, outsiderMultiplier: 2 };
-/** Multiplicateur de points de classement selon le palier du tournoi (Amateur/Élite, purement un badge
- * sinon) — 1 = aucun effet. Un tournoi sans palier suit le multiplicateur Amateur. */
-export const DEFAULT_TIER_POINTS_SETTINGS = { amateurMultiplier: 1, eliteMultiplier: 2 };
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'Miabe', name2: 'ESPORT', logoUrl: null },
   loyalty: DEFAULT_LOYALTY_SETTINGS,

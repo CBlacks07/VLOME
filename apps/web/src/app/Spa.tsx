@@ -2450,6 +2450,16 @@ function adminDashboard(S: State): string {
   const regs7 = last7(sr.registrations), signups7 = last7(sr.signups), rev7 = last7(sr.revenue);
   const todo: { tone: string; icon: string; text: string; tab: string }[] = [];
   const t = d.todo;
+  // Le plus urgent d'abord : un paiement déjà encaissé dont l'inscription n'a pas été validée (tournoi démarré pendant le paiement,
+  // ou validation automatique ratée). Le joueur a payé : il faut le rembourser ou l'inscrire à la main.
+  const unplaced: Detail[] = t.unplacedPayments || [];
+  unplaced.slice(0, 5).forEach((u) => todo.push({
+    tone: "bad", icon: I.warn, tab: "paiements",
+    text: u.tournamentStarted
+      ? `${u.playerName} a payé ${dvFmt(u.amountXof)} F pour « ${u.tournamentName} » mais n'a pas de place : le tournoi a démarré, à rembourser`
+      : `${u.playerName} a payé ${dvFmt(u.amountXof)} F pour « ${u.tournamentName} » mais son inscription n'est pas validée : à confirmer dans Paiements`,
+  }));
+  if (unplaced.length > 5) todo.push({ tone: "bad", icon: I.warn, tab: "paiements", text: `+ ${unplaced.length - 5} autre${unplaced.length - 5 > 1 ? "s" : ""} paiement${unplaced.length - 5 > 1 ? "s" : ""} sans place` });
   if (t.pendingRegistrations) todo.push({ tone: "warn", icon: I.warn, text: `${t.pendingRegistrations} paiement${t.pendingRegistrations > 1 ? "s" : ""} d'inscription à confirmer`, tab: "paiements" });
   if (t.pendingOrders) todo.push({ tone: "warn", icon: I.cart, text: `${t.pendingOrders} commande${t.pendingOrders > 1 ? "s" : ""} à traiter`, tab: "commandes" });
   if (t.organizersPending) todo.push({ tone: "warn", icon: I.user, text: `${t.organizersPending} organisateur${t.organizersPending > 1 ? "s" : ""} à valider`, tab: "organisateurs" });
@@ -6991,6 +7001,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { alert(d.message || "Vérification du paiement impossible."); return false; }
+      // Argent bien encaissé, mais le tournoi a démarré pendant le paiement : la place n'a pas pu être validée.
+      if (d.paid && d.placed === false) {
+        await refreshAfterPayment();
+        alert("Ton paiement a bien été reçu, mais le tournoi avait déjà démarré : ta place n'a pas pu être validée. L'équipe Miabe voit ce cas dans son tableau de bord et te contactera pour te rembourser ou trouver une solution.");
+        return true;
+      }
       if (d.paid) { await refreshAfterPayment(); alert("Paiement confirmé. Merci !"); return true; }
       alert("Le paiement n'est pas encore confirmé. S'il a abouti, il sera validé automatiquement dans quelques instants.");
       return false;

@@ -76,13 +76,28 @@ export class PaymentsService {
     return { amountXof: p.amountXof, description: `${p.credits} crédit${p.credits > 1 ? 's' : ''} organisateur`, userId: p.userId };
   }
 
-  private async finalize(kind: Kind, refId: string) {
-    if (kind === 'registration') await this.tournaments.confirmRegistrationPaidOnline(refId);
-    else if (kind === 'order') await this.prisma.order.updateMany({ where: { id: refId, status: 'pending' }, data: { status: 'paid' } });
+  /**
+   * Applique un paiement confirmé par le prestataire. Renvoie { placed: false } quand l'argent est bien encaissé mais que
+   * l'inscription n'a pas pu être validée parce que le tournoi a démarré entre-temps : ce n'est PAS une erreur du joueur (il a payé),
+   * on ne la jette donc pas — le cas apparaît dans « À traiter » du tableau de bord admin pour un remboursement ou une solution.
+   */
+  private async finalize(kind: Kind, refId: string): Promise<{ placed: boolean }> {
+    if (kind === 'registration') {
+      try {
+        await this.tournaments.confirmRegistrationPaidOnline(refId);
+      } catch (e) {
+        if (e instanceof ConflictException) {
+          this.log.warn(`Paiement reçu mais inscription ${refId} non placée : ${e.message}`);
+          return { placed: false };
+        }
+        throw e;
+      }
+    } else if (kind === 'order') await this.prisma.order.updateMany({ where: { id: refId, status: 'pending' }, data: { status: 'paid' } });
     else {
       const p = await this.prisma.creditPurchase.findUnique({ where: { id: refId } });
       if (p && p.status !== 'paid') await this.credits.confirmPurchase(refId);
     }
+    return { placed: true };
   }
 
   /* ---------- démarrage ---------- */
@@ -153,8 +168,8 @@ export class PaymentsService {
     }
     if (!ok) return { paid: false };
     await this.prisma.onlinePayment.update({ where: { id: pay.id }, data: { status: 'paid' } });
-    await this.finalize(dto.kind, dto.refId);
-    return { paid: true };
+    const fin = await this.finalize(dto.kind, dto.refId);
+    return fin.placed ? { paid: true } : { paid: true, placed: false };
   }
 
   async fedapayWebhook(body: any) {

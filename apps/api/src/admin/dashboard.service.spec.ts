@@ -1,4 +1,4 @@
-import { dayKeys, fillSeries, mergeActivity, liveSummary, recentResults, DAY_MS, type ActivityItem } from './dashboard.service';
+import { dayKeys, fillSeries, mergeActivity, liveSummary, recentResults, toUnplaced, DAY_MS, type ActivityItem } from './dashboard.service';
 
 describe('dashboard — fonctions pures', () => {
   it('dayKeys : 14 jours, du plus ancien au plus récent, aujourd\'hui en dernier (UTC)', () => {
@@ -48,4 +48,22 @@ describe('dashboard — fonctions pures', () => {
   });
 
   it('DAY_MS vaut 24 h', () => { expect(DAY_MS).toBe(24 * 3600 * 1000); });
+
+  it("toUnplaced : seuls les paiements encaissés dont l’inscription est restée en attente, tournoi démarré signalé", () => {
+    const payments = [
+      { refId: 'r1', amountXof: 2000, createdAt: new Date('2026-11-20T10:00:00Z') },
+      { refId: 'r2', amountXof: 5000, createdAt: new Date('2026-11-21T09:00:00Z') },
+      { refId: 'r9', amountXof: 1000, createdAt: new Date('2026-11-22T09:00:00Z') }, // inscription introuvable : ignorée
+    ];
+    const regs = [
+      { id: 'r1', playerName: 'Kofi', tournamentId: 't1', tournament: { name: 'Cup A', status: 'LIVE' } },
+      { id: 'r2', playerName: 'Ama', tournamentId: 't2', tournament: { name: 'Cup B', status: 'DRAFT' } },
+      { id: 'r3', playerName: 'Sena', tournamentId: 't2', tournament: { name: 'Cup B', status: 'DRAFT' } }, // jamais payée en ligne : ignorée
+    ];
+    const out = toUnplaced(payments, regs);
+    expect(out.map((o) => o.playerName)).toEqual(['Ama', 'Kofi']); // plus récent d'abord
+    expect(out.find((o) => o.playerName === 'Kofi')).toMatchObject({ tournamentStarted: true, amountXof: 2000, tournamentName: 'Cup A' });
+    expect(out.find((o) => o.playerName === 'Ama')).toMatchObject({ tournamentStarted: false, amountXof: 5000 });
+    expect(toUnplaced([], [])).toEqual([]);
+  });
 });

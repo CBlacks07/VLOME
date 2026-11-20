@@ -60,6 +60,31 @@ export function recentResults(row: { name: string; engineState: unknown }, since
     });
 }
 
+/** Paiement en ligne encaissé dont l'inscription n'est pas validée : l'argent est reçu, mais le joueur n'a pas de place. */
+export interface UnplacedPayment {
+  playerName: string; tournamentId: string; tournamentName: string;
+  /** vrai : le tournoi a démarré (remboursement à faire) ; faux : encore ouvert (inscription à confirmer à la main dans « Paiements »). */
+  tournamentStarted: boolean; amountXof: number; paidAt: number;
+}
+
+/** Croise les paiements en ligne encaissés avec les inscriptions restées « en attente ». */
+export function toUnplaced(
+  payments: { refId: string; amountXof: number; createdAt: Date }[],
+  pendingRegs: { id: string; playerName: string; tournamentId: string; tournament: { name: string; status: string } | null }[],
+): UnplacedPayment[] {
+  const paid = new Map(payments.map((p) => [p.refId, p]));
+  return pendingRegs
+    .filter((r) => paid.has(r.id))
+    .map((r) => {
+      const p = paid.get(r.id)!;
+      return {
+        playerName: r.playerName, tournamentId: r.tournamentId, tournamentName: r.tournament?.name ?? 'Tournoi',
+        tournamentStarted: (r.tournament?.status ?? 'DRAFT') !== 'DRAFT', amountXof: p.amountXof, paidAt: p.createdAt.getTime(),
+      };
+    })
+    .sort((a, b) => b.paidAt - a.paidAt);
+}
+
 type DayRow = { d: string; n: number; amt: number };
 
 @Injectable()
@@ -112,6 +137,18 @@ export class DashboardService {
       this.visits.online(),
     ]);
 
+    // Paiements en ligne encaissés mais inscription jamais validée (ex. tournoi démarré pendant le paiement).
+    const paidRegPayments = await this.prisma.onlinePayment.findMany({
+      where: { kind: 'registration', status: 'paid' }, select: { refId: true, amountXof: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 300,
+    });
+    const pendingRegs = paidRegPayments.length
+      ? await this.prisma.registration.findMany({
+          where: { id: { in: paidRegPayments.map((p) => p.refId) }, paymentStatus: 'pending' },
+          select: { id: true, playerName: true, tournamentId: true, tournament: { select: { name: true, status: true } } },
+        })
+      : [];
+    const unplacedPayments = toUnplaced(paidRegPayments, pendingRegs);
+
     const statusCount = (rows: { status: string; _count: { _all: number } }[], s: string) => rows.find((r) => r.status === s)?._count._all ?? 0;
     const money = (n: number) => `${n.toLocaleString('fr-FR')} F`;
 
@@ -161,7 +198,8 @@ export class DashboardService {
       totals: { users: usersTotal, tournaments: tournamentsTotal, registrations: registrationsTotal, orders: ordersTotal, products: productsTotal, revenue: revenueTotal },
       tournaments: { live: statusCount(tournamentsByStatus as never, 'LIVE'), draft: statusCount(tournamentsByStatus as never, 'DRAFT'), finished: statusCount(tournamentsByStatus as never, 'FINISHED') },
       events: { published: statusCount(eventsByStatus as never, 'PUBLISHED'), draft: statusCount(eventsByStatus as never, 'DRAFT') },
-      todo: { pendingRegistrations, pendingOrders, organizersPending, lowStock, outOfStock },
+      // Les paiements déjà encaissés sans place ont leur propre ligne (plus urgente) : on ne les recompte pas dans « à confirmer ».
+      todo: { pendingRegistrations: Math.max(0, pendingRegistrations - unplacedPayments.length), pendingOrders, organizersPending, lowStock, outOfStock, unplacedPayments },
       live: liveRows.map(liveSummary).sort((a, b) => (b.lastTs ?? 0) - (a.lastTs ?? 0)),
       activity,
       sessionSecretConfigured: SESSION_SECRET_CONFIGURED,

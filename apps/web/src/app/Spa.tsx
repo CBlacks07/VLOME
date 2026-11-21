@@ -3742,19 +3742,39 @@ function doubleElimFinalStandings(t: Detail, pad = "8px 28px 0"): string {
     if (g.length) groups.push(g);
   }
   const rest = [...rows.values()].filter((r) => !placed.has(r.id));
-  if (rest.length) groups.push(rest);
+  if (rest.length) { groups.push(rest); rest.forEach((r) => placed.add(r.id)); }
+  // Poules en amont de la finale (tournoi Double élim à plusieurs poules) : les joueurs éliminés là
+  // n'ont jamais joué un seul match WB/LB/GF, donc n'existent pas dans `rows` (construit uniquement
+  // depuis les matchs de la phase finale) — ils disparaissaient purement et simplement du classement
+  // final, qui ne listait alors que les qualifiés pour la finale. On les rajoute depuis le classement
+  // global du tournoi (t.standings, qui couvre poules + finale), par paliers de points égaux.
+  const standingsAll: { id: string; name: string; pts?: number; wins?: number; losses?: number }[] = Array.isArray(t.standings) ? t.standings : [];
+  const poolOnly = standingsAll.filter((s) => !placed.has(s.id));
+  const firstPoolOnlyId = poolOnly[0]?.id ?? null;
+  let i = 0;
+  while (i < poolOnly.length) {
+    const p0 = poolOnly[i].pts ?? 0;
+    let j = i + 1;
+    while (j < poolOnly.length && (poolOnly[j].pts ?? 0) === p0) j++;
+    const g: Row[] = poolOnly.slice(i, j).map((s) => ({ id: s.id, name: s.name, wins: s.wins || 0, losses: s.losses || 0, sf: 0, sa: 0, lostTo: [] }));
+    g.forEach((r) => { rows.set(r.id, r); placed.add(r.id); });
+    groups.push(g);
+    i = j;
+  }
   const pts = new Map<string, number>((t.standings || []).map((r: Detail) => [r.id, Number(r.pts) || 0]));
   const showPts = [...pts.values()].some((v) => v > 0);
   let rank = 1;
   const medalOf = (rk: number) => rk === 1 ? "#FBBF24" : rk === 2 ? "#CBD5E1" : rk === 3 ? "#D6A37A" : "var(--text-faint)";
   const cell = "padding:13px 12px;vertical-align:middle";
   const mono = "font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums";
+  const poolOnlyDivider = `<tr><td colspan="${showPts ? 6 : 5}" style="padding:9px 16px;background:var(--surface-2);border-top:1px solid var(--border);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">Éliminés en poules — n'ont pas disputé la phase finale</td></tr>`;
   const body = groups.map((g) => {
     const rk = rank; rank += g.length;
     const medal = medalOf(rk);
     // Podium (1er à 3e) légèrement teinté pour se détacher du reste du tableau.
     const tint = rk === 1 ? "rgba(251,191,36,.07)" : rk <= 3 ? "rgba(148,163,184,.05)" : "transparent";
-    return g.sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name, "fr")).map((r) => {
+    const divider = firstPoolOnlyId && g.some((r) => r.id === firstPoolOnlyId) ? poolOnlyDivider : "";
+    return divider + g.sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name, "fr")).map((r) => {
       const pct = hasScores ? (r.sf + r.sa ? (r.sf / (r.sf + r.sa)) * 100 : 0) : (r.wins + r.losses ? (r.wins / (r.wins + r.losses)) * 100 : 0);
       const pctTxt = `${Math.round(pct * 10) / 10}%`.replace(".", ",");
       const lost = r.lostTo.length

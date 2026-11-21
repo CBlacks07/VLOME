@@ -364,7 +364,11 @@ export class TournamentsService {
 
   private async computeLeaderboard(where: { eventId?: string }, limit = 300) {
     const tournaments = await this.prisma.tournament.findMany({
-      where,
+      // Un tournoi sans événement compte normalement ; un tournoi rattaché à un événement encore en
+      // brouillon (en préparation, pas publié) n'alimente pas le classement réel tant que l'événement
+      // n'est pas publié — sinon des matchs de test/réglage avant publication fausseraient les stats
+      // des vrais joueurs qui y sont inscrits.
+      where: { ...where, OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
       select: { id: true, game: true, engineState: true, teams: true, tier: true },
     });
     const acct = await this.accountMap();
@@ -483,6 +487,9 @@ export class TournamentsService {
   async playerProfile(name: string, uid?: string) {
     const acct = uid ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
+      // Même garde que computeLeaderboard() : un tournoi d'un événement encore en brouillon ne doit
+      // pas apparaître dans les vraies stats du joueur.
+      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
       select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true, tier: true },
     });
     const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
@@ -536,6 +543,9 @@ export class TournamentsService {
   async headToHead(nameA: string, nameB: string, uidA?: string, uidB?: string) {
     const acct = uidA || uidB ? await this.accountMap() : null;
     const tournaments = await this.prisma.tournament.findMany({
+      // Même garde que computeLeaderboard()/playerProfile() : un tournoi d'un événement encore en
+      // brouillon ne doit pas peser sur une confrontation entre deux joueurs.
+      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
       select: { id: true, name: true, game: true, engineState: true, teams: true },
     });
     let aWins = 0, bWins = 0;

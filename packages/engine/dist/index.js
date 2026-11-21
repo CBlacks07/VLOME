@@ -1883,18 +1883,22 @@ function autoFitScoringOnce(t) {
     s.finalsWin = clamp(s.finalsWin);
     // le bonus champion n'est pas rogné automatiquement (choix de l'organisateur)
 }
-/** Ajuste proportionnellement le barème pour tenir dans la cagnotte. Un seul passage peut laisser
- * un léger dépassement résiduel (chaque catégorie a un plancher de 0.25, donc l'arrondi au pas
- * de 0.25 après mise à l'échelle ne garantit pas individuellement le budget) — on répète jusqu'à
- * rentrer dans la cagnotte ou jusqu'à ce qu'un passage supplémentaire ne change plus rien (toutes
- * les catégories réductibles sont au plancher : le dépassement restant vient alors du bonus champion
- * seul, volontairement non rogné). */
+/** Ajuste proportionnellement le barème pour tenir dans la cagnotte, en l'utilisant au maximum.
+ * Un seul passage ne suffit pas : chaque catégorie a un plancher de 0.25, donc l'arrondi au pas de
+ * 0.25 après mise à l'échelle ne colle ni au budget en cas de dépassement (dépassement résiduel —
+ * il vient alors du bonus champion seul, volontairement non rogné), ni à son plein emploi en cas de
+ * sous-utilisation (chaque passage ne rapproche le barème du budget que d'un cran de 0.25 à la
+ * fois). On répète donc jusqu'à ce qu'un passage supplémentaire ne change plus rien — plancher
+ * atteint en cas de dépassement, ou barème déjà au plus près du budget en cas de redistribution —,
+ * plutôt que de s'arrêter dès le premier passage valide : une redistribution qui laisse un large
+ * reliquat après un seul clic ne serait pas la redistribution « intelligente » promise à
+ * l'organisateur. */
 function autoFitScoring(t) {
     snapshot(t);
     for (let i = 0; i < 8; i++) {
         const before = JSON.stringify(t.scoring);
         autoFitScoringOnce(t);
-        if (cagnotte(t).valid || JSON.stringify(t.scoring) === before)
+        if (JSON.stringify(t.scoring) === before)
             break;
     }
     recomputePoints(t);

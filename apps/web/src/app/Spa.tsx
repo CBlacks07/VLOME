@@ -1647,7 +1647,7 @@ function tournamentWizard(S: State) {
         </div>
         ${wizSteps(S)}
         <div style="flex:1"></div>
-        <div style="padding:14px 18px 18px;border-top:1px solid var(--surface-3);font-size:11px;color:var(--text-faint);line-height:1.6">${wizEventNote(S)}Format : <b style="color:var(--text-muted)">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : ""}</div>
+        ${!editing && S.wizData.format === "SURVIVAL" ? (wizEventNote(S) ? `<div style="padding:14px 18px 18px;border-top:1px solid var(--surface-3);font-size:11px;color:var(--text-faint);line-height:1.6">${wizEventNote(S)}</div>` : "") : `<div style="padding:14px 18px 18px;border-top:1px solid var(--surface-3);font-size:11px;color:var(--text-faint);line-height:1.6">${wizEventNote(S)}Format : <b style="color:var(--text-muted)">${(WIZ_FORMATS.find(([key]) => key === S.wizData.format) || WIZ_FORMATS[0])[1]}</b>${S.wizData.format === "SURVIVAL" ? " — barème détaillé réglable à l'étape 4." : S.wizData.format === "BATTLE_ROYALE" ? " — points par palier de classement réglables depuis sa page une fois créé." : ""}</div>`}
       </div>
       <div class="wiz-body" style="flex:1;min-width:0;padding:26px 30px;overflow-y:auto">${body}</div>
     </div>
@@ -8565,15 +8565,16 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // Même jauge, même technique, pour le panneau « Configuration du tournoi » (page du tournoi, Survival,
   // pas encore lancé) — avait disparu quand la création est passée en « survivalLight » (barème réglé
   // après coup depuis cette page, qui n'avait jamais reçu le contrôle de cagnotte de l'assistant).
+  // Le recalcul à la frappe lui-même est géré par l'écouteur délégué sur rootRef ci-dessous (ids
+  // cfg-sc-*/cfg-pts) — des écouteurs posés directement ici sur les champs ne survivent pas aux
+  // re-rendus du panneau (tout le sous-arbre est remplacé via dangerouslySetInnerHTML sans que ces
+  // dépendances changent, donc l'effet ne se redéclenche pas et les anciens écouteurs restent sur des
+  // nœuds DOM remplacés). On ne garde ici que le calcul initial à l'affichage.
   useEffect(() => {
     const t = S.detail;
     if (!(t && t.status === "setup" && (ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL") === "SURVIVAL")) return;
-    const ids = [...WIZ_SCORING_FIELDS.map(([, , key]) => `cfg-sc-${key}`), "cfg-pts"];
-    const els = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLInputElement => !!el);
-    els.forEach((el) => el.addEventListener("input", cfgRecalcGauge));
     cfgRecalcGauge();
-    return () => els.forEach((el) => el.removeEventListener("input", cfgRecalcGauge));
-  }, [S.detail?.id, S.detail?.status]);
+  });
 
   // Classement Battle Royale en direct (saisie des résultats) : même technique que la jauge de
   // cagnotte ci-dessus (écouteurs natifs, contenu hors réconciliation React) — recalcule
@@ -9010,13 +9011,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (box) box.innerHTML = cfgGameChips({ games: S.games } as State, el.value);
         return;
       }
+      if (el && (el.id === "cfg-pts" || el.id.startsWith("cfg-sc-"))) { cfgRecalcGauge(); return; }
       if (!el || el.id !== "cfg-roster-search") return;
       const q = el.value.trim().toLowerCase();
       root.querySelectorAll<HTMLElement>("[data-cfgpick]").forEach((c) => { c.style.display = !q || (c.dataset.search || "").includes(q) ? "" : "none"; });
     };
     root.addEventListener("input", onIn);
     return () => root.removeEventListener("input", onIn);
-  }, [S.games]);
+  }, [S.games, S.detail]);
 
   function wizGoto(next: number) {
     if (next === 0) { setS((s) => ({ ...s, creating: false, wizEditId: null, wizFullEdit: false })); return; }

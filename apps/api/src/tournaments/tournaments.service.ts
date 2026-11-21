@@ -1868,6 +1868,21 @@ export class TournamentsService {
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
+  /** Redistribue tout le barème sur demande explicite de l'organisateur (bouton « Redistribuer
+   * automatiquement ») — même ajustement proportionnel que celui déclenché en silence par setScoring/
+   * les poules, mais invocable à tout moment, même si le barème est déjà valide : si la cagnotte est
+   * sous-utilisée (ex. après avoir réduit le nombre de poules sans retoucher le barème), les catégories
+   * remontent vers le budget disponible au lieu de laisser un reliquat prévisible dès le départ. */
+  async autoFitScoring(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) return null;
+    this.assertCanManage(l.record, user);
+    if (l.t.format !== 'survival') throw new BadRequestException('Le barème détaillé — et son ajustement automatique — ne concerne que le format Survival.');
+    Engine.autoFitScoring(l.t);
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
+  }
+
   /** Répartit les joueurs en poules avant le lancement, pour prévisualiser/réordonner l'ordre de passage. */
   async distributePools(id: string, user: JwtUser) {
     const l = await this.loadEngine(id);

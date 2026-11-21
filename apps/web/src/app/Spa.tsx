@@ -1063,7 +1063,7 @@ function setupConfigCard(S: State, t: Detail): string {
         ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
         ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
       </div>`
-    + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte) : ""}` : "")
+    + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte, t.id) : ""}` : "")
     + saveBtn("details", "Enregistrer les détails"));
 
   // 4) Participants : ajout multiple + base de joueurs
@@ -1178,7 +1178,7 @@ function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid
 /** Même jauge que wizGaugeCard, pour le panneau « Configuration du tournoi » (page du tournoi, Survival,
  * pas encore lancé) — ids distincts (cfg-gauge-*) pour ne jamais entrer en collision avec celle de
  * l'assistant de création si les deux sont montés en même temps (assistant ouvert par-dessus une autre page). */
-function cfgGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean; breakdown?: Record<string, { matches: number; pts: number }> }) {
+function cfgGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean; breakdown?: Record<string, { matches: number; pts: number }> }, tournamentId?: string) {
   const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
   const segs = c.breakdown ? WIZ_BREAKDOWN_SEGMENTS.map(([key, , color]) => {
     const p = c.programmed > 0 ? Math.round(((c.breakdown![key as keyof typeof c.breakdown] as { pts: number })?.pts ?? 0) / c.programmed * 1000) / 10 : 0;
@@ -1192,6 +1192,7 @@ function cfgGaugeCard(c: { total: number; programmed: number; gap: number; valid
     <div style="height:9px;border-radius:99px;background:var(--surface-4);border:1px solid var(--border);overflow:hidden"><span id="cfg-gauge-bar" style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"};transition:width .15s ease"></span></div>
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-top:10px"><span>Écart restant</span><b id="cfg-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"};font-family:'JetBrains Mono',monospace">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
     <p style="color:var(--text-faint);font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>
+    ${tournamentId ? `<button data-cfgautofit="${escAttr(tournamentId)}" style="margin-top:12px;display:inline-flex;align-items:center;gap:7px;background:var(--surface-3);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">${ic(I.plus, 13)} Redistribuer automatiquement</button><p style="color:var(--text-faint);font-size:11.5px;margin:7px 0 0">Ajuste le barème au prorata de la cagnotte disponible, pour qu'elle soit distribuée intelligemment sans reste.</p>` : ""}
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--surface-3)">
       <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:10px">Répartition prévue</div>
       <div id="cfg-gauge-breakdown" style="display:flex;height:26px;border-radius:7px;overflow:hidden;font-size:10px;font-weight:800;color:#04222a">${segs}</div>
@@ -8952,6 +8953,18 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     void cfgSave(body, scoring);
   }
+  /** Redistribue intelligemment le barème au prorata de la cagnotte disponible (bouton « Redistribuer automatiquement »). */
+  async function cfgAutoFit(id: string) {
+    if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    try {
+      const r = await fetch(`${API}/api/tournaments/${id}/scoring/autofit`, { method: "POST", headers: authHeaders() });
+      if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
+      if (!r.ok) { const e = await r.json().catch(() => null); alert((Array.isArray(e?.message) ? e.message.join("\n") : e?.message) || "Redistribution impossible."); return; }
+      const sr = await fetch(`${API}/api/tournaments/${id}/state`);
+      if (sr.ok) { const dd = await sr.json(); setS((s) => ({ ...s, detail: dd })); }
+      showToast("Barème redistribué selon la cagnotte disponible.");
+    } catch { alert("Redistribution impossible — réessaie dans un instant."); }
+  }
   /** Ajoute plusieurs participants d'un coup (un appel par nom, les doublons et noms déjà inscrits sont ignorés). */
   async function cfgAddPlayers(raws: string[]) {
     const id = S.openId;
@@ -9419,6 +9432,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.cfgfinalsformat) { void cfgSave({ ...cfgReadPools(), finalsFormat: d.cfgfinalsformat }); }
     else if (d.cfgsave === "pools") { void cfgSave(cfgReadPools()); }
     else if (d.cfgsave === "details") { cfgSaveDetails(); }
+    else if (d.cfgautofit) { void cfgAutoFit(d.cfgautofit); }
     else if (d.cfgpick !== undefined) {
       // Sélection gérée sans redessiner (rien de ce qui est tapé ailleurs dans le panneau ne s'efface).
       const on = el.dataset.on !== "1";

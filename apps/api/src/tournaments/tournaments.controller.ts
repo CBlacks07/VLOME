@@ -373,6 +373,15 @@ export class TournamentsController {
     return s;
   }
 
+  @Post(':id/scoring/autofit')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  async autoFitScoring(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    const s = await this.service.autoFitScoring(id, user);
+    if (!s) throw new NotFoundException('Tournoi introuvable');
+    return s;
+  }
+
   @Post(':id/pools/distribute')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')

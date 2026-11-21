@@ -1047,6 +1047,13 @@ function setupConfigCard(S: State, t: Detail): string {
   const sc = (t.scoring || {}) as Record<string, number>;
   // Le barème n'existe qu'en Survival : masqué pour tous les autres formats.
   const scoringFields = isSurv ? WIZ_SCORING_FIELDS : [];
+  // Jauge de cagnotte (mêmes calculs que l'assistant de création, voir cagnottePreview) — recalculée en
+  // direct par cfgRecalcGauge à chaque frappe sur les points/barème ci-dessous (useEffect dédié).
+  const cagnotte = isSurv ? cagnottePreview(
+    Array.isArray(t.players) ? t.players.length : 0, nbPools, t.pointsPerPlayer || 5,
+    { survWin: sc.survWin ?? 1, loserWin: sc.loserWin ?? 0.5, poolFinalWin: sc.poolFinalWin ?? 1.5, finalsWin: sc.finalsWin ?? 2, championBonus: sc.championBonus ?? 3, streakBonus: sc.streakBonus ?? 0 },
+    finalsFormat, poolFormat as "survival" | "double" | "single" | "roundrobin", qualify,
+  ) : null;
   const detailsBlock = sect(head(nDet, "Détails", (isSurv ? "Nom, jeu, lieu, frais d'inscription, places et barème de points." : "Nom, jeu, lieu, frais d'inscription et nombre de places."))
     + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
         ${wizField("Nom", `<input id="cfg-name" value="${escAttr(t.name || "")}" style="${WIZ_INP}" />`)}
@@ -1056,7 +1063,7 @@ function setupConfigCard(S: State, t: Detail): string {
         ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
         ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
       </div>`
-    + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>` : "")
+    + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte) : ""}` : "")
     + saveBtn("details", "Enregistrer les détails"));
 
   // 4) Participants : ajout multiple + base de joueurs
@@ -1166,6 +1173,31 @@ function wizGaugeCard(c: { total: number; programmed: number; gap: number; valid
     <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-top:10px"><span>Écart restant</span><b id="wiz-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"};font-family:'JetBrains Mono',monospace">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
     <p style="color:var(--text-faint);font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>
     ${c.breakdown ? wizBreakdownBar(c.breakdown, c.programmed) : ""}`);
+}
+
+/** Même jauge que wizGaugeCard, pour le panneau « Configuration du tournoi » (page du tournoi, Survival,
+ * pas encore lancé) — ids distincts (cfg-gauge-*) pour ne jamais entrer en collision avec celle de
+ * l'assistant de création si les deux sont montés en même temps (assistant ouvert par-dessus une autre page). */
+function cfgGaugeCard(c: { total: number; programmed: number; gap: number; valid: boolean; breakdown?: Record<string, { matches: number; pts: number }> }) {
+  const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
+  const segs = c.breakdown ? WIZ_BREAKDOWN_SEGMENTS.map(([key, , color]) => {
+    const p = c.programmed > 0 ? Math.round(((c.breakdown![key as keyof typeof c.breakdown] as { pts: number })?.pts ?? 0) / c.programmed * 1000) / 10 : 0;
+    return `<span id="cfg-gauge-seg-${key}" style="width:${p}%;background:${color};display:flex;align-items:center;justify-content:center;overflow:hidden;transition:width .15s ease">${p >= 8 ? `<span id="cfg-gauge-seg-${key}-txt">${p}%</span>` : ""}</span>`;
+  }).join("") : "";
+  const legend = WIZ_BREAKDOWN_SEGMENTS.map(([, label, color]) => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:${color}"></span>${label}</span>`).join("");
+  return `<div style="margin-top:16px;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:16px 18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><h4 style="margin:0;font-size:13px;font-weight:750">Contrôle de la cagnotte</h4><span id="cfg-gauge-badge" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:${c.valid ? "#34D399" : "#FB7185"};background:${c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)"};border:1px solid ${c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:99px;padding:4px 10px"><span id="cfg-gauge-badge-icon" style="display:inline-flex">${ic(c.valid ? I.plus : I.warn, 12)}</span><span id="cfg-gauge-badge-txt">${c.valid ? "Valide" : "Dépassement"}</span></span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-bottom:5px"><span>Points disponibles</span><b style="color:var(--text);font-family:'JetBrains Mono',monospace">${c.total}</b></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-bottom:10px"><span>Points programmés</span><b id="cfg-gauge-prog" style="color:var(--text);font-family:'JetBrains Mono',monospace">${c.programmed}</b></div>
+    <div style="height:9px;border-radius:99px;background:var(--surface-4);border:1px solid var(--border);overflow:hidden"><span id="cfg-gauge-bar" style="display:block;height:100%;width:${pct}%;background:${c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)"};transition:width .15s ease"></span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-top:10px"><span>Écart restant</span><b id="cfg-gauge-gap" style="color:${c.valid ? "#34D399" : "#FB7185"};font-family:'JetBrains Mono',monospace">${c.gap >= 0 ? "+" : ""}${c.gap}</b></div>
+    <p style="color:var(--text-faint);font-size:11.5px;margin:12px 0 0">Le tournoi ne peut être lancé que si les points programmés tiennent dans la cagnotte.</p>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--surface-3)">
+      <div style="font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:10px">Répartition prévue</div>
+      <div id="cfg-gauge-breakdown" style="display:flex;height:26px;border-radius:7px;overflow:hidden;font-size:10px;font-weight:800;color:#04222a">${segs}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11px;color:var(--text-muted)">${legend}</div>
+    </div>
+  </div>`;
 }
 
 /** Suggestions de jeu (catalogue) filtrées par ce qui est tapé — masquées tant que le champ est
@@ -1542,7 +1574,10 @@ function wizValidateStep(S: State) {
   // "Top 1 + Top 2" écrit en dur, faux dès qu'on en qualifie un autre nombre.
   const qualifN = Math.min(d.qualifyPerPool || 2, wizMaxQualify(d.players.length, d.nbPools, d.maxPlayers));
   const qualifSurvivalLabel = `${qualifN === 1 ? "Le 1er" : `Les ${qualifN} premiers`} de chaque poule (${qualifN * d.nbPools} qualifié${qualifN * d.nbPools > 1 ? "s" : ""} au total) → phase finale`;
-  const participantsRows = !wizFullFlow(S) ? "" : survivalLight ? `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}` : `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
+  // En création rapide (survivalLight), le format n'a jamais été choisi par l'organisateur — Survival
+  // n'est qu'un réglage technique interne en attendant « Modifier » — donc pas de ligne « Format » ici,
+  // ça laisserait croire à un choix qui n'a pas eu lieu.
+  const participantsRows = !wizFullFlow(S) ? "" : survivalLight ? row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes") : `${row("Format", formatLabel)}${row("Participants", d.players.length ? String(d.players.length) : "Inscriptions ouvertes")}${structureRow}${poolRows}${isSurvival ? row("Mode des poules", (wizPoolModes(d.format).find(([k]) => k === d.poolFormat) || wizPoolModes(d.format)[0])[1]) : ""}${isSurvival ? row("Bonus striker", `Série de ${d.streakLength} victoires`) : ""}${isSurvival ? row("Qualification", qualifSurvivalLabel) : ""}${isSurvival ? row("Phase finale", (FINALS_FORMATS.find(([k]) => k === d.finalsFormat) || FINALS_FORMATS[0])[1]) : ""}`;
   const hasPoolsStep = isBR || wizHasPools(d.format);
   // Raccourci abrégé (format figé) : le retour vise Barème seulement en Survival — les autres
   // formats n'ont pas cette étape ici (voir wizSteps() et le nextStep de wizInfosStep()).
@@ -1551,7 +1586,7 @@ function wizValidateStep(S: State) {
   // respecter une cagnotte. Les autres formats gardent des valeurs fixes en interne, jamais montrées
   // ici : ça n'a rien à faire dans un récap Bracket simple/Round Robin/etc. Battle Royale a son propre
   // barème (palier de classement + bonus élimination), réglable depuis wizBrScoringStep.
-  const bareme = survivalLight ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--text-muted);background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.25);border-radius:10px;padding:10px 12px">${ic(I.bolt, 13)} Poules, barème des points, qualifiés et phase finale gardent leurs valeurs par défaut : tu les règles juste après la création, avec <b style="color:var(--text)">« Modifier »</b> sur la page du tournoi.</p>`
+  const bareme = survivalLight ? ""
     : isSurvival ? `<hr style="border:0;border-top:1px solid var(--border);margin:14px 0" />
       <h3 style="margin:0 0 10px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.5px">Barème</h3>
       <table style="width:100%;border-collapse:collapse">${brk}</table>`
@@ -8503,6 +8538,19 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     return () => els.forEach((el) => el.removeEventListener("input", wizRecalcGauge));
   }, [S.creating, S.wizStep]);
 
+  // Même jauge, même technique, pour le panneau « Configuration du tournoi » (page du tournoi, Survival,
+  // pas encore lancé) — avait disparu quand la création est passée en « survivalLight » (barème réglé
+  // après coup depuis cette page, qui n'avait jamais reçu le contrôle de cagnotte de l'assistant).
+  useEffect(() => {
+    const t = S.detail;
+    if (!(t && t.status === "setup" && (ENGINE_TO_DB_FORMAT[t.mainFormat] || "SURVIVAL") === "SURVIVAL")) return;
+    const ids = [...WIZ_SCORING_FIELDS.map(([, , key]) => `cfg-sc-${key}`), "cfg-pts"];
+    const els = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLInputElement => !!el);
+    els.forEach((el) => el.addEventListener("input", cfgRecalcGauge));
+    cfgRecalcGauge();
+    return () => els.forEach((el) => el.removeEventListener("input", cfgRecalcGauge));
+  }, [S.detail?.id, S.detail?.status]);
+
   // Classement Battle Royale en direct (saisie des résultats) : même technique que la jauge de
   // cagnotte ci-dessus (écouteurs natifs, contenu hors réconciliation React) — recalcule
   // #br-leaderboard à chaque frappe sur un champ placement/éliminations, sans attendre la
@@ -8762,6 +8810,43 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const pct2 = c.programmed > 0 ? Math.round((c.breakdown[key].pts / c.programmed) * 1000) / 10 : 0;
         segEl.style.width = `${pct2}%`;
         segEl.innerHTML = pct2 >= 8 ? `<span id="wiz-gauge-seg-${key}-txt">${pct2}%</span>` : "";
+      }
+    }
+  }
+  /** Même calcul que wizRecalcGauge, pour la jauge du panneau « Configuration du tournoi » (ids cfg-gauge-*,
+   * champs cfg-sc-* et cfg-pts) — nbPools/mode de poule/phase finale/qualifiés viennent du tournoi déjà
+   * enregistré (réglés par un autre bloc de ce même panneau, pas en cours de saisie ici). */
+  function cfgRecalcGauge() {
+    const prog = document.getElementById("cfg-gauge-prog"); const bar = document.getElementById("cfg-gauge-bar");
+    const gap = document.getElementById("cfg-gauge-gap"); const badge = document.getElementById("cfg-gauge-badge");
+    const badgeTxt = document.getElementById("cfg-gauge-badge-txt"); const badgeIcon = document.getElementById("cfg-gauge-badge-icon");
+    const t = S.detail;
+    if (!prog || !bar || !gap || !badge || !badgeTxt || !badgeIcon || !t) return;
+    const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+    const num = (id: string, def: number) => { const n = parseFloat(val(id)); return Number.isFinite(n) ? n : def; };
+    const scoring = {
+      survWin: num("cfg-sc-survWin", 0), loserWin: num("cfg-sc-loserWin", 0), poolFinalWin: num("cfg-sc-poolFinalWin", 0),
+      finalsWin: num("cfg-sc-finalsWin", 0), championBonus: num("cfg-sc-championBonus", 0), streakBonus: num("cfg-sc-streakBonus", 0),
+    };
+    const nPlayers = Array.isArray(t.players) ? t.players.length : 0;
+    const c = cagnottePreview(nPlayers, t.nbPools || 2, num("cfg-pts", t.pointsPerPlayer || 5), scoring, t.finalsFormat || "single", (t.poolFormat || "survival") as "survival" | "double" | "single" | "roundrobin", t.qualifyPerPool || 2);
+    const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
+    prog.textContent = String(c.programmed);
+    bar.style.width = `${pct}%`;
+    bar.style.background = c.valid ? "linear-gradient(90deg,#22D3EE,#7C82FF)" : "linear-gradient(90deg,#FB7185,#F43F7E)";
+    gap.textContent = `${c.gap >= 0 ? "+" : ""}${c.gap}`;
+    gap.style.color = c.valid ? "#34D399" : "#FB7185";
+    badgeTxt.textContent = c.valid ? "Valide" : "Dépassement";
+    badgeIcon.innerHTML = ic(c.valid ? I.plus : I.warn, 12);
+    badge.style.color = c.valid ? "#34D399" : "#FB7185";
+    badge.style.background = c.valid ? "rgba(52,211,153,.08)" : "rgba(251,113,133,.08)";
+    badge.style.borderColor = c.valid ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)";
+    for (const key of Object.keys(c.breakdown) as (keyof typeof c.breakdown)[]) {
+      const segEl = document.getElementById(`cfg-gauge-seg-${key}`);
+      if (segEl) {
+        const pct2 = c.programmed > 0 ? Math.round((c.breakdown[key].pts / c.programmed) * 1000) / 10 : 0;
+        segEl.style.width = `${pct2}%`;
+        segEl.innerHTML = pct2 >= 8 ? `<span id="cfg-gauge-seg-${key}-txt">${pct2}%</span>` : "";
       }
     }
   }

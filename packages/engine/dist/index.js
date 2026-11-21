@@ -1471,8 +1471,49 @@ function finishFinals(t, champId) {
     t.champion = champId;
     award(t, champId, t.scoring.championBonus);
     t.log.push({ id: uid(), poolId: 'finals', stage: 'championBonus', a: champId, b: null, winner: champId, pts: t.scoring.championBonus, ts: Date.now() });
+    distributeCagnotteRemainder(t);
     t.status = 'finished';
     t.finishedAt = Date.now();
+}
+/** Le barème est pensé pour le pire cas (repêchage complet, striker déclenché dans chaque poule…) —
+ * dans la pratique l'arbre réel est presque toujours plus court, donc une part de la cagnotte reste
+ * systématiquement inutilisée à la fin. Plutôt que de laisser ce reliquat disparaître, on le reverse
+ * au sacre, au prorata des points déjà gagnés par chacun (le bonus champion inclus) : qui a le plus
+ * contribué touche la plus grosse part, personne qui a joué ne finit avec zéro. Uniquement en
+ * Survival, seul format où la cagnotte existe (voir cagnotte()). */
+function distributeCagnotteRemainder(t) {
+    if (t.format !== 'survival')
+        return;
+    const total = t.players.length * t.pointsPerPlayer;
+    const leftover = Math.round((total - distributed(t)) * 100) / 100;
+    if (leftover < 0.01)
+        return;
+    // Seuls ceux qui ont réellement disputé un match (gagné ou perdu) touchent une part — un inscrit
+    // jamais entré en jeu (forfait avant son 1er match, disqualifié d'entrée…) n'en a pas gagné le droit.
+    const played = new Set();
+    t.log.forEach(l => { if (l.a && l.b) {
+        played.add(l.a);
+        played.add(l.b);
+    } });
+    const participants = t.players.filter(p => played.has(p.id));
+    if (!participants.length)
+        return;
+    // Poids = points déjà gagnés + un socle fixe : qui a le plus gagné touche la plus grosse part du
+    // reliquat, mais quiconque a joué repart avec quelque chose — jamais 0, même sans la moindre victoire.
+    const BASE = 1;
+    const weights = participants.map(p => (t.points[p.id] || 0) + BASE);
+    const sumWeights = weights.reduce((a, b) => a + b, 0);
+    let given = 0;
+    participants.forEach((p, i) => {
+        const last = i === participants.length - 1;
+        // Dernier bénéficiaire : le reste de l'arrondi, pour que la somme tombe exactement sur le reliquat.
+        const share = last ? Math.round((leftover - given) * 100) / 100 : Math.round((leftover * weights[i] / sumWeights) * 100) / 100;
+        given = Math.round((given + share) * 100) / 100;
+        if (share > 0) {
+            award(t, p.id, share);
+            t.log.push({ id: uid(), poolId: 'finals', stage: 'adjust', a: p.id, b: null, winner: p.id, pts: share, ts: Date.now(), reason: 'Reliquat de cagnotte redistribué au prorata du classement final' });
+        }
+    });
 }
 /** Détecte la fin de la phase finale (tous formats) et couronne le champion. */
 function checkFinalsChampion(t) {

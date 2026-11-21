@@ -241,7 +241,7 @@ test('Poules en double élimination : un maximum de joueurs alignés au 1er tour
   }
 });
 
-test('Poules en double élimination : la cagnotte prévue ne sous-estime jamais les points réellement distribués', () => {
+test('Poules en double élimination : le barème ne programme jamais plus que la cagnotte disponible', () => {
   for (let n = 6; n <= 24; n += 2) {
     for (const finalsFormat of ['single', 'double']) {
       const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat: 'double', qualifyPerPool: 2, finalsFormat });
@@ -251,11 +251,32 @@ test('Poules en double élimination : la cagnotte prévue ne sous-estime jamais 
       playPools(t);
       assert.ok(t.pools.every((p) => p.phase === 'done'), `n=${n} : poules terminées`);
       E.startFinals(t, finalsFormat);
+      // Avant le dernier match (donc avant la redistribution du reliquat, voir le test suivant) :
+      // le barème lui-même ne doit jamais pouvoir dépasser le budget, peu importe l'arbre réel.
+      const { total, programmed } = E.cagnotte(t);
+      assert.ok(programmed <= total + 0.01, `n=${n} finale ${finalsFormat} : prévu ${programmed} <= cagnotte ${total}`);
+      playAll(t, (m, i) => (i % 3 === 0 ? m.b : m.a));
+      assert.equal(t.status, 'finished', `n=${n} finale ${finalsFormat} : terminé`);
+    }
+  }
+});
+
+test('Poules en double élimination : le reliquat de cagnotte est intégralement redistribué au prorata à la fin', () => {
+  for (let n = 6; n <= 24; n += 2) {
+    for (const finalsFormat of ['single', 'double']) {
+      const t = E.newTournament({ format: 'survival', nbPools: 2, poolFormat: 'double', qualifyPerPool: 2, finalsFormat });
+      for (let i = 0; i < n; i++) E.addPlayer(t, 'C' + i);
+      E.distributePools(t);
+      E.launchTournament(t);
+      playPools(t);
+      E.startFinals(t, finalsFormat);
       playAll(t, (m, i) => (i % 3 === 0 ? m.b : m.a));
       assert.equal(t.status, 'finished', `n=${n} finale ${finalsFormat} : terminé`);
       const distributed = Object.values(t.points).reduce((a, b) => a + b, 0);
-      const programmed = E.cagnotte(t).programmed;
-      assert.ok(distributed <= programmed + 0.01, `n=${n} finale ${finalsFormat} : distribué ${distributed} <= prévu ${programmed}`);
+      const total = n * t.pointsPerPlayer;
+      assert.ok(Math.abs(distributed - total) < 0.02, `n=${n} finale ${finalsFormat} : distribué ${distributed} ≈ cagnotte ${total} (reliquat reversé)`);
+      // Personne qui a marqué au moins un point avant le reliquat (donc qui a joué) ne finit à 0.
+      assert.ok(t.players.every((p) => (t.points[p.id] || 0) > 0), `n=${n} finale ${finalsFormat} : aucun joueur à 0 point`);
     }
   }
 });

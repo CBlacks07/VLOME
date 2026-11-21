@@ -4498,7 +4498,10 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
  * bracket reset). Ainsi l'affiche qui décide du titre se lit dans le prolongement naturel de
  * l'arbre, reliée à la finale des vainqueurs, au lieu d'être isolée ailleurs sur la page.
  * La filiation par défaut suffit : le tour ne contient qu'une affiche, dont le seul parent
- * existant est la finale précédente. */
+ * existant est la finale précédente.
+ * Reset vérifié en conditions réelles (tournoi test, poules + phase finale en double élim) : si le
+ * finaliste venu du bracket des perdants gagne la grande finale, `finals.gf2` apparaît bien comme
+ * un 2e match distinct — pas de couronnement prématuré du vainqueur du bracket des vainqueurs. */
 function winnersRoundsWithFinal(finals: Detail, gfLabels: [string, string] = ["Grande finale", "Grande finale · manche 2"]): Detail[] {
   const rounds: Detail[] = [...(finals.wb || [])];
   if (finals.gf) rounds.push({ label: gfLabels[0], matches: [finals.gf], accent: "#FBBF24" });

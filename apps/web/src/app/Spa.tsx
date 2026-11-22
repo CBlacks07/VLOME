@@ -1049,8 +1049,13 @@ function setupConfigCard(S: State, t: Detail): string {
   const scoringFields = isSurv ? WIZ_SCORING_FIELDS : [];
   // Jauge de cagnotte (mêmes calculs que l'assistant de création, voir cagnottePreview) — recalculée en
   // direct par cfgRecalcGauge à chaque frappe sur les points/barème ci-dessous (useEffect dédié).
+  // Tant qu'aucun participant n'est encore inscrit, le nombre réel (0) rendrait la prévisualisation
+  // inutilisable (cagnotte à 0, barème toujours « en dépassement ») : on simule alors un effectif
+  // saisi à la main (cfg-sim-players), purement local à cet aperçu — jamais envoyé au serveur, et
+  // ignoré dès qu'un vrai participant est ajouté.
+  const realPlayerCount = Array.isArray(t.players) ? t.players.length : 0;
   const cagnotte = isSurv ? cagnottePreview(
-    Array.isArray(t.players) ? t.players.length : 0, nbPools, t.pointsPerPlayer || 5,
+    realPlayerCount || (t.maxPlayers || 0), nbPools, t.pointsPerPlayer || 5,
     { survWin: sc.survWin ?? 1, loserWin: sc.loserWin ?? 0.5, poolFinalWin: sc.poolFinalWin ?? 1.5, finalsWin: sc.finalsWin ?? 2, championBonus: sc.championBonus ?? 3, streakBonus: sc.streakBonus ?? 0 },
     finalsFormat, poolFormat as "survival" | "double" | "single" | "roundrobin", qualify,
   ) : null;
@@ -1062,6 +1067,7 @@ function setupConfigCard(S: State, t: Detail): string {
         ${wizField("Frais d'inscription (F CFA)", num("cfg-fee", t.entryFeeXof || 0), "0 = gratuit")}
         ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
         ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
+        ${isSurv && !realPlayerCount ? wizField("Nombre de participants (simulation)", num("cfg-sim-players", t.maxPlayers || 0), "Aucun participant inscrit : utilisé pour prévisualiser la cagnotte, remplacé dès l'ajout de vrais participants") : ""}
       </div>`
     + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte, t.id) : ""}` : "")
     + saveBtn("details", "Enregistrer les détails"));
@@ -8853,7 +8859,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       survWin: num("cfg-sc-survWin", 0), loserWin: num("cfg-sc-loserWin", 0), poolFinalWin: num("cfg-sc-poolFinalWin", 0),
       finalsWin: num("cfg-sc-finalsWin", 0), championBonus: num("cfg-sc-championBonus", 0), streakBonus: num("cfg-sc-streakBonus", 0),
     };
-    const nPlayers = Array.isArray(t.players) ? t.players.length : 0;
+    const realPlayerCount = Array.isArray(t.players) ? t.players.length : 0;
+    const nPlayers = realPlayerCount || Math.max(0, num("cfg-sim-players", 0));
     const c = cagnottePreview(nPlayers, t.nbPools || 2, num("cfg-pts", t.pointsPerPlayer || 5), scoring, t.finalsFormat || "single", (t.poolFormat || "survival") as "survival" | "double" | "single" | "roundrobin", t.qualifyPerPool || 2);
     const pct = Math.min(100, c.total ? (c.programmed / c.total) * 100 : 0);
     prog.textContent = String(c.programmed);
@@ -9011,7 +9018,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (box) box.innerHTML = cfgGameChips({ games: S.games } as State, el.value);
         return;
       }
-      if (el && (el.id === "cfg-pts" || el.id.startsWith("cfg-sc-"))) { cfgRecalcGauge(); return; }
+      if (el && (el.id === "cfg-pts" || el.id === "cfg-sim-players" || el.id.startsWith("cfg-sc-"))) { cfgRecalcGauge(); return; }
       if (!el || el.id !== "cfg-roster-search") return;
       const q = el.value.trim().toLowerCase();
       root.querySelectorAll<HTMLElement>("[data-cfgpick]").forEach((c) => { c.style.display = !q || (c.dataset.search || "").includes(q) ? "" : "none"; });

@@ -1810,19 +1810,23 @@ function doublePoolMatchCounts(n, compact = false) {
         gf: f.gf.bye ? 0 : 2, // grande finale + 2e petite finale possible (reset)
     };
 }
-function cagnotte(t) {
-    const total = t.players.length * t.pointsPerPlayer;
+/** `simulatedPlayers` : effectif utilisé à la place de `t.players.length` quand celui-ci est nul —
+ * sert uniquement à prévisualiser/ajuster la cagnotte avant les premières inscriptions (voir le champ
+ * « Nombre de participants (simulation) » côté web) ; ignoré dès qu'il y a au moins un vrai participant. */
+function cagnotte(t, simulatedPlayers = 0) {
+    const n = t.players.length || Math.max(0, Math.floor(simulatedPlayers));
+    const total = n * t.pointsPerPlayer;
     const s = t.scoring;
     // Ancien mode « bracket unique fusionné » (tournois déjà lancés sous ce mode : pas de poules, t.finals EST le
     // bracket, au tarif finalsWin uniquement) — n'est plus proposé à la création mais reste budgétisé tel quel.
     if (t.format !== 'survival' && t.poolFormat === 'double' && t.status !== 'setup' && !t.pools.length && t.finals && t.finals.format === 'double') {
-        const c = doublePoolMatchCounts(t.players.length);
+        const c = doublePoolMatchCounts(n);
         const finalsMatches = c.wb + c.lb + c.gf;
         const programmed = Math.round((finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
         return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
     }
     let surv = 0, los = 0, pf = 0, nRealPools = 0;
-    const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(t.players.length, t.nbPools);
+    const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(n, t.nbPools);
     sizes.forEach(n => {
         if (n < 2)
             return;
@@ -1870,8 +1874,8 @@ function cagnotte(t) {
     return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
 }
 /** Un passage de réduction proportionnelle (pas de 0.25, plancher à 0.25) — voir autoFitScoring. */
-function autoFitScoringOnce(t) {
-    const c = cagnotte(t);
+function autoFitScoringOnce(t, simulatedPlayers = 0) {
+    const c = cagnotte(t, simulatedPlayers);
     if (c.programmed <= 0)
         return;
     const scale = c.total / c.programmed;
@@ -1893,11 +1897,11 @@ function autoFitScoringOnce(t) {
  * plutôt que de s'arrêter dès le premier passage valide : une redistribution qui laisse un large
  * reliquat après un seul clic ne serait pas la redistribution « intelligente » promise à
  * l'organisateur. */
-function autoFitScoring(t) {
+function autoFitScoring(t, simulatedPlayers = 0) {
     snapshot(t);
     for (let i = 0; i < 8; i++) {
         const before = JSON.stringify(t.scoring);
-        autoFitScoringOnce(t);
+        autoFitScoringOnce(t, simulatedPlayers);
         if (JSON.stringify(t.scoring) === before)
             break;
     }

@@ -436,7 +436,10 @@ export declare function disqualifyPlayer(t: Tournament, playerId: string): {
     ok: boolean;
     reason?: string;
 };
-export declare function cagnotte(t: Tournament): {
+/** `simulatedPlayers` : effectif utilisé à la place de `t.players.length` quand celui-ci est nul —
+ * sert uniquement à prévisualiser/ajuster la cagnotte avant les premières inscriptions (voir le champ
+ * « Nombre de participants (simulation) » côté web) ; ignoré dès qu'il y a au moins un vrai participant. */
+export declare function cagnotte(t: Tournament, simulatedPlayers?: number): {
     total: number;
     programmed: number;
     gap: number;
@@ -452,7 +455,7 @@ export declare function cagnotte(t: Tournament): {
  * plutôt que de s'arrêter dès le premier passage valide : une redistribution qui laisse un large
  * reliquat après un seul clic ne serait pas la redistribution « intelligente » promise à
  * l'organisateur. */
-export declare function autoFitScoring(t: Tournament): void;
+export declare function autoFitScoring(t: Tournament, simulatedPlayers?: number): void;
 export declare function distributed(t: Tournament): number;
 export interface RankRow {
     id: string;

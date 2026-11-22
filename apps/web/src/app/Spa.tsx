@@ -136,6 +136,11 @@ type State = {
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
+  /** Dernière valeur tapée dans « Nombre de participants (simulation) » (panneau Configuration,
+   * tant qu'aucun participant réel n'est inscrit) — capturée juste avant un aller-retour serveur qui
+   * régénère tout le panneau (sauvegarde, redistribution auto), pour que le champ ne se réinitialise
+   * pas à sa valeur par défaut à chaque fois. */
+  cfgSimPlayers?: number | null;
   site: Detail | null; siteMsg: string;
   news: Detail[] | null;
   me: Detail | null; myRegs: Detail[] | null; myOrders: Detail[] | null; myTourns: Detail[] | null; myResults: Detail[] | null;
@@ -1054,8 +1059,9 @@ function setupConfigCard(S: State, t: Detail): string {
   // saisi à la main (cfg-sim-players), purement local à cet aperçu — jamais envoyé au serveur, et
   // ignoré dès qu'un vrai participant est ajouté.
   const realPlayerCount = Array.isArray(t.players) ? t.players.length : 0;
+  const simPlayersDefault = S.cfgSimPlayers ?? (t.maxPlayers || 0);
   const cagnotte = isSurv ? cagnottePreview(
-    realPlayerCount || (t.maxPlayers || 0), nbPools, t.pointsPerPlayer || 5,
+    realPlayerCount || simPlayersDefault, nbPools, t.pointsPerPlayer || 5,
     { survWin: sc.survWin ?? 1, loserWin: sc.loserWin ?? 0.5, poolFinalWin: sc.poolFinalWin ?? 1.5, finalsWin: sc.finalsWin ?? 2, championBonus: sc.championBonus ?? 3, streakBonus: sc.streakBonus ?? 0 },
     finalsFormat, poolFormat as "survival" | "double" | "single" | "roundrobin", qualify,
   ) : null;
@@ -1067,7 +1073,7 @@ function setupConfigCard(S: State, t: Detail): string {
         ${wizField("Frais d'inscription (F CFA)", num("cfg-fee", t.entryFeeXof || 0), "0 = gratuit")}
         ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
         ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
-        ${isSurv && !realPlayerCount ? wizField("Nombre de participants (simulation)", num("cfg-sim-players", t.maxPlayers || 0), "Aucun participant inscrit : utilisé pour prévisualiser la cagnotte, remplacé dès l'ajout de vrais participants") : ""}
+        ${isSurv && !realPlayerCount ? wizField("Nombre de participants (simulation)", num("cfg-sim-players", simPlayersDefault), "Aucun participant inscrit : utilisé pour prévisualiser et redistribuer la cagnotte, remplacé dès l'ajout de vrais participants") : ""}
       </div>`
     + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte, t.id) : ""}` : "")
     + saveBtn("details", "Enregistrer les détails"));
@@ -6810,7 +6816,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     } catch { /* ignore */ }
   }
   async function openDetail(id: string, page = "tournoi") {
-    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, predictorStats: null, predNudge: false, predRound: null, predExpanded: false, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0 }));
+    setS((s) => ({ ...s, page, openId: id, detail: null, teamDraft: null, regsPanel: null, payPick: "", regPointsToRedeem: 0, activeMatchIds: [], matchScores: {}, predBoard: null, myPreds: null, predictorStats: null, predNudge: false, predRound: null, predExpanded: false, correctingId: null, regiePanel: null, brActiveGame: null, showSlide: 0, cfgSimPlayers: null }));
     window.scrollTo({ top: 0 });
     try {
       const r = await fetch(`${API}/api/tournaments/${id}/state`);
@@ -8980,17 +8986,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!Number.isFinite(v) || v < WIZ_SCORING_FLOOR[key]) { alert(`${label} : valeur minimale ${WIZ_SCORING_FLOOR[key]}.`); return; }
       scoring.push([key, v]);
     }
+    // Capture le champ de simulation (s'il existe) pour qu'il survive au re-rendu déclenché par la
+    // sauvegarde — sinon il reviendrait à sa valeur par défaut comme si la saisie avait été effacée.
+    const simEl = document.getElementById("cfg-sim-players") as HTMLInputElement | null;
+    if (simEl) setS((s) => ({ ...s, cfgSimPlayers: Math.max(0, parseInt(simEl.value) || 0) }));
     void cfgSave(body, scoring);
   }
-  /** Redistribue intelligemment le barème au prorata de la cagnotte disponible (bouton « Redistribuer automatiquement »). */
+  /** Redistribue intelligemment le barème au prorata de la cagnotte disponible (bouton « Redistribuer
+   * automatiquement »). Tant qu'aucun participant réel n'est inscrit, envoie l'effectif simulé saisi
+   * dans le panneau (cf. cfg-sim-players) pour que la redistribution porte sur ce budget prévisionnel
+   * au lieu d'une cagnotte réelle nulle. */
   async function cfgAutoFit(id: string) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
+    const simEl = document.getElementById("cfg-sim-players") as HTMLInputElement | null;
+    const simulatedPlayers = simEl ? Math.max(0, parseInt(simEl.value) || 0) : undefined;
     try {
-      const r = await fetch(`${API}/api/tournaments/${id}/scoring/autofit`, { method: "POST", headers: authHeaders() });
+      const r = await fetch(`${API}/api/tournaments/${id}/scoring/autofit`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ simulatedPlayers }) });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       if (!r.ok) { const e = await r.json().catch(() => null); alert((Array.isArray(e?.message) ? e.message.join("\n") : e?.message) || "Redistribution impossible."); return; }
       const sr = await fetch(`${API}/api/tournaments/${id}/state`);
-      if (sr.ok) { const dd = await sr.json(); setS((s) => ({ ...s, detail: dd })); }
+      if (sr.ok) { const dd = await sr.json(); setS((s) => ({ ...s, detail: dd, cfgSimPlayers: simulatedPlayers ?? s.cfgSimPlayers })); }
       showToast("Barème redistribué selon la cagnotte disponible.");
     } catch { alert("Redistribution impossible — réessaie dans un instant."); }
   }

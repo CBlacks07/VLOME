@@ -376,8 +376,9 @@ export class TournamentsController {
   @Post(':id/scoring/autofit')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN')
-  async autoFitScoring(@Param('id') id: string, @CurrentUser() user: JwtUser) {
-    const s = await this.service.autoFitScoring(id, user);
+  async autoFitScoring(@Param('id') id: string, @CurrentUser() user: JwtUser, @Body() body?: { simulatedPlayers?: number }) {
+    const simulatedPlayers = typeof body?.simulatedPlayers === 'number' && Number.isFinite(body.simulatedPlayers) ? body.simulatedPlayers : undefined;
+    const s = await this.service.autoFitScoring(id, user, simulatedPlayers);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

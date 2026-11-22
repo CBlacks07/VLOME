@@ -1669,19 +1669,23 @@ function doublePoolMatchCounts(n: number, compact = false): { wb: number; lb: nu
   };
 }
 
-export function cagnotte(t: Tournament): { total: number; programmed: number; gap: number; valid: boolean } {
-  const total = t.players.length * t.pointsPerPlayer;
+/** `simulatedPlayers` : effectif utilisé à la place de `t.players.length` quand celui-ci est nul —
+ * sert uniquement à prévisualiser/ajuster la cagnotte avant les premières inscriptions (voir le champ
+ * « Nombre de participants (simulation) » côté web) ; ignoré dès qu'il y a au moins un vrai participant. */
+export function cagnotte(t: Tournament, simulatedPlayers = 0): { total: number; programmed: number; gap: number; valid: boolean } {
+  const n = t.players.length || Math.max(0, Math.floor(simulatedPlayers));
+  const total = n * t.pointsPerPlayer;
   const s = t.scoring;
   // Ancien mode « bracket unique fusionné » (tournois déjà lancés sous ce mode : pas de poules, t.finals EST le
   // bracket, au tarif finalsWin uniquement) — n'est plus proposé à la création mais reste budgétisé tel quel.
   if (t.format !== 'survival' && t.poolFormat === 'double' && t.status !== 'setup' && !t.pools.length && t.finals && t.finals.format === 'double') {
-    const c = doublePoolMatchCounts(t.players.length);
+    const c = doublePoolMatchCounts(n);
     const finalsMatches = c.wb + c.lb + c.gf;
     const programmed = Math.round((finalsMatches * s.finalsWin + s.championBonus) * 100) / 100;
     return { total, programmed, gap: Math.round((total - programmed) * 100) / 100, valid: programmed <= total };
   }
   let surv = 0, los = 0, pf = 0, nRealPools = 0;
-  const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(t.players.length, t.nbPools);
+  const sizes = t.pools.length ? t.pools.map(p => p.playerIds.length) : balancedSizes(n, t.nbPools);
   sizes.forEach(n => {
     if (n < 2) return;
     nRealPools++;
@@ -1719,8 +1723,8 @@ export function cagnotte(t: Tournament): { total: number; programmed: number; ga
 }
 
 /** Un passage de réduction proportionnelle (pas de 0.25, plancher à 0.25) — voir autoFitScoring. */
-function autoFitScoringOnce(t: Tournament): void {
-  const c = cagnotte(t);
+function autoFitScoringOnce(t: Tournament, simulatedPlayers = 0): void {
+  const c = cagnotte(t, simulatedPlayers);
   if (c.programmed <= 0) return;
   const scale = c.total / c.programmed;
   const clamp = (v: number) => Math.min(999, Math.max(0.25, Math.floor(v * scale * 4) / 4));
@@ -1742,11 +1746,11 @@ function autoFitScoringOnce(t: Tournament): void {
  * plutôt que de s'arrêter dès le premier passage valide : une redistribution qui laisse un large
  * reliquat après un seul clic ne serait pas la redistribution « intelligente » promise à
  * l'organisateur. */
-export function autoFitScoring(t: Tournament): void {
+export function autoFitScoring(t: Tournament, simulatedPlayers = 0): void {
   snapshot(t);
   for (let i = 0; i < 8; i++) {
     const before = JSON.stringify(t.scoring);
-    autoFitScoringOnce(t);
+    autoFitScoringOnce(t, simulatedPlayers);
     if (JSON.stringify(t.scoring) === before) break;
   }
   recomputePoints(t);

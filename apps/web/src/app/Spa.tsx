@@ -8219,9 +8219,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const isShow = S.page === "show" && !!S.openId;
     const isLiveDetail = S.page === "tournoi" && !!S.openId && S.detail?.status === "live" && !S.editing && !S.correctingId && !canManage(S);
     if (!isShow && !isLiveDetail) return;
+    // 6s plutôt que 2,5s : chaque tick ouvre une invocation de l'API (et donc du CPU Fluid facturé) —
+    // avec plusieurs spectateurs sur un même tournoi en direct, 2,5s faisait vite grimper la facture
+    // sans que ce soit perceptible pour qui regarde un bracket avancer.
     const id = setInterval(async () => {
       try { const r = await fetch(`${API}/api/tournaments/${S.openId}/state`); if (r.ok) { const d = await r.json(); setS((s) => ({ ...s, detail: d })); } } catch { /* ignore */ }
-    }, 2500);
+    }, 6000);
     return () => clearInterval(id);
   }, [S.page, S.openId, S.detail?.status, S.editing, S.correctingId, S.user?.role]);
 

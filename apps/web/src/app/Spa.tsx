@@ -6216,7 +6216,8 @@ function eventMedia(ev: Detail, alt: string, mode: "hero" | "card" = "hero"): st
   if (isVideoUrl(ev.bannerUrl)) {
     return `<video src="${mediaUrl(ev.bannerUrl)}" ${ev.posterUrl ? `poster="${mediaUrl(ev.posterUrl)}"` : ""} muted autoplay loop playsinline preload="metadata" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>`;
   }
-  if (ev.bannerUrl) return `<img src="${mediaUrl(ev.bannerUrl)}" alt="${escAttr(alt)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" />`;
+  // Couverture entière (jamais rognée) : posée en « contain » sur sa propre version floue.
+  if (ev.bannerUrl) return `<span aria-hidden="true" style="position:absolute;inset:-24px;background:url('${mediaUrl(ev.bannerUrl)}') center/cover;filter:blur(22px) brightness(.65) saturate(1.2)"></span><img src="${mediaUrl(ev.bannerUrl)}" alt="${escAttr(alt)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain" />`;
   // Sans bannière : dégradé à la couleur de l'événement ; sur une carte, l'affiche entière est posée dessus (sur la page, elle a son propre cadre).
   const poster = mode === "card" && ev.posterUrl ? `<img src="${mediaUrl(ev.posterUrl)}" alt="${escAttr(alt)}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:88%;width:auto;max-width:80%;object-fit:contain;border-radius:8px;box-shadow:0 12px 34px rgba(0,0,0,.5)" />` : "";
   return `<div style="position:absolute;inset:0;${fallback}"></div>${poster}`;

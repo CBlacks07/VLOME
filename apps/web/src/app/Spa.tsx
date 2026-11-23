@@ -651,8 +651,13 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   // large de la page détail) y serait mal cadrée. Elle ne sert ici qu'en dernier repli avant le dégradé généré.
   const cover = t.imageUrl || t.bannerUrl || gameCover(t.game || main);
   const art = cover
-    ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center 64%`
+    ? `background-color:#0b0b12`
     : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;
+  // Affiche entière (jamais rognée) : posée en « contain » sur sa propre version floue, pour que les bandes laissées par
+  // un format différent de la carte restent habillées ; le dégradé en bas garde le titre lisible.
+  const coverLayers = cover
+    ? `<span aria-hidden="true" style="position:absolute;inset:-18px;background:url('${mediaUrl(cover)}') center/cover;filter:blur(18px) brightness(.65) saturate(1.2)"></span><span aria-hidden="true" style="position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(8,8,14,.05) 35%,rgba(8,8,14,.85)),url('${mediaUrl(cover)}');background-size:100% 100%,contain;background-position:center,center;background-repeat:no-repeat"></span>`
+    : "";
   const mark = cover ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
   const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${t.live ? "#04222a" : stColor};background:${t.live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${t.live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${t.live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
   const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
@@ -664,7 +669,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 8px;white-space:nowrap">${text}</span>`;
   return `<div ${openAttr} class="hcard tposter" title="${escAttr(t.name)}" style="border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;background:var(--surface);display:flex;flex-direction:column">
     <div class="zoom" style="position:relative;min-height:150px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;${art}">
-      ${mark}
+      ${mark}${coverLayers}
       <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;${menu ? "padding-right:38px" : ""}">${statusChip}${elite}</div>
       <div style="position:relative;padding-right:46px">
         <div class="clamp2" style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.8px;line-height:1;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.55);word-break:break-word">${escHtml(main)}</div>

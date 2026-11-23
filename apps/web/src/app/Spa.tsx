@@ -91,7 +91,7 @@ async function downloadExport(url: string): Promise<void> {
 
 /* ================= Données ================= */
 // cagnotte: null hors Survival (voir TournamentsService.toCard) — ne concerne que ce format.
-type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; entryFeeXof?: number; maxPlayers?: number | null; dateISO?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
+type TournCard = { id?: string; name: string; format: string; game: string; players: number; date: string; place: string; live: boolean; cagnotte: number | null; status: string; imageUrl?: string | null; bannerUrl?: string | null; entryFeeXof?: number; maxPlayers?: number | null; dateISO?: string | null; tier?: "AMATEUR" | "ELITE" | null; event?: { id: string; name: string; accentColor?: string | null } | null };
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
@@ -647,7 +647,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const capPct = cap ? Math.min(100, (t.players / cap) * 100) : 0;
   const capColor = isFull ? "#FB7185" : capPct >= 80 ? "#FBBF24" : "#22D3EE";
   const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : isFull ? ["Complet", "#FB7185"] : ["À venir", "#C4C7FF"];
-  const cover = t.imageUrl || gameCover(t.game || main);
+  const cover = t.bannerUrl || t.imageUrl || gameCover(t.game || main);
   const art = cover
     ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center 64%`
     : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;
@@ -1074,6 +1074,10 @@ function setupConfigCard(S: State, t: Detail): string {
         ${wizField("Places maximum", num("cfg-max", t.maxPlayers || 0), "0 = illimité")}
         ${isSurv ? wizField("Points par participant", num("cfg-pts", t.pointsPerPlayer || 5), "Alimente la cagnotte") : ""}
         ${isSurv && !realPlayerCount ? wizField("Nombre de participants (simulation)", num("cfg-sim-players", simPlayersDefault), "Aucun participant inscrit : utilisé pour prévisualiser et redistribuer la cagnotte, remplacé dès l'ajout de vrais participants") : ""}
+      </div>`
+    + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px">
+        ${wizField("Affiche (portrait — cartes, liste)", filePicker("cfg-img", "Choisir l'affiche", "image/*", t.imageUrl))}
+        ${wizField("Couverture (paysage — fond de la page)", filePicker("cfg-banner", "Choisir la couverture", "image/*", t.bannerUrl))}
       </div>`
     + (scoringFields.length ? `<div style="font-size:12px;color:var(--text-muted);font-weight:650;margin:18px 0 8px">Barème des points</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">${scoringFields.map(([, label, key]) => wizField(label, num(`cfg-sc-${key}`, sc[key] ?? 0, "100%", "0.25"))).join("")}</div>${cagnotte ? cfgGaugeCard(cagnotte, t.id) : ""}` : "")
     + saveBtn("details", "Enregistrer les détails"));
@@ -5078,8 +5082,9 @@ function pTournoi(S: State) {
   const dist = t.distributed || 0, total = t.cagnotte?.total || 0;
   const pct = total ? Math.min(100, (dist / total) * 100) : 0;
 
-  // Couverture : l'affiche du tournoi (si fournie) constitue le fond de la section détail, comme sur les cartes.
-  const heroCover = t.imageUrl || gameCover(t.game || "");
+  // Couverture : la bannière (paysage) si elle a été réglée, sinon l'affiche (portrait, moins adaptée
+  // à ce format large), sinon un aplat généré — comme sur les cartes.
+  const heroCover = t.bannerUrl || t.imageUrl || gameCover(t.game || "");
   const heroHue = gameHue(t.game || t.name || "");
   const heroParts = tournTitleParts({ name: t.name || "", game: t.game || "" } as TournCard);
   const coverBg = heroCover
@@ -5148,7 +5153,8 @@ function pTournoi(S: State) {
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Points / joueur (cagnotte)<input id="e-pts" type="number" min="1" value="${t.pointsPerPlayer || 5}" style="${inpE}" /></label>` : ""}
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Lot / récompense<input id="e-prize" value="${escAttr(t.prize)}" maxlength="400" placeholder="Ex. 50 000 F + trophée" style="${inpE}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600;grid-column:1/-1">Règlement<textarea id="e-rules" rows="5" maxlength="4000" placeholder="Format des matchs, retards, fair-play, matériel autorisé…" style="${inpE};resize:vertical;font-family:inherit">${escHtml(t.rules)}</textarea></label>
-      <div><div style="font-size:12px;color:var(--text-muted);font-weight:600">Affiche (image)</div>${filePicker("e-img", "Remplacer l'affiche", "image/*", t.imageUrl)}</div>
+      <div><div style="font-size:12px;color:var(--text-muted);font-weight:600">Affiche (portrait — cartes, liste)</div>${filePicker("e-img", "Remplacer l'affiche", "image/*", t.imageUrl)}</div>
+      <div><div style="font-size:12px;color:var(--text-muted);font-weight:600">Couverture (paysage — fond de la page)</div>${filePicker("e-banner", "Remplacer la couverture", "image/*", t.bannerUrl)}</div>
     </div>
     ${t.status !== "setup" ? `<div style="font-size:12px;color:var(--text-faint);margin-top:10px">Poules et points par joueur ne sont modifiables qu'avant le lancement.</div>` : ""}
     <div style="display:flex;gap:10px;margin-top:14px"><button data-editsave="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">Enregistrer</button><button data-editcancel="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
@@ -6862,6 +6868,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   async function editSave(id: string, body: Record<string, string | number>) {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
     try { const img = await uploadOrNotify("e-img"); if (img) body.imageUrl = img; } catch { return; }
+    try { const banner = await uploadOrNotify("e-banner"); if (banner) body.bannerUrl = banner; } catch { return; }
     try {
       const r = await fetch(`${API}/api/tournaments/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
       if (r.status === 403) { alert("Seul l'organisateur peut modifier ce tournoi."); return; }
@@ -8973,7 +8980,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const maxQ = wizMaxQualify(0, nbPools, t.maxPlayers || 0);
     return { nbPools, qualifyPerPool: Math.max(1, Math.min(parseInt(qEl.value) || t.qualifyPerPool || 2, maxQ)) };
   }
-  function cfgSaveDetails() {
+  async function cfgSaveDetails() {
     const t = S.detail; if (!t) return;
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
     const name = val("cfg-name").trim();
@@ -8989,6 +8996,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!Number.isFinite(v) || v < WIZ_SCORING_FLOOR[key]) { alert(`${label} : valeur minimale ${WIZ_SCORING_FLOOR[key]}.`); return; }
       scoring.push([key, v]);
     }
+    try {
+      const img = await uploadOrNotify("cfg-img"); if (img) body.imageUrl = img;
+      const banner = await uploadOrNotify("cfg-banner"); if (banner) body.bannerUrl = banner;
+    } catch { return; }
     // Capture le champ de simulation (s'il existe) pour qu'il survive au re-rendu déclenché par la
     // sauvegarde — sinon il reviendrait à sa valeur par défaut comme si la saisie avait été effacée.
     const simEl = document.getElementById("cfg-sim-players") as HTMLInputElement | null;

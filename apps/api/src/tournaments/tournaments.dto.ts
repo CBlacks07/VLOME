@@ -10,6 +10,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsInt() @Min(1) pointsPerPlayer?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) players?: string[];
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(300) bannerUrl?: string;
   @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @IsOptional() @IsString() @MaxLength(400) prize?: string;
   // Tournoi par équipes (2 à 8 joueurs par équipe) — fixé à la création. Absent = tournoi individuel.
@@ -65,6 +66,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsString() @MaxLength(40) date?: string;
   @IsOptional() @IsString() @MaxLength(160) place?: string;
   @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(300) bannerUrl?: string;
   @IsOptional() @IsString() @MaxLength(4000) rules?: string;
   @IsOptional() @IsString() @MaxLength(400) prize?: string;
   @IsOptional() @IsInt() @Min(0) entryFeeXof?: number;

@@ -240,7 +240,8 @@ model Tournament {
   nbPools           Int              @default(2)
   entryFeeXof       Int              @default(0) // frais d'inscription en FCFA (0 = gratuit)
   givesLoyaltyPoint Boolean          @default(true) // désactivable par l'admin (ex : tournoi organisé par un tiers)
-  imageUrl          String?
+  imageUrl          String? // affiche (portrait) — cartes, liste
+  bannerUrl         String? // couverture (paysage) — fond de la page détail ; retombe sur l'affiche si absente
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState       Json?
   createdById       String? // propriétaire (organisateur)

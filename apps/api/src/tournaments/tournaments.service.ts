@@ -43,7 +43,7 @@ export class TournamentsService {
   private toCard(r: {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
-    imageUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
+    imageUrl?: string | null; bannerUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
     event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null; maxPlayers?: number | null;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
@@ -69,6 +69,7 @@ export class TournamentsService {
       players,
       cagnotte: isSurvival ? players * r.pointsPerPlayer : null,
       imageUrl: r.imageUrl || null,
+      bannerUrl: r.bannerUrl || null,
       entryFeeXof: r.entryFeeXof ?? 0,
       givesLoyaltyPoint: r.givesLoyaltyPoint ?? true,
       tier: r.tier === 'ELITE' || r.tier === 'AMATEUR' ? r.tier : null,
@@ -180,7 +181,7 @@ export class TournamentsService {
         name: dto.name, game: dto.game ?? null, format: (dto.format ?? 'SURVIVAL') as any,
         status: 'DRAFT', place: dto.place ?? null, date: dto.date ? new Date(dto.date) : null,
         pointsPerPlayer: dto.pointsPerPlayer ?? 5, nbPools: dto.nbPools ?? 2,
-        imageUrl: dto.imageUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
+        imageUrl: dto.imageUrl || null, bannerUrl: dto.bannerUrl || null, entryFeeXof: dto.entryFeeXof ?? 0,
         rules: dto.rules?.trim() || null, prize: dto.prize?.trim() || null, teamSize: dto.teamSize ?? null,
         givesLoyaltyPoint: dto.givesLoyaltyPoint ?? true,
         tier: (dto.tier ?? null) as any,
@@ -203,6 +204,7 @@ export class TournamentsService {
     if (dto.place !== undefined) data.place = dto.place.trim() || null;
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl || null;
+    if (dto.bannerUrl !== undefined) data.bannerUrl = dto.bannerUrl || null;
     if (dto.rules !== undefined) data.rules = dto.rules.trim() || null;
     if (dto.prize !== undefined) data.prize = dto.prize.trim() || null;
     if (dto.entryFeeXof !== undefined) data.entryFeeXof = dto.entryFeeXof;
@@ -1508,7 +1510,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1582,6 +1584,7 @@ export class TournamentsService {
       entryFeeXof,
       givesLoyaltyPoint,
       imageUrl,
+      bannerUrl: extra.bannerUrl ?? null,
       // Poste/table assigné à chaque match en cours (LAN à plusieurs postes) — voir setStation.
       stations: (stations as Record<string, string>) || {},
       // Match actuellement à l'antenne (un seul à la fois) — voir setStreamMatch.

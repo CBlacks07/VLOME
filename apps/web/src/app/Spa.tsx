@@ -5095,17 +5095,21 @@ function pTournoi(S: State) {
   const heroHue = gameHue(t.game || t.name || "");
   const heroParts = tournTitleParts({ name: t.name || "", game: t.game || "" } as TournCard);
   const coverBg = heroCover
-    ? `background-image:linear-gradient(180deg,rgba(11,11,17,.25) 30%,rgba(11,11,17,.95)),url('${mediaUrl(heroCover)}');background-size:cover;background-position:center 20%`
+    ? `background-color:#0b0b11`
     : `background:radial-gradient(90% 120% at 90% 0%,hsl(${heroHue} 85% 46% / .5),transparent 60%),linear-gradient(160deg,hsl(${heroHue} 50% 20%),hsl(${(heroHue + 55) % 360} 45% 8%))`;
-  const cover = `<div style="border-radius:20px;border:1px solid var(--border);overflow:hidden;position:relative;margin-bottom:14px;${coverBg}">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-wrap:wrap;gap:10px">
+  // Couverture entière (jamais rognée) : « contain » sur sa propre version floue, comme sur les cartes.
+  const heroLayers = heroCover
+    ? `<span aria-hidden="true" style="position:absolute;inset:-24px;background:url('${mediaUrl(heroCover)}') center/cover;filter:blur(22px) brightness(.6) saturate(1.2)"></span><span aria-hidden="true" style="position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(11,11,17,.2) 30%,rgba(11,11,17,.92)),url('${mediaUrl(heroCover)}');background-size:100% 100%,contain;background-position:center,center;background-repeat:no-repeat"></span>`
+    : "";
+  const cover = `<div style="border-radius:20px;border:1px solid var(--border);overflow:hidden;position:relative;margin-bottom:14px;${coverBg}">${heroLayers}
+    <div style="position:relative;display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-wrap:wrap;gap:10px">
       <button data-back="1" style="display:inline-flex;align-items:center;gap:7px;background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid var(--border-strong);color:#F4F5FB;border-radius:11px;padding:10px 14px;font-weight:700;font-size:13.5px;cursor:pointer">← Tournois</button>
       <div style="display:flex;align-items:center;gap:8px">
         ${t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:6px 12px">${ic(I.crown, 12)}Élite</span>` : ""}
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:${scolor};background:rgba(20,20,29,.72);backdrop-filter:blur(6px);border:1px solid ${scolor}55;border-radius:99px;padding:6px 12px">${slabel}</span>
       </div>
     </div>
-    <div style="padding:${heroCover ? "84px" : "64px"} 24px 26px">
+    <div style="position:relative;padding:${heroCover ? "84px" : "64px"} 24px 26px">
       <h1 title="${escAttr(t.name || "")}" style="font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,6.5vw,68px);letter-spacing:1.2px;margin:0;line-height:.95;text-wrap:balance;overflow-wrap:break-word;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.6)">${escHtml(heroParts.main || t.name || "")}</h1>
       ${heroParts.sub ? `<div style="margin-top:9px;font-size:13px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:rgba(255,255,255,.82)">${escHtml(heroParts.sub)}</div>` : ""}
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px">

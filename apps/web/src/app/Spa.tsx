@@ -9220,7 +9220,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // Assistant de création/modification ouvert : tout bouton de l'assistant (choix du format, du mode, des qualifiés, d'une
     // suggestion de jeu…) redessine l'assistant depuis l'état. On relit donc d'abord ce qui a été tapé dans les champs de l'étape
     // en cours (nom, jeu, date, lieu, frais…) : sans ça, ces saisies sont effacées au moindre clic sur un bouton.
-    if (S.creating && el.closest(".wiz-overlay")) {
+    // Exception : le bouton « Choisir l'affiche » (data-filepick) ouvre un sélecteur de fichier natif, intrinsèquement
+    // asynchrone — si ce re-rendu a lieu pendant que la fenêtre est ouverte, il remplace l'<input type=file> par un
+    // nouveau nœud DOM, détachant celui que la fenêtre vient d'ouvrir. L'événement "change" du fichier choisi se
+    // déclenche alors sur un nœud orphelin, qui ne remonte plus jusqu'à l'écouteur posé sur document : rien ne se
+    // passe après avoir choisi l'image. On saute donc ce re-rendu pour ce bouton précis (il n'en a pas besoin).
+    if (S.creating && el.closest(".wiz-overlay") && d.filepick === undefined) {
       const typed = wizCapture();
       setS((s) => (s.creating ? { ...s, wizData: { ...s.wizData, ...typed } } : s));
     }

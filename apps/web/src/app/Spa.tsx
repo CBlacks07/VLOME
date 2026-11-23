@@ -647,7 +647,9 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const capPct = cap ? Math.min(100, (t.players / cap) * 100) : 0;
   const capColor = isFull ? "#FB7185" : capPct >= 80 ? "#FBBF24" : "#22D3EE";
   const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : isFull ? ["Complet", "#FB7185"] : ["À venir", "#C4C7FF"];
-  const cover = t.bannerUrl || t.imageUrl || gameCover(t.game || main);
+  // La carte montre l'affiche (portrait) en priorité — la couverture (paysage, pensée pour le fond
+  // large de la page détail) y serait mal cadrée. Elle ne sert ici qu'en dernier repli avant le dégradé généré.
+  const cover = t.imageUrl || t.bannerUrl || gameCover(t.game || main);
   const art = cover
     ? `background-image:linear-gradient(180deg,rgba(8,8,14,.05) 20%,rgba(8,8,14,.88)),url('${mediaUrl(cover)}');background-size:cover;background-position:center 64%`
     : `background:radial-gradient(120% 95% at 88% 0%,hsl(${hue} 85% 48% / .55),transparent 62%),linear-gradient(160deg,hsl(${hue} 52% 21%),hsl(${(hue + 55) % 360} 48% 8%))`;

@@ -14,4 +14,5 @@ export class ClubDto {
 
 export class GameDto {
   @IsString() @MaxLength(80) name!: string;
+  @IsOptional() @IsString() @MaxLength(300) imageUrl?: string;
 }

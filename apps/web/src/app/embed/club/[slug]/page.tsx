@@ -13,7 +13,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 type ClubData = {
   club: { name: string; slug: string; city: string | null; logoUrl: string | null; website: string | null; description: string | null };
   stats: { members: number; organized: number };
-  members: { rank: number; name: string; city: string | null; points: number; wins: number; matches: number }[];
+  members: { rank: number; avatarUrl?: string | null; name: string; city: string | null; points: number; wins: number; matches: number }[];
   tournaments: { id: string; name: string; game: string | null; status: string; date: string | null; place: string | null; imageUrl: string | null; organizedByClub: boolean }[];
 };
 
@@ -150,7 +150,12 @@ export default function ClubEmbed() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {members.map((m) => (
               <span key={m.rank + m.name} style={{ display: "inline-flex", alignItems: "center", gap: 8, ...card, borderRadius: 999, padding: "6px 14px 6px 6px", fontSize: 13.5, fontWeight: 600 }}>
-                <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: "50%", background: "rgba(34,211,238,.15)", color: "#0891b2", fontSize: 12, fontWeight: 800 }}>{m.name.charAt(0).toUpperCase()}</span>
+                {m.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={mediaUrl(m.avatarUrl) as string} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover" }} />
+                ) : (
+                  <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: "50%", background: "rgba(34,211,238,.15)", color: "#0891b2", fontSize: 12, fontWeight: 800 }}>{m.name.charAt(0).toUpperCase()}</span>
+                )}
                 {m.name}{m.city ? <span style={{ color: c.faint, fontWeight: 500 }}> · {m.city}</span> : null}
               </span>
             ))}

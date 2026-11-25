@@ -62,7 +62,7 @@ export class AdminService {
   async listUsers() {
     const rows = await this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
-      select: { id: true, email: true, displayName: true, role: true, createdAt: true, ownedClub: { select: { id: true, name: true } } },
+      select: { id: true, email: true, displayName: true, role: true, avatarUrl: true, createdAt: true, ownedClub: { select: { id: true, name: true } } },
     });
     // ownsClub : ce compte pilote une association (même si son rôle a été changé par erreur — l'admin peut alors le rétablir).
     return rows.map(({ ownedClub, ...u }) => ({ ...u, ownsClub: !!ownedClub, ownedClubName: ownedClub?.name ?? null }));

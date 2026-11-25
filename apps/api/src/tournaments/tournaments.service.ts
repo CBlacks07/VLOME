@@ -437,7 +437,15 @@ export class TournamentsService {
     const cityByName = new Map<string, string>();
     for (const r of regs) if (r.user.city && !cityByName.has(r.playerName)) cityByName.set(r.playerName, r.user.city);
 
-    const rosterPlayers = await this.prisma.player.findMany({ include: { club: { select: { name: true } } } });
+    const rosterPlayers = await this.prisma.player.findMany({ include: { club: { select: { name: true } }, user: { select: { avatarUrl: true } } } });
+    // Photo : celle du compte quand le résultat y est rattaché ; par le nom, seulement s'il n'y a qu'une fiche de ce nom.
+    const avatarByUser = new Map<string, string>();
+    const avatarByName = new Map<string, string | null>();
+    for (const p of rosterPlayers) {
+      if (p.userId && p.user?.avatarUrl) avatarByUser.set(p.userId, p.user.avatarUrl);
+      const k = p.name.toLowerCase();
+      avatarByName.set(k, avatarByName.has(k) ? null : (p.user?.avatarUrl ?? null));
+    }
     const clubByName = new Map<string, string>();
     for (const p of rosterPlayers) if (p.club && !clubByName.has(p.name.toLowerCase())) clubByName.set(p.name.toLowerCase(), p.club.name);
     const clubByUser = new Map<string, string>();
@@ -464,6 +472,7 @@ export class TournamentsService {
         tournamentsPlayed: e.tournaments.size,
         city: cityByName.get(e.name) || null,
         club: (e.userId ? clubByUser.get(e.userId) : clubByName.get(e.name.toLowerCase())) || null,
+        avatarUrl: e.team ? null : (e.userId ? avatarByUser.get(e.userId) : avatarByName.get(e.name.toLowerCase())) || null,
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
       .slice(0, limit);
@@ -480,12 +489,14 @@ export class TournamentsService {
   }
 
   /** Ville/club best-effort pour un nom de joueur — même rapprochement que leaderboard() (inscription/roster). */
-  private async cityAndClubForName(name: string, uid?: string): Promise<{ city: string | null; club: string | null }> {
+  private async cityAndClubForName(name: string, uid?: string): Promise<{ city: string | null; club: string | null; avatarUrl: string | null }> {
     const [reg, rosterPlayer] = await Promise.all([
       this.prisma.registration.findFirst({ where: uid ? { userId: uid, playerName: name } : { playerName: name }, include: { user: { select: { city: true } } } }),
       this.prisma.player.findFirst({ where: uid ? { userId: uid } : { name: { equals: name, mode: 'insensitive' } }, include: { club: { select: { name: true } } } }),
     ]);
-    return { city: reg?.user.city || null, club: rosterPlayer?.club?.name || null };
+    const holders = uid ? [] : await this.prisma.player.findMany({ where: { name: { equals: name, mode: 'insensitive' } }, take: 2, select: { user: { select: { avatarUrl: true } } } });
+    const account = uid ? await this.prisma.user.findUnique({ where: { id: uid }, select: { avatarUrl: true } }) : holders.length === 1 ? holders[0].user : null;
+    return { city: reg?.user.city || null, club: rosterPlayer?.club?.name || null, avatarUrl: account?.avatarUrl ?? null };
   }
 
   /**
@@ -534,10 +545,10 @@ export class TournamentsService {
         });
       }
     }
-    const { city, club } = await this.cityAndClubForName(name, uid);
+    const { city, club, avatarUrl } = await this.cityAndClubForName(name, uid);
     const elos = await this.playerElos(name, uid);
     return {
-      name, userId: uid ?? null, city, club,
+      name, userId: uid ?? null, city, club, avatarUrl,
       totals: { points: Math.round(points * 10) / 10, wins, losses, matches: wins + losses, winrate: wins + losses ? Math.round((wins / (wins + losses)) * 100) : 0, championships, tournamentsPlayed },
       byGame: Array.from(byGameMap.values()).map((g) => ({ ...g, elo: elos.get(g.game) ?? ELO_START })).sort((a, b) => b.points - a.points),
       history: history.sort((a, b) => b.ts - a.ts).slice(0, 50),

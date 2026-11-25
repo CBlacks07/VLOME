@@ -95,7 +95,7 @@ type TournCard = { id?: string; name: string; format: string; game: string; play
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
-type AuthUser = { id?: string; displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; ownsClub?: boolean };
+type AuthUser = { id?: string; displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; ownsClub?: boolean; avatarUrl?: string | null };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
@@ -457,7 +457,7 @@ function header(S: State) {
     <button data-cart-open="1" style="position:relative;display:grid;place-items:center;width:42px;height:42px;background:var(--surface-3);border:1px solid var(--border-strong);border-radius:11px;color:var(--text);cursor:pointer">${ic(I.cart, 19)}
       ${S.cartItems.length ? `<span style="position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:11px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
     ${S.user
-      ? `<button data-menu-user="1" style="display:inline-flex;align-items:center;gap:9px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:7px 13px 7px 8px;font-weight:700;font-size:13.5px;cursor:pointer"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:13px">${(S.user.displayName || "?").charAt(0).toUpperCase()}</span>${S.user.displayName}<span data-logout="1" title="Déconnexion" style="color:var(--text-muted);margin-left:2px">${ic(I.logout, 15)}</span></button>`
+      ? `<button data-menu-user="1" style="display:inline-flex;align-items:center;gap:9px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:7px 13px 7px 8px;font-weight:700;font-size:13.5px;cursor:pointer">${avatar(S.user.displayName, S.user.avatarUrl, "width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:13px")}${escHtml(S.user.displayName)}<span data-logout="1" title="Déconnexion" style="color:var(--text-muted);margin-left:2px">${ic(I.logout, 15)}</span></button>`
       : `<button data-auth-open="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">Connexion</button>`}
     </header>`;
 }
@@ -502,7 +502,7 @@ function railNav(S: State, activeKey: string): string {
   const cartBtn = `<button data-cart-open="1" data-tip="Panier${S.cartItems.length ? ` (${S.cartItems.length})` : ""}" aria-label="Panier" style="position:relative;display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.cart, 17)}
     ${S.cartItems.length ? `<span style="position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:10px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>`;
   const userBtn = S.user
-    ? `<button data-go="profil" data-tip="Mon espace · ${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
+    ? `<button data-go="profil" data-tip="Mon espace · ${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:15px;border:0;cursor:pointer">${S.user.avatarUrl ? avatar(S.user.displayName, S.user.avatarUrl, "width:100%;height:100%;border-radius:inherit") : (S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
     : `<button data-auth-open="1" data-tip="Connexion" aria-label="Connexion" style="display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer">${ic(I.user, 18)}</button>`;
   // Le survol des 3 icônes du bas affiche une infobulle qui déborde à droite du rail (88px) — elle doit
   // rester dans un ancêtre à overflow:visible. Seule la liste de nav (jamais d'infobulle, déjà libellée)
@@ -526,7 +526,7 @@ function railMobileBars(S: State, activeKey: string): string {
     <button data-cart-open="1" title="Panier" aria-label="Panier" style="position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.cart, 16)}
       ${S.cartItems.length ? `<span style="position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;display:grid;place-items:center;background:#F43F7E;color:#fff;font-size:9.5px;font-weight:800;border-radius:99px">${S.cartItems.length}</span>` : ""}</button>
     ${S.user
-      ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;border:0;cursor:pointer;flex:none">${(S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
+      ? `<button data-go="profil" title="${escAttr(S.user.displayName)}" aria-label="Mon espace" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;border:0;cursor:pointer;flex:none">${S.user.avatarUrl ? avatar(S.user.displayName, S.user.avatarUrl, "width:100%;height:100%;border-radius:inherit") : (S.user.displayName || "?").charAt(0).toUpperCase()}</button>`
       : `<button data-auth-open="1" title="Connexion" aria-label="Connexion" style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);cursor:pointer;flex:none">${ic(I.user, 16)}</button>`}
   </div>`;
   const tabs = RAIL_NAV.map(([key, label, icon]) => {
@@ -607,13 +607,27 @@ function railPageHead(title: string, sub: string, actions = ""): string {
   </div>`;
 }
 
+/** Photo de profil si le joueur en a une, sinon son initiale. `look` : le style de la pastille (taille, rayon, fond). */
+function avatar(name: string | null | undefined, url: string | null | undefined, look: string): string {
+  return url
+    ? `<img src="${escAttr(mediaUrl(url))}" alt="" loading="lazy" style="${look};padding:0;object-fit:cover" />`
+    : `<span style="display:grid;place-items:center;${look}">${escHtml((name || "?").charAt(0).toUpperCase())}</span>`;
+}
+
 /* ================= Composants ================= */
 /** Jaquettes issues de la boutique (un produit par jeu : « TEKKEN 8 », « EA FC 26 »…), alimentées au chargement des produits.
  * Un tournoi sans image propre emprunte celle du produit dont le nom contient son jeu — aucune saisie en plus. */
 let GAME_COVERS: { key: string; img: string }[] = [];
 const coverKey = (v: string) => v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+/** Visuels posés dans le catalogue de jeux (Admin → Joueurs & jeux) : ils priment sur les jaquettes de la boutique. */
+let GAME_IMAGES: Record<string, string> = {};
+function setGameImages(games: unknown) {
+  if (!Array.isArray(games)) return;
+  GAME_IMAGES = Object.fromEntries((games as { name?: string; imageUrl?: string | null }[]).filter((g) => g.imageUrl).map((g) => [coverKey(String(g.name || "")), g.imageUrl as string]));
+}
 function gameCover(game: string): string | null {
   const k = coverKey(game || "");
+  if (GAME_IMAGES[k]) return GAME_IMAGES[k];
   if (k.length < 4) return null;
   const hit = GAME_COVERS.find((c) => c.key.includes(k));
   return hit ? hit.img : null;
@@ -817,7 +831,7 @@ function pAccueil(S: State) {
     rankSource = Array.from(bestByPlayer.values()).sort((a, b) => b.points - a.points);
   }
   const rankRows = rankSource.length
-    ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--border)"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text-faint);width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px"><span style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:var(--text-muted);font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-family:'JetBrains Mono',monospace">${r.points}</td></tr>`).join("")
+    ? rankSource.slice(0, 5).map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--border)"><td style="padding:9px 6px;font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--text-faint);width:30px">${i + 1}</td><td style="padding:9px 6px"><div style="display:flex;align-items:center;gap:9px">${avatar(r.name, r.avatarUrl, "width:26px;height:26px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted);flex:none")}<div><div style="font-weight:650">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-faint)">${escHtml(r.city) || r.game || ""}</div></div></div></td><td style="padding:9px 6px;color:var(--text-muted);font-size:12.5px">${escHtml(r.game)}</td><td style="padding:9px 6px;text-align:right;font-weight:750;color:#22D3EE;font-family:'JetBrains Mono',monospace">${r.points}</td></tr>`).join("")
     : `<tr><td style="padding:6px" colspan="4">${emptyState(I.medal, "Le classement se remplit bientôt", "Dès les premiers matchs joués, les meilleurs joueurs apparaîtront ici.", "", "18px 10px")}</td></tr>`;
   // Prochains tournois : dérivé des vrais tournois à venir (aucune donnée inventée) — les deux
   // premiers segments de la date déjà formatée côté API ("12 juil.") alimentent le badge jour/mois.
@@ -1800,11 +1814,11 @@ function gameLeaderboardBlock(rows: Detail[], opts: { podium: boolean; limit?: n
     podiumHtml = `<div class="podium-row" style="display:flex;align-items:flex-end;justify-content:center;gap:14px;margin:4px 0 22px;flex-wrap:wrap">${order.map((r: Detail) => {
       const rank = list.indexOf(r);
       const [plColor, avA, h] = podiumColors[rank];
-      return `<div data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px;cursor:pointer"><div style="display:grid;place-items:center;width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA})">${r.name.charAt(0).toUpperCase()}</div><div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
+      return `<div data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:112px;cursor:pointer">${avatar(r.name, r.avatarUrl, `width:52px;height:52px;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:#04222a;background:linear-gradient(135deg,${plColor},${avA});border:2px solid ${plColor}`)}<div style="text-align:center;max-width:110px"><div style="font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</div><div style="font-size:11px;color:var(--text-muted)">${r.points} pts</div></div><div style="width:100%;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:0;background:var(--surface-3);display:flex;align-items:center;justify-content:center;padding-top:8px;height:${h}"><span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${plColor}">${rank + 1}</span></div></div>`;
     }).join("")}</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${r.name.charAt(0).toUpperCase()}</span><div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:650">${escHtml(r.name)}${r.championships > 0 ? `<span title="Titres remportés" style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${r.team ? escHtml((r.team as string[]).join(", ")) : escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td title="Classement ELO du jeu, rejoué sur tous ses matchs (1000 au départ)" style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.elo ?? "—"}</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
+  const trs = list.map((r: Detail, i: number) => `<tr data-playerprofile="${escAttr(r.name)}" data-playeruid="${escAttr(r.userId)}" style="border-top:1px solid var(--border);cursor:pointer"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px">${avatar(r.name, r.avatarUrl, "width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted);flex:none")}<div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:650">${escHtml(r.name)}${r.championships > 0 ? `<span title="Titres remportés" style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:#FBBF24">${ic(I.crown, 12)} ${r.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${r.team ? escHtml((r.team as string[]).join(", ")) : escHtml(r.city) || "—"}</div></div></div></td><td style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.tournamentsPlayed}</td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${r.wins}-${r.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${r.winrate}%</td><td title="Classement ELO du jeu, rejoué sur tous ses matchs (1000 au départ)" style="padding:11px 8px;text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums">${r.elo ?? "—"}</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${r.points}</td></tr>`).join("");
   const table = `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><tr>${th("#")}${th("Joueur")}${th("Tournois", true)}${th("V-D", true)}${th("Winrate", true)}${th("ELO", true)}${th("Points", true)}</tr>${trs}</table></div>`;
   return podiumHtml + table;
 }
@@ -1916,7 +1930,7 @@ function pPlayerProfile(S: State) {
   const t = p.totals || {};
   const head = `<div class="rise page-hpad" style="display:flex;align-items:center;gap:18px;padding:32px 44px 20px;flex-wrap:wrap">
     <button data-back="1" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);flex:none;cursor:pointer">${icBack(14)}</button>
-    <div style="display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:26px;color:#04222a;flex:none">${escHtml(p.name).charAt(0).toUpperCase()}</div>
+    ${avatar(p.name, p.avatarUrl, "width:72px;height:72px;border-radius:18px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:30px;color:#04222a;flex:none")}
     <div style="min-width:0">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,40px);letter-spacing:1px;margin:0;line-height:1">${escHtml(p.name)}</h1>
       <div style="font-size:12.5px;color:var(--text-muted);margin-top:5px">${[p.club ? clubLink(p.club) : "", p.city ? escHtml(p.city) : ""].filter(Boolean).join(" · ") || "Aucune info de club ou de ville"}</div>
@@ -2257,6 +2271,18 @@ const ROLE_LABEL: Record<string, string> = { PLAYER: "Joueur", ORGANIZER: "Organ
 const ROLE_COLOR: Record<string, string> = { PLAYER: "#22D3EE", ORGANIZER: "#7C82FF", ADMIN: "#FBBF24", ASSOCIATION: "#34D399" };
 const card = (inner: string, pad = "20px") => `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:${pad}">${inner}</div>`;
 
+/** Photo de profil modifiable : toucher la pastille ouvre le choix d'une image, « Retirer » revient à l'initiale. */
+function avatarPicker(S: State, size: number, radius: number, font: number): string {
+  const u = S.user!;
+  const url = S.me?.avatarUrl ?? u.avatarUrl;
+  const look = `width:${size}px;height:${size}px;border-radius:${radius}px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:${font}px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.25)`;
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">
+    <input id="p-avatar" type="file" accept="image/jpeg,image/png,image/webp" style="display:none" />
+    <button data-filepick="p-avatar" title="Changer ma photo" aria-label="Changer ma photo" style="position:relative;display:block;padding:0;border:0;background:transparent;cursor:pointer">${avatar(u.displayName, url, look)}<span style="position:absolute;right:-5px;bottom:-5px;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--surface);border:1px solid var(--border-strong);color:#22D3EE">${ic(I.edit, 13)}</span></button>
+    ${url ? `<button data-avatarremove="1" style="background:transparent;border:0;color:var(--text-faint);font-size:11px;font-weight:700;cursor:pointer;padding:2px 4px">Retirer</button>` : `<span style="font-size:11px;color:var(--text-faint);font-weight:600">Photo</span>`}
+  </div>`;
+}
+
 function pDashboard(S: State) {
   const wrap = (inner: string) => `<main class="rise" style="width:100%;padding:28px clamp(22px,3vw,64px) 60px">${inner}</main>`;
   if (!S.user) {
@@ -2274,7 +2300,7 @@ function pDashboard(S: State) {
   if (me?.clubName) sub.push(`@${me.clubName}`);
   if (me?.favoriteGame) sub.push(me.favoriteGame);
   const header = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:24px">
-    <div style="display:grid;place-items:center;width:78px;height:78px;border-radius:20px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:36px;color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.3);flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
+    ${avatarPicker(S, 78, 20, 36)}
     <div style="min-width:0"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,44px);letter-spacing:1px;margin:0;line-height:1">${u.displayName}</h1>
       <div style="color:var(--text-muted);font-size:13.5px;margin-top:5px">${u.email}${sub.length ? " · " + sub.join(" · ") : ""}</div>
       ${me?.bio ? `<div style="color:var(--text-muted);font-size:13px;margin-top:6px;max-width:560px">${(me.bio as string).replace(/</g, "&lt;")}</div>` : ""}
@@ -2517,7 +2543,7 @@ function consoleAccountHeader(S: State) {
   if (!u) return "";
   const rc = ROLE_COLOR[u.role] || "var(--text-muted)";
   return card(`<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-    <div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:26px;color:#04222a;flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</div>
+    ${avatarPicker(S, 64, 18, 28)}
     <div style="min-width:0;flex:1">
       <div style="font-weight:750;font-size:16px">${escHtml(u.displayName)}</div>
       <div style="color:var(--text-muted);font-size:12.5px;margin-top:3px">${escHtml(u.email)}</div>
@@ -2886,7 +2912,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
       ${nav}
       <div style="flex:1"></div>
       <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--surface-3);margin-top:12px">
-        <span style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;flex:none">${(u.displayName || "?").charAt(0).toUpperCase()}</span>
+        ${avatar(u.displayName, S.me?.avatarUrl ?? u.avatarUrl, "width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#22D3EE,#7C82FF);color:#04222a;font-weight:800;font-size:14px;flex:none")}
         <div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.displayName)}</div><div style="font-size:10.5px;color:${rc};font-weight:700;letter-spacing:.4px;text-transform:uppercase">${ROLE_LABEL[u.role] || u.role}</div></div>
         <button data-logout="1" title="Déconnexion" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:transparent;border:0;color:var(--text-muted);cursor:pointer;flex:none">${ic(I.logout, 15)}</button>
       </div>
@@ -3153,7 +3179,7 @@ function assocClub(S: State): string {
   const th = (label: string, align = "left") => `<th style="text-align:${align};padding:9px 10px;font-size:10.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);white-space:nowrap">${label}</th>`;
   const rows = members.map((m: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)">
     <td style="padding:10px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td>
-    <td style="padding:10px;font-weight:650">${escHtml(m.name)}${m.hasAccount ? "" : ` <span style="font-size:10.5px;color:var(--text-faint);font-weight:600">· sans compte</span>`}</td>
+    <td style="padding:10px;font-weight:650"><span style="display:inline-flex;align-items:center;gap:9px;vertical-align:middle">${avatar(m.name, m.avatarUrl, "width:30px;height:30px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted);flex:none")}${escHtml(m.name)}</span>${m.hasAccount ? "" : ` <span style="font-size:10.5px;color:var(--text-faint);font-weight:600">· sans compte</span>`}</td>
     <td style="padding:10px;color:var(--text-muted);font-size:13px">${m.city ? escHtml(m.city) : "—"}</td>
     <td style="padding:10px;color:var(--text-muted);font-size:13px;white-space:nowrap">${dayFr(m.since)}</td>
     <td style="padding:10px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px">${m.matches ?? 0}</td>
@@ -3195,7 +3221,7 @@ function pClub(S: State): string {
       ${canJoin ? primaryBtn(`data-myclubjoin="${escAttr(listed.id)}"`, "Demander à rejoindre") : state}</div>
     ${club.description ? `<p style="color:var(--text-muted);font-size:14px;line-height:1.65;max-width:760px;margin:0 0 20px">${escHtml(club.description)}</p>` : ""}`;
   const ranking = card(`${secTitle(`Membres (${members.length})`)}${members.length ? members.map((m: Detail) => `<div data-playerprofile="${escAttr(m.name)}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--surface-4)">
-      <span style="width:26px;text-align:right;font-family:'Bebas Neue',sans-serif;font-size:17px;color:${m.rank <= 3 ? "#FBBF24" : "var(--text-faint)"}">${m.rank}</span><span style="flex:1;min-width:0;font-weight:650">${escHtml(m.name)}</span><span style="font-size:12px;color:var(--text-faint)">${m.matches} match${m.matches > 1 ? "s" : ""}</span><span style="min-width:62px;text-align:right;font-weight:800;color:#22D3EE;font-family:'JetBrains Mono',monospace;font-size:13px">${m.points} pts</span></div>`).join("") : `<div style="color:var(--text-faint);font-size:13px">Pas encore de membre.</div>`}`);
+      <span style="width:26px;text-align:right;font-family:'Bebas Neue',sans-serif;font-size:17px;color:${m.rank <= 3 ? "#FBBF24" : "var(--text-faint)"}">${m.rank}</span>${avatar(m.name, m.avatarUrl, "width:30px;height:30px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:12px;font-weight:800;color:var(--text-muted);flex:none")}<span style="flex:1;min-width:0;font-weight:650">${escHtml(m.name)}</span><span style="font-size:12px;color:var(--text-faint)">${m.matches} match${m.matches > 1 ? "s" : ""}</span><span style="min-width:62px;text-align:right;font-weight:800;color:#22D3EE;font-family:'JetBrains Mono',monospace;font-size:13px">${m.points} pts</span></div>`).join("") : `<div style="color:var(--text-faint);font-size:13px">Pas encore de membre.</div>`}`);
   const tourCard = card(`${secTitle(`Tournois (${tourns.length})`)}${tourns.length ? tourns.map((t: Detail) => `<div data-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--surface-4);cursor:pointer"><div style="flex:1;min-width:0"><div style="font-weight:700">${escHtml(t.name)}</div>${subLine([t.game, t.place, t.date ? dayFr(t.date) : "", t.organizedByClub ? "organisé par le club" : ""].filter(Boolean).map((v) => escHtml(String(v))).join(" · "))}</div><span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${t.status === "LIVE" ? "#22D3EE" : t.status === "FINISHED" ? "#34D399" : "var(--text-muted)"}">${t.status === "LIVE" ? "En direct" : t.status === "FINISHED" ? "Terminé" : "À venir"}</span></div>`).join("") : `<div style="color:var(--text-faint);font-size:13px">Aucun tournoi pour l'instant.</div>`}`);
   return wrap(head + grid2(ranking, tourCard));
 }
@@ -3267,7 +3293,7 @@ function adminUsers(S: State) {
       orgPending.has(usr.id) ? badge("Organisateur en attente", "#FBBF24") : "",
     ].join("");
     return `<div class="ut-row">
-      <div class="ut-user"><span style="display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted)">${(usr.displayName || "?").charAt(0).toUpperCase()}</span>
+      <div class="ut-user">${avatar(usr.displayName, usr.avatarUrl, "flex:none;width:34px;height:34px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted)")}
         <span style="min-width:0"><span style="display:block;font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(usr.displayName)}${mine ? ` <span style="font-size:10.5px;color:#22D3EE;font-weight:700">(toi)</span>` : ""}</span><span style="display:block;color:var(--text-muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(usr.email)}</span></span></div>
       <div class="ut-role">${roleCell}</div>
       <div class="ut-status">${statuses}</div>
@@ -3319,7 +3345,7 @@ function adminRosterPlayers(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const filtered = q ? roster.filter((p: Detail) => `${p.name} ${p.clubName || ""} ${p.city || ""}`.toLowerCase().includes(q)) : roster;
   const rows = filtered.length ? filtered.map((p: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
-      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted);flex:none">${(p.name || "?").charAt(0).toUpperCase()}</span>
+      ${avatar(p.name, p.avatarUrl, "width:36px;height:36px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted);flex:none")}
       <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(p.name)}</div><div style="font-size:11.5px;color:var(--text-faint)">${[p.city, p.clubName].filter(Boolean).map(escHtml).join(" · ") || "—"}</div></div>
       <span title="Points gagnés en tournoi (tous jeux)" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex:none;font-size:11px;color:${p.points > 0 ? "#22D3EE" : "var(--text-faint)"};font-weight:700">${ic(I.bolt, 11)}${p.points ?? 0} pts</span>
       <div style="display:inline-flex;gap:6px">${btnSm(`data-playerview="${p.id}"`, "Voir le profil", "#7C82FF", "#7C82FF55")}${btnSm(`data-rosteredit="${p.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${btnSm(`data-rosterdel="${p.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
@@ -3401,16 +3427,17 @@ function adminGamesView(S: State) {
   const games: Detail[] = S.games ?? [];
   const e = S.gameEdit;
   const editor = e ? `<div style="border:1px solid rgba(52,211,153,.35);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-bottom:16px">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Renommer le jeu" : "Nouveau jeu"}</div>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le jeu" : "Nouveau jeu"}</div>
     <label style="font-size:12px;color:var(--text-muted);font-weight:600">Nom<input id="gm-name" value="${escAttr(e.name)}" placeholder="Valorant" style="${adminInp}" /></label>
+    <div style="margin-top:14px"><div style="font-size:12px;color:var(--text-muted);font-weight:600">Image du jeu (optionnelle) — utilisée sur les cartes des tournois sans affiche</div>${filePicker("gm-image", e.imageUrl ? "Remplacer l'image" : "Choisir une image", "image/*", e.imageUrl)}${e.imageUrl ? `<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:var(--text-muted)"><input id="gm-noimage" type="checkbox" /> Retirer l'image actuelle</label>` : ""}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button data-gamesave="${e.id || "new"}" style="background:linear-gradient(135deg,#34D399,#1fae7d);color:#04222a;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Ajouter au catalogue"}</button><button data-gamecancel="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
   </div>` : "";
   const q = S.adminSearch.trim().toLowerCase();
   const filtered = q ? games.filter((g: Detail) => g.name.toLowerCase().includes(q)) : games;
   const rows = filtered.length ? filtered.map((g: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--surface-4)">
-      <span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-4);border:1px solid var(--border);color:#34D399;flex:none">${ic(I.bolt, 16)}</span>
+      ${g.imageUrl ? `<img src="${escAttr(mediaUrl(g.imageUrl))}" alt="" loading="lazy" style="width:56px;height:36px;border-radius:9px;object-fit:cover;border:1px solid var(--border);flex:none" />` : `<span style="display:grid;place-items:center;width:56px;height:36px;border-radius:9px;background:var(--surface-4);border:1px solid var(--border);color:#34D399;flex:none">${ic(I.bolt, 16)}</span>`}
       <div style="min-width:0;flex:1;font-weight:650;font-size:14px">${escHtml(g.name)}</div>
-      <div style="display:inline-flex;gap:6px">${btnSm(`data-gameedit="${g.id}"`, "Renommer", "#34D399", "#34D39955")}${btnSm(`data-gamedel="${g.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
+      <div style="display:inline-flex;gap:6px">${btnSm(`data-gameedit="${g.id}"`, "Modifier", "#34D399", "#34D39955")}${btnSm(`data-gamedel="${g.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
     : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun jeu trouvé." : "Catalogue vide. Ajoute les jeux au fur et à mesure — ils seront proposés à la création d'un tournoi."}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Jeux (${games.length})`)}<button data-gameedit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#34D399,#1fae7d);color:#04222a;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau jeu</button></div>`;
   return editor + `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px">${head}${adminSearchBar(S, "Nom du jeu…")}${scrollBox(rows)}<p style="color:var(--text-faint);font-size:11.5px;margin-top:12px">Ces noms sont proposés (chips cliquables) à l'étape 1 de la création d'un tournoi — cliquer dessus au lieu de ressaisir le nom évite les doublons dans les classements.</p></div>`;
@@ -6804,7 +6831,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (!m) return;
         setS((s) => {
           if (!s.user) return s;
-          const u = { ...s.user, clubStatus: m.clubStatus, clubRequested: m.clubRequested ?? null, clubBlocking: !!m.clubBlocking, ownsClub: !!m.ownsClub };
+          const u = { ...s.user, clubStatus: m.clubStatus, clubRequested: m.clubRequested ?? null, clubBlocking: !!m.clubBlocking, ownsClub: !!m.ownsClub, avatarUrl: m.avatarUrl ?? null };
           try { localStorage.setItem("vlome_user", JSON.stringify(u)); } catch { /* ignore */ }
           return { ...s, user: u };
         });
@@ -7245,6 +7272,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const roster = rR.ok ? await rR.json() : [];
       const clubs = cR.ok ? await cR.json() : [];
       const games = gR.ok ? await gR.json() : [];
+      setGameImages(games);
       setS((s) => ({ ...s, roster, clubs, games }));
     } catch { /* ignore */ }
   }
@@ -7928,6 +7956,49 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!f) return null;
     return uploadOne(f);
   }
+  /** Photo de profil : recadrée en carré et réduite ici (une photo de téléphone dépasse souvent la limite d'envoi). */
+  async function squarePhoto(file: File): Promise<File> {
+    const bitmap = await createImageBitmap(file);
+    const side = Math.min(bitmap.width, bitmap.height);
+    const size = Math.min(512, side);
+    const canvas = document.createElement("canvas");
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Impossible de préparer la photo sur cet appareil.");
+    ctx.fillStyle = "#14141E"; ctx.fillRect(0, 0, size, size); // fond des images transparentes
+    ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    if (!blob) throw new Error("Impossible de préparer la photo sur cet appareil.");
+    return new File([blob], "photo.jpg", { type: "image/jpeg" });
+  }
+  function applyAvatar(url: string | null) {
+    setS((s) => {
+      const user = s.user ? { ...s.user, avatarUrl: url } : s.user;
+      if (user) { try { localStorage.setItem("vlome_user", JSON.stringify(user)); } catch { /* ignore */ } }
+      return { ...s, user, me: s.me ? { ...s.me, avatarUrl: url } : s.me };
+    });
+  }
+  async function saveAvatar(file: File) {
+    let photo: File;
+    try { photo = await squarePhoto(file); } catch { alert("Cette image n'est pas lisible. Choisis une photo au format JPG, PNG ou WebP."); return; }
+    try {
+      const fd = new FormData();
+      fd.append("file", photo);
+      const r = await fetch(`${API}/api/uploads/avatar`, { method: "POST", headers: authHeaders(), body: fd });
+      const d = await r.json().catch(() => ({} as Detail));
+      if (!r.ok) { alert(d.message || "La photo n'a pas pu être envoyée."); return; }
+      applyAvatar(d.url);
+      showToast("Photo mise à jour.");
+    } catch { alert("La photo n'a pas pu être envoyée — réessaie dans un instant."); }
+  }
+  async function removeAvatar() {
+    try {
+      const r = await fetch(`${API}/api/uploads/avatar`, { method: "DELETE", headers: authHeaders() });
+      if (!r.ok) { alert("Impossible de retirer la photo."); return; }
+      applyAvatar(null);
+    } catch { alert("Impossible de retirer la photo — réessaie dans un instant."); }
+  }
   /** uploadFile + message à l'utilisateur, pour les enregistrements qui s'interrompent en cas d'échec
    * (uploadFile lui-même reste silencieux : saveSite, lui, préfère collecter les erreurs et continuer). */
   async function uploadOrNotify(inputId: string): Promise<string | null> {
@@ -8135,11 +8206,15 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (id === "new") rosterAct(`${API}/api/clubs`, "POST", body);
     else rosterAct(`${API}/api/clubs/${id}`, "PATCH", body);
   }
-  function saveGame(id: string) {
+  async function saveGame(id: string) {
     const name = (document.getElementById("gm-name") as HTMLInputElement | null)?.value.trim() ?? "";
     if (!name) { alert("Le nom du jeu est requis."); return; }
-    if (id === "new") rosterAct(`${API}/api/games`, "POST", { name });
-    else rosterAct(`${API}/api/games/${id}`, "PATCH", { name });
+    const remove = !!(document.getElementById("gm-noimage") as HTMLInputElement | null)?.checked;
+    let imageUrl: string | null = null;
+    try { imageUrl = await uploadOrNotify("gm-image"); } catch { return; }
+    const body: Detail = { name, ...(imageUrl ? { imageUrl } : remove ? { imageUrl: "" } : {}) };
+    if (id === "new") rosterAct(`${API}/api/games`, "POST", body);
+    else rosterAct(`${API}/api/games/${id}`, "PATCH", body);
   }
   /** Fiche complète d'un joueur de la base (Admin → Joueurs → Voir le profil). */
   async function loadPlayerDetail(id: string) {
@@ -8482,6 +8557,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     (async () => {
       const get = async (p: string) => { try { const r = await fetch(`${API}/api/${p}`); return r.ok ? await r.json() : null; } catch { return null; } };
       const [tourns, products, news, site, gallery, albums, leaderboard, loyaltySettings, games, clubs] = await Promise.all([get("tournaments"), get("products"), get("news"), get("settings"), get("gallery"), get("gallery/albums"), get("tournaments/leaderboard"), get("loyalty/settings"), get("games"), get("clubs")]);
+      setGameImages(games);
       if (Array.isArray(products)) GAME_COVERS = products.filter((p: Detail) => p.imageUrl).map((p: Detail) => ({ key: coverKey(String(p.name || "")), img: p.imageUrl as string }));
       setS((s) => ({
         ...s,
@@ -9414,7 +9490,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9941,6 +10017,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.assocattach) { openAttachAssociation(d.assocattach); }
     else if (d.attachgo !== undefined) { void submitAttachAssociation(); }
     else if (d.attachclose !== undefined) { setS((st) => ({ ...st, attachModal: null })); }
+    else if (d.avatarremove !== undefined) { void removeAvatar(); }
     else if (d.clubname !== undefined) { void openClubByName(d.clubname!); }
     else if (d.myclubjoin) {
       const clubId = d.myclubjoin === "select" ? (document.getElementById("mc-select") as HTMLSelectElement | null)?.value || "" : d.myclubjoin;
@@ -10260,6 +10337,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // donc un upload différé au clic "Créer/Enregistrer" échoue silencieusement. On
       // envoie l'affiche tout de suite au choix du fichier et on garde l'URL dans
       // wizData, qui lui survit à la navigation entre étapes.
+      if (t.id === "p-avatar" && file) {
+        t.value = ""; // permet de rechoisir le même fichier
+        void saveAvatar(file);
+        return;
+      }
       if (t.id === "wz-img" && file) {
         uploadOrNotify("wz-img")
           .then((url2) => {

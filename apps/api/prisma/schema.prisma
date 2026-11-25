@@ -80,6 +80,7 @@ model User {
   displayNameChangedAt DateTime? // dernier renommage — le pseudo n'est modifiable qu'1x/30 jours (voir UsersService.updateMe)
   role                Role                 @default(PLAYER)
   bio                 String?
+  avatarUrl           String? // photo de profil, posée uniquement par POST /uploads/avatar
   city                String?
   favoriteGame        String?
   phone               String? // téléphone/WhatsApp — requis pour un organisateur (suivi des crédits)
@@ -232,6 +233,7 @@ model ClubMembership {
 model Game {
   id        String   @id @default(cuid())
   name      String   @unique
+  imageUrl  String? // visuel du jeu : repli des cartes de tournoi sans affiche
   createdAt DateTime @default(now())
 }
 

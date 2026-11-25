@@ -19,7 +19,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true, email: true, displayName: true, displayNameChangedAt: true, role: true,
-        bio: true, city: true, favoriteGame: true, phone: true, createdAt: true, loyaltyPoints: true,
+        bio: true, avatarUrl: true, city: true, favoriteGame: true, phone: true, createdAt: true, loyaltyPoints: true,
         organizerStatus: true, organizerNote: true, organizerMaxTournaments: true, organizerMaxPlayers: true,
         clubRequested: true, clubStatus: true, clubBlocking: true,
         player: { select: { club: { select: { id: true, name: true } } } },

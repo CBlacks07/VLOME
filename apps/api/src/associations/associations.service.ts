@@ -28,15 +28,15 @@ export class AssociationsService {
     const rows = await this.prisma.clubMembership.findMany({
       where: { clubId, status: { in: ['active', 'requested', 'invited', 'left', 'removed'] } },
       orderBy: { createdAt: 'desc' },
-      include: { player: { select: { id: true, name: true, city: true, userId: true, user: { select: { email: true } } } } },
+      include: { player: { select: { id: true, name: true, city: true, userId: true, user: { select: { email: true, avatarUrl: true } } } } },
     });
     const of = (status: string) => rows.filter((m) => m.status === status);
-    const ranked = await this.withStats(of('active').map((m) => ({ id: m.player.id, name: m.player.name, city: m.player.city, userId: m.player.userId, since: m.decidedAt })));
+    const ranked = await this.withStats(of('active').map((m) => ({ id: m.player.id, name: m.player.name, city: m.player.city, userId: m.player.userId, avatarUrl: m.player.user?.avatarUrl ?? null, since: m.decidedAt })));
     return {
       // L'adresse n'est montrée que pour les demandes : le joueur l'a lui-même adressée à ce club.
       requests: of('requested').reverse().map((m) => ({ id: m.id, playerId: m.player.id, name: m.player.name, city: m.player.city, email: m.player.user?.email ?? null, createdAt: m.createdAt })),
       invites: of('invited').map((m) => ({ id: m.id, playerId: m.player.id, name: m.player.name, city: m.player.city, createdAt: m.createdAt })),
-      members: ranked.map((p) => ({ id: p.id, name: p.name, city: p.city, since: p.since, points: p.points, wins: p.wins, matches: p.matches, hasAccount: !!p.userId })),
+      members: ranked.map((p) => ({ id: p.id, avatarUrl: p.avatarUrl, name: p.name, city: p.city, since: p.since, points: p.points, wins: p.wins, matches: p.matches, hasAccount: !!p.userId })),
       history: rows.filter((m) => m.status === 'left' || m.status === 'removed')
         .sort((a, b) => (b.endedAt?.getTime() ?? 0) - (a.endedAt?.getTime() ?? 0)).slice(0, 20)
         .map((m) => ({ id: m.id, name: m.player.name, status: m.status, since: m.decidedAt, endedAt: m.endedAt })),
@@ -261,7 +261,7 @@ export class AssociationsService {
     if (!club || club.status !== 'APPROVED') throw new NotFoundException('Association introuvable.');
     const players = await this.prisma.player.findMany({
       where: { clubId: club.id },
-      select: { id: true, name: true, city: true, userId: true, user: { select: { role: true } } },
+      select: { id: true, name: true, city: true, userId: true, user: { select: { role: true, avatarUrl: true } } },
     });
     const ranked = await this.withStats(players);
     const memberUserIds = players.map((p) => p.userId).filter((x): x is string => !!x);
@@ -280,7 +280,7 @@ export class AssociationsService {
     return {
       club: { name: club.name, slug: club.slug, city: club.city, logoUrl: club.logoUrl, website: club.website, description: club.description },
       stats: { members: players.length, organized: organized.length },
-      members: ranked.map((p, i) => ({ rank: i + 1, name: p.name, city: p.city, points: p.points, wins: p.wins, matches: p.matches })),
+      members: ranked.map((p, i) => ({ rank: i + 1, avatarUrl: p.user?.avatarUrl ?? null, name: p.name, city: p.city, points: p.points, wins: p.wins, matches: p.matches })),
       tournaments: [...organized.map((t) => toCard(t, true)), ...played.filter((t) => !organizedIds.has(t.id)).map((t) => toCard(t, false))],
     };
   }

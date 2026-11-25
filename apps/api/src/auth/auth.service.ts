@@ -7,7 +7,7 @@ import { MailService, escapeHtml } from '../mail/mail.service';
 import { uniqueClubSlug } from '../common/slug';
 import { MembershipService } from '../associations/membership.service';
 
-interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; }
+interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; avatarUrl?: string | null; }
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'miabeapeto@miabe-esport.community';
 // Sans ADMIN_PASSWORD fourni, mot de passe aléatoire affiché une seule fois au démarrage : un mot
@@ -34,7 +34,7 @@ export class AuthService implements OnModuleInit {
     return this.jwt.sign({ sub: u.id, email: u.email, role: u.role });
   }
   private safe(u: UserRow) {
-    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus, clubStatus: u.clubStatus, clubRequested: u.clubRequested ?? null, clubBlocking: !!u.clubBlocking };
+    return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus, clubStatus: u.clubStatus, clubRequested: u.clubRequested ?? null, clubBlocking: !!u.clubBlocking, avatarUrl: u.avatarUrl ?? null };
   }
 
   async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; clubId?: string; associationName?: string; website?: string; description?: string; organizerNote?: string }) {

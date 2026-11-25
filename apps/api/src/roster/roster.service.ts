@@ -18,18 +18,18 @@ import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 export class RosterService {
   constructor(private prisma: PrismaService, private users: UsersService, private tournaments: TournamentsService, private membership: MembershipService, private associations: AssociationsService) {}
 
-  private toPlayerDto(p: { id: string; name: string; city: string | null; userId?: string | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
+  private toPlayerDto(p: { id: string; name: string; city: string | null; userId?: string | null; user?: { avatarUrl: string | null } | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
     return {
       // points/matchs : RÉELS (calculés sur les tournois joués), pas les anciennes colonnes de la base qui n'ont jamais été alimentées.
       id: p.id, name: p.name, city: p.city, points: totals?.points ?? 0, matches: totals?.matches ?? 0,
-      hasAccount: !!p.userId, clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
+      avatarUrl: p.user?.avatarUrl ?? null, hasAccount: !!p.userId, clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
     };
   }
 
   async listPlayers() {
     const rows = await this.prisma.player.findMany({
       orderBy: { name: 'asc' },
-      include: { club: { select: { id: true, name: true, logoUrl: true } } },
+      include: { club: { select: { id: true, name: true, logoUrl: true } }, user: { select: { avatarUrl: true } } },
     });
     const totals = await this.tournaments.playerStats(rows);
     return rows.map((p) => this.toPlayerDto(p, totals.get(p.id)));
@@ -59,7 +59,7 @@ export class RosterService {
   }
 
   private async dtoById(id: string) {
-    const row = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } } } });
+    const row = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } }, user: { select: { avatarUrl: true } } } });
     if (!row) throw new NotFoundException('Joueur introuvable.');
     return this.toPlayerDto(row);
   }
@@ -74,7 +74,7 @@ export class RosterService {
   /** Vue complète d'un joueur de la base pour l'admin : fiche roster + (si un compte y est relié)
    * tout ce à quoi il est rattaché sur le site — stats globales et par jeu, commandes, inscriptions. */
   async playerDetail(id: string) {
-    const p = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } } } });
+    const p = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } }, user: { select: { avatarUrl: true } } } });
     if (!p) throw new NotFoundException('Joueur introuvable.');
     const base = this.toPlayerDto(p);
     if (!p.userId) return { ...base, linked: false };
@@ -118,7 +118,7 @@ export class RosterService {
 
   async listGames() {
     const rows = await this.prisma.game.findMany({ orderBy: { name: 'asc' } });
-    return rows.map((g) => ({ id: g.id, name: g.name }));
+    return rows.map((g) => ({ id: g.id, name: g.name, imageUrl: g.imageUrl }));
   }
 
   async createGame(dto: GameDto) {
@@ -126,8 +126,8 @@ export class RosterService {
     if (!name) throw new BadRequestException('Nom requis.');
     const existing = await this.prisma.game.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
     if (existing) throw new BadRequestException('Ce jeu est déjà dans le catalogue.');
-    const g = await this.prisma.game.create({ data: { name } });
-    return { id: g.id, name: g.name };
+    const g = await this.prisma.game.create({ data: { name, imageUrl: dto.imageUrl || null } });
+    return { id: g.id, name: g.name, imageUrl: g.imageUrl };
   }
 
   async updateGame(id: string, dto: GameDto) {
@@ -136,8 +136,9 @@ export class RosterService {
     const name = dto.name.trim() || g.name;
     const existing = await this.prisma.game.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, NOT: { id } } });
     if (existing) throw new BadRequestException('Ce jeu est déjà dans le catalogue.');
-    const upd = await this.prisma.game.update({ where: { id }, data: { name } });
-    return { id: upd.id, name: upd.name };
+    // Sans image dans la demande, on garde l'actuelle ; une chaîne vide la retire.
+    const upd = await this.prisma.game.update({ where: { id }, data: { name, ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl || null } : {}) } });
+    return { id: upd.id, name: upd.name, imageUrl: upd.imageUrl };
   }
 
   async removeGame(id: string) {

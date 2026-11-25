@@ -26,11 +26,6 @@ export class UpdateMeDto {
   @MaxLength(30)
   phone?: string;
 
-  // Club affiché — modifiable librement (contrairement à displayName, plafonné à 1x/mois).
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  club?: string;
 }
 
 export class ChangePasswordDto {

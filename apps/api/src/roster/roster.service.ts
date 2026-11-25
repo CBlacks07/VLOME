@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { uniqueClubSlug } from '../common/slug';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { MembershipService } from '../associations/membership.service';
+import { AssociationsService } from '../associations/associations.service';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 
@@ -14,13 +16,13 @@ import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
  */
 @Injectable()
 export class RosterService {
-  constructor(private prisma: PrismaService, private users: UsersService, private tournaments: TournamentsService) {}
+  constructor(private prisma: PrismaService, private users: UsersService, private tournaments: TournamentsService, private membership: MembershipService, private associations: AssociationsService) {}
 
-  private toPlayerDto(p: { id: string; name: string; city: string | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
+  private toPlayerDto(p: { id: string; name: string; city: string | null; userId?: string | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
     return {
       // points/matchs : RÉELS (calculés sur les tournois joués), pas les anciennes colonnes de la base qui n'ont jamais été alimentées.
       id: p.id, name: p.name, city: p.city, points: totals?.points ?? 0, matches: totals?.matches ?? 0,
-      clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
+      hasAccount: !!p.userId, clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
     };
   }
 
@@ -29,30 +31,36 @@ export class RosterService {
       orderBy: { name: 'asc' },
       include: { club: { select: { id: true, name: true, logoUrl: true } } },
     });
-    const totals = await this.tournaments.playerTotals();
-    return rows.map((p) => this.toPlayerDto(p, totals.get(p.name.toLowerCase())));
+    const totals = await this.tournaments.playerStats(rows);
+    return rows.map((p) => this.toPlayerDto(p, totals.get(p.id)));
   }
 
-  /** Ajoute un joueur — fusionne (met à jour le club) si un joueur du même nom existe déjà. */
+  /** Ajoute un joueur — fusionne (met à jour la ville et le club) si un joueur du même nom existe déjà. Le club passe par
+   *  MembershipService, pour laisser la même trace qu'une adhésion. */
   async addPlayer(dto: RosterPlayerDto) {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Nom requis.');
     const existing = await this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-    const data = { name, city: dto.city?.trim() || null, clubId: dto.clubId || null };
+    const data = { name, city: dto.city?.trim() || null };
     const row = existing
-      ? await this.prisma.player.update({ where: { id: existing.id }, data, include: { club: { select: { id: true, name: true, logoUrl: true } } } })
-      : await this.prisma.player.create({ data, include: { club: { select: { id: true, name: true, logoUrl: true } } } });
-    return this.toPlayerDto(row);
+      ? await this.prisma.player.update({ where: { id: existing.id }, data })
+      : await this.prisma.player.create({ data });
+    // Sans club choisi, un joueur déjà connu garde le sien.
+    if (dto.clubId) await this.membership.adminSetClub(row.id, dto.clubId);
+    return this.dtoById(row.id);
   }
 
   async updatePlayer(id: string, dto: RosterPlayerDto) {
     const p = await this.prisma.player.findUnique({ where: { id } });
     if (!p) throw new NotFoundException('Joueur introuvable.');
-    const row = await this.prisma.player.update({
-      where: { id },
-      data: { name: dto.name.trim() || p.name, city: dto.city?.trim() || null, clubId: dto.clubId || null },
-      include: { club: { select: { id: true, name: true, logoUrl: true } } },
-    });
+    await this.prisma.player.update({ where: { id }, data: { name: dto.name.trim() || p.name, city: dto.city?.trim() || null } });
+    await this.membership.adminSetClub(id, dto.clubId || null);
+    return this.dtoById(id);
+  }
+
+  private async dtoById(id: string) {
+    const row = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } } } });
+    if (!row) throw new NotFoundException('Joueur introuvable.');
     return this.toPlayerDto(row);
   }
 
@@ -102,15 +110,8 @@ export class RosterService {
     return { id: upd.id, name: upd.name, city: upd.city, logoUrl: upd.logoUrl };
   }
 
-  async removeClub(id: string) {
-    const c = await this.prisma.club.findUnique({ where: { id } });
-    if (!c) throw new NotFoundException('Club introuvable.');
-    // Détache les joueurs avant suppression (ils ne sont pas supprimés, juste "sans club").
-    await this.prisma.$transaction([
-      this.prisma.player.updateMany({ where: { clubId: id }, data: { clubId: null } }),
-      this.prisma.club.delete({ where: { id } }),
-    ]);
-    return { deleted: true };
+  removeClub(id: string) {
+    return this.associations.removeClub(id);
   }
 
   /* ---------- Catalogue des jeux ---------- */

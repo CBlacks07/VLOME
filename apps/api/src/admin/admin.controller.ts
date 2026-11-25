@@ -10,13 +10,14 @@ import { CurrentUser } from '../common/current-user.decorator';
 import { AssociationsService } from '../associations/associations.service';
 import { MailService } from '../mail/mail.service';
 import { PaymentsService } from '../payments/payments.service';
-import { AttachOwnerDto } from '../associations/associations.dto';
+import { AddMemberDto, AttachOwnerDto, MergeClubDto } from '../associations/associations.dto';
+import { MembershipService } from '../associations/membership.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService, private readonly mail: MailService, private readonly onlinePayments: PaymentsService) {}
+  constructor(private readonly admin: AdminService, private readonly dashboard: DashboardService, private readonly associations: AssociationsService, private readonly mail: MailService, private readonly onlinePayments: PaymentsService, private readonly membership: MembershipService) {}
 
   /** Tableau de bord de pilotage (temps réel) — réservé à l'admin comme tout ce contrôleur. */
   /** Messagerie : réglages présents + connexion SMTP (sans envoyer). */
@@ -63,38 +64,56 @@ export class AdminController {
     return this.admin.removeUser(id, user.sub);
   }
 
-  /* ---------- Demandes de club (validation avant entrée dans le catalogue) ---------- */
+  /* ---------- Clubs & associations ---------- */
 
-  @Get('club-requests')
-  clubRequests() {
-    return this.admin.listClubRequests();
+  @Get('clubs-overview')
+  clubsOverview() {
+    return this.associations.overview();
   }
 
-  /* ---------- Intégration des associations ---------- */
-
-  @Get('associations')
-  pendingAssociations() {
-    return this.associations.listPending();
+  @Get('clubs/:id')
+  clubDetail(@Param('id') id: string) {
+    return this.associations.detail(id);
   }
 
-  @Get('associations/unowned')
-  unownedClubs() {
-    return this.associations.listUnowned();
+  @Delete('clubs/:id')
+  removeClub(@Param('id') id: string) {
+    return this.associations.removeClub(id);
+  }
+
+  @Post('clubs/:id/merge')
+  mergeClub(@Param('id') id: string, @Body() dto: MergeClubDto) {
+    return this.associations.merge(id, dto.targetId);
+  }
+
+  @Post('clubs/:id/members')
+  addClubMember(@Param('id') id: string, @Body() dto: AddMemberDto) {
+    return this.associations.adminAddMember(id, dto.playerId);
+  }
+
+  @Delete('clubs/:id/members/:playerId')
+  removeClubMember(@Param('id') id: string, @Param('playerId') playerId: string) {
+    return this.associations.adminRemoveMember(id, playerId);
+  }
+
+  @Post('claims/:playerId/:decision')
+  reviewClaim(@Param('playerId') playerId: string, @Param('decision') decision: string) {
+    return this.membership.reviewClaim(playerId, decision === 'approve');
   }
 
   @Post('associations/:id/attach-owner')
   attachOwner(@Param('id') id: string, @Body() dto: AttachOwnerDto) {
-    return this.associations.attachOwner(id, dto.email);
+    return this.associations.attachOwner(id, dto.email, !!dto.replace);
+  }
+
+  @Delete('associations/:id/owner')
+  detachOwner(@Param('id') id: string) {
+    return this.associations.detachOwner(id);
   }
 
   @Post('associations/:id/:decision')
   reviewAssociation(@Param('id') id: string, @Param('decision') decision: string) {
     return this.associations.review(id, decision === 'approve');
-  }
-
-  @Post('club-requests/:id/:decision')
-  reviewClub(@Param('id') id: string, @Param('decision') decision: string) {
-    return this.admin.reviewClubRequest(id, decision === 'approve' ? 'APPROVED' : 'REJECTED');
   }
 
   /* ---------- Organisateurs (validation, plafonds) ---------- */

@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AssociationsService } from './associations.service';
-import { ReviewDecisionDto, UpdateAssociationDto } from './associations.dto';
+import { InviteDto, ReviewDecisionDto, UpdateAssociationDto } from './associations.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { RolesGuard } from '../common/roles.guard';
@@ -39,11 +39,32 @@ export class AssociationsController {
     return this.assoc.updateMe(user.sub, dto);
   }
 
-  @Post('association/requests/:userId')
+  @Post('association/requests/:membershipId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ASSOCIATION', 'ORGANIZER', 'ADMIN')
-  review(@CurrentUser() user: JwtUser, @Param('userId') userId: string, @Body() dto: ReviewDecisionDto) {
-    return this.assoc.reviewMember(user.sub, userId, dto.decision === 'approve');
+  review(@CurrentUser() user: JwtUser, @Param('membershipId') membershipId: string, @Body() dto: ReviewDecisionDto) {
+    return this.assoc.reviewMember(user.sub, membershipId, dto.decision === 'approve');
+  }
+
+  @Get('association/candidates')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ASSOCIATION', 'ORGANIZER', 'ADMIN')
+  candidates(@CurrentUser() user: JwtUser, @Query('q') q?: string) {
+    return this.assoc.candidates(user.sub, q || '');
+  }
+
+  @Post('association/invites')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ASSOCIATION', 'ORGANIZER', 'ADMIN')
+  invite(@CurrentUser() user: JwtUser, @Body() dto: InviteDto) {
+    return this.assoc.invite(user.sub, dto);
+  }
+
+  @Delete('association/invites/:membershipId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ASSOCIATION', 'ORGANIZER', 'ADMIN')
+  cancelInvite(@CurrentUser() user: JwtUser, @Param('membershipId') membershipId: string) {
+    return this.assoc.cancelInvite(user.sub, membershipId);
   }
 
   @Delete('association/members/:playerId')

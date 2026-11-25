@@ -202,6 +202,27 @@ model Club {
   ownerId      String?  @unique
   owner        User?    @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
+  memberships  ClubMembership[]
+}
+
+// Lien joueur <-> club, avec son histoire. status : 'requested' (le joueur demande) | 'invited' (le club invite) | 'active' |
+// 'left' (parti) | 'removed' (retiré) | 'rejected' (demande ou invitation refusée) | 'cancelled' (retirée avant réponse).
+// Un seul 'active' par joueur (index unique partiel posé dans la migration). Player.clubId en est le reflet, écrit
+// uniquement par MembershipService.
+model ClubMembership {
+  id          String    @id @default(cuid())
+  clubId      String
+  club        Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  playerId    String
+  player      Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  status      String
+  initiatedBy String    @default("player") // 'player' | 'club' | 'admin'
+  createdAt   DateTime  @default(now())
+  decidedAt   DateTime?
+  endedAt     DateTime?
+
+  @@index([clubId, status])
+  @@index([playerId, status])
 }
 
 // Catalogue des jeux (site-wide, géré depuis l'admin) — propose des noms canoniques à la création
@@ -225,7 +246,9 @@ model Player {
   user      User?    @relation(fields: [userId], references: [id])
   clubId    String?
   club      Club?    @relation(fields: [clubId], references: [id])
+  claimUserId String? // compte qui demande à reprendre cette fiche (même nom) — validé par l'admin
   createdAt DateTime @default(now())
+  memberships ClubMembership[]
 }
 
 model Tournament {

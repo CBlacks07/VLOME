@@ -5,7 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { uniqueClubSlug } from '../common/slug';
-import { AssociationsService } from '../associations/associations.service';
+import { MembershipService } from '../associations/membership.service';
 
 interface UserRow { id: string; email: string; displayName: string; role: string; passwordHash: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; }
 
@@ -16,7 +16,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || randomBytes(9).toString('ba
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private prisma: PrismaService, private jwt: JwtService, private mail: MailService, private assoc: AssociationsService) {}
+  constructor(private prisma: PrismaService, private jwt: JwtService, private mail: MailService, private membership: MembershipService) {}
 
   /** Crée un compte ADMIN par défaut au démarrage s'il n'en existe aucun. */
   async onModuleInit() {
@@ -37,7 +37,7 @@ export class AuthService implements OnModuleInit {
     return { id: u.id, email: u.email, displayName: u.displayName, role: u.role, organizerStatus: u.organizerStatus, clubStatus: u.clubStatus, clubRequested: u.clubRequested ?? null, clubBlocking: !!u.clubBlocking };
   }
 
-  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; club?: string; clubId?: string; associationName?: string; website?: string; description?: string; organizerNote?: string }) {
+  async register(dto: { email?: string; password?: string; displayName?: string; role?: string; city?: string; favoriteGame?: string; phone?: string; clubId?: string; associationName?: string; website?: string; description?: string; organizerNote?: string }) {
     const email = (dto.email || '').trim().toLowerCase();
     if (!email || !dto.password || dto.password.length < 6) {
       throw new BadRequestException('Email et mot de passe (au moins 6 caractères) requis.');
@@ -49,25 +49,20 @@ export class AuthService implements OnModuleInit {
     // Compte association : il pilote un club (créé ici, en attente de validation par l'équipe Miabe).
     if (role === 'ASSOCIATION') return this.registerAssociation(dto, email, passwordHash);
     // Joueur : le club se CHOISIT dans la liste des clubs validés ; c'est l'association du club qui valide l'adhésion.
-    // Le compte, lui, n'est jamais bloqué en attendant.
-    const chosenClub = role === 'PLAYER' && dto.clubId ? await this.prisma.club.findFirst({ where: { id: dto.clubId, status: 'APPROVED' }, select: { id: true, name: true } }) : null;
+    const chosenClub = role === 'PLAYER' && dto.clubId ? await this.prisma.club.findFirst({ where: { id: dto.clubId, status: 'APPROVED', ownerId: { not: null } }, select: { id: true, name: true } }) : null;
     if (role === 'PLAYER' && dto.clubId && !chosenClub) throw new BadRequestException('Club introuvable : choisis un club de la liste.');
-    // Un club saisi à l'inscription n'est PAS enregistré tel quel : il reste une simple demande (clubRequested)
-    // que l'admin doit valider, et le compte est bloqué (clubBlocking) d'ici là.
-    const requestedClub = role === 'PLAYER' ? (dto.club || '').trim() : '';
     const u = await this.prisma.user.create({
       data: {
         email, passwordHash, displayName: (dto.displayName || '').trim() || email.split('@')[0], role,
         city: (dto.city || '').trim() || null,
         favoriteGame: (dto.favoriteGame || '').trim() || null,
         phone: (dto.phone || '').trim() || null,
-        ...(chosenClub ? { clubRequested: chosenClub.name, clubRequestedId: chosenClub.id, clubStatus: 'PENDING', clubBlocking: false } : requestedClub ? { clubRequested: requestedClub, clubStatus: 'PENDING', clubBlocking: true } : {}),
         // Un compte ORGANIZER doit être validé par l'admin avant de pouvoir créer un tournoi
         // (voir TournamentsService.create) — la demande peut être accompagnée d'une note.
         ...(role === 'ORGANIZER' ? { organizerStatus: 'PENDING', organizerNote: (dto.organizerNote || '').trim() || null } : {}),
       },
     });
-    if (role === 'PLAYER') await this.linkRosterPlayer(u.id, u.displayName, u.city, undefined);
+    if (role === 'PLAYER') await this.joinRoster(u.id, u.displayName, u.city, chosenClub?.id);
     await this.sendWelcome(u, role, chosenClub);
     return { token: this.sign(u), user: this.safe(u) };
   }
@@ -107,33 +102,21 @@ export class AuthService implements OnModuleInit {
       } else if (role === 'ASSOCIATION') {
         await this.mail.send(u.email, 'Ton association est bien reçue — Miabe Esport', this.mail.layout('Demande reçue',
           `<p>Bonjour ${name},</p><p>Le compte de l'association <b>${escapeHtml(associationName)}</b> est créé. L'équipe Miabe l'examine avant de l'intégrer à la liste des clubs : tu reçois un e-mail dès que c'est fait, et tu pourras alors valider l'adhésion de tes joueurs et afficher tes tournois sur ton site.</p>`));
-        await this.mail.notifyTeam(`Nouvelle association à intégrer : ${associationName}`, 'Association à intégrer', `<p>L'association <b>${escapeHtml(associationName)}</b> (${escapeHtml(u.email)}) demande à être intégrée.</p>`, { label: 'Ouvrir l\'administration', url: `${this.mail.siteUrl}/#profil/users` });
+        await this.mail.notifyTeam(`Nouvelle association à intégrer : ${associationName}`, 'Association à intégrer', `<p>L'association <b>${escapeHtml(associationName)}</b> (${escapeHtml(u.email)}) demande à être intégrée.</p>`, { label: 'Ouvrir l\'administration', url: `${this.mail.siteUrl}/#profil/clubs` });
       } else {
         await this.mail.send(u.email, 'Bienvenue sur Miabe Esport', this.mail.layout('Bienvenue sur Miabe Esport',
           `<p>Bonjour ${name},</p><p>Ton compte est créé : tu peux t'inscrire aux tournois, suivre tes matchs en direct, grimper dans les classements et commander à la boutique.</p>${chosenClub ? `<p>Ta demande pour rejoindre <b>${escapeHtml(chosenClub.name)}</b> a été transmise à l'association : le club apparaîtra sur ta fiche dès qu'elle l'aura acceptée.</p>` : ''}`,
           { label: 'Voir les tournois', url: `${this.mail.siteUrl}/#tournois` }));
       }
-      if (chosenClub) await this.assoc.notifyJoinRequest(chosenClub.id, u.displayName);
     } catch { /* best-effort */ }
   }
 
-  /** Retrouve (insensible à la casse) ou crée le club du catalogue portant ce nom. */
-  private async resolveClubId(club?: string): Promise<string | null | undefined> {
-    const name = club?.trim();
-    if (!name) return club === undefined ? undefined : null; // undefined = ne pas toucher, "" = retirer le club
-    const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-    return existing ? existing.id : (await this.prisma.club.create({ data: { name, slug: await uniqueClubSlug(this.prisma, name) } })).id;
-  }
-
-  /** Relie (ou crée) l'entrée « base de joueurs » d'un compte Joueur, pour qu'il apparaisse
-   * directement en Admin → Joueurs et dans les suggestions de l'assistant de création — sans
-   * ressaisie manuelle. Best-effort : ne doit jamais faire échouer l'inscription/connexion. */
-  private async linkRosterPlayer(userId: string, name: string, city: string | null, club?: string) {
+  /** Fiche « base de joueurs » du nouveau compte Joueur, puis demande d'adhésion au club choisi. Best-effort : ne doit
+   *  jamais faire échouer l'inscription. */
+  private async joinRoster(userId: string, name: string, city: string | null, clubId?: string) {
     try {
-      const clubId = await this.resolveClubId(club);
-      const existing = await this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, userId: null } });
-      if (existing) await this.prisma.player.update({ where: { id: existing.id }, data: { userId, city: existing.city ?? city, clubId: existing.clubId ?? clubId ?? undefined } });
-      else await this.prisma.player.create({ data: { name, city, userId, clubId: clubId || null } });
+      await this.membership.linkNewAccount(userId, name, city);
+      if (clubId) await this.membership.request(userId, clubId);
     } catch (e) {
       console.error('[Miabe] Liaison base de joueurs impossible (inscription non bloquée) :', e);
     }

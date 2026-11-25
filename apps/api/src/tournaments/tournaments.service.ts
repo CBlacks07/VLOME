@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { computeElo, ELO_START } from './elo';
+import { attributeStats } from './player-stats';
+import type { Fiche, Totals } from './player-stats';
 import type { EloMatch } from './elo';
 import * as Engine from '@vlome/engine';
 import * as ExcelJS from 'exceljs';
@@ -137,6 +139,13 @@ export class TournamentsService {
       const can = await this.credits.canHost(user.sub);
       if (!can.ok) throw new ConflictException("Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.");
     }
+    // Une association validée crée les tournois de son club, avec les mêmes crédits qu'un organisateur.
+    if (user && user.role === 'ASSOCIATION') {
+      const club = await this.prisma.club.findUnique({ where: { ownerId: user.sub }, select: { status: true } });
+      if (!club || club.status !== 'APPROVED') throw new ForbiddenException("Ton association doit d'abord être validée par l'équipe Miabe.");
+      const can = await this.credits.canHost(user.sub);
+      if (!can.ok) throw new ConflictException('Crédit organisateur insuffisant : achète des crédits pour héberger un nouveau tournoi.');
+    }
     // Rattachement à un événement : l'appelant doit pouvoir gérer cet événement (propriétaire ou admin).
     let eventIdToUse: string | null = null;
     if (dto.eventId) {
@@ -190,7 +199,7 @@ export class TournamentsService {
         engineState: JSON.parse(JSON.stringify(t)), createdById: userId ?? null,
       },
     });
-    if (user && user.role === 'ORGANIZER') await this.credits.consumeForHosting(user.sub, r.id);
+    if (user && (user.role === 'ORGANIZER' || user.role === 'ASSOCIATION')) await this.credits.consumeForHosting(user.sub, r.id);
     return this.toCard(r);
   }
 
@@ -337,19 +346,14 @@ export class TournamentsService {
     return new Map(regs.map((r) => [`${r.tournamentId}|${r.playerName}`, r.userId]));
   }
 
-  /** Totaux réels d'un joueur, tous jeux confondus, par nom (insensible à la casse) — pour les listes qui n'ont pas de classement par jeu
-   *  (base de joueurs, page d'une association). Les équipes sont ignorées. */
-  async playerTotals(): Promise<Map<string, { points: number; wins: number; matches: number }>> {
-    const rows = await this.computeLeaderboard({}, 100000);
-    const totals = new Map<string, { points: number; wins: number; matches: number }>();
-    for (const r of rows) {
-      if (r.team) continue;
-      const k = r.name.toLowerCase();
-      const t = totals.get(k) ?? { points: 0, wins: 0, matches: 0 };
-      t.points = Math.round((t.points + r.points) * 10) / 10; t.wins += r.wins; t.matches += r.matches;
-      totals.set(k, t);
-    }
-    return totals;
+  /** Totaux réels (tous jeux confondus) des fiches demandées, indexés par identifiant de fiche — pour la base de joueurs
+   *  et les pages de club. Règle d'attribution : voir attributeStats. */
+  async playerStats(players: Fiche[]): Promise<Map<string, Totals>> {
+    const [rows, all] = await Promise.all([
+      this.computeLeaderboard({}, 100000),
+      this.prisma.player.findMany({ select: { id: true, name: true, userId: true } }),
+    ]);
+    return attributeStats(players, all, rows);
   }
 
   /** ELO d'un joueur, jeu par jeu (par compte si `uid`, sinon par nom). 1000 pour un jeu sans match départagé. */
@@ -436,6 +440,8 @@ export class TournamentsService {
     const rosterPlayers = await this.prisma.player.findMany({ include: { club: { select: { name: true } } } });
     const clubByName = new Map<string, string>();
     for (const p of rosterPlayers) if (p.club && !clubByName.has(p.name.toLowerCase())) clubByName.set(p.name.toLowerCase(), p.club.name);
+    const clubByUser = new Map<string, string>();
+    for (const p of rosterPlayers) if (p.userId && p.club) clubByUser.set(p.userId, p.club.name);
 
     const eloByGame = new Map<string, Map<string, number>>();
     for (const [g, list] of eloMatches) eloByGame.set(g, computeElo(list));
@@ -457,7 +463,7 @@ export class TournamentsService {
         championships: e.championships,
         tournamentsPlayed: e.tournaments.size,
         city: cityByName.get(e.name) || null,
-        club: clubByName.get(e.name.toLowerCase()) || null,
+        club: (e.userId ? clubByUser.get(e.userId) : clubByName.get(e.name.toLowerCase())) || null,
       }))
       .sort((a, b) => b.points - a.points || b.winrate - a.winrate)
       .slice(0, limit);
@@ -477,7 +483,7 @@ export class TournamentsService {
   private async cityAndClubForName(name: string, uid?: string): Promise<{ city: string | null; club: string | null }> {
     const [reg, rosterPlayer] = await Promise.all([
       this.prisma.registration.findFirst({ where: uid ? { userId: uid, playerName: name } : { playerName: name }, include: { user: { select: { city: true } } } }),
-      this.prisma.player.findFirst({ where: { name: { equals: name, mode: 'insensitive' } }, include: { club: { select: { name: true } } } }),
+      this.prisma.player.findFirst({ where: uid ? { userId: uid } : { name: { equals: name, mode: 'insensitive' } }, include: { club: { select: { name: true } } } }),
     ]);
     return { city: reg?.user.city || null, club: rosterPlayer?.club?.name || null };
   }

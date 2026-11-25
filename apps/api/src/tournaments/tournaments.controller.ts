@@ -36,7 +36,7 @@ export class TournamentsController {
 
   @Get('mine')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   mine(@CurrentUser() user: JwtUser) {
     return this.service.mine(user);
   }
@@ -116,21 +116,21 @@ export class TournamentsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   create(@Body() dto: CreateTournamentDto, @CurrentUser() user: JwtUser) {
     return this.service.create(dto, user);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   update(@Param('id') id: string, @Body() dto: UpdateTournamentDto, @CurrentUser() user: JwtUser) {
     return this.service.update(id, dto, user);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   remove(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.remove(id, user);
   }
@@ -153,14 +153,14 @@ export class TournamentsController {
 
   @Get(':id/registrations')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   listRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.listRegistrations(id, user);
   }
 
   @Get(':id/registrations/export')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async exportRegistrations(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
     const { filename, buffer } = await this.service.exportRegistrationsXlsx(id, user);
     res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${filename}"` });
@@ -169,7 +169,7 @@ export class TournamentsController {
 
   @Get(':id/results/export')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async exportResults(@Param('id') id: string, @CurrentUser() user: JwtUser, @Res() res: Response) {
     const { filename, buffer } = await this.service.exportResultsXlsx(id, user);
     res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${filename}"` });
@@ -178,63 +178,63 @@ export class TournamentsController {
 
   @Post(':id/checkin')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   checkIn(@Param('id') id: string, @Body() dto: CheckinDto, @CurrentUser() user: JwtUser) {
     return this.service.checkIn(id, dto, user);
   }
 
   @Post(':id/station')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   setStation(@Param('id') id: string, @Body() dto: StationDto, @CurrentUser() user: JwtUser) {
     return this.service.setStation(id, dto.key, dto.label, user);
   }
 
   @Post(':id/duplicate')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   duplicate(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.service.duplicate(id, user);
   }
 
   @Post(':id/match-start')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   setMatchStart(@Param('id') id: string, @Body() dto: MatchStartDto, @CurrentUser() user: JwtUser) {
     return this.service.setMatchStart(id, dto.key, dto.on, user);
   }
 
   @Post(':id/match-minutes')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   setMatchMinutes(@Param('id') id: string, @Body() dto: MatchMinutesDto, @CurrentUser() user: JwtUser) {
     return this.service.setMatchMinutes(id, dto.minutes, user);
   }
 
   @Post(':id/notify-match')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   notifyMatch(@Param('id') id: string, @Body() dto: NotifyMatchDto, @CurrentUser() user: JwtUser) {
     return this.service.notifyMatch(id, dto.key, user);
   }
 
   @Post(':id/stream-match')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   setStreamMatch(@Param('id') id: string, @Body() dto: StreamMatchDto, @CurrentUser() user: JwtUser) {
     return this.service.setStreamMatch(id, dto.key, dto.on, user);
   }
 
   @Post(':id/registrations/:regId/confirm')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   confirmPayment(@Param('id') id: string, @Param('regId') regId: string, @CurrentUser() user: JwtUser) {
     return this.service.confirmPayment(id, regId, user);
   }
 
   @Post(':id/launch')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async launch(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.launch(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -243,7 +243,7 @@ export class TournamentsController {
 
   @Post(':id/finals/start')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async startFinals(@Param('id') id: string, @Body() dto: StartFinalsDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.startFinals(id, user, dto.format);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -252,7 +252,7 @@ export class TournamentsController {
 
   @Post(':id/report')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async report(@Param('id') id: string, @Body() dto: ReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.report(id, dto, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -262,7 +262,7 @@ export class TournamentsController {
   /** Corrige un match déjà joué (crayon) — voir TournamentsService.correctResult. */
   @Post(':id/correct')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async correctResult(@Param('id') id: string, @Body() dto: CorrectResultDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.correctResult(id, dto, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -272,7 +272,7 @@ export class TournamentsController {
   /** Format Battle Royale : classement complet d'une partie (pas de duel 1v1, donc pas /report). */
   @Post(':id/battle-royale-report')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async reportBattleRoyale(@Param('id') id: string, @Body() dto: BattleRoyaleReportDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.reportBattleRoyale(id, dto.gameId, dto.ranking, user, dto.kills);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -283,7 +283,7 @@ export class TournamentsController {
 
   @Post(':id/players')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async addPlayer(@Param('id') id: string, @Body() dto: AddPlayerDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.addPlayer(id, dto.name, user, dto.members);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -292,7 +292,7 @@ export class TournamentsController {
 
   @Delete(':id/players/:playerId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async removePlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.removePlayer(id, playerId, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -301,7 +301,7 @@ export class TournamentsController {
 
   @Post(':id/players/:playerId/members')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async setTeamMembers(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: TeamMembersDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.setTeamMembers(id, playerId, dto.members, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -310,7 +310,7 @@ export class TournamentsController {
 
   @Post(':id/players/:playerId/disqualify')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async disqualifyPlayer(@Param('id') id: string, @Param('playerId') playerId: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.disqualifyPlayer(id, playerId, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -319,7 +319,7 @@ export class TournamentsController {
 
   @Patch(':id/players/:playerId')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async renamePlayer(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: AddPlayerDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.renamePlayer(id, playerId, dto.name, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -328,7 +328,7 @@ export class TournamentsController {
 
   @Patch(':id/players/:playerId/club')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async setPlayerClub(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: ClubDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.setPlayerClub(id, playerId, dto.club, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -337,7 +337,7 @@ export class TournamentsController {
 
   @Post(':id/players/:playerId/adjust')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async manualAdjust(@Param('id') id: string, @Param('playerId') playerId: string, @Body() dto: AdjustDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.manualAdjust(id, playerId, dto.delta, dto.reason, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -348,7 +348,7 @@ export class TournamentsController {
 
   @Post(':id/undo')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async undo(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.undo(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -357,7 +357,7 @@ export class TournamentsController {
 
   @Post(':id/reset')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async reset(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.reset(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -366,7 +366,7 @@ export class TournamentsController {
 
   @Patch(':id/scoring')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async setScoring(@Param('id') id: string, @Body() dto: ScoringDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.setScoring(id, dto.key, dto.value, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -375,7 +375,7 @@ export class TournamentsController {
 
   @Post(':id/scoring/autofit')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async autoFitScoring(@Param('id') id: string, @CurrentUser() user: JwtUser, @Body() body?: { simulatedPlayers?: number }) {
     const simulatedPlayers = typeof body?.simulatedPlayers === 'number' && Number.isFinite(body.simulatedPlayers) ? body.simulatedPlayers : undefined;
     const s = await this.service.autoFitScoring(id, user, simulatedPlayers);
@@ -385,7 +385,7 @@ export class TournamentsController {
 
   @Post(':id/pools/distribute')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async distributePools(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.distributePools(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -394,7 +394,7 @@ export class TournamentsController {
 
   @Post(':id/pools/:poolId/shuffle')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async shufflePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.shufflePoolOrder(id, poolId, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -403,7 +403,7 @@ export class TournamentsController {
 
   @Post(':id/pools/:poolId/move')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async movePoolOrder(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: MoveOrderDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.movePoolOrder(id, poolId, dto.index, dto.dir, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -414,7 +414,7 @@ export class TournamentsController {
   // qui ne fait que réordonner à l'intérieur d'une même poule.
   @Post(':id/pools/:poolId/players/move')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async movePoolPlayer(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: PoolPlayerMoveDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.movePoolPlayer(id, poolId, dto.playerId, dto.dir, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -423,7 +423,7 @@ export class TournamentsController {
 
   @Patch(':id/pools/qualify')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async setQualifyPerPool(@Param('id') id: string, @Body() dto: QualifyPerPoolDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.setQualifyPerPool(id, dto.value, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -434,7 +434,7 @@ export class TournamentsController {
   // oppositions du 1er tour, prévisualisées avant lancement (voir TournamentsService.moveRosterOrder).
   @Post(':id/roster/move')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async moveRosterOrder(@Param('id') id: string, @Body() dto: RosterMoveDto, @CurrentUser() user: JwtUser) {
     const s = await this.service.moveRosterOrder(id, dto.playerId, dto.dir, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
@@ -443,7 +443,7 @@ export class TournamentsController {
 
   @Post(':id/roster/shuffle')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async shuffleRosterOrder(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     const s = await this.service.shuffleRosterOrder(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');

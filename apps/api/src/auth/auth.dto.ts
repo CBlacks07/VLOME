@@ -63,12 +63,6 @@ export class RegisterDto {
   @MaxLength(30)
   phone?: string;
 
-  // Club affiché (facultatif) — rattache le compte à la base de joueurs (créé dans le
-  // catalogue de clubs si nouveau, fusionné sur un club existant sinon).
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  club?: string;
 
   // Club choisi dans la liste des clubs validés : crée une demande d'adhésion que l'association du club valide.
   @IsOptional()

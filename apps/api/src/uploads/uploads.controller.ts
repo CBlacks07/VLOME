@@ -43,7 +43,7 @@ function uploadToCloudinary(buffer: Buffer, publicId: string, resourceType: 'ima
 export class UploadsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: USE_CLOUDINARY

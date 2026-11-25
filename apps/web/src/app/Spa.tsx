@@ -132,7 +132,7 @@ type State = {
   user: AuthUser | null; authTab: "login" | "register" | "forgot" | "reset"; authBusy: boolean; authError: string; authNotice: string; resetToken: string; authRole: string;
   q: string;
   openId: string | null; detail: Detail | null; detailBusy: boolean; editing: boolean;
-  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[]; clubRequests?: Detail[] } | null;
+  admin: { overview: Detail; users: Detail[]; news: Detail[]; products: Detail[]; orders: Detail[]; payments: Detail[]; creditPurchases: Detail[]; organizers: Detail[] } | null;
   adminTab: string; adminSearch: string; newsEdit: Detail | null; prodEdit: Detail | null;
   prodCat: string; prodSort: string; prodSortDir: "asc" | "desc";
   confirmBox: { title: string; message: string; okLabel: string; action: string } | null;
@@ -206,12 +206,12 @@ type State = {
   // Base de joueurs & clubs (site-wide, gérée depuis l'admin — aussi utilisée par l'assistant de création).
   roster: Detail[] | null; clubs: Detail[] | null;
   // Associations : clubs validés (liste d'inscription), espace « Mon club » d'un compte association, associations à valider (admin).
-  publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; adminAssocs: Detail[] | null; adminUnowned: Detail[] | null;
+  publicClubs: Detail[] | null; assoc: Detail | null; assocMsg: string; assocSearch: { q: string; results: Detail[] | null } | null; myClub: Detail | null; adminClubs: Detail | null; clubDetail: { id: string; data: Detail | null } | null; openClubSlug: string; clubPage: Detail | null;
   // Modale « Rattacher un compte association » (admin) : formulaire puis identifiants créés.
   ordersArchived: boolean; // liste des commandes (admin) : affiche les commandes archivées plutôt que les actives
   usersFilter: string; roleMenu: string | null; // liste des comptes (admin) : filtre par rôle et menu de changement de rôle ouvert
   mailStatus: Detail | null; mailTest: { busy: boolean; ok: boolean; msg: string } | null;
-  attachModal: { clubId: string; name: string; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
+  attachModal: { clubId: string; name: string; replace: boolean; email: string; busy: boolean; error: string; result: { email: string; password: string | null; created: boolean; emailed: boolean } | null } | null;
   rosterEdit: Detail | null; clubEdit: Detail | null; rosterTab: "joueurs" | "clubs" | "jeux";
   classementView: "joueurs" | "clubs" | "equipes" | "pronos"; // bascule joueurs / clubs sur la page Classements
   // Catalogue des jeux (site-wide, géré depuis l'admin) — noms canoniques proposés à la création
@@ -1830,7 +1830,7 @@ function clubLeaderboardBlock(rows: Detail[]) {
     return `<div style="border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:48px 24px;text-align:center;color:var(--text-muted)">Aucun joueur classé n'est encore rattaché à un club (à faire depuis Admin → Joueurs).</div>`;
   }
   const th = (t: string, r?: boolean) => `<th style="text-align:${r ? "right" : "left"};color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:1px;padding:12px 8px;font-weight:750">${t}</th>`;
-  const trs = list.map((c, i) => `<tr style="border-top:1px solid var(--border)"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${c.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${escHtml(c.name)}${c.championships > 0 ? ` <span title="Titres remportés par des joueurs du club" style="color:#FBBF24">${ic(I.crown, 12)} ${c.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""} classé${c.playerCount > 1 ? "s" : ""}</div></div></div></td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${c.wins}-${c.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${c.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${c.points}</td></tr>`).join("");
+  const trs = list.map((c, i) => `<tr style="border-top:1px solid var(--border)"><td style="padding:11px 8px;font-family:'Bebas Neue',sans-serif;font-size:19px;color:${i < 3 ? "#FBBF24" : "var(--text-faint)"}">${i + 1}</td><td style="padding:11px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text-muted)">${c.name.charAt(0).toUpperCase()}</span><div><div style="font-weight:650">${clubLink(c.name)}${c.championships > 0 ? ` <span title="Titres remportés par des joueurs du club" style="color:#FBBF24">${ic(I.crown, 12)} ${c.championships}</span>` : ""}</div><div style="font-size:11px;color:var(--text-faint)">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""} classé${c.playerCount > 1 ? "s" : ""}</div></div></div></td><td style="padding:11px 8px;text-align:right;font-variant-numeric:tabular-nums">${c.wins}-${c.losses}</td><td style="padding:11px 8px;text-align:right;color:#34D399;font-weight:700">${c.winrate}%</td><td style="padding:11px 8px;text-align:right;font-weight:800;color:#22D3EE;font-variant-numeric:tabular-nums">${c.points}</td></tr>`).join("");
   return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:8px 18px 14px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:480px"><tr>${th("#")}${th("Club")}${th("V-D", true)}${th("Winrate", true)}${th("Points", true)}</tr>${trs}</table></div>`;
 }
 
@@ -1919,7 +1919,7 @@ function pPlayerProfile(S: State) {
     <div style="display:grid;place-items:center;width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#22D3EE,#7C82FF);font-family:'Bebas Neue',sans-serif;font-size:26px;color:#04222a;flex:none">${escHtml(p.name).charAt(0).toUpperCase()}</div>
     <div style="min-width:0">
       <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,40px);letter-spacing:1px;margin:0;line-height:1">${escHtml(p.name)}</h1>
-      <div style="font-size:12.5px;color:var(--text-muted);margin-top:5px">${[p.club, p.city].filter(Boolean).map((v: string) => escHtml(v)).join(" · ") || "Aucune info de club ou de ville"}</div>
+      <div style="font-size:12.5px;color:var(--text-muted);margin-top:5px">${[p.club ? clubLink(p.club) : "", p.city ? escHtml(p.city) : ""].filter(Boolean).join(" · ") || "Aucune info de club ou de ville"}</div>
     </div>
   </div>`;
   const stats = `<div class="page-hpad" style="padding:0 44px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
@@ -2248,7 +2248,11 @@ function pBoutique(S: State) {
   return `<div>${head}${filters}${grid}</div>${modal}`;
 }
 
-const canManage = (S: State) => !!S.user && (S.user.role === "ORGANIZER" || S.user.role === "ADMIN");
+/** Comptes qui créent et pilotent des tournois (une association le fait pour son club, avec des crédits). */
+const isHost = (role?: string) => role === "ORGANIZER" || role === "ADMIN" || role === "ASSOCIATION";
+const canManage = (S: State) => !!S.user && isHost(S.user.role);
+/** Les événements restent réservés aux organisateurs et à l'équipe. */
+const canEvents = (S: State) => !!S.user && (S.user.role === "ORGANIZER" || S.user.role === "ADMIN");
 const ROLE_LABEL: Record<string, string> = { PLAYER: "Joueur", ORGANIZER: "Organisateur", ADMIN: "Administrateur", ASSOCIATION: "Association" };
 const ROLE_COLOR: Record<string, string> = { PLAYER: "#22D3EE", ORGANIZER: "#7C82FF", ADMIN: "#FBBF24", ASSOCIATION: "#34D399" };
 const card = (inner: string, pad = "20px") => `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:${pad}">${inner}</div>`;
@@ -2284,7 +2288,7 @@ function pDashboard(S: State) {
   const editor = S.profileEdit ? profileEditor(S) : "";
   // ADMIN/ORGANIZER passent par la console (sidebar) — voir renderPage(). Cette page ne sert plus qu'aux PLAYER.
   const body = grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S));
-  return wrap(header + editor + nextMatchCard(S) + statTiles + statsByGameCard(me) + body + loyaltyCard(S));
+  return wrap(header + editor + nextMatchCard(S) + myClubCard(S) + statTiles + statsByGameCard(me) + body + loyaltyCard(S));
 }
 
 /** Répartition des points/victoires par jeu — tout ce à quoi le joueur est rattaché sur le
@@ -2421,7 +2425,6 @@ function profileEditor(S: State) {
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">Mon profil</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Nom affiché<input id="p-name" value="${esc(me.displayName)}" ${nameLocked ? "disabled" : ""} style="${inp};${nameLocked ? "opacity:.55;cursor:not-allowed" : ""}" />${nameHelp}</label>
-      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Club <span style="color:var(--text-faint)">(optionnel · choisis un club de la liste, son association valide ton adhésion)</span><input id="p-club" list="p-club-list" value="${esc(me.clubName)}" placeholder="Team 228" style="${inp}" /><datalist id="p-club-list">${(S.publicClubs ?? S.clubs ?? []).map((c: Detail) => `<option value="${escAttr(c.name)}">`).join("")}</datalist></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Ville<input id="p-city" value="${esc(me.city)}" placeholder="Lomé" style="${inp}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Jeu favori<input id="p-game" value="${esc(me.favoriteGame)}" placeholder="EA FC 26" style="${inp}" /></label>
       <label style="font-size:12px;color:var(--text-muted);font-weight:600">Téléphone / WhatsApp<input id="p-phone" type="tel" value="${esc(me.phone)}" placeholder="+228 90 00 00 00" style="${inp}" /></label>
@@ -2525,7 +2528,7 @@ function consoleAccountHeader(S: State) {
 }
 
 const ADMIN_TABS: [string, string][] = [
-  ["apercu", "Pilotage"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["joueurs", "Joueurs, clubs & jeux"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["pronostics", "Pronostics"], ["paliers", "Paliers"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
+  ["apercu", "Pilotage"], ["events", "Événements"], ["site", "Site"], ["users", "Utilisateurs"], ["organisateurs", "Organisateurs"], ["clubs", "Clubs & associations"], ["joueurs", "Joueurs & jeux"], ["news", "Actualités"], ["galerie", "Galerie"], ["produits", "Produits"], ["fidelite", "Fidélité"], ["pronostics", "Pronostics"], ["paliers", "Paliers"], ["credits", "Crédits organisateur"], ["paiements", "Paiements"], ["commandes", "Commandes"],
   // Un administrateur reste un membre : il doit pouvoir modifier son profil et son mot de passe,
   // ce que seuls les joueurs et organisateurs pouvaient faire jusqu'ici.
   ["legal", "Pages légales"], ["compte", "Mon compte"],
@@ -2552,12 +2555,14 @@ function adminSearchBar(S: State, placeholder: string) {
 const scrollBox = (inner: string, max = 480) => `<div style="max-height:${max}px;overflow-y:auto;padding-right:4px">${inner}</div>`;
 
 /** Jeu d'onglets réduit pour ORGANIZER (pas d'accès aux réglages site/utilisateurs/joueurs/actus/galerie/produits — réservés à ADMIN). */
-const ASSOC_TABS: [string, string][] = [["club", "Mon club"], ["integration", "Intégration"], ["compte", "Mon compte"]];
+const ASSOC_TABS: [string, string][] = [["club", "Mon club"], ["tournois", "Tournois"], ["credits", "Crédits"], ["integration", "Intégration"], ["compte", "Mon compte"]];
+/** Onglets ajoutés à un admin ou un organisateur responsable d'un club. */
+const CLUB_TABS: [string, string][] = [["club", "Mon club"], ["integration", "Intégration"]];
 const ORG_TABS: [string, string][] = [["apercu", "Tableau de bord"], ["events", "Événements"], ["credits", "Crédits"], ["compte", "Mon compte"]];
 /** Icônes de la sidebar console par clé d'onglet — réutilise l'objet I déjà défini (aucune nouvelle icône). */
 const CONSOLE_TAB_ICON: Record<string, string> = {
   apercu: I.bolt, events: I.crown, site: I.edit, users: I.user, organisateurs: I.crown, joueurs: I.crown, news: I.flame, galerie: I.image,
-  produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, legal: I.edit, compte: I.user, club: I.crown, integration: I.extlink,
+  produits: I.cart, fidelite: I.medal, credits: I.cart, paiements: I.warn, commandes: I.cart, legal: I.edit, compte: I.user, club: I.crown, integration: I.extlink, clubs: I.crown, tournois: I.flame,
 };
 
 /** Tuiles KPI + table des tournois + « à traiter » (onglet "apercu") — données déjà chargées, aucune requête supplémentaire.
@@ -2902,7 +2907,7 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
         </div>
         ${themeToggleBtn(S, 40, 17)}
         <button data-go="accueil" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer">${ic(I.extlink, 15)}Voir le site</button>
-        ${u.role === "ASSOCIATION" ? "" : `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 16)}Nouveau tournoi</button>`}
+        <button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:9px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 16)}Nouveau tournoi</button>
       </div>
       <div class="console-body" style="padding:22px 28px;flex:1">${body}</div>
     </div>
@@ -2921,13 +2926,13 @@ function consolePage(S: State): string {
   // Admin ou organisateur responsable d'un club : ses onglets habituels, plus « Mon club » et « Intégration ».
   const runsClub = !isAssoc && ownsClub(S);
   const baseTabs = isAdmin ? ADMIN_TABS : isAssoc ? ASSOC_TABS : ORG_TABS;
-  const tabs = runsClub ? [...baseTabs.filter(([k]) => k !== "compte"), ...ASSOC_TABS] : baseTabs;
+  const tabs = runsClub ? [...baseTabs.filter(([k]) => k !== "compte"), ...CLUB_TABS, ...baseTabs.filter(([k]) => k === "compte")] : baseTabs;
   const clubTab = runsClub && (S.adminTab === "club" || S.adminTab === "integration");
   const activeLabel = tabs.find(([k]) => k === S.adminTab)?.[1] || tabs[0][1];
   let body: string;
   // « Mon compte » ne dépend que du compte connecté : à traiter AVANT l'attente des données
   // d'administration, sinon une panne du tableau de bord empêcherait de changer son mot de passe.
-  const accountBody = () => consoleAccountHeader(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S);
+  const accountBody = () => consoleAccountHeader(S) + myClubCard(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S);
   if (clubTab) {
     body = S.adminTab === "integration" ? assocEmbed(S) : assocClub(S);
   } else if (isAdmin) {
@@ -2939,6 +2944,7 @@ function consolePage(S: State): string {
       S.adminTab === "users" ? adminUsers(S) :
       S.adminTab === "organisateurs" ? adminOrganizers(S) :
       S.adminTab === "joueurs" ? adminRoster(S) :
+      S.adminTab === "clubs" ? adminClubs(S) :
       S.adminTab === "news" ? adminNews(S) :
       S.adminTab === "galerie" ? adminGallery(S) :
       S.adminTab === "produits" ? adminProducts(S) :
@@ -2951,7 +2957,8 @@ function consolePage(S: State): string {
       S.adminTab === "legal" ? adminLegal(S) :
       adminDashboard(S);
   } else if (isAssoc) {
-    body = S.adminTab === "compte" ? accountBody() : S.adminTab === "integration" ? assocEmbed(S) : assocClub(S);
+    body = S.adminTab === "compte" ? accountBody() : S.adminTab === "integration" ? assocEmbed(S)
+      : S.adminTab === "tournois" ? consoleOverview(S) : S.adminTab === "credits" ? organizerCredits(S) : assocClub(S);
   } else {
     body = S.adminTab === "compte" ? accountBody()
       : S.adminTab === "credits" ? organizerCredits(S)
@@ -2959,7 +2966,9 @@ function consolePage(S: State): string {
       : consoleOverview(S);
   }
   const editor = S.profileEdit ? profileEditor(S) : "";
-  const shell = consoleShell(S, tabs, activeLabel, editor + body);
+  // Une association arrive sur « Mon club » : on surligne cet onglet tant qu'aucun des siens n'est choisi.
+  const shownTab = isAssoc && !ASSOC_TABS.some(([k]) => k === S.adminTab) ? "club" : S.adminTab;
+  const shell = consoleShell({ ...S, adminTab: shownTab }, tabs, activeLabel, editor + body);
   return shell + (S.creating ? tournamentWizard(S) : "") + cartDrawer(S) + confirmModal(S) + attachModal(S) + matchCorrectModal(S) + playerDetailModal(S);
 }
 
@@ -3079,25 +3088,79 @@ function adminOverview(a: NonNullable<State["admin"]>) {
     ${stat(ov.users, "Utilisateurs", "#22D3EE")}${stat(ov.organizers, "Organisateurs", "#7C82FF")}${stat(ov.admins, "Admins", "#FBBF24")}${stat(ov.tournaments, "Tournois")}${stat(ov.news ?? 0, "Articles", "#34D399")}${stat(ov.gallery ?? 0, "Photos/vidéos", "#7C82FF")}${stat(ov.products, "Produits")}${stat(ov.pendingPayments ?? 0, "Paiements en attente", (ov.pendingPayments ?? 0) > 0 ? "#FBBF24" : "var(--text)")}${stat(ov.orders, "Commandes")}</div>`;
 }
 
-/** Espace association — onglet « Mon club » : demandes d'adhésion à valider, profil public du club, membres. */
+const dayFr = (d?: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+const clubLogo = (c: Detail, size = 40) => c.logoUrl
+  ? `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.28)}px;flex:none;background:url('${mediaUrl(c.logoUrl)}') center/cover;border:1px solid var(--border)"></span>`
+  : `<span style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.28)}px;flex:none;background:var(--surface-4);border:1px solid var(--border);font-size:${Math.round(size * 0.42)}px;font-weight:800;color:#7C82FF">${(c.name || "?").charAt(0).toUpperCase()}</span>`;
+/** Nom de club cliquable : ouvre sa page publique. */
+const clubLink = (name: string) => `<span data-clubname="${escAttr(name)}" title="Voir la page du club" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(124,130,255,.55);text-underline-offset:3px">${escHtml(name)}</span>`;
+const noteLine = (color: string, html: string) => `<div style="border:1px solid ${color}55;background:${color}12;border-radius:12px;padding:11px 14px;font-size:13px;line-height:1.55;margin-bottom:10px">${html}</div>`;
+const boxTitle = (color: string, title: string, count: number) => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:${color};flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:${color};font-weight:750">${title}</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${count}</span></div>`;
+const listRow = (main: string, actions = "") => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid var(--surface-4)"><div style="flex:1;min-width:200px">${main}</div>${actions ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>` : ""}</div>`;
+const subLine = (html: string) => `<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${html}</div>`;
+const primaryBtn = (attr: string, label: string) => `<button ${attr} style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">${label}</button>`;
+
+/** Bloc « Mon club » du joueur : son club, sa demande, ses invitations, son parcours. */
+function myClubCard(S: State): string {
+  const m = S.myClub;
+  if (!m || S.user?.role === "ASSOCIATION") return "";
+  const cur: Detail | null = m.current;
+  const req: Detail | null = m.request;
+  const invites: Detail[] = m.invites ?? [];
+  const history: Detail[] = m.history ?? [];
+  const choices: Detail[] = (S.publicClubs ?? []).filter((c: Detail) => c.joined && c.id !== cur?.club?.id && c.id !== req?.club?.id);
+  const notes = [
+    m.claim ? noteLine("#FBBF24", `Une fiche « <b>${escHtml(m.claim.name)}</b> » existe déjà dans la base de joueurs. L'équipe Miabe vérifie que c'est bien la tienne avant de la rattacher à ton compte.`) : "",
+    !m.awaitedClub ? "" : m.awaitedClub.clubId
+      ? noteLine("#34D399", `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span style="flex:1;min-width:200px"><b>${escHtml(m.awaitedClub.name)}</b> a rejoint la plateforme. Envoie ta demande : le gestionnaire du club la validera.</span>${btnSm(`data-myclubjoin="${escAttr(m.awaitedClub.clubId)}"`, "Demander à rejoindre", "#34D399", "rgba(52,211,153,.4)")}</div>`)
+      : noteLine("#FBBF24", `<b>${escHtml(m.awaitedClub.name)}</b> n'a pas encore rejoint la plateforme. Dès que ce sera fait, tu seras prévenu et tu pourras envoyer ta demande d'adhésion, que son gestionnaire validera.`),
+    m.refused ? noteLine("#FB7185", `Ta demande pour rejoindre <b>${escHtml(m.refused.club.name)}</b> n'a pas été retenue (${dayFr(m.refused.endedAt)}).`) : "",
+  ].join("");
+  const invBox = invites.length ? `<div style="margin-bottom:12px">${invites.map((i: Detail) => noteLine("#7C82FF", `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span style="flex:1;min-width:200px"><b>${escHtml(i.club.name)}</b> t'invite à rejoindre le club.</span><span style="display:flex;gap:8px">${btnSm(`data-myclubinvite="${i.id}|reject"`, "Décliner", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-myclubinvite="${i.id}|approve"`, "Accepter", "#34D399", "rgba(52,211,153,.4)")}</span></div>`)).join("")}</div>` : "";
+  const current = cur
+    ? `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">${clubLogo(cur.club, 48)}<div style="flex:1;min-width:180px"><div style="font-weight:750;font-size:16px">${clubLink(cur.club.name)}</div>${subLine(`Membre depuis le ${dayFr(cur.since)}`)}</div>${btnSm(`data-myclubleave="1"`, "Quitter le club", "#FB7185", "rgba(251,113,133,.35)")}</div>`
+    : `<div style="color:var(--text-muted);font-size:13.5px">Tu n'es membre d'aucun club.</div>`;
+  const pending = req ? `<div style="margin-top:12px">${noteLine("#22D3EE", `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span style="flex:1;min-width:200px">Demande envoyée à <b>${escHtml(req.club.name)}</b> le ${dayFr(req.createdAt)} — en attente de réponse.</span>${btnSm(`data-myclubcancel="1"`, "Annuler la demande")}</div>`)}</div>` : "";
+  const join = !req && choices.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px"><label style="font-size:12px;color:var(--text-muted);font-weight:600;flex:1;min-width:220px">${cur ? "Changer de club" : "Rejoindre un club"}<select id="mc-select" style="${adminInp}"><option value="">— Choisir un club —</option>${choices.map((c: Detail) => `<option value="${escAttr(c.id)}">${escHtml(c.name)}${c.city ? ` · ${escHtml(c.city)}` : ""}</option>`).join("")}</select></label>${primaryBtn('data-myclubjoin="select"', "Envoyer la demande")}</div>${cur ? subLine("Tu restes dans ton club actuel tant que le nouveau n'a pas accepté.") : ""}` : "";
+  const past = history.length ? `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:2px">Parcours</div>${history.map((h: Detail) => listRow(`<span style="font-weight:650">${clubLink(h.club.name)}</span>${subLine(`${dayFr(h.since)} → ${dayFr(h.endedAt)}${h.status === "removed" ? " · retiré par le club" : ""}`)}`)).join("")}</div>` : "";
+  return `<div style="margin-bottom:16px">${card(`${secTitle("Mon club")}${notes}${invBox}${current}${pending}${join}${past}`)}</div>`;
+}
+
 function assocClub(S: State): string {
   const a = S.assoc;
   if (!a) return `<div style="color:var(--text-muted);text-align:center;padding:40px 0">Chargement…</div>`;
   if (a.error) return card(`<div style="color:#FB7185;font-size:14px;line-height:1.6">${escHtml(a.error)}</div>`);
   const club: Detail = a.club;
-  const pending: Detail[] = a.pending ?? [];
+  const requests: Detail[] = a.requests ?? [];
+  const invites: Detail[] = a.invites ?? [];
   const members: Detail[] = a.members ?? [];
+  const history: Detail[] = a.history ?? [];
+  const approved = club.status === "APPROVED";
   const lbl = "font-size:12px;color:var(--text-muted);font-weight:600";
-  const date = (d?: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
-  const banner = club.status === "APPROVED" ? "" : `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.07);border-radius:14px;padding:14px 16px;color:var(--text);font-size:13.5px;line-height:1.6">${ic(I.warn, 17)}<div>${club.status === "PENDING"
-    ? `<b style="color:#FBBF24">Association en attente de validation.</b> L'équipe Miabe examine ta demande. Tant qu'elle n'est pas validée, <b>${escHtml(club.name)}</b> n'apparaît pas dans la liste des clubs et tu ne peux pas encore valider d'adhésions. Tu peux déjà compléter le profil ci-dessous.`
+  const banner = approved ? "" : `<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.07);border-radius:14px;padding:14px 16px;color:var(--text);font-size:13.5px;line-height:1.6">${ic(I.warn, 17)}<div>${club.status === "PENDING"
+    ? `<b style="color:#FBBF24">Association en attente de validation.</b> L'équipe Miabe examine ta demande. Tant qu'elle n'est pas validée, <b>${escHtml(club.name)}</b> n'apparaît pas dans la liste des clubs : pas d'adhésions ni de tournois pour l'instant. Tu peux déjà compléter le profil ci-dessous.`
     : `<b style="color:#FB7185">Association non retenue.</b> Contacte l'équipe Miabe pour en savoir plus.`}</div></div>`;
-  const reqBox = card(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#FBBF24;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#FBBF24;font-weight:750">Demandes d'adhésion</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${pending.length}</span></div>
-    ${pending.length ? pending.map((r: Detail) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid var(--surface-4)">
-      <div style="flex:1;min-width:200px"><div style="font-weight:650">${escHtml(r.displayName)} <span style="font-size:12px;color:var(--text-faint);font-weight:500">${escHtml(r.email)}</span></div><div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${r.city ? `${escHtml(r.city)} · ` : ""}demande du ${date(r.createdAt)}</div></div>
-      <div style="display:flex;gap:8px">${btnSm(`data-assocreview="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-assocreview="${r.id}|approve"`, "Accepter", "#34D399", "rgba(52,211,153,.4)")}</div>
-    </div>`).join("") : `<div style="color:var(--text-faint);font-size:13px;border-top:1px solid var(--surface-4);padding-top:12px">Aucune demande en attente. Les joueurs qui choisissent <b>${escHtml(club.name)}</b> à l'inscription apparaissent ici.</div>`}`);
+  const reqBox = card(`${boxTitle("#FBBF24", "Demandes d'adhésion", requests.length)}
+    ${requests.length ? requests.map((r: Detail) => listRow(`<div style="font-weight:650">${escHtml(r.name)}${r.email ? ` <span style="font-size:12px;color:var(--text-faint);font-weight:500">${escHtml(r.email)}</span>` : ""}</div>${subLine(`${r.city ? `${escHtml(r.city)} · ` : ""}demande du ${dayFr(r.createdAt)}`)}`,
+      btnSm(`data-assocreview="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)") + btnSm(`data-assocreview="${r.id}|approve"`, "Accepter", "#34D399", "rgba(52,211,153,.4)"))).join("")
+      : `<div style="color:var(--text-faint);font-size:13px;border-top:1px solid var(--surface-4);padding-top:12px">Aucune demande en attente.</div>`}`);
+  const found = S.assocSearch?.results;
+  const inviteBox = approved ? card(`${secTitle("Inviter un joueur")}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><label style="${lbl};flex:1;min-width:220px">Chercher par nom (joueurs inscrits)<input id="as-q" value="${escAttr(S.assocSearch?.q || "")}" placeholder="2 lettres minimum" style="${adminInp}" /></label>${primaryBtn('data-assocsearch="1"', "Rechercher")}</div>
+    ${found ? (found.length ? `<div style="margin-top:10px">${found.map((p: Detail) => listRow(`<span style="font-weight:650">${escHtml(p.name)}</span>${subLine([p.city, p.clubName ? `actuellement : ${p.clubName}` : "sans club"].filter(Boolean).map((v) => escHtml(String(v))).join(" · "))}`, btnSm(`data-associnvite="${p.id}"`, "Inviter", "#7C82FF", "#7C82FF55"))).join("")}</div>` : subLine("Aucun joueur inscrit ne correspond.")) : ""}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px"><label style="${lbl};flex:1;min-width:220px">Ou par l'adresse e-mail de son compte<input id="as-inv-email" type="email" placeholder="joueur@exemple.com" style="${adminInp}" /></label>${primaryBtn('data-associnvitemail="1"', "Inviter")}</div>
+    ${invites.length ? `<div style="margin-top:16px">${boxTitle("#7C82FF", "Invitations en attente", invites.length)}${invites.map((i: Detail) => listRow(`<span style="font-weight:650">${escHtml(i.name)}</span>${subLine(`invité le ${dayFr(i.createdAt)}`)}`, btnSm(`data-associnvcancel="${i.id}"`, "Annuler"))).join("")}</div>` : ""}`) : "";
+  const th = (label: string, align = "left") => `<th style="text-align:${align};padding:9px 10px;font-size:10.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);white-space:nowrap">${label}</th>`;
+  const rows = members.map((m: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)">
+    <td style="padding:10px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td>
+    <td style="padding:10px;font-weight:650">${escHtml(m.name)}${m.hasAccount ? "" : ` <span style="font-size:10.5px;color:var(--text-faint);font-weight:600">· sans compte</span>`}</td>
+    <td style="padding:10px;color:var(--text-muted);font-size:13px">${m.city ? escHtml(m.city) : "—"}</td>
+    <td style="padding:10px;color:var(--text-muted);font-size:13px;white-space:nowrap">${dayFr(m.since)}</td>
+    <td style="padding:10px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px">${m.matches ?? 0}</td>
+    <td style="padding:10px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#22D3EE">${m.points}</td>
+    <td style="padding:10px;text-align:right">${btnSm(`data-assocrm="${m.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</td></tr>`).join("");
+  const membersBox = card(`${secTitle(`Membres (${members.length})`)}${members.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px"><thead><tr>${th("#")}${th("Joueur")}${th("Ville")}${th("Depuis")}${th("Matchs", "right")}${th("Points", "right")}${th("", "right")}</tr></thead><tbody>${rows}</tbody></table></div>` : `<div style="color:var(--text-faint);font-size:13px">Aucun membre pour l'instant. Invite tes joueurs ci-dessus, ou attends leurs demandes.</div>`}`);
+  const historyBox = history.length ? card(`${secTitle("Anciens membres")}${history.map((h: Detail) => listRow(`<span style="font-weight:650">${escHtml(h.name)}</span>${subLine(`${dayFr(h.since)} → ${dayFr(h.endedAt)} · ${h.status === "removed" ? "retiré" : "parti"}`)}`)).join("")}`) : "";
   const profile = card(`${secTitle("Profil du club")}
     <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
       <div style="flex:1;min-width:220px"><div style="${lbl}">Logo</div>${filePicker("as-logo", "Choisir le logo", "image/*", club.logoUrl)}</div>
@@ -3108,17 +3171,33 @@ function assocClub(S: State): string {
         <label style="${lbl};grid-column:1/-1">Présentation<textarea id="as-desc" rows="3" style="${adminInp};resize:vertical">${escHtml(club.description || "")}</textarea></label>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap"><button data-assocsave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Enregistrer le profil</button>${S.assocMsg ? `<span style="font-size:12.5px;color:#34D399">${escHtml(S.assocMsg)}</span>` : ""}</div>`);
-  const th = (label: string, align = "left") => `<th style="text-align:${align};padding:9px 10px;font-size:10.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:var(--text-faint);white-space:nowrap">${label}</th>`;
-  const rows = members.map((m: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)">
-    <td style="padding:10px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td>
-    <td style="padding:10px;font-weight:650">${escHtml(m.name)}${m.hasAccount ? "" : ` <span style="font-size:10.5px;color:var(--text-faint);font-weight:600">· sans compte</span>`}</td>
-    <td style="padding:10px;color:var(--text-muted);font-size:13px">${m.city ? escHtml(m.city) : "—"}</td>
-    <td style="padding:10px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px">${m.matches ?? 0}</td>
-    <td style="padding:10px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:#22D3EE">${m.points}</td>
-    <td style="padding:10px;text-align:right">${btnSm(`data-assocrm="${m.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)")}</td></tr>`).join("");
-  const membersBox = card(`${secTitle(`Membres (${members.length})`)}${members.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:560px"><thead><tr>${th("#")}${th("Joueur")}${th("Ville")}${th("Matchs", "right")}${th("Points", "right")}${th("", "right")}</tr></thead><tbody>${rows}</tbody></table></div>` : `<div style="color:var(--text-faint);font-size:13px">Aucun membre pour l'instant. Tes joueurs rejoignent le club en le choisissant à l'inscription (ou depuis leur profil), puis tu valides leur demande ci-dessus.</div>`}`);
-  return `${banner}<div style="display:flex;flex-direction:column;gap:16px">${reqBox}${profile}${membersBox}</div>`;
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">${primaryBtn('data-assocsave="1"', "Enregistrer le profil")}${approved ? btnSm(`data-clubname="${escAttr(club.name)}"`, "Voir la page publique", "#22D3EE", "#22D3EE55") : ""}${S.assocMsg ? `<span style="font-size:12.5px;color:#34D399">${escHtml(S.assocMsg)}</span>` : ""}</div>`);
+  return `${banner}<div style="display:flex;flex-direction:column;gap:16px">${reqBox}${inviteBox}${membersBox}${profile}${historyBox}</div>`;
+}
+
+/** Page publique d'un club : présentation, membres classés, tournois. */
+function pClub(S: State): string {
+  const d = S.clubPage;
+  const wrap = (inner: string) => `<main class="rise page-hpad" style="width:100%;padding:28px 44px 60px">${inner}</main>`;
+  if (!d) return wrap(`<div style="color:var(--text-muted);text-align:center;padding:60px 0">Chargement du club…</div>`);
+  if (d.error) return wrap(card(`<div style="color:var(--text-muted);text-align:center;padding:20px">${escHtml(d.error)}</div>`));
+  const club: Detail = d.club;
+  const members: Detail[] = d.members ?? [];
+  const tourns: Detail[] = d.tournaments ?? [];
+  const listed = (S.publicClubs ?? []).find((c: Detail) => c.slug === club.slug);
+  const mine = S.myClub;
+  const canJoin = !!S.user && !!listed?.joined && !!mine && mine.current?.club?.id !== listed.id && mine.request?.club?.id !== listed.id;
+  const state = listed && !listed.joined ? `<span style="font-size:12.5px;color:var(--text-faint);max-width:260px;line-height:1.5">Ce club n'a pas encore rejoint la plateforme : les demandes d'adhésion ouvriront quand il aura un gestionnaire.</span>` : !listed || !mine ? "" : mine.current?.club?.id === listed.id ? `<span style="font-size:12.5px;font-weight:750;color:#34D399">Tu es membre de ce club</span>` : mine.request?.club?.id === listed.id ? `<span style="font-size:12.5px;font-weight:750;color:#22D3EE">Demande envoyée</span>` : "";
+  const head = `<button data-back="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:18px">← Retour</button>
+    <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:16px">${clubLogo(club, 76)}
+      <div style="flex:1;min-width:220px"><h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,5vw,52px);letter-spacing:1px;margin:0;line-height:1;overflow-wrap:break-word">${escHtml(club.name)}</h1>
+      <div style="color:var(--text-muted);font-size:13.5px;margin-top:6px">${[club.city, `${d.stats.members} membre${d.stats.members > 1 ? "s" : ""}`, `${d.stats.organized} tournoi${d.stats.organized > 1 ? "s" : ""} organisé${d.stats.organized > 1 ? "s" : ""}`].filter(Boolean).map((v) => escHtml(String(v))).join(" · ")}${club.website ? ` · <a href="${escAttr(club.website)}" target="_blank" rel="noopener noreferrer" style="color:#22D3EE;font-weight:700">Site web</a>` : ""}</div></div>
+      ${canJoin ? primaryBtn(`data-myclubjoin="${escAttr(listed.id)}"`, "Demander à rejoindre") : state}</div>
+    ${club.description ? `<p style="color:var(--text-muted);font-size:14px;line-height:1.65;max-width:760px;margin:0 0 20px">${escHtml(club.description)}</p>` : ""}`;
+  const ranking = card(`${secTitle(`Membres (${members.length})`)}${members.length ? members.map((m: Detail) => `<div data-playerprofile="${escAttr(m.name)}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--surface-4)">
+      <span style="width:26px;text-align:right;font-family:'Bebas Neue',sans-serif;font-size:17px;color:${m.rank <= 3 ? "#FBBF24" : "var(--text-faint)"}">${m.rank}</span><span style="flex:1;min-width:0;font-weight:650">${escHtml(m.name)}</span><span style="font-size:12px;color:var(--text-faint)">${m.matches} match${m.matches > 1 ? "s" : ""}</span><span style="min-width:62px;text-align:right;font-weight:800;color:#22D3EE;font-family:'JetBrains Mono',monospace;font-size:13px">${m.points} pts</span></div>`).join("") : `<div style="color:var(--text-faint);font-size:13px">Pas encore de membre.</div>`}`);
+  const tourCard = card(`${secTitle(`Tournois (${tourns.length})`)}${tourns.length ? tourns.map((t: Detail) => `<div data-open="${t.id}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--surface-4);cursor:pointer"><div style="flex:1;min-width:0"><div style="font-weight:700">${escHtml(t.name)}</div>${subLine([t.game, t.place, t.date ? dayFr(t.date) : "", t.organizedByClub ? "organisé par le club" : ""].filter(Boolean).map((v) => escHtml(String(v))).join(" · "))}</div><span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${t.status === "LIVE" ? "#22D3EE" : t.status === "FINISHED" ? "#34D399" : "var(--text-muted)"}">${t.status === "LIVE" ? "En direct" : t.status === "FINISHED" ? "Terminé" : "À venir"}</span></div>`).join("") : `<div style="color:var(--text-faint);font-size:13px">Aucun tournoi pour l'instant.</div>`}`);
+  return wrap(head + grid2(ranking, tourCard));
 }
 
 /** Espace association — onglet « Intégration » : liens et codes pour afficher le club (tournois, classement, membres) sur son propre site. */
@@ -3163,7 +3242,6 @@ function adminUsers(S: State) {
   const shown = users.filter((u: Detail) => filter === "ALL" || kind(u) === filter).map((u: Detail, i: number) => ({ u, i })).sort((x: { u: Detail; i: number }, y: { u: Detail; i: number }) => (KIND_ORDER[kind(x.u)] ?? 9) - (KIND_ORDER[kind(y.u)] ?? 9) || x.i - y.i).map((e: { u: Detail }) => e.u);
   const date = (d?: string) => (d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—");
   const orgPending = new Set((a.organizers ?? []).filter((o: Detail) => o.organizerStatus === "PENDING").map((o: Detail) => o.id));
-  const clubPending = new Map<string, Detail>((a.clubRequests ?? []).map((r: Detail) => [r.id, r] as [string, Detail]));
   const badge = (label: string, color: string, title = "") => `<span ${title ? `title="${escAttr(title)}"` : ""} style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap;color:${color};background:${color}1f;border:1px solid ${color}55">${label}</span>`;
   const lockIc = ic('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 15);
   const iconBtn = (attr: string, title: string, color: string, inner: string) => `<button ${attr} title="${escAttr(title)}" aria-label="${escAttr(title)}" style="display:grid;place-items:center;width:32px;height:32px;border-radius:9px;cursor:pointer;background:transparent;border:1px solid var(--border);color:${color}">${inner}</button>`;
@@ -3187,7 +3265,6 @@ function adminUsers(S: State) {
     const statuses = [
       usr.ownsClub && k !== "ASSOCIATION" ? badge(`Gère ${escHtml(usr.ownedClubName || "un club")}`, "#34D399") : "",
       orgPending.has(usr.id) ? badge("Organisateur en attente", "#FBBF24") : "",
-      clubPending.has(usr.id) ? badge(clubPending.get(usr.id)!.clubBlocking ? "Club en attente · bloqué" : "Club en attente", "#FB7185") : "",
     ].join("");
     return `<div class="ut-row">
       <div class="ut-user"><span style="display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:50%;background:var(--surface-4);border:1px solid var(--border);font-size:13px;font-weight:800;color:var(--text-muted)">${(usr.displayName || "?").charAt(0).toUpperCase()}</span>
@@ -3203,35 +3280,10 @@ function adminUsers(S: State) {
     const c = k === "ALL" ? "#22D3EE" : ROLE_COLOR[k];
     return `<button data-userfilter="${k}" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 14px;cursor:pointer;font-family:inherit;background:${on ? c + "1f" : "transparent"};border:1px solid ${on ? c : "var(--border)"};color:${on ? c : "var(--text-muted)"}">${KIND_LABEL[k]}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;opacity:.75">${counts[k]}</span></button>`;
   }).join("");
-  const assocReqs: Detail[] = S.adminAssocs ?? [];
-  const assocBox = assocReqs.length ? `<div style="margin-bottom:16px">${card(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#34D399;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#34D399;font-weight:750">Associations à intégrer</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${assocReqs.length}</span></div>
-    <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-muted);line-height:1.5">Une association validée entre dans la liste des clubs : ses joueurs la choisissent à l'inscription, et c'est elle qui valide leur adhésion depuis son espace « Mon club ».</p>
-    ${assocReqs.map((r: Detail) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid var(--surface-4)">
-      <div style="flex:1;min-width:220px"><div style="font-weight:700;font-size:14.5px;color:#34D399">${escHtml(r.name)}${r.city ? ` <span style="font-size:12px;color:var(--text-faint);font-weight:500">· ${escHtml(r.city)}</span>` : ""}</div>
-      <div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${escHtml(r.owner?.displayName || "")} · ${escHtml(r.owner?.email || "")}${r.owner?.phone ? ` · ${escHtml(r.owner.phone)}` : ""}${r.website ? ` · <a href="${escAttr(r.website)}" target="_blank" rel="noopener" style="color:#22D3EE">${escHtml(r.website)}</a>` : ""}</div>${r.description ? `<div style="font-size:12.5px;color:var(--text-faint);margin-top:3px">${escHtml(r.description)}</div>` : ""}</div>
-      <div style="display:flex;gap:8px">${btnSm(`data-assocadmin="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-assocadmin="${r.id}|approve"`, "Intégrer", "#34D399", "rgba(52,211,153,.4)")}</div>
-    </div>`).join("")}`)}</div>` : "";
-  const unowned: Detail[] = S.adminUnowned ?? [];
-  const unownedBox = unowned.length ? `<div style="margin-bottom:16px">${card(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#7C82FF;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#7C82FF;font-weight:750">Clubs sans compte association</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${unowned.length}</span></div>
-    <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-muted);line-height:1.5">Ces clubs sont déjà dans la base mais personne ne les pilote. Rattache-leur un compte association : il valide les adhésions de ses joueurs et récupère ses codes d'intégration.</p>
-    ${unowned.map((c: Detail) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid var(--surface-4)">
-      <div style="flex:1;min-width:200px"><div style="font-weight:700">${escHtml(c.name)}${c.city ? ` <span style="font-size:12px;color:var(--text-faint);font-weight:500">· ${escHtml(c.city)}</span>` : ""}</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:3px">${c._count?.players ?? 0} joueur${(c._count?.players ?? 0) > 1 ? "s" : ""}</div></div>
-      ${btnSm(`data-assocattach="${c.id}"`, "Rattacher un compte", "#7C82FF", "#7C82FF55")}
-    </div>`).join("")}`)}</div>` : "";
-  const clubReqs: Detail[] = a.clubRequests ?? [];
-  const clubBox = clubReqs.length ? `<div style="margin-bottom:16px">${card(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="width:8px;height:8px;border-radius:50%;background:#FBBF24;flex:none"></span><h3 style="margin:0;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:#FBBF24;font-weight:750">Clubs à valider (saisis à la main)</h3><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint)">${clubReqs.length}</span></div>
-    <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-muted);line-height:1.5">Ces joueurs ont tapé un club à la main (ancien formulaire) : le club n'est ajouté à la base qu'après ta validation. Désormais le club se choisit dans la liste des associations intégrées.</p>
-    ${clubReqs.map((r: Detail) => `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid var(--surface-4)">
-      <div style="flex:1;min-width:200px"><div style="font-weight:650">${escHtml(r.displayName)} <span style="font-size:12px;color:var(--text-faint);font-weight:500">${escHtml(r.email)}</span></div><div style="font-size:13px;color:var(--text);margin-top:3px">Club demandé : <b style="color:#FBBF24">${escHtml(r.clubRequested || "")}</b>${r.clubBlocking ? ` <span style="font-size:11px;color:#FB7185;font-weight:700">· compte bloqué</span>` : ""}</div></div>
-      <div style="display:flex;gap:8px">${btnSm(`data-clubreview="${r.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)")}${btnSm(`data-clubreview="${r.id}|approve"`, "Valider le club", "#34D399", "rgba(52,211,153,.4)")}</div>
-    </div>`).join("")}`)}</div>` : "";
   const list = shown.length
     ? shown.map(row).join("")
     : `<div style="color:var(--text-faint);font-size:13px;padding:22px 0;text-align:center">${q ? "Aucun compte ne correspond à cette recherche." : "Aucun compte dans cette catégorie."}</div>`;
-  return `${assocBox}${unownedBox}${clubBox}${card(`
+  return `${card(`
     <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
       ${secTitle(`Comptes (${all.length})`).replace("margin:0 0 14px", "margin:0")}
       <div style="flex:1;min-width:220px;max-width:340px">${adminSearchBar(S, "Nom ou email…").replace("margin-bottom:14px", "margin-bottom:0")}</div>
@@ -3246,9 +3298,9 @@ function adminRoster(S: State) {
   // inline-flex + nowrap + flex:none : sans ça, dès que la ligne manque de place, le bouton se
   // rétrécit et son contenu se replie — l'icône se retrouvait au-dessus du libellé au lieu d'être
   // à côté. C'est la rangée d'onglets qui passe à la ligne (flex-wrap), pas l'intérieur des boutons.
-  const tabBtn = (k: "joueurs" | "clubs" | "jeux", label: string) => `<button data-rostertab="${k}" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex:none;font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "var(--surface)"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "var(--border)"};color:${S.rosterTab === k ? "#22D3EE" : "var(--text-muted)"}">${label}</button>`;
-  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${tabBtn("joueurs", `${ic(I.user, 14)}Joueurs`)}${tabBtn("clubs", `${ic(I.image, 14)}Clubs`)}${tabBtn("jeux", `${ic(I.bolt, 14)}Jeux`)}</div>`;
-  return tabs + (S.rosterTab === "clubs" ? adminClubsView(S) : S.rosterTab === "jeux" ? adminGamesView(S) : adminRosterPlayers(S));
+  const tabBtn = (k: "joueurs" | "jeux", label: string) => `<button data-rostertab="${k}" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;flex:none;font-size:12.5px;font-weight:700;border-radius:999px;padding:8px 15px;cursor:pointer;background:${S.rosterTab === k ? "rgba(34,211,238,.1)" : "var(--surface)"};border:1px solid ${S.rosterTab === k ? "#22D3EE" : "var(--border)"};color:${S.rosterTab === k ? "#22D3EE" : "var(--text-muted)"}">${label}</button>`;
+  const tabs = `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">${tabBtn("joueurs", `${ic(I.user, 14)}Joueurs`)}${tabBtn("jeux", `${ic(I.bolt, 14)}Jeux`)}</div>`;
+  return tabs + (S.rosterTab === "jeux" ? adminGamesView(S) : adminRosterPlayers(S));
 }
 
 function adminRosterPlayers(S: State) {
@@ -3276,31 +3328,71 @@ function adminRosterPlayers(S: State) {
   return editor + `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px">${head}${adminSearchBar(S, "Nom, ville ou club…")}${scrollBox(rows)}<p style="color:var(--text-faint);font-size:11.5px;margin-top:12px">Ces joueurs sont proposés à la création d'un tournoi (« Depuis la base de joueurs »).</p></div>`;
 }
 
-function adminClubsView(S: State) {
-  const clubs: Detail[] = S.clubs ?? [];
+/** Admin : un seul endroit pour les clubs et les associations — à traiter, liste, responsable, membres, fusion. */
+function adminClubs(S: State): string {
+  const o = S.adminClubs;
+  if (!o) return `<div style="color:var(--text-muted);text-align:center;padding:40px 0">Chargement…</div>`;
+  if (o.error) return card(`<div style="color:#FB7185;font-size:14px">${escHtml(o.error)}</div>`);
+  const clubs: Detail[] = o.clubs ?? [];
+  const claims: Detail[] = o.claims ?? [];
+  const waiting: Detail[] = o.waiting ?? [];
+  const pendingClubs = clubs.filter((c: Detail) => c.status === "PENDING");
   const e = S.clubEdit;
-  const editor = e ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px;margin-bottom:16px">
+  const lbl = "font-size:12px;color:var(--text-muted);font-weight:600";
+  const editor = e ? `<div style="border:1px solid rgba(124,130,255,.35);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px">
     <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px">${e.id ? "Modifier le club" : "Nouveau club"}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">
-      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team 228" style="${adminInp}" /></label>
-      <label style="font-size:12px;color:var(--text-muted);font-weight:600">Ville<input id="cl-city" value="${escAttr(e.city)}" placeholder="Lomé" style="${adminInp}" /></label>
+      <label style="${lbl}">Nom<input id="cl-name" value="${escAttr(e.name)}" placeholder="Team 228" style="${adminInp}" /></label>
+      <label style="${lbl}">Ville<input id="cl-city" value="${escAttr(e.city)}" placeholder="Lomé" style="${adminInp}" /></label>
     </div>
-    <div style="margin-top:14px"><div style="font-size:12px;color:var(--text-muted);font-weight:600;margin-bottom:2px">Logo du club (optionnel)</div>${filePicker("cl-logo", "Choisir le logo", "image/*", e.logoUrl)}</div>
-    <div style="display:flex;gap:10px;margin-top:14px"><button data-clubsave="${e.id || "new"}" style="background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:11px 18px;font-weight:750;font-size:14px;cursor:pointer">${e.id ? "Enregistrer" : "Créer le club"}</button><button data-clubcancel="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer">Annuler</button></div>
+    <div style="margin-top:14px"><div style="${lbl};margin-bottom:2px">Logo du club (optionnel)</div>${filePicker("cl-logo", "Choisir le logo", "image/*", e.logoUrl)}</div>
+    <div style="display:flex;gap:10px;margin-top:14px">${primaryBtn(`data-clubsave="${e.id || "new"}"`, e.id ? "Enregistrer" : "Créer le club")}<button data-clubcancel="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 18px;font-weight:700;font-size:13px;cursor:pointer">Annuler</button></div>
   </div>` : "";
+  const assocBox = pendingClubs.length ? card(`${boxTitle("#34D399", "Associations à intégrer", pendingClubs.length)}
+    ${pendingClubs.map((c: Detail) => listRow(`<div style="font-weight:700;color:#34D399">${escHtml(c.name)}${c.city ? ` <span style="font-size:12px;color:var(--text-faint);font-weight:500">· ${escHtml(c.city)}</span>` : ""}</div>${subLine(`${escHtml(c.owner?.displayName || "")} · ${escHtml(c.owner?.email || "")}${c.owner?.phone ? ` · ${escHtml(c.owner.phone)}` : ""}${c.website ? ` · <a href="${escAttr(c.website)}" target="_blank" rel="noopener" style="color:#22D3EE">${escHtml(c.website)}</a>` : ""}`)}${c.description ? subLine(escHtml(c.description)) : ""}`,
+      btnSm(`data-assocadmin="${c.id}|reject"`, "Refuser", "#FB7185", "rgba(251,113,133,.35)") + btnSm(`data-assocadmin="${c.id}|approve"`, "Intégrer", "#34D399", "rgba(52,211,153,.4)"))).join("")}`) : "";
+  const claimBox = claims.length ? card(`${boxTitle("#FBBF24", "Fiches joueurs à vérifier", claims.length)}
+    <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-muted);line-height:1.5">Un nouveau compte porte le même nom qu'une fiche déjà dans la base. Attribue-la seulement si c'est bien la même personne : le compte récupère son club et son historique.</p>
+    ${claims.map((c: Detail) => listRow(`<div style="font-weight:700">${escHtml(c.name)}${c.clubName ? ` <span style="font-size:12px;color:var(--text-faint);font-weight:500">· ${escHtml(c.clubName)}</span>` : ""}</div>${subLine(`demandée par ${escHtml(c.user?.displayName || "?")} · ${escHtml(c.user?.email || "")} · inscrit le ${dayFr(c.user?.createdAt)}`)}`,
+      btnSm(`data-adminclaim="${c.playerId}|reject"`, "Ce n'est pas lui", "#FB7185", "rgba(251,113,133,.35)") + btnSm(`data-adminclaim="${c.playerId}|approve"`, "Attribuer la fiche", "#34D399", "rgba(52,211,153,.4)"))).join("")}`) : "";
+  const WAIT: Record<string, string> = { WAITING: "e-mail à envoyer", INFORMED: "prévenu : club attendu", AVAILABLE: "prévenu : le club est arrivé" };
+  const waitBox = waiting.length ? card(`${boxTitle("#7C82FF", "Joueurs qui attendent leur club", waiting.length)}
+    <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-muted);line-height:1.5">Rien à valider ici. Ces joueurs sont prévenus par e-mail : ils enverront leur demande quand leur club aura un gestionnaire, et c'est lui qui les admettra.</p>
+    ${waiting.map((r: Detail) => listRow(`<div style="font-weight:650">${escHtml(r.name)} <span style="font-size:12px;color:var(--text-faint);font-weight:500">${escHtml(r.email)}</span></div>${subLine(`Attend <b style="color:var(--text)">${escHtml(r.clubName || "")}</b> · ${WAIT[r.status] || ""}`)}`)).join("")}`) : "";
+  const STATUS: Record<string, [string, string]> = { APPROVED: ["Actif", "#34D399"], PENDING: ["En attente", "#FBBF24"], REJECTED: ["Refusé", "#FB7185"] };
   const q = S.adminSearch.trim().toLowerCase();
-  const filtered = q ? clubs.filter((c: Detail) => `${c.name} ${c.city || ""}`.toLowerCase().includes(q)) : clubs;
-  const clubAvatar = (c: Detail) => c.logoUrl
-    ? `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;overflow:hidden;flex:none;background:url('${mediaUrl(c.logoUrl)}') center/cover;border:1px solid var(--border)"></span>`
-    : `<span style="display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--surface-4);border:1px solid var(--border);color:#7C82FF;flex:none">${ic(I.image, 16)}</span>`;
-  const rows = filtered.length ? filtered.map((c: Detail) => `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--surface-4);flex-wrap:wrap">
-      ${clubAvatar(c)}
-      <div style="min-width:0;flex:1"><div style="font-weight:650;font-size:14px">${escHtml(c.name)}</div><div style="font-size:11.5px;color:var(--text-faint)">${escHtml(c.city) || "—"}</div></div>
-      <span style="font-size:12px;color:var(--text-muted)">${c.playerCount} joueur${c.playerCount > 1 ? "s" : ""}</span>
-      <div style="display:inline-flex;gap:6px">${btnSm(`data-clubedit="${c.id}"`, "Modifier", "#7C82FF", "#7C82FF55")}${btnSm(`data-clubdel="${c.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div></div>`).join("")
-    : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun club trouvé." : "Aucun club. Crée le premier !"}</div>`;
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">${secTitle(`Clubs (${clubs.length})`)}<button data-clubedit="new" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7C82FF,#5a60e0);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:750;font-size:13.5px;cursor:pointer">${ic(I.plus, 15)}Nouveau club</button></div>`;
-  return editor + `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:20px">${head}${adminSearchBar(S, "Nom ou ville…")}${scrollBox(rows)}</div>`;
+  const shown = clubs.filter((c: Detail) => !q || `${c.name} ${c.city || ""} ${c.owner?.email || ""}`.toLowerCase().includes(q));
+  const detailOf = (c: Detail): string => {
+    const d = S.clubDetail?.data;
+    if (!d) return `<div style="color:var(--text-muted);font-size:13px;padding:12px 0">Chargement…</div>`;
+    const requests: Detail[] = d.requests ?? [], members: Detail[] = d.members ?? [], invites: Detail[] = d.invites ?? [], history: Detail[] = d.history ?? [];
+    const inClub = new Set(members.map((m: Detail) => m.id));
+    // Club avec gestionnaire : l'équipe n'ajoute que les fiches sans compte (les autres sont admis par le gestionnaire).
+    const addable: Detail[] = (S.roster ?? []).filter((p: Detail) => !inClub.has(p.id) && (!c.owner || !p.hasAccount));
+    const others = clubs.filter((x: Detail) => x.id !== c.id);
+    const sub = (title: string, inner: string) => `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;margin-bottom:4px">${title}</div>${inner}</div>`;
+    return `<div style="background:var(--surface-3);border:1px solid var(--border);border-radius:14px;padding:16px;margin:0 0 12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${btnSm(`data-assocattach="${c.id}"`, c.owner ? "Changer de responsable" : "Rattacher un responsable", "#7C82FF", "#7C82FF55")}${c.owner ? btnSm(`data-adminowner="${c.id}"`, "Retirer le responsable", "#FBBF24", "rgba(251,191,36,.4)") : ""}${btnSm(`data-clubedit="${c.id}"`, "Modifier", "#22D3EE", "#22D3EE55")}${c.status === "REJECTED" ? btnSm(`data-assocadmin="${c.id}|approve"`, "Réactiver", "#34D399", "rgba(52,211,153,.4)") : ""}${c.status === "APPROVED" ? btnSm(`data-clubname="${escAttr(c.name)}"`, "Page publique") : ""}${c.owner ? "" : btnSm(`data-adminclubdel="${c.id}"`, "Supprimer", "#FB7185", "rgba(251,113,133,.35)")}</div>
+      ${requests.length ? sub(`Demandes en attente (${requests.length})`, subLine(c.owner ? "C'est le responsable du club qui les valide, depuis son espace « Mon club »." : "Elles seront validées par le responsable dès que le club en aura un.") + requests.map((r: Detail) => listRow(`<span style="font-weight:650">${escHtml(r.name)}</span>${subLine(`${r.email ? `${escHtml(r.email)} · ` : ""}le ${dayFr(r.createdAt)}`)}`)).join("")) : ""}
+      ${sub(`Membres (${members.length})`, (members.length ? scrollBox(members.map((m: Detail) => listRow(`<span style="font-weight:650">${escHtml(m.name)}</span>${subLine(`depuis le ${dayFr(m.since)} · ${m.points} pts${m.hasAccount ? "" : " · sans compte"}`)}`, btnSm(`data-adminmemberrm="${c.id}|${m.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)"))).join(""), 300) : subLine("Aucun membre."))
+        + `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px"><label style="${lbl};flex:1;min-width:200px">${c.owner ? "Ajouter une fiche sans compte (les joueurs inscrits passent par le responsable)" : "Ajouter un joueur de la base"}<select id="cd-player" style="${adminInp}"><option value="">— Choisir —</option>${addable.map((p: Detail) => `<option value="${p.id}">${escHtml(p.name)}${p.clubName ? ` (quittera ${escHtml(p.clubName)})` : ""}</option>`).join("")}</select></label>${primaryBtn(`data-adminmember="${c.id}"`, "Ajouter")}</div>`)}
+      ${invites.length ? sub(`Invitations en attente (${invites.length})`, invites.map((i: Detail) => listRow(`<span style="font-weight:650">${escHtml(i.name)}</span>${subLine(`le ${dayFr(i.createdAt)}`)}`)).join("")) : ""}
+      ${history.length ? sub("Anciens membres", history.map((h: Detail) => listRow(`<span style="font-weight:650">${escHtml(h.name)}</span>${subLine(`${dayFr(h.since)} → ${dayFr(h.endedAt)} · ${h.status === "removed" ? "retiré" : "parti"}`)}`)).join("")) : ""}
+      ${others.length ? sub("Doublon ? Fusionner ce club dans un autre", `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><label style="${lbl};flex:1;min-width:200px">Club qui reste<select id="mg-target" style="${adminInp}"><option value="">— Choisir —</option>${others.map((x: Detail) => `<option value="${x.id}">${escHtml(x.name)}</option>`).join("")}</select></label>${btnSm(`data-adminmerge="${c.id}"`, "Fusionner", "#FBBF24", "rgba(251,191,36,.4)")}</div>`) : ""}
+    </div>`;
+  };
+  const rows = shown.length ? shown.map((c: Detail) => {
+    const [label, color] = STATUS[c.status] || [c.status, "var(--text-muted)"];
+    const open = S.clubDetail?.id === c.id;
+    return `<div style="border-top:1px solid var(--surface-4)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0">${clubLogo(c, 36)}
+      <div style="flex:1;min-width:200px"><div style="font-weight:700;font-size:14.5px">${escHtml(c.name)} <span style="font-size:10.5px;font-weight:800;color:${color};border:1px solid ${color};border-radius:99px;padding:1px 8px;white-space:nowrap">${label}</span></div>
+      ${subLine(`${c.city ? `${escHtml(c.city)} · ` : ""}${c.owner ? `Responsable : ${escHtml(c.owner.displayName)} (${escHtml(c.owner.email)})` : "Sans responsable"}`)}</div>
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">${c.members} membre${c.members > 1 ? "s" : ""}</span>
+      ${c.requests ? `<span style="font-size:11px;font-weight:800;color:#FBBF24;white-space:nowrap">${c.requests} demande${c.requests > 1 ? "s" : ""}</span>` : ""}
+      ${btnSm(`data-adminclubopen="${c.id}"`, open ? "Fermer" : "Gérer", "#7C82FF", "#7C82FF55")}</div>${open ? detailOf(c) : ""}</div>`;
+  }).join("") : `<div style="color:var(--text-faint);font-size:13.5px;padding:16px 0;text-align:center">${q ? "Aucun club trouvé." : "Aucun club. Crée le premier !"}</div>`;
+  const listBox = card(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">${secTitle(`Clubs & associations (${clubs.length})`)}${primaryBtn('data-clubedit="new"', "Nouveau club")}</div>${adminSearchBar(S, "Nom, ville ou responsable…")}${rows}`);
+  return `<div style="display:flex;flex-direction:column;gap:16px">${editor}${assocBox}${claimBox}${waitBox}${listBox}</div>`;
 }
 
 /** Catalogue des jeux — noms canoniques proposés à la création d'un tournoi (évite les doublons
@@ -5607,7 +5699,7 @@ function pAuth(S: State) {
     </div>
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
       <label style="${lbl}">Téléphone / WhatsApp <span style="color:var(--text-faint)">(optionnel)</span><input id="a-phone" type="tel" placeholder="+228 90 00 00 00" style="${inp}" /></label>
-      ${S.authRole === "PLAYER" ? `<label style="${lbl}">Club <span style="color:var(--text-faint)">(optionnel · l'association du club valide ton adhésion)</span><select id="a-club" style="${inp}"><option value="">Aucun club</option>${(S.publicClubs ?? []).map((c: Detail) => `<option value="${escAttr(c.id)}">${escHtml(c.name)}${c.city ? ` · ${escHtml(c.city)}` : ""}</option>`).join("")}</select></label>` : `<div></div>`}
+      ${S.authRole === "PLAYER" ? `<label style="${lbl}">Club <span style="color:var(--text-faint)">(optionnel · clubs présents sur la plateforme ; leur gestionnaire valide ton adhésion)</span><select id="a-club" style="${inp}"><option value="">Aucun club</option>${(S.publicClubs ?? []).filter((c: Detail) => c.joined).map((c: Detail) => `<option value="${escAttr(c.id)}">${escHtml(c.name)}${c.city ? ` · ${escHtml(c.city)}` : ""}</option>`).join("")}</select></label>` : `<div></div>`}
     </div>
     ${S.authRole === "ASSOCIATION" ? `<label style="${lbl};margin-top:14px">Nom de l'association<input id="a-assocname" placeholder="Gouzepe Gaming Club" style="${inp}" /></label>
     <div class="grid2b" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
@@ -5714,7 +5806,7 @@ function attachModal(S: State): string {
       ${r.password ? `<p style="display:flex;gap:8px;align-items:flex-start;text-align:left;color:${r.emailed ? "var(--text-faint)" : "#FBBF24"};font-size:12px;line-height:1.55;margin:14px 0 0"><span style="flex:none;margin-top:1px">${ic(I.warn, 14)}</span><span>${r.emailed ? "Ces informations ont aussi été envoyées par e-mail. " : "L'e-mail n'a pas pu partir : transmets-lui ces informations toi-même. "}Note le mot de passe maintenant, il ne sera plus affiché. Le responsable pourra le changer dans « Mon compte ».</span></p>` : ""}
       <div style="display:flex;margin-top:20px"><button data-attachclose="1" style="flex:1;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer;font-family:inherit">Terminé</button></div>`
     : `<div style="display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:rgba(124,130,255,.1);border:1px solid rgba(124,130,255,.4);color:#7C82FF;margin:0 auto 14px">${ic(I.user, 24)}</div>
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:6px">Rattacher un compte</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:6px">${m.replace ? "Changer de responsable" : "Rattacher un compte"}</div>
       <p style="color:var(--text-muted);font-size:13.5px;line-height:1.55;margin:0">Club : <b style="color:var(--text)">${escHtml(m.name)}</b></p>
       <div style="text-align:left;margin-top:16px"><label for="att-email" style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:6px">E-mail du responsable</label>
         <input id="att-email" type="email" autocomplete="off" value="${escAttr(m.email)}" placeholder="contact@mon-association.org" style="width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 13px" />
@@ -6267,7 +6359,7 @@ function eventCard(ev: Detail): string {
 /** Page publique « Événements » : tous les événements publiés, en direct d'abord. */
 function pEvenements(S: State) {
   const list = S.events;
-  const manage = canManage(S);
+  const manage = canEvents(S);
   const head = railPageHead("Événements", "Compétitions, LAN et rendez-vous de la communauté : chaque événement regroupe un ou plusieurs tournois, parfois en même temps.",
     manage ? `<button data-evlist="1" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Gérer mes événements</button>` : "");
   const body = list === null
@@ -6283,7 +6375,7 @@ function pEvenement(S: State) {
   const ev = S.eventDetail;
   if (!ev) return `<div style="color:var(--text-muted);text-align:center;padding:80px 0">Chargement de l'événement…</div>`;
   const accent = evAccent(ev);
-  const isOwner = !!S.user && canManage(S) && (S.user.role === "ADMIN" || ev.createdById === (S.me?.id ?? S.user?.id));
+  const isOwner = !!S.user && canEvents(S) && (S.user.role === "ADMIN" || ev.createdById === (S.me?.id ?? S.user?.id));
   const tournaments: TournCard[] = ev.tournaments ?? [];
   const live = tournaments.filter((t) => t.live);
   const meta = [fmtEventDates(ev), ev.place].filter(Boolean);
@@ -6555,7 +6647,7 @@ function scheduleManagerCard(S: State, eventId: string, ts: Detail[]): string {
       <p style="margin:0 0 6px;font-size:12.5px;color:var(--text-muted);line-height:1.6">Le calendrier affiché aux visiteurs vient de cette liste — dates et heures précises, pas seulement les dates des tournois.</p>${form}${rows}`)}</div>`;
 }
 
-const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, joueur: pPlayerProfile, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth };
+const RAIL_PAGES: Record<string, (s: State) => string> = { accueil: pAccueil, tournois: pTournois, tournoi: pTournoi, evenements: pEvenements, evenement: pEvenement, classements: pClassements, joueur: pPlayerProfile, galerie: pGalerie, boutique: pBoutique, profil: pDashboard, auth: pAuth, club: pClub };
 
 /** Réglages internes d'une page (filtres, onglets) portés par l'adresse : « retour » / « avant » les respectent. */
 function subParams(S: State): string {
@@ -6593,7 +6685,7 @@ function renderPageBody(S: State) {
   // le thème clair/sombre choisi pour le reste du site et devenaient des pavés blancs sur fond noir.
   if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return `<div data-force-theme="dark">${regiePage(S)}</div>`;
   if (RAIL_PAGES[S.page]) {
-    const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page;
+    const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page === "club" ? "classements" : S.page;
     return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);
   }
   const body = S.page === "auth" ? pAuth(S)
@@ -6631,7 +6723,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
-    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", adminAssocs: null, adminUnowned: null, ordersArchived: false, usersFilter: "ALL", roleMenu: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
+    roster: null, clubs: null, publicClubs: null, assoc: null, assocMsg: "", assocSearch: null, myClub: null, adminClubs: null, clubDetail: null, openClubSlug: "", clubPage: null, ordersArchived: false, usersFilter: "ALL", roleMenu: null, mailStatus: null, mailTest: null, attachModal: null, rosterEdit: null, clubEdit: null, rosterTab: "joueurs", classementView: "joueurs",
     games: null, gameEdit: null, playerDetail: null, playerDetailBusy: false,
   });
   const html = useMemo(() => renderPage(S), [S]);
@@ -6856,7 +6948,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     // Arrivée directe sur /tournois/<id> : S.user n'est pas encore rempli à ce stade (il est lu du navigateur dans le même
     // effet de démarrage) — on regarde donc aussi le compte enregistré, sinon la liste des inscrits ne se chargeait pas.
     const role = S.user?.role ?? storedRole();
-    if (token() && (role === "ORGANIZER" || role === "ADMIN")) { loadRegsPanel(id); if (!S.roster) loadRoster(); }
+    if (token() && isHost(role)) { loadRegsPanel(id); if (!S.roster) loadRoster(); }
   }
   async function act(url: string, body?: unknown, method = "POST") {
     if (!token()) { setS((s) => ({ ...s, page: "auth" })); window.scrollTo({ top: 0 }); return; }
@@ -7515,7 +7607,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     history.replaceState(history.state, "", window.location.pathname + "#t=" + tid);
     await openDetail(tid);
     const role = storedRole();
-    if (!token() || !(role === "ORGANIZER" || role === "ADMIN")) {
+    if (!token() || !isHost(role)) {
       alert("Ce QR code est un billet de joueur. Connecte-toi avec le compte organisateur du tournoi, puis rescanne-le pour pointer sa présence.");
       return;
     }
@@ -7627,17 +7719,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, assoc: { error: e.message || "Impossible de charger ton espace association." } }));
     } catch { setS((s) => ({ ...s, assoc: { error: "API injoignable — réessaie dans un instant." } })); }
   }
-  async function assocReview(userId: string, decision: string) {
-    try {
-      const r = await fetch(`${API}/api/association/requests/${userId}`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ decision }) });
-      if (!r.ok) { const e = await r.json().catch(() => ({} as Detail)); alert(e.message || "Action impossible."); return; }
-      await loadAssoc(); loadPublicClubs();
-    } catch { alert("Action impossible — réessaie dans un instant."); }
-  }
+  const assocReview = (membershipId: string, decision: string) => clubCall(`association/requests/${membershipId}`, "POST", { decision }, async () => { await loadAssoc(); loadPublicClubs(); });
   /** Admin : ouvre la modale de rattachement d'un compte association à un club existant sans propriétaire. */
   function openAttachAssociation(clubId: string) {
-    const club = (S.adminUnowned ?? []).find((c: Detail) => c.id === clubId);
-    setS((st) => ({ ...st, attachModal: { clubId, name: club?.name || "ce club", email: "", busy: false, error: "", result: null } }));
+    const club = (S.adminClubs?.clubs ?? []).find((c: Detail) => c.id === clubId);
+    setS((st) => ({ ...st, attachModal: { clubId, name: club?.name || "ce club", replace: !!club?.owner, email: "", busy: false, error: "", result: null } }));
   }
   async function submitAttachAssociation() {
     const m = S.attachModal;
@@ -7647,11 +7733,12 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fail("Saisis une adresse e-mail valide."); return; }
     setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, email, busy: true, error: "" } } : st));
     try {
-      const r = await fetch(`${API}/api/admin/associations/${m.clubId}/attach-owner`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ email }) });
+      const r = await fetch(`${API}/api/admin/associations/${m.clubId}/attach-owner`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ email, replace: m.replace }) });
       const e = await r.json().catch(() => ({} as Detail));
       if (!r.ok) { fail(Array.isArray(e.message) ? e.message.join(" ") : e.message || "Rattachement impossible."); return; }
       setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, busy: false, result: { email: e.email, password: e.password ?? null, created: !!e.created, emailed: !!e.emailed } } } : st));
       void loadAdmin();
+      void loadAdminClubs();
       // L'admin s'est rattaché lui-même : ses onglets « Mon club » apparaissent sans recharger la page.
       if (String(e.email || "").toLowerCase() === (S.user?.email || "").toLowerCase()) {
         setS((st) => ({ ...st, assoc: null, user: st.user ? { ...st.user, ownsClub: true } : st.user }));
@@ -7682,13 +7769,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page === "profil" && S.user?.role === "ADMIN" && S.adminTab === "site" && !S.mailStatus) void loadMailStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user?.role, S.adminTab, S.mailStatus]);
-  async function assocRemoveMember(playerId: string) {
-    try {
-      const r = await fetch(`${API}/api/association/members/${playerId}`, { method: "DELETE", headers: authHeaders() });
-      if (!r.ok) { const e = await r.json().catch(() => ({} as Detail)); alert(e.message || "Action impossible."); return; }
-      await loadAssoc();
-    } catch { alert("Action impossible — réessaie dans un instant."); }
-  }
+  const assocRemoveMember = (playerId: string) => assocAct(`members/${playerId}`, "DELETE");
   async function assocSave() {
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
     let logoUrl: string | null = null;
@@ -7707,21 +7788,98 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page === "profil" && (S.user?.role === "ASSOCIATION" || ownsClub(S)) && !S.assoc) void loadAssoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user?.role, S.user?.ownsClub, S.me?.ownsClub, S.assoc]);
+  /** Page publique d'un club. */
+  async function openClubPage(slug: string) {
+    setS((s) => ({ ...s, page: "club", openClubSlug: slug, clubPage: null, creating: false }));
+    window.scrollTo({ top: 0 });
+    if (token()) void loadMyClub();
+    try {
+      const r = await fetch(`${API}/api/public/clubs/${encodeURIComponent(slug)}`);
+      const d = r.ok ? await r.json() : { error: "Club introuvable." };
+      setS((s) => (s.openClubSlug === slug ? { ...s, clubPage: d } : s));
+    } catch { setS((s) => ({ ...s, clubPage: { error: "API injoignable — réessaie dans un instant." } })); }
+  }
+  /** Clic sur un nom de club : son adresse publique vient de la liste des clubs validés. */
+  async function openClubByName(name: string) {
+    let list = S.publicClubs;
+    if (!list?.some((c: Detail) => c.name === name)) {
+      try { const r = await fetch(`${API}/api/public/clubs`); if (r.ok) { list = await r.json(); setS((s) => ({ ...s, publicClubs: list })); } } catch { /* API hors ligne */ }
+    }
+    const club = list?.find((c: Detail) => c.name === name);
+    if (club?.slug) void openClubPage(club.slug);
+  }
+  async function loadMyClub() {
+    if (!token()) return;
+    try {
+      const r = await fetch(`${API}/api/membership/me`, { headers: authHeaders() });
+      if (r.ok) { const myClub = await r.json(); setS((s) => ({ ...s, myClub })); }
+    } catch { /* API hors ligne */ }
+  }
+  /** Appel d'une action « club » : message d'erreur au besoin, puis rechargement de l'écran concerné. */
+  async function clubCall(path: string, method: string, body: Detail | undefined, after: () => unknown) {
+    try {
+      const r = await fetch(`${API}/api/${path}`, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) { const e = await r.json().catch(() => ({} as Detail)); alert(Array.isArray(e.message) ? e.message.join("\n") : e.message || "Action impossible."); }
+      await after();
+    } catch { alert("Action impossible — réessaie dans un instant."); }
+  }
+  const myClubAct = (path: string, method: string, body?: Detail) => clubCall(`membership/${path}`, method, body, async () => { await loadMyClub(); await loadMe(); });
+  const assocAct = (path: string, method: string, body?: Detail) => clubCall(`association/${path}`, method, body, async () => { await loadAssoc(); });
+  async function searchCandidates() {
+    const q = ((document.getElementById("as-q") as HTMLInputElement | null)?.value || "").trim();
+    if (q.length < 2) { alert("Saisis au moins 2 lettres."); return; }
+    try {
+      const r = await fetch(`${API}/api/association/candidates?q=${encodeURIComponent(q)}`, { headers: authHeaders() });
+      const results = r.ok ? await r.json() : [];
+      setS((s) => ({ ...s, assocSearch: { q, results } }));
+    } catch { alert("Recherche impossible — réessaie dans un instant."); }
+  }
+  async function inviteByEmail() {
+    const email = ((document.getElementById("as-inv-email") as HTMLInputElement | null)?.value || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Saisis une adresse e-mail valide."); return; }
+    await assocAct("invites", "POST", { email });
+    showToast("Si un compte existe à cette adresse, il reçoit l'invitation.");
+  }
+  async function loadAdminClubs() {
+    try {
+      const r = await fetch(`${API}/api/admin/clubs-overview`, { headers: authHeaders() });
+      const adminClubs = r.ok ? await r.json() : { error: "Impossible de charger les clubs." };
+      setS((s) => ({ ...s, adminClubs }));
+    } catch { setS((s) => ({ ...s, adminClubs: { error: "API injoignable — réessaie dans un instant." } })); }
+  }
+  async function loadClubDetail(id: string) {
+    try {
+      const r = await fetch(`${API}/api/admin/clubs/${id}`, { headers: authHeaders() });
+      const data = r.ok ? await r.json() : null;
+      setS((s) => (s.clubDetail?.id === id ? { ...s, clubDetail: data ? { id, data } : null } : s));
+    } catch { /* ignore */ }
+  }
+  /** Action de l'onglet « Clubs & associations » : rafraîchit la liste, le club ouvert et la base de joueurs. */
+  const adminClubAct = (path: string, method: string, body?: Detail) => clubCall(`admin/${path}`, method, body, async () => {
+    await loadAdmin();
+    if (S.clubDetail) await loadClubDetail(S.clubDetail.id);
+    await loadRoster();
+  });
+  useEffect(() => {
+    if (S.page === "profil" && S.user?.role === "ADMIN" && S.adminTab === "clubs") { void loadAdminClubs(); if (!S.roster) void loadRoster(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.user?.role, S.adminTab]);
+  useEffect(() => {
+    if (S.page === "profil" && S.user) { void loadMyClub(); void loadPublicClubs(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.user?.email, S.adminTab]);
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });
-      const [ovR, usR, nwR, prR, orR, payR, crR, orgR, clubR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases"), get("organizers"), get("club-requests")]);
+      const [ovR, usR, nwR, prR, orR, payR, crR, orgR] = await Promise.all([get("overview"), get("users"), get("news"), get("products"), get("orders"), get("payments"), get("credit-purchases"), get("organizers")]);
       if (ovR.ok && usR.ok) {
-        const [overview, users, news, products, orders, payments, creditPurchases, organizers, clubRequests] = await Promise.all([
+        const [overview, users, news, products, orders, payments, creditPurchases, organizers] = await Promise.all([
           ovR.json(), usR.json(),
-          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [], orgR.ok ? orgR.json() : [], clubR.ok ? clubR.json() : [],
+          nwR.ok ? nwR.json() : [], prR.ok ? prR.json() : [], orR.ok ? orR.json() : [], payR.ok ? payR.json() : [], crR.ok ? crR.json() : [], orgR.ok ? orgR.json() : [],
         ]);
-        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases, organizers, clubRequests } }));
+        setS((s) => ({ ...s, admin: { overview, users, news, products, orders, payments, creditPurchases, organizers } }));
       }
-      const asR = await get("associations");
-      if (asR.ok) { const adminAssocs = await asR.json(); setS((s) => ({ ...s, adminAssocs })); }
-      const unR = await get("associations/unowned");
-      if (unR.ok) { const adminUnowned = await unR.json(); setS((s) => ({ ...s, adminUnowned })); }
+      if (S.adminTab === "clubs") await loadAdminClubs();
     } catch { /* ignore */ }
   }
   /** Tableau de bord de pilotage (admin) : une seule requête qui rassemble chiffres clés, courbes, activité et tournois en direct. */
@@ -7957,6 +8115,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!r.ok) { const d = await r.json().catch(() => ({} as Detail)); alert(d.message || "Action impossible."); return; }
       setS((s) => ({ ...s, rosterEdit: null, clubEdit: null, gameEdit: null }));
       await loadRoster();
+      if (S.adminTab === "clubs") await loadAdminClubs();
     } catch { /* ignore */ }
   }
   function saveRosterPlayer(id: string) {
@@ -8039,7 +8198,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const myOrders = ordR.ok ? await ordR.json() : [];
       const myResults = resR.ok ? await resR.json() : [];
       let myTourns: Detail[] | null = null;
-      if (me.role === "ORGANIZER" || me.role === "ADMIN") {
+      if (isHost(me.role)) {
         const tR = await fetch(`${API}/api/tournaments/mine`, { headers: authHeaders() });
         if (tR.ok) myTourns = await tR.json();
       }
@@ -8066,12 +8225,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
     const me = S.me!;
     const displayName = val("p-name").trim();
-    const club = val("p-club").trim();
     // Le pseudo n'est envoyé que s'il a vraiment changé — l'API le plafonne à 1x/mois, pas
     // question de déclencher ce contrôle à chaque sauvegarde d'un autre champ du profil.
     const body: Record<string, unknown> = { city: val("p-city"), favoriteGame: val("p-game"), phone: val("p-phone"), bio: val("p-bio") };
     if (displayName && displayName !== me.displayName) body.displayName = displayName;
-    if (club !== (me.clubName || "")) body.club = club;
     try {
       const r = await fetch(`${API}/api/users/me`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -8210,7 +8367,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   useEffect(() => {
     if (S.page === "profil" && S.user && !S.me) loadMe();
     if (S.page === "profil" && S.user && !S.loyaltyHistory) loadLoyaltyMe();
-    if (S.page === "profil" && S.user?.role === "ORGANIZER" && !S.creditsMe) loadCreditsMe();
+    if (S.page === "profil" && (S.user?.role === "ORGANIZER" || S.user?.role === "ASSOCIATION") && !S.creditsMe) loadCreditsMe();
     if (S.page === "profil" && S.user?.role === "ADMIN" && !S.admin) loadAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [S.page, S.user]);
@@ -8349,7 +8506,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const parsed = JSON.parse(u);
         setS((s) => ({ ...s, user: parsed }));
         loadRegIds(); loadLoyaltyMe();
-        if (parsed?.role === "ORGANIZER") loadCreditsMe();
+        if (parsed?.role === "ORGANIZER" || parsed?.role === "ASSOCIATION") loadCreditsMe();
       }
     } catch { /* ignore */ }
     // Thème : déjà posé sur <html> avant l'hydratation par le script du layout (évite un flash) —
@@ -8521,6 +8678,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (S.page === "tournoi" && S.openId) { route = "/tournois/[id]"; path = `/tournois/${S.openId}`; }
     else if (S.page === "evenement" && S.openEventId) { route = "/evenements/[id]"; path = `/evenements/${S.openEventId}`; }
     else if (S.page === "joueur") { route = "/joueur"; path = "/joueur"; }
+    else if (S.page === "club") { route = "/club"; path = "/club"; }
     else if (S.page !== "profil" && SIMPLE_PAGES.includes(S.page)) { path = S.page === "accueil" ? "/" : `/${S.page}`; route = path; }
     if (!trackInit.current) { trackInit.current = true; lastVirtualPage.current = path; return; }
     if (!path || path === lastVirtualPage.current) return;
@@ -8538,6 +8696,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (S.page === "evenement" && S.openEventId) hash = "#ev=" + S.openEventId + subParams(S);
     else if (S.page === "evshow" && S.openEventId) hash = "#evshow=" + S.openEventId;
     else if (S.page === "joueur" && S.playerProfile?.name) hash = "#joueur=" + encodeURIComponent(S.playerProfile.name) + (S.playerProfile.userId ? "~" + S.playerProfile.userId : "");
+    else if (S.page === "club" && S.openClubSlug) hash = "#club=" + S.openClubSlug;
     else if (S.page === "auth") hash = "#connexion";
     else if (S.page === "profil" && S.adminTab && S.adminTab !== "apercu") hash = "#profil/" + S.adminTab;
     else if (SIMPLE_PAGES.includes(S.page)) hash = "#" + S.page + subParams(S);
@@ -8551,7 +8710,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       history.pushState({ navIdx: cur + 1 }, "", hash);
       lastIdx.current = cur + 1;
     }
-  }, [S.page, S.openId, S.openEventId, S.adminTab, S.playerProfile?.name, S.fmt, S.tournStatus, S.game, S.classementView, S.cat, S.boutiqueInStock, S.evGame]);
+  }, [S.page, S.openId, S.openEventId, S.openClubSlug, S.adminTab, S.playerProfile?.name, S.fmt, S.tournStatus, S.game, S.classementView, S.cat, S.boutiqueInStock, S.evGame]);
 
   // L'icône d'onglet suit le logo choisi dans l'admin (Site → Identité). Le serveur (layout.tsx) pose déjà
   // une icône générée depuis ce logo ; on la réécrit ici dès que les réglages sont chargés, pour qu'un
@@ -8809,6 +8968,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (h.startsWith("#show=")) { openDetail(h.slice(6), "show"); return; }
     if (h.startsWith("#t=")) { openDetail(h.slice(3)); return; }
     if (h.startsWith("#ev=")) { openEvent(h.slice(4)); applySub("evenement", qs); return; }
+    if (h.startsWith("#club=")) { void openClubPage(decodeURIComponent(h.slice(6))); return; }
     if (h.startsWith("#ci=")) { checkInFromLink(h.slice(4)); return; }
     if (h.startsWith("#evshow=")) { const id = h.slice(8); setS((s) => ({ ...s, page: "evshow", openEventId: id, evShow: null })); loadEvShow(id); return; }
     if (h.startsWith("#joueur=")) { const [nm, uid] = h.slice(8).split("~"); openPlayerProfile(decodeURIComponent(nm), uid || undefined); return; }
@@ -9177,7 +9337,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const created = await r.json();
       const backToEvent = S.wizEventId ? { id: S.wizEventId, publicPage: S.page === "evenement" } : null;
       await loadTournaments();
-      if (S.user?.role === "ORGANIZER") loadCreditsMe();
+      if (S.user?.role === "ORGANIZER" || S.user?.role === "ASSOCIATION") loadCreditsMe();
       setS((s) => ({
         ...s, busy: false, creating: false, wizEventId: null, fmt: "Tous", wizStep: 1, wizRosterSearch: "",
         wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
@@ -9254,7 +9414,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9277,7 +9437,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       // Vérifié AVANT le retour historique du navigateur (pas en simple repli) : même en arrivant
       // ici via une page in-app précédente, cette page précédente est presque toujours cette même
       // liste publique dont le brouillon est absent — y revenir serait tout autant une impasse.
-      if (S.page === "evenement" && S.eventDetail?.status !== "PUBLISHED" && canManage(S)) {
+      if (S.page === "evenement" && S.eventDetail?.status !== "PUBLISHED" && canEvents(S)) {
         setS((s) => ({ ...s, page: "profil", adminTab: "events" }));
         window.scrollTo({ top: 0 });
         loadMyEvents();
@@ -9781,13 +9941,64 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.assocattach) { openAttachAssociation(d.assocattach); }
     else if (d.attachgo !== undefined) { void submitAttachAssociation(); }
     else if (d.attachclose !== undefined) { setS((st) => ({ ...st, attachModal: null })); }
+    else if (d.clubname !== undefined) { void openClubByName(d.clubname!); }
+    else if (d.myclubjoin) {
+      const clubId = d.myclubjoin === "select" ? (document.getElementById("mc-select") as HTMLSelectElement | null)?.value || "" : d.myclubjoin;
+      if (!clubId) { alert("Choisis un club."); return; }
+      void myClubAct("request", "POST", { clubId });
+    }
+    else if (d.myclubcancel !== undefined) { void myClubAct("request", "DELETE"); }
+    else if (d.myclubleave !== undefined) {
+      setS((s) => ({ ...s, confirmBox: { title: "Quitter le club", message: `Tu ne feras plus partie de « ${S.myClub?.current?.club?.name || "ce club"} ». Ses responsables en seront informés.`, okLabel: "Quitter", action: "myclubleave|1" } }));
+    }
+    else if (d.myclubinvite) { const [mid, decision] = d.myclubinvite.split("|"); void myClubAct(`invites/${mid}`, "POST", { decision }); }
+    else if (d.assocsearch !== undefined) { void searchCandidates(); }
+    else if (d.associnvite) { void assocAct("invites", "POST", { playerId: d.associnvite }).then(() => setS((s) => ({ ...s, assocSearch: null }))); }
+    else if (d.associnvitemail !== undefined) { void inviteByEmail(); }
+    else if (d.associnvcancel) { void assocAct(`invites/${d.associnvcancel}`, "DELETE"); }
+    else if (d.adminclubopen) {
+      const id = d.adminclubopen;
+      if (S.clubDetail?.id === id) setS((s) => ({ ...s, clubDetail: null }));
+      else { setS((s) => ({ ...s, clubDetail: { id, data: null } })); void loadClubDetail(id); }
+    }
+    else if (d.adminowner) {
+      const c = (S.adminClubs?.clubs ?? []).find((x: Detail) => x.id === d.adminowner);
+      setS((s) => ({ ...s, confirmBox: { title: "Retirer le responsable", message: `${c?.owner?.displayName || "Ce compte"} ne gérera plus « ${c?.name || "ce club"} ». Son compte est conservé.`, okLabel: "Retirer", action: `adminowner|${d.adminowner}` } }));
+    }
+    else if (d.adminclubdel) {
+      const c = (S.adminClubs?.clubs ?? []).find((x: Detail) => x.id === d.adminclubdel);
+      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le club", message: `« ${c?.name || "Ce club"} » et son historique d'adhésions seront supprimés. Ses joueurs restent dans la base, sans club.`, okLabel: "Supprimer", action: `adminclubdel|${d.adminclubdel}` } }));
+    }
+    else if (d.adminmember) {
+      const playerId = (document.getElementById("cd-player") as HTMLSelectElement | null)?.value || "";
+      if (!playerId) { alert("Choisis un joueur."); return; }
+      void adminClubAct(`clubs/${d.adminmember}/members`, "POST", { playerId });
+    }
+    else if (d.adminmemberrm) {
+      const [cid, pid] = d.adminmemberrm.split("|");
+      const m = (S.clubDetail?.data?.members ?? []).find((x: Detail) => x.id === pid);
+      setS((s) => ({ ...s, confirmBox: { title: "Retirer du club", message: `« ${m?.name || "Ce joueur"} » ne fera plus partie de ce club.`, okLabel: "Retirer", action: `adminmemberrm|${cid}|${pid}` } }));
+    }
+    else if (d.adminmerge) {
+      const target = (document.getElementById("mg-target") as HTMLSelectElement | null)?.value || "";
+      if (!target) { alert("Choisis le club qui reste."); return; }
+      const list: Detail[] = S.adminClubs?.clubs ?? [];
+      const from = list.find((x: Detail) => x.id === d.adminmerge), to = list.find((x: Detail) => x.id === target);
+      setS((s) => ({ ...s, confirmBox: { title: "Fusionner les clubs", message: `Les membres et l'historique de « ${from?.name || ""} » passent dans « ${to?.name || ""} », puis « ${from?.name || ""} » est supprimé. Cette action est définitive.`, okLabel: "Fusionner", action: `adminmerge|${d.adminmerge}|${target}` } }));
+    }
+    else if (d.adminclaim) {
+      const [pid, decision] = d.adminclaim.split("|");
+      const c = (S.adminClubs?.claims ?? []).find((x: Detail) => x.playerId === pid);
+      const ok = decision === "approve";
+      setS((s) => ({ ...s, confirmBox: { title: ok ? "Attribuer la fiche" : "Écarter la demande", message: ok ? `La fiche « ${c?.name || ""} » (club et historique) sera rattachée au compte ${c?.user?.email || ""}.` : `La fiche « ${c?.name || ""} » reste sans compte.`, okLabel: ok ? "Attribuer" : "Écarter", action: `adminclaim|${pid}|${decision}` } }));
+    }
     else if (d.assocrm) {
       const m = (S.assoc?.members ?? []).find((x: Detail) => x.id === d.assocrm);
       setS((s) => ({ ...s, confirmBox: { title: "Retirer du club", message: `« ${m?.name || "Ce joueur"} » ne fera plus partie de ton club. Il pourra en redemander l'adhésion.`, okLabel: "Retirer", action: `assocrm|${d.assocrm}` } }));
     }
     else if (d.assocadmin) {
       const [id, decision] = d.assocadmin.split("|");
-      const r = (S.adminAssocs ?? []).find((x: Detail) => x.id === id);
+      const r = (S.adminClubs?.clubs ?? []).find((x: Detail) => x.id === id);
       const ok = decision === "approve";
       setS((s) => ({ ...s, confirmBox: {
         title: ok ? "Intégrer l'association" : "Refuser l'association",
@@ -9798,18 +10009,6 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.copytext) {
       const el2 = document.getElementById(d.copytext) as HTMLTextAreaElement | null;
       if (el2) { el2.select(); try { void navigator.clipboard.writeText(el2.value); showToast("Copié."); } catch { document.execCommand("copy"); showToast("Copié."); } }
-    }
-    else if (d.clubreview) {
-      const [uid, decision] = d.clubreview.split("|");
-      const r = (S.admin?.clubRequests ?? []).find((x: Detail) => x.id === uid);
-      const ok = decision === "approve";
-      setS((s) => ({ ...s, confirmBox: {
-        title: ok ? "Valider le club" : "Refuser le club",
-        message: ok
-          ? `Le club « ${r?.clubRequested || ""} » sera ajouté à la base de données et rattaché à ${r?.displayName || "ce joueur"}, dont le compte sera débloqué.`
-          : `Le club « ${r?.clubRequested || ""} » ne sera pas ajouté. Le compte de ${r?.displayName || "ce joueur"} sera débloqué, sans club.`,
-        okLabel: ok ? "Valider" : "Refuser", action: `clubreview|${uid}|${decision}`,
-      } }));
     }
     else if (d.userfilter) { setS((st) => ({ ...st, usersFilter: d.userfilter!, roleMenu: null })); }
     else if (d.rolemenu) { setS((st) => ({ ...st, roleMenu: st.roleMenu === d.rolemenu ? null : d.rolemenu! })); }
@@ -9874,14 +10073,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     }
     else if (d.clubedit) {
       if (d.clubedit === "new") setS((s) => ({ ...s, clubEdit: { name: "", city: "" } }));
-      else { const c = S.clubs?.find((x: Detail) => x.id === d.clubedit); if (c) setS((s) => ({ ...s, clubEdit: c })); }
+      else { const c = (S.adminClubs?.clubs ?? []).find((x: Detail) => x.id === d.clubedit); if (c) setS((s) => ({ ...s, clubEdit: c })); window.scrollTo({ top: 0 }); }
     }
     else if (d.clubcancel !== undefined) setS((s) => ({ ...s, clubEdit: null }));
     else if (d.clubsave) saveClub(d.clubsave);
-    else if (d.clubdel) {
-      const c = S.clubs?.find((x: Detail) => x.id === d.clubdel);
-      setS((s) => ({ ...s, confirmBox: { title: "Supprimer le club", message: `« ${c?.name || "Ce club"} » sera supprimé — ses joueurs resteront dans la base, simplement sans club.`, okLabel: "Supprimer", action: `clubdel|${d.clubdel}` } }));
-    }
     else if (d.gameedit) {
       if (d.gameedit === "new") setS((s) => ({ ...s, gameEdit: { name: "" } }));
       else { const g = S.games?.find((x: Detail) => x.id === d.gameedit); if (g) setS((s) => ({ ...s, gameEdit: g })); }
@@ -9962,8 +10157,13 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "orddel") adminAct(`orders/${arg}`, "DELETE");
         else if (kind === "gocredits") { setS((st) => ({ ...st, creating: false, page: "profil", adminTab: "credits" })); window.scrollTo({ top: 0 }); loadCreditsMe(); }
         else if (kind === "assocrm") assocRemoveMember(arg);
-        else if (kind === "assocadmin") { const [aid, decision] = arg.split("|"); adminAct(`associations/${aid}/${decision}`, "POST"); }
-        else if (kind === "clubreview") { const [uid, decision] = arg.split("|"); adminAct(`club-requests/${uid}/${decision}`, "POST"); }
+        else if (kind === "assocadmin") { const [aid, decision] = arg.split("|"); void adminClubAct(`associations/${aid}/${decision}`, "POST"); }
+        else if (kind === "myclubleave") { void myClubAct("leave", "POST"); }
+        else if (kind === "adminowner") { void adminClubAct(`associations/${arg}/owner`, "DELETE"); }
+        else if (kind === "adminclubdel") { void adminClubAct(`clubs/${arg}`, "DELETE"); }
+        else if (kind === "adminmemberrm") { const [cid, pid] = arg.split("|"); void adminClubAct(`clubs/${cid}/members/${pid}`, "DELETE"); }
+        else if (kind === "adminmerge") { const [from, to] = arg.split("|"); void adminClubAct(`clubs/${from}/merge`, "POST", { targetId: to }).then(() => setS((s) => ({ ...s, clubDetail: null }))); }
+        else if (kind === "adminclaim") { const [pid, decision] = arg.split("|"); void adminClubAct(`claims/${pid}/${decision}`, "POST"); }
         else if (kind === "setrole") { const [uid, role] = arg.split("|"); setRole(uid, role); }
         else if (kind === "userdel") adminAct(`users/${arg}`, "DELETE");
         else if (kind === "userpwd") resetUserPassword(arg);
@@ -9976,7 +10176,6 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
         else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); }
         else if (kind === "rosterdel") rosterAct(`${API}/api/roster/${arg}`, "DELETE");
-        else if (kind === "clubdel") rosterAct(`${API}/api/clubs/${arg}`, "DELETE");
         else if (kind === "gamedel") rosterAct(`${API}/api/games/${arg}`, "DELETE");
       }
     }
@@ -10085,6 +10284,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
    * ce bouton, ce qui réutilise toute la logique déjà branchée sur le dispatcher (aucun doublon). */
   function enterTargetSelector(id: string): string | null {
     if (id === "att-email") return "[data-attachgo]";
+    if (id === "as-q") return "[data-assocsearch]";
+    if (id === "as-inv-email") return "[data-associnvitemail]";
     if (id.startsWith("a-")) return "[data-auth-submit]";
     if (id.startsWith("pw-")) return "[data-passsave]";
     if (id.startsWith("p-")) return "[data-profilesave]";

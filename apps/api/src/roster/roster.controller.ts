@@ -13,7 +13,7 @@ export class RosterController {
 
   @Get('roster')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   listPlayers() {
     return this.roster.listPlayers();
   }

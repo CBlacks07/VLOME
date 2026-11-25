@@ -26,7 +26,7 @@ export class CreditsController {
 
   @Post('purchase')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ORGANIZER', 'ADMIN')
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   purchase(@CurrentUser() user: JwtUser, @Body() dto: PurchaseCreditsDto) {
     return this.credits.requestPurchase(user.sub, dto.credits, dto.paymentMethod);
   }

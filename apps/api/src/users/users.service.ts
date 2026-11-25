@@ -3,7 +3,6 @@ import * as bcrypt from 'bcryptjs';
 import * as Engine from '@vlome/engine';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangePasswordDto, UpdateMeDto } from './users.dto';
-import { AssociationsService } from '../associations/associations.service';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import { ELO_START } from '../tournaments/elo';
 
@@ -12,7 +11,7 @@ const NAME_CHANGE_COOLDOWN_DAYS = 30;
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService, private assoc: AssociationsService, private tournaments: TournamentsService) {}
+  constructor(private prisma: PrismaService, private tournaments: TournamentsService) {}
 
   /** Profil complet + statistiques (globales et par jeu) du membre connecté. */
   async me(userId: string) {
@@ -96,13 +95,6 @@ export class UsersService {
     return breakdown.sort((a, b) => b.points - a.points);
   }
 
-  /** Retrouve (insensible à la casse) ou crée le club du catalogue portant ce nom. */
-  private async resolveClubId(name: string): Promise<string | null> {
-    if (!name) return null;
-    const existing = await this.prisma.club.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-    return existing ? existing.id : (await this.prisma.club.create({ data: { name } })).id;
-  }
-
   async updateMe(userId: string, dto: UpdateMeDto) {
     const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { displayNameChangedAt: true, displayName: true } });
     if (!current) throw new NotFoundException('Utilisateur introuvable');
@@ -121,36 +113,14 @@ export class UsersService {
     if (dto.city !== undefined) data.city = dto.city.trim() || null;
     if (dto.favoriteGame !== undefined) data.favoriteGame = dto.favoriteGame.trim() || null;
     if (dto.phone !== undefined) data.phone = dto.phone.trim() || null;
-    // Club : retirer le sien est immédiat ; en changer ou en choisir un est une DEMANDE, validée par un admin
-    // avant d'entrer dans le catalogue et sur la fiche joueur (le club actuel reste en place d'ici là).
-    let clubId: string | null | undefined;
-    let joinRequest: string | null = null; // club visé par une NOUVELLE demande d'adhésion (l'association en est prévenue par e-mail)
-    if (dto.club !== undefined) {
-      const wanted = dto.club.trim();
-      if (!wanted) {
-        clubId = null;
-        Object.assign(data, { clubRequested: null, clubRequestedId: null, clubStatus: 'NONE' });
-      } else {
-        const target = await this.prisma.club.findFirst({ where: { name: { equals: wanted, mode: 'insensitive' }, status: 'APPROVED' }, select: { id: true, name: true } });
-        if (!target) throw new BadRequestException('Choisis un club de la liste des associations validées.');
-        const player = await this.prisma.player.findFirst({ where: { userId }, select: { club: { select: { name: true } } } });
-        if ((player?.club?.name || '').toLowerCase() !== target.name.toLowerCase()) {
-          // C'est l'association du club qui valide l'adhésion (voir AssociationsService.reviewMember).
-          Object.assign(data, { clubRequested: target.name, clubRequestedId: target.id, clubStatus: 'PENDING' });
-          joinRequest = target.id;
-        }
-      }
-    }
     await this.prisma.user.update({ where: { id: userId }, data });
-    if (joinRequest) await this.assoc.notifyJoinRequest(joinRequest, (data.displayName as string | undefined) ?? current.displayName);
     // Garde la base de joueurs (Admin → Joueurs) synchro si ce compte y est relié.
-    if (data.displayName !== undefined || data.city !== undefined || clubId !== undefined) {
+    if (data.displayName !== undefined || data.city !== undefined) {
       await this.prisma.player.updateMany({
         where: { userId },
         data: {
           ...(data.displayName !== undefined ? { name: data.displayName as string } : {}),
           ...(data.city !== undefined ? { city: data.city as string | null } : {}),
-          ...(clubId !== undefined ? { clubId } : {}),
         },
       }).catch(() => { /* best-effort */ });
     }

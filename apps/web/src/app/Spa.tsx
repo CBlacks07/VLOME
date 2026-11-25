@@ -95,7 +95,7 @@ type TournCard = { id?: string; name: string; format: string; game: string; play
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = any; // DTO cockpit renvoyé par l'API (/tournaments/:id/state)
 type CartItem = { name: string; price: number; id?: string };
-type AuthUser = { id?: string; displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean };
+type AuthUser = { id?: string; displayName: string; role: string; email: string; organizerStatus?: string; clubStatus?: string; clubRequested?: string | null; clubBlocking?: boolean; ownsClub?: boolean };
 type State = {
   page: string; slide: number; fmt: string; scope: string; game: string; cat: string; tournStatus: string;
   tourns: TournCard[] | null; creating: boolean; busy: boolean; leaderboard: Detail[] | null;
@@ -2909,17 +2909,28 @@ function consoleShell(S: State, tabs: [string, string][], title: string, body: s
   </div>`;
 }
 
+/** Le compte connecté est-il responsable d'un club ? */
+function ownsClub(S: State): boolean {
+  return !!(S.me?.ownsClub ?? S.user?.ownsClub);
+}
+
 /** Page « Mon espace » pour ADMIN/ORGANIZER : shell sidebar + contenu de l'onglet actif, assistant en overlay si ouvert. */
 function consolePage(S: State): string {
   const isAdmin = S.user?.role === "ADMIN";
   const isAssoc = S.user?.role === "ASSOCIATION";
-  const tabs = isAdmin ? ADMIN_TABS : isAssoc ? ASSOC_TABS : ORG_TABS;
+  // Admin ou organisateur responsable d'un club : ses onglets habituels, plus « Mon club » et « Intégration ».
+  const runsClub = !isAssoc && ownsClub(S);
+  const baseTabs = isAdmin ? ADMIN_TABS : isAssoc ? ASSOC_TABS : ORG_TABS;
+  const tabs = runsClub ? [...baseTabs.filter(([k]) => k !== "compte"), ...ASSOC_TABS] : baseTabs;
+  const clubTab = runsClub && (S.adminTab === "club" || S.adminTab === "integration");
   const activeLabel = tabs.find(([k]) => k === S.adminTab)?.[1] || tabs[0][1];
   let body: string;
   // « Mon compte » ne dépend que du compte connecté : à traiter AVANT l'attente des données
   // d'administration, sinon une panne du tableau de bord empêcherait de changer son mot de passe.
   const accountBody = () => consoleAccountHeader(S) + grid2(regsCard(S), resultsCard(S)) + grid2(ordersCard(S), profileSecurity(S)) + loyaltyCard(S);
-  if (isAdmin) {
+  if (clubTab) {
+    body = S.adminTab === "integration" ? assocEmbed(S) : assocClub(S);
+  } else if (isAdmin) {
     const a = S.admin;
     body = S.adminTab === "compte" ? accountBody() :
       S.adminTab === "events" ? consoleEvents(S) :
@@ -3139,7 +3150,8 @@ function adminUsers(S: State) {
   const q = S.adminSearch.trim().toLowerCase();
   const all: Detail[] = a.users;
   const users = q ? all.filter((u: Detail) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : all;
-  const isAssoc = (u: Detail) => u.role === "ASSOCIATION" || !!u.ownsClub;
+  // Un admin/organisateur responsable d'un club reste dans sa catégorie (le club est indiqué en statut).
+  const isAssoc = (u: Detail) => u.role === "ASSOCIATION" || (!!u.ownsClub && u.role === "PLAYER");
   // Catégorie d'affichage d'un compte (un propriétaire d'association reste « Association » même si son rôle a été changé par erreur).
   const kind = (u: Detail): string => (isAssoc(u) ? "ASSOCIATION" : u.role);
   const KIND_ORDER: Record<string, number> = { ADMIN: 0, ORGANIZER: 1, ASSOCIATION: 2, PLAYER: 3 };
@@ -3173,6 +3185,7 @@ function adminUsers(S: State) {
       roleCell = `<span style="position:relative;display:inline-block"><button data-rolemenu="${usr.id}" title="Changer le rôle" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;border-radius:999px;padding:4px 10px;cursor:pointer;font-family:inherit;color:${color};background:${color}1f;border:1px solid ${color}55">${label}<span style="font-size:9px;opacity:.8">▾</span></button>${open ? `<div data-rolemenu-pop="1" style="position:absolute;z-index:20;top:calc(100% + 6px);left:0;min-width:170px;padding:6px;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.45)"><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800;padding:4px 10px 6px">Passer en…</div>${options}</div>` : ""}</span>`;
     }
     const statuses = [
+      usr.ownsClub && k !== "ASSOCIATION" ? badge(`Gère ${escHtml(usr.ownedClubName || "un club")}`, "#34D399") : "",
       orgPending.has(usr.id) ? badge("Organisateur en attente", "#FBBF24") : "",
       clubPending.has(usr.id) ? badge(clubPending.get(usr.id)!.clubBlocking ? "Club en attente · bloqué" : "Club en attente", "#FB7185") : "",
     ].join("");
@@ -5705,7 +5718,7 @@ function attachModal(S: State): string {
       <p style="color:var(--text-muted);font-size:13.5px;line-height:1.55;margin:0">Club : <b style="color:var(--text)">${escHtml(m.name)}</b></p>
       <div style="text-align:left;margin-top:16px"><label for="att-email" style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:6px">E-mail du responsable</label>
         <input id="att-email" type="email" autocomplete="off" value="${escAttr(m.email)}" placeholder="contact@mon-association.org" style="width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 13px" />
-        <p style="color:var(--text-faint);font-size:11.5px;line-height:1.55;margin:8px 0 0">Un compte association est créé avec cette adresse (ou repris s'il existe déjà) et rattaché au club. Un mot de passe temporaire est généré et envoyé par e-mail.</p></div>
+        <p style="color:var(--text-faint);font-size:11.5px;line-height:1.55;margin:8px 0 0">Adresse nouvelle : un compte association est créé, avec un mot de passe temporaire envoyé par e-mail. Adresse d'un admin ou d'un organisateur : son compte gère le club en gardant son rôle et son mot de passe.</p></div>
       ${m.error ? `<div style="display:flex;align-items:flex-start;gap:8px;text-align:left;color:#FB7185;font-size:12.5px;line-height:1.5;margin-top:12px;background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.3);border-radius:10px;padding:10px 12px"><span style="flex:none;margin-top:1px">${ic(I.warn, 14)}</span><span>${escHtml(m.error)}</span></div>` : ""}
       <div style="display:flex;gap:10px;margin-top:20px">
         <button data-attachclose="1" style="flex:1;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:12px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">Annuler</button>
@@ -6699,7 +6712,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         if (!m) return;
         setS((s) => {
           if (!s.user) return s;
-          const u = { ...s.user, clubStatus: m.clubStatus, clubRequested: m.clubRequested ?? null, clubBlocking: !!m.clubBlocking };
+          const u = { ...s.user, clubStatus: m.clubStatus, clubRequested: m.clubRequested ?? null, clubBlocking: !!m.clubBlocking, ownsClub: !!m.ownsClub };
           try { localStorage.setItem("vlome_user", JSON.stringify(u)); } catch { /* ignore */ }
           return { ...s, user: u };
         });
@@ -7639,6 +7652,11 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (!r.ok) { fail(Array.isArray(e.message) ? e.message.join(" ") : e.message || "Rattachement impossible."); return; }
       setS((st) => (st.attachModal ? { ...st, attachModal: { ...st.attachModal, busy: false, result: { email: e.email, password: e.password ?? null, created: !!e.created, emailed: !!e.emailed } } } : st));
       void loadAdmin();
+      // L'admin s'est rattaché lui-même : ses onglets « Mon club » apparaissent sans recharger la page.
+      if (String(e.email || "").toLowerCase() === (S.user?.email || "").toLowerCase()) {
+        setS((st) => ({ ...st, assoc: null, user: st.user ? { ...st.user, ownsClub: true } : st.user }));
+        void loadMe();
+      }
     } catch { fail("Rattachement impossible — réessaie dans un instant."); }
   }
   /** Admin : état de la messagerie (réglages + connexion SMTP). */
@@ -7686,9 +7704,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   }
   // Un compte association qui ouvre son espace : charge « Mon club » (une seule fois ; une erreur est mémorisée pour ne pas reboucler).
   useEffect(() => {
-    if (S.page === "profil" && S.user?.role === "ASSOCIATION" && !S.assoc) void loadAssoc();
+    if (S.page === "profil" && (S.user?.role === "ASSOCIATION" || ownsClub(S)) && !S.assoc) void loadAssoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [S.page, S.user?.role, S.assoc]);
+  }, [S.page, S.user?.role, S.user?.ownsClub, S.me?.ownsClub, S.assoc]);
   async function loadAdmin() {
     try {
       const get = (p: string) => fetch(`${API}/api/admin/${p}`, { headers: authHeaders() });

@@ -132,16 +132,18 @@ export class AssociationsService {
     return this.prisma.club.findMany({ where: { status: 'APPROVED', ownerId: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, city: true, _count: { select: { players: true } } } });
   }
 
-  /** Rattache un compte association à un club existant. Crée le compte (mot de passe temporaire, renvoyé une seule fois et envoyé par e-mail)
-   *  ou reprend un compte association déjà existant et sans club. Jamais un compte joueur/organisateur/admin : ce serait lui retirer ses droits. */
+  /** Rattache un responsable à un club existant. Crée un compte association (mot de passe temporaire, renvoyé une seule fois et envoyé par
+   *  e-mail) ou reprend un compte existant sans club : association, organisateur ou admin. Le rôle d'un compte repris n'est JAMAIS modifié
+   *  (il garde ses droits et gagne l'espace « Mon club »). Un compte joueur est refusé : il n'a pas d'espace de gestion. */
   async attachOwner(clubId: string, rawEmail: string) {
     const email = rawEmail.trim().toLowerCase();
     const club = await this.prisma.club.findUnique({ where: { id: clubId } });
     if (!club) throw new NotFoundException('Club introuvable.');
     if (club.ownerId) throw new ConflictException('Ce club a déjà un compte association.');
     const existing = await this.prisma.user.findUnique({ where: { email }, include: { ownedClub: true } });
-    if (existing && (existing.role !== 'ASSOCIATION' || existing.ownedClub)) {
-      throw new ConflictException('Cette adresse est déjà utilisée par un autre compte. Utilise une autre adresse pour l\'association.');
+    if (existing?.ownedClub) throw new ConflictException(`Ce compte gère déjà le club « ${existing.ownedClub.name} » : un compte ne gère qu'un seul club.`);
+    if (existing && existing.role === 'PLAYER') {
+      throw new ConflictException('Cette adresse est déjà utilisée par un compte joueur. Passe-le organisateur, ou utilise une autre adresse pour l\'association.');
     }
     let password: string | null = null;
     let userId = existing?.id;
@@ -196,7 +198,7 @@ export class AssociationsService {
 
   /** Tout ce qui est rattaché à une association : profil, membres, classement, tournois qu'elle organise et tournois où jouent ses membres. */
   async publicClub(slug: string) {
-    const club = await this.prisma.club.findUnique({ where: { slug } });
+    const club = await this.prisma.club.findUnique({ where: { slug }, include: { owner: { select: { role: true } } } });
     if (!club || club.status !== 'APPROVED') throw new NotFoundException('Association introuvable.');
     const players = await this.prisma.player.findMany({
       where: { clubId: club.id },
@@ -204,7 +206,8 @@ export class AssociationsService {
     });
     const ranked = await this.withStats(players);
     const memberUserIds = players.map((p) => p.userId).filter((x): x is string => !!x);
-    const creatorIds = [club.ownerId, ...players.filter((p) => p.user?.role === 'ORGANIZER').map((p) => p.userId)].filter((x): x is string => !!x);
+    // Un admin responsable d'un club crée aussi les tournois de la plateforme : ils ne sont pas attribués au club.
+    const creatorIds = [club.owner?.role === 'ADMIN' ? null : club.ownerId, ...players.filter((p) => p.user?.role === 'ORGANIZER').map((p) => p.userId)].filter((x): x is string => !!x);
     // Jamais un tournoi rattaché à un événement non publié.
     const visible = { OR: [{ eventId: null }, { event: { is: { status: 'PUBLISHED' } } }] };
     const [organized, played] = await Promise.all([

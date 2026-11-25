@@ -24,6 +24,7 @@ export class UsersService {
         organizerStatus: true, organizerNote: true, organizerMaxTournaments: true, organizerMaxPlayers: true,
         clubRequested: true, clubStatus: true, clubBlocking: true,
         player: { select: { club: { select: { id: true, name: true } } } },
+        ownedClub: { select: { id: true } },
       },
     });
     if (!u) throw new NotFoundException('Utilisateur introuvable');
@@ -33,9 +34,10 @@ export class UsersService {
       this.prisma.tournament.count({ where: { createdById: userId } }),
       this.computeResults(userId),
     ]);
-    const { player, ...rest } = u;
+    const { player, ownedClub, ...rest } = u;
     return {
       ...rest,
+      ownsClub: !!ownedClub, // responsable d'un club : l'interface affiche « Mon club » quel que soit le rôle
       clubId: player?.club?.id ?? null,
       clubName: player?.club?.name ?? null,
       nextNameChangeAt: this.nextNameChangeAt(u.displayNameChangedAt),

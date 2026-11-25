@@ -98,6 +98,19 @@ describe('AssociationsService.attachOwner', () => {
     await expect(svc.attachOwner('c1', 'p@x.tg')).rejects.toThrow(/déjà utilisée/);
   });
 
+  it('rattache un compte admin existant sans toucher à son rôle ni à son mot de passe', async () => {
+    const { svc, calls } = build({ user: { id: 'adm', role: 'ADMIN', ownedClub: null } });
+    const r = await svc.attachOwner('c1', 'admin@x.tg');
+    expect(r).toMatchObject({ created: false, password: null });
+    expect(calls.created).toBeUndefined();
+    expect(calls.clubUpdate).toMatchObject({ ownerId: 'adm' });
+  });
+
+  it('refuse un compte qui gère déjà un autre club', async () => {
+    const { svc } = build({ user: { id: 'adm', role: 'ADMIN', ownedClub: { name: 'Autre' } } });
+    await expect(svc.attachOwner('c1', 'admin@x.tg')).rejects.toThrow(/gère déjà le club/);
+  });
+
   it('refuse un club qui a déjà une association', async () => {
     const { svc } = build({ club: { id: 'c1', name: 'G', ownerId: 'someone' } });
     await expect(svc.attachOwner('c1', 'a@b.tg')).rejects.toThrow(/déjà un compte/);

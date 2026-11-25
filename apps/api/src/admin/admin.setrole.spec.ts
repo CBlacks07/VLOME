@@ -20,6 +20,12 @@ describe('AdminService.setRole', () => {
     expect(updated()).toBeNull();
   });
 
+  it('laisse un responsable de club devenir admin', async () => {
+    const { service, updated } = svc({ name: 'Gouzepe Gaming Club' });
+    await service.setRole('u1', 'ADMIN');
+    expect(updated()).toMatchObject({ data: { role: 'ADMIN' } });
+  });
+
   it('permet de rétablir le rôle association d\'un compte propriétaire', async () => {
     const { service, updated } = svc({ name: 'Gouzepe Gaming Club' });
     await service.setRole('u1', 'ASSOCIATION');

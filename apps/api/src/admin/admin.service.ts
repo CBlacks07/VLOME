@@ -63,10 +63,10 @@ export class AdminService {
   async listUsers() {
     const rows = await this.prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
-      select: { id: true, email: true, displayName: true, role: true, createdAt: true, ownedClub: { select: { id: true } } },
+      select: { id: true, email: true, displayName: true, role: true, createdAt: true, ownedClub: { select: { id: true, name: true } } },
     });
     // ownsClub : ce compte pilote une association (même si son rôle a été changé par erreur — l'admin peut alors le rétablir).
-    return rows.map(({ ownedClub, ...u }) => ({ ...u, ownsClub: !!ownedClub }));
+    return rows.map(({ ownedClub, ...u }) => ({ ...u, ownsClub: !!ownedClub, ownedClubName: ownedClub?.name ?? null }));
   }
 
   /** Change le rôle d'un compte. Un compte qui pilote une association ne peut pas devenir joueur/organisateur/admin (il perdrait son espace
@@ -77,8 +77,9 @@ export class AdminService {
     if (role === 'ASSOCIATION' && !u.ownedClub) {
       throw new BadRequestException('Aucune association n\'est rattachée à ce compte : utilise « Rattacher un compte » sur un club sans association.');
     }
-    if (role !== 'ASSOCIATION' && u.ownedClub) {
-      throw new BadRequestException(`Ce compte pilote l'association « ${u.ownedClub.name} » : son rôle ne peut pas être changé.`);
+    // Un responsable de club peut être association, organisateur ou admin ; joueur, il perdrait l'accès à « Mon club ».
+    if (role === 'PLAYER' && u.ownedClub) {
+      throw new BadRequestException(`Ce compte pilote l'association « ${u.ownedClub.name} » : il ne peut pas redevenir simple joueur.`);
     }
     return this.prisma.user.update({
       where: { id },

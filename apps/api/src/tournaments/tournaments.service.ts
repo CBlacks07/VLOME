@@ -53,10 +53,17 @@ export class TournamentsService {
         this.prisma.tournament.findUnique({ where: { id }, select: { activity: true } }),
         this.prisma.user.findUnique({ where: { id: user.sub }, select: { displayName: true } }),
       ]);
-      const list = Array.isArray(r?.activity) ? (r!.activity as { ts: number; by: string; text: string }[]) : [];
+      // Au lancement, les lignes d'un déroulement antérieur (effacé) disparaissent pour de bon.
+      const list = this.journalFor(text === 'Tournoi lancé' ? 'DRAFT' : 'LIVE', r?.activity);
       list.push({ ts: Date.now(), by: u?.displayName || 'Organisation', text });
       await this.prisma.tournament.update({ where: { id }, data: { activity: list.slice(-200) } });
     } catch { /* journal indisponible : sans conséquence */ }
+  }
+
+  /** Un tournoi pas (ou plus) lancé n'a ni lancement ni résultat à raconter : ces lignes datent d'avant une réinitialisation. */
+  private journalFor(status: string, activity: unknown): { ts: number; by: string; text: string }[] {
+    const list = Array.isArray(activity) ? (activity as { ts: number; by: string; text: string }[]) : [];
+    return status === 'DRAFT' ? list.filter((e) => !/^(Tournoi lancé|Résultat)/.test(e.text)) : list;
   }
 
   private async ownRecord(id: string, user: JwtUser) {
@@ -76,7 +83,7 @@ export class TournamentsService {
       answers: regs.map((x) => ({ playerName: x.playerName, answers: Array.isArray(x.answers) ? x.answers : [] })),
       isOwner: r.createdById === user.sub || user.role === 'ADMIN',
       coAdmins: admins.map((a) => ({ id: a.id, name: a.displayName, email: a.email })),
-      activity: (Array.isArray(r.activity) ? (r.activity as unknown[]) : []).slice(-80).reverse(),
+      activity: this.journalFor(r.status, r.activity).slice(-80).reverse(),
     };
   }
 
@@ -2125,7 +2132,12 @@ export class TournamentsService {
     if (l.t.status === 'setup') throw new ConflictException('Ce tournoi n\'a pas encore été lancé.');
     Engine.resetTournament(l.t);
     await this.persist(id, l.t);
-    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
+    // Journal, postes, horaires, chronos et envois des joueurs portaient sur des matchs qui n'existent plus.
+    await this.prisma.tournament.update({ where: { id }, data: { activity: [], stations: {}, matchPlans: {}, matchStarts: {}, streamMatchKey: null } });
+    await this.prisma.scoreReport.deleteMany({ where: { tournamentId: id } });
+    await this.logActivity(id, user, 'Tournoi réinitialisé');
+    const record = { ...l.record, stations: {}, matchPlans: {}, matchStarts: {}, streamMatchKey: null };
+    return this.toState(id, l.t, record.entryFeeXof, record.imageUrl, record.format, record.place, record.date, record.givesLoyaltyPoint, record.stations, record.streamMatchKey, record);
   }
 
   /** Renomme un joueur (coquille repérée après coup) — à tout moment. */

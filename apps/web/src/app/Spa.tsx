@@ -167,13 +167,14 @@ type State = {
   // simultanés partageraient la même saisie. Clé = même id que activeMatchIds.
   matchScores: Record<string, { a: number; b: number }>;
   matchSets: Record<string, [number, number][]>;
+  orgData: Detail | null;
   // Match DÉJÀ joué en cours de correction (crayon) — id de son entrée de journal (t.log), ou null.
   // Distinct de activeMatchIds/matchScores (qui concernent les matchs à VENIR) : une correction remet
   // en cause un résultat déjà acquis, potentiellement suivi d'autres matchs (cascade, voir
   // Engine.correctResult) — le score en cours de saisie pour la correction réutilise matchScores avec
   // ce même id comme clé, préfixé "c:" pour ne jamais entrer en collision avec un match actif.
   correctingId: string | null;
-  regiePanel: "joueurs" | "paiements" | "reglages" | null; // overlay ouvert depuis le bas du rail de régie
+  regiePanel: "joueurs" | "paiements" | "reglages" | "organisation" | null; // overlay ouvert depuis le bas du rail de régie
   dash: { data: Detail | null; at: number; err: boolean; busy?: boolean } | null; // tableau de bord de pilotage (admin), actualisé en continu
   poolView: number; // index de la poule affichée (une poule par page, flèches précédent/suivant)
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
@@ -4270,13 +4271,28 @@ function poolHistoryList(log: Detail[], poolId: string, manage: boolean): string
 }
 /** Postes et match « à l'antenne » du tournoi affiché (posés au rendu, voir renderPageBody) — lus par les
  * cartes de poule et les cases de bracket, qui n'ont pas accès au tournoi entier. */
-let LIVE_META: { stations: Record<string, string>; stream: string | null; starts: Record<string, number>; minutes: number } = { stations: {}, stream: null, starts: {}, minutes: 0 };
+let LIVE_META: { stations: Record<string, string>; stream: string | null; starts: Record<string, number>; minutes: number; plans?: Record<string, string> } = { stations: {}, stream: null, starts: {}, minutes: 0 };
+/** « 14:30 » le jour même, sinon « sam. 28 · 14:30 ». */
+function whenText(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hour = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? hour : `${d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" })} · ${hour}`;
+}
+/** Valeur d'un champ <input type="datetime-local"> à partir d'une date ISO (heure locale). */
+function localInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
 function liveBadges(key: string | undefined, small = false): string {
   if (!key) return "";
   const station = LIVE_META.stations[key];
   const stream = LIVE_META.stream === key;
   const startedAt = LIVE_META.starts[key];
-  if (!station && !stream && !startedAt) return "";
+  const planned = startedAt ? "" : whenText(LIVE_META.plans?.[key]);
+  if (!station && !stream && !startedAt && !planned) return "";
   const fs = small ? "8.5px" : "10px";
   // Chronomètre du match (démarré depuis la régie) : mis à jour chaque seconde par l'effet « data-timer », rouge
   // une fois la durée prévue dépassée. Texte initial calculé ici pour éviter un « 00:00 » le temps du 1er tick.
@@ -4284,7 +4300,7 @@ function liveBadges(key: string | undefined, small = false): string {
   const timer = startedAt
     ? `<span data-timer="${startedAt}" data-limit="${LIVE_META.minutes || 0}" title="Durée du match${LIVE_META.minutes ? ` (prévue : ${LIVE_META.minutes} min)` : ""}" style="font-family:'JetBrains Mono',monospace;font-size:${fs};font-weight:800;border:1px solid var(--border-strong);border-radius:99px;padding:1px 7px;color:var(--text-muted)">${String(Math.floor(elapsed / 60000)).padStart(2, "0")}:${String(Math.floor((elapsed % 60000) / 1000)).padStart(2, "0")}</span>`
     : "";
-  return `${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
+  return `${planned ? `<span title="Heure prévue" style="font-size:${fs};font-weight:800;color:#FBBF24;border:1px solid rgba(251,191,36,.45);border-radius:99px;padding:1px 7px">${escHtml(planned)}</span>` : ""}${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
 }
 /** « Vainqueur » d'un match nul (voir Engine.DRAW). */
 const DRAW = "__draw__";
@@ -4601,7 +4617,7 @@ function matchQueuePanel(t: Detail, actives: ActiveMatch[]): string {
     <div style="padding:6px 12px 12px">${[...items].sort((a, b) => Number(b.id === t.streamMatchKey) - Number(a.id === t.streamMatchKey)).map((it) => {
       const station = t.stations?.[it.id];
       const onStream = it.id === t.streamMatchKey;
-      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--surface-3)">${onStream ? `<span title="À l'antenne" style="color:#F43F7E;flex:none">${ic(I.tv, 13)}</span>` : ""}<span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span>${station ? `<span style="font-size:10px;font-weight:750;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;flex:none">${escHtml(station)}</span>` : ""}<span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--surface-3)">${onStream ? `<span title="À l'antenne" style="color:#F43F7E;flex:none">${ic(I.tv, 13)}</span>` : ""}<span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.label}</span>${t.matchPlans?.[it.id] ? `<span style="font-size:10px;font-weight:750;color:#FBBF24;flex:none">${escHtml(whenText(t.matchPlans[it.id]))}</span>` : ""}${station ? `<span style="font-size:10px;font-weight:750;color:var(--text-muted);background:var(--surface-3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;flex:none">${escHtml(station)}</span>` : ""}<span data-activematch="${it.id}" style="font-size:11px;font-weight:750;color:#22D3EE;cursor:pointer;flex:none">Lancer</span></div>`;
     }).join("")}</div>
   </div>`;
 }
@@ -4657,6 +4673,8 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   const stationField = `<span style="display:inline-flex;align-items:center;gap:6px;flex:none">
       <span style="font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase;color:var(--text-faint)">Poste</span>
       <input id="station-${key}" value="${escAttr(stationVal)}" placeholder="Ex. Table 3" title="Table/poste physique où se joue ce match (indicatif, affiché sur l'écran de diffusion Mode Show)" style="width:78px;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:5px 6px;text-align:center" />
+      <input id="mtime-${key}" type="datetime-local" value="${localInput(t.matchPlans?.[key])}" title="Heure prévue de ce match (facultative)" style="width:150px;background:var(--surface-4);border:1px solid var(--border-strong);border-radius:7px;color:var(--text);font-family:inherit;font-size:11px;padding:4px 6px" />
+      <button data-matchtime="${t.id}|${key}" title="Enregistrer l'heure" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">Heure</button>
       <button data-stationsave="${t.id}|${key}" title="Enregistrer le poste" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:7px;padding:5px 8px;font-size:10.5px;font-weight:700;cursor:pointer">OK</button>
     </span>`;
   const startedAt: number | undefined = t.matchStarts?.[key];
@@ -4968,6 +4986,8 @@ function regieTopBanner(S: State, t: Detail): string {
       <div style="display:flex;align-items:center;gap:9px;margin-top:5px"><span style="width:104px;height:5px;border-radius:99px;background:var(--surface-4);overflow:hidden;display:inline-block"><span style="display:block;width:${pct}%;height:100%;background:#FBBF24"></span></span><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#FBBF24">${dist}/${total}</span></div>
     </div>
     <span style="width:1px;height:32px;background:var(--surface-4)"></span>` : "";
+  // Placé juste avant la cagnotte (Survival) ou à droite du titre (autres formats).
+  const orgBtn = `<button data-regiepanel="organisation" title="Annonces, co-administrateurs et journal" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:#FBBF24;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:750;cursor:pointer">Organisation</button>`;
   return `<div class="regie-banner" style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid var(--surface-3);background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
     <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);flex:none;cursor:pointer">${icBack(14)}</button>
     <div style="min-width:0">
@@ -4978,7 +4998,7 @@ function regieTopBanner(S: State, t: Detail): string {
       <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${[t.game, t.format, t.matchFormatLabel].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
     </div>
     <span style="flex:1"></span>
-    ${cagnotteBlock}
+    ${orgBtn}${cagnotteBlock}
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
@@ -5128,14 +5148,34 @@ function regieScoringForm(t: Detail): string {
   return `<div>${rows}</div><button data-livescoresave="${t.id}" style="width:100%;margin-top:14px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:11px;font-weight:750;font-size:13.5px;cursor:pointer">Enregistrer le barème</button>`;
 }
 
+/** Annonces publiées par l'organisation, visibles de tous. */
+function announcementsBox(t: Detail, manage: boolean): string {
+  const list: Detail[] = t.announcements ?? [];
+  if (!list.length) return "";
+  return `<div style="border:1px solid rgba(251,191,36,.35);border-radius:14px;background:rgba(251,191,36,.06);padding:12px 16px;margin-bottom:14px">${list.slice(0, manage ? 30 : 5).map((a: Detail, i: number) => `<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;${i ? "border-top:1px solid rgba(251,191,36,.2)" : ""}"><span style="color:#FBBF24;display:inline-flex;flex:none;margin-top:2px">${ic(I.flame, 15)}</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere">${escHtml(a.text)}</div><div style="font-size:11px;color:var(--text-faint);margin-top:2px">${escHtml(a.by || "")} · ${escHtml(whenText(new Date(a.ts).toISOString()))}</div></div>${manage ? `<button data-annrm="${a.id}" title="Retirer l'annonce" style="background:transparent;border:0;color:var(--text-faint);cursor:pointer;flex:none">${ic(I.x, 12)}</button>` : ""}</div>`).join("")}</div>`;
+}
+/** Organisation d'un tournoi (organisateur, co-administrateur, admin) : annonce, co-administrateurs, journal. */
+function orgPanel(S: State, t: Detail): string {
+  const o = S.orgData && S.orgData.tid === t.id ? S.orgData : null;
+  const head = (label: string) => `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin:16px 0 8px">${label}</div>`;
+  const announce = `${head("Publier une annonce")}<textarea id="ann-text" rows="2" maxlength="600" placeholder="Ex. : début des quarts à 15 h, tables 1 à 4" style="${adminInp};margin-top:0;resize:vertical"></textarea><button data-annsend="1" style="margin-top:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:9px 16px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Publier</button>`;
+  if (!o) return `${announce}${head("Équipe et journal")}<button data-orgload="${t.id}" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Afficher les co-administrateurs et le journal</button>`;
+  const admins = `${head("Co-administrateurs")}${(o.coAdmins ?? []).map((a: Detail) => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--surface-4);font-size:13px"><span style="flex:1;min-width:0"><b>${escHtml(a.name)}</b> <span style="color:var(--text-faint)">${escHtml(a.email)}</span></span>${o.isOwner ? btnSm(`data-coadminrm="${a.id}"`, "Retirer", "#FB7185", "rgba(251,113,133,.35)") : ""}</div>`).join("") || `<div style="color:var(--text-faint);font-size:13px">Personne d'autre ne pilote ce tournoi.</div>`}
+    ${o.isOwner ? `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="coadmin-email" type="email" placeholder="E-mail d'un organisateur" style="${adminInp};margin-top:0;flex:1;min-width:200px;width:auto" /><button data-coadminadd="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:0 16px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Ajouter</button></div>` : ""}`;
+  const log: Detail[] = o.activity ?? [];
+  const journal = `${head("Journal")}<div style="max-height:260px;overflow-y:auto">${log.map((l: Detail) => `<div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--surface-4);font-size:12.5px"><span style="color:var(--text-faint);flex:none;font-family:'JetBrains Mono',monospace;font-size:11px">${escHtml(whenText(new Date(l.ts).toISOString()))}</span><span style="flex:1;min-width:0">${escHtml(l.text)}</span><span style="color:var(--text-faint);flex:none">${escHtml(l.by)}</span></div>`).join("") || `<div style="color:var(--text-faint);font-size:13px">Rien pour l'instant.</div>`}</div>`;
+  return `${announce}${admins}${journal}`;
+}
+
 /** Overlay Joueurs / Paiements / Réglages ouvert depuis le bas du rail de régie. */
 function regieOverlay(S: State, t: Detail, manage: boolean): string {
   // Le barème n'a pas de sens hors Survival (voir regieRail, qui n'affiche même plus le bouton) —
   // filet de sécurité si l'état retenait ce panneau d'un tournoi Survival visité juste avant.
   if (!S.regiePanel || (S.regiePanel === "reglages" && t.mainFormat !== "survival")) return "";
-  const titles: Record<string, string> = { joueurs: "Joueurs", paiements: "Paiements en attente", reglages: "Réglages & barème" };
+  const titles: Record<string, string> = { joueurs: "Joueurs", paiements: "Paiements en attente", reglages: "Réglages & barème", organisation: "Organisation" };
   const body = S.regiePanel === "joueurs" ? (playersRosterPanel(S, t, manage) || `<div style="color:var(--text-muted);text-align:center;padding:20px">Aucun joueur.</div>`)
     : S.regiePanel === "paiements" ? (paymentsPanel(S, t.id) || `<div style="color:var(--text-muted);text-align:center;padding:20px">Aucun paiement en attente.</div>`)
+    : S.regiePanel === "organisation" ? `${announcementsBox(t, manage)}${orgPanel(S, t)}`
     : regieScoringForm(t);
   return `<div data-regiepanel="" style="position:fixed;inset:0;z-index:270;display:flex;align-items:flex-start;justify-content:center;padding:min(6vh,60px) 18px;background:rgba(6,6,10,.75);backdrop-filter:blur(6px);overflow-y:auto">
     <div data-stop="1" style="width:100%;max-width:520px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);box-shadow:0 30px 80px rgba(0,0,0,.6);animation:fadeUp .18s ease both">
@@ -5357,7 +5397,8 @@ function pTournoi(S: State) {
         ${t.rules ? `<details ${t.prize ? "" : "open"}><summary style="cursor:pointer;font-size:12px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Règlement</summary><div style="margin-top:10px;color:var(--text);font-size:14px;line-height:1.7;white-space:pre-line">${escHtml(t.rules)}</div></details>` : ""}
       </div>`
     : "";
-  const head = `${eventSwitcher}${cover}${infoCard}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const org = manage ? `<details style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:12px 16px;margin-bottom:16px" ${S.orgData?.tid === t.id ? "open" : ""}><summary style="cursor:pointer;font-weight:750;font-size:13.5px">Organisation : annonces, co-administrateurs, journal</summary>${orgPanel(S, t)}</details>` : "";
+  const head = `${eventSwitcher}${cover}${infoCard}${announcementsBox(t, manage)}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -6878,7 +6919,7 @@ function clubPendingBanner(S: State): string {
 }
 function renderPage(S: State) { return clubPendingBanner(S) + renderPageBody(S) + payChoiceModal(S) + shareModal(S) + embedModal(S) + toastHtml(S); }
 function renderPageBody(S: State) {
-  LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null, starts: (S.detail?.matchStarts as Record<string, number>) || {}, minutes: Number(S.detail?.matchMinutes) || 0 };
+  LIVE_META = { stations: (S.detail?.stations as Record<string, string>) || {}, stream: (S.detail?.streamMatchKey as string | null) ?? null, starts: (S.detail?.matchStarts as Record<string, number>) || {}, minutes: Number(S.detail?.matchMinutes) || 0, plans: (S.detail?.matchPlans as Record<string, string>) || {} };
   // Mode Show / écran de diffusion : conçus pour être projetés (vidéoprojecteur, écran de LAN) — restent
   // sombres quel que soit le thème choisi pour le reste du site.
   if (S.page === "show") return `<div data-force-theme="dark">${pShow(S)}</div>`;
@@ -6925,7 +6966,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, matchSets: {}, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -7722,6 +7763,32 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   function showToast(msg: string) {
     setS((s) => ({ ...s, toast: msg }));
     setTimeout(() => setS((s) => (s.toast === msg ? { ...s, toast: null } : s)), 4000);
+  }
+  /** Action d'organisation qui renvoie l'état du tournoi. */
+  async function tournCall(tid: string, path: string, method: string, body: Detail | undefined, done: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/${path}`, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(Array.isArray(d?.message) ? d.message.join("\n") : d?.message || "Action impossible."); return; }
+      if (d) setS((s) => (s.detail?.id === tid ? { ...s, detail: d } : s));
+      showToast(done);
+    } catch { alert("Action impossible — réessaie dans un instant."); }
+  }
+  async function loadOrg(tid: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/organisation`, { headers: authHeaders() });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(d?.message || "Impossible de charger l'organisation."); return; }
+      setS((s) => ({ ...s, orgData: { ...d, tid } }));
+    } catch { alert("Impossible de charger l'organisation."); }
+  }
+  async function orgCall(tid: string, path: string, method: string, body?: Detail) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/${path}`, { method, headers: { "Content-Type": "application/json", ...authHeaders() }, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(Array.isArray(d?.message) ? d.message.join("\n") : d?.message || "Action impossible."); return; }
+      setS((s) => ({ ...s, orgData: { ...d, tid } }));
+    } catch { alert("Action impossible — réessaie dans un instant."); }
   }
   /** Enregistre un match nul confirmé (championnat). */
   function reportDraw(key: string) {
@@ -9677,7 +9744,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9770,6 +9837,24 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         return { ...s, matchScores: { ...s.matchScores, [key]: next }, ...(pi >= 0 ? { poolView: pi } : {}) };
       });
     }
+    else if (d.matchtime) {
+      const [tid, key] = d.matchtime.split("|");
+      const v = (document.getElementById(`mtime-${key}`) as HTMLInputElement | null)?.value || "";
+      void tournCall(tid, "match-time", "POST", { key, at: v ? new Date(v).toISOString() : "" }, "Heure enregistrée.");
+    }
+    else if (d.annsend !== undefined) {
+      const text = ((document.getElementById("ann-text") as HTMLTextAreaElement | null)?.value || "").trim();
+      if (text.length < 2) { alert("Écris le texte de l'annonce."); return; }
+      if (S.detail) void tournCall(S.detail.id, "announcements", "POST", { text }, "Annonce publiée.");
+    }
+    else if (d.annrm) { if (S.detail) void tournCall(S.detail.id, `announcements/${d.annrm}`, "DELETE", undefined, "Annonce retirée."); }
+    else if (d.orgload) { void loadOrg(d.orgload); }
+    else if (d.coadminadd !== undefined) {
+      const email = ((document.getElementById("coadmin-email") as HTMLInputElement | null)?.value || "").trim();
+      if (!email) { alert("Saisis une adresse e-mail."); return; }
+      if (S.detail) void orgCall(S.detail.id, "co-admins", "POST", { email });
+    }
+    else if (d.coadminrm) { if (S.detail) void orgCall(S.detail.id, `co-admins/${d.coadminrm}`, "DELETE"); }
     else if (d.setadd) {
       const key = d.setadd;
       setS((s) => {

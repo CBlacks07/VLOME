@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, Min, MaxLength, MinLength, IsEmail } from 'class-validator';
 
 export class CreateTournamentDto {
   @IsString() @MaxLength(120) name!: string;
@@ -252,4 +252,18 @@ export class BattleRoyaleReportDto {
   // Nombre d'éliminations par joueur (clé = id joueur) — optionnel, validé plus finement côté moteur
   // (Engine.reportBattleRoyale ignore silencieusement une valeur non numérique ou ≤ 0).
   @IsOptional() @IsObject() kills?: Record<string, number>;
+}
+
+export class AnnouncementDto {
+  @IsString() @MinLength(2) @MaxLength(600) text!: string;
+}
+
+export class CoAdminDto {
+  @IsEmail({}, { message: 'Adresse e-mail invalide.' }) email!: string;
+}
+
+// Heure prévue d'un match (ISO) ; vide = retirer.
+export class MatchTimeDto {
+  @IsString() @MaxLength(80) key!: string;
+  @IsOptional() @IsString() @MaxLength(40) at?: string;
 }

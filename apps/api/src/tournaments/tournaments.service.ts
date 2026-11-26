@@ -35,10 +35,97 @@ export class TournamentsService {
 
   // Seul le propriétaire (ou un ADMIN) peut piloter/éditer. Les tournois sans
   // propriétaire (démo) sont pilotables par tout utilisateur authentifié.
-  private assertCanManage(record: { createdById: string | null }, user: JwtUser) {
-    if (record.createdById && record.createdById !== user.sub && user.role !== 'ADMIN') {
+  private assertCanManage(record: { createdById: string | null; coAdminIds?: string[] | null }, user: JwtUser) {
+    if (record.createdById && record.createdById !== user.sub && user.role !== 'ADMIN' && !record.coAdminIds?.includes(user.sub)) {
       throw new ForbiddenException('Seul l\'organisateur peut gérer ce tournoi.');
     }
+  }
+
+  /** Réservé au propriétaire du tournoi et aux administrateurs (un co-administrateur pilote, il ne supprime ni ne nomme). */
+  private assertOwner(record: { createdById: string | null }, user: JwtUser) {
+    if (record.createdById !== user.sub && user.role !== 'ADMIN') throw new ForbiddenException('Seul le créateur du tournoi peut faire cela.');
+  }
+
+  /** Ajoute une ligne au journal du tournoi (200 au plus). « Au mieux » : n'interrompt jamais l'action elle-même. */
+  private async logActivity(id: string, user: JwtUser, text: string): Promise<void> {
+    try {
+      const [r, u] = await Promise.all([
+        this.prisma.tournament.findUnique({ where: { id }, select: { activity: true } }),
+        this.prisma.user.findUnique({ where: { id: user.sub }, select: { displayName: true } }),
+      ]);
+      const list = Array.isArray(r?.activity) ? (r!.activity as { ts: number; by: string; text: string }[]) : [];
+      list.push({ ts: Date.now(), by: u?.displayName || 'Organisation', text });
+      await this.prisma.tournament.update({ where: { id }, data: { activity: list.slice(-200) } });
+    } catch { /* journal indisponible : sans conséquence */ }
+  }
+
+  private async ownRecord(id: string, user: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id } });
+    if (!r) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(r, user);
+    return r;
+  }
+
+  async organisation(id: string, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    const admins = r.coAdminIds.length ? await this.prisma.user.findMany({ where: { id: { in: r.coAdminIds } }, select: { id: true, displayName: true, email: true } }) : [];
+    return {
+      isOwner: r.createdById === user.sub || user.role === 'ADMIN',
+      coAdmins: admins.map((a) => ({ id: a.id, name: a.displayName, email: a.email })),
+      activity: (Array.isArray(r.activity) ? (r.activity as unknown[]) : []).slice(-80).reverse(),
+    };
+  }
+
+  async addCoAdmin(id: string, email: string, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    this.assertOwner(r, user);
+    const target = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true, displayName: true, role: true } });
+    if (!target || !['ORGANIZER', 'ADMIN', 'ASSOCIATION'].includes(target.role)) {
+      throw new BadRequestException('Aucun compte organisateur, association ou administrateur à cette adresse.');
+    }
+    if (target.id === r.createdById || r.coAdminIds.includes(target.id)) throw new ConflictException('Ce compte gère déjà ce tournoi.');
+    if (r.coAdminIds.length >= 10) throw new ConflictException('Dix co-administrateurs au maximum.');
+    await this.prisma.tournament.update({ where: { id }, data: { coAdminIds: [...r.coAdminIds, target.id] } });
+    await this.logActivity(id, user, `${target.displayName} devient co-administrateur`);
+    return this.organisation(id, user);
+  }
+
+  async removeCoAdmin(id: string, userId: string, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    this.assertOwner(r, user);
+    await this.prisma.tournament.update({ where: { id }, data: { coAdminIds: r.coAdminIds.filter((x) => x !== userId) } });
+    await this.logActivity(id, user, 'Un co-administrateur a été retiré');
+    return this.organisation(id, user);
+  }
+
+  async announce(id: string, text: string, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    const u = await this.prisma.user.findUnique({ where: { id: user.sub }, select: { displayName: true } });
+    const list = Array.isArray(r.announcements) ? (r.announcements as { id: string; text: string; ts: number; by: string }[]) : [];
+    list.push({ id: Engine.uid(), text: text.trim(), ts: Date.now(), by: u?.displayName || 'Organisation' });
+    await this.prisma.tournament.update({ where: { id }, data: { announcements: list.slice(-30) } });
+    await this.logActivity(id, user, 'Annonce publiée');
+    return this.getState(id);
+  }
+
+  async removeAnnouncement(id: string, announcementId: string, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    const list = Array.isArray(r.announcements) ? (r.announcements as { id: string }[]) : [];
+    await this.prisma.tournament.update({ where: { id }, data: { announcements: list.filter((a) => a.id !== announcementId) as object[] } });
+    await this.logActivity(id, user, 'Annonce retirée');
+    return this.getState(id);
+  }
+
+  async setMatchTime(id: string, key: string, at: string | undefined, user: JwtUser) {
+    const r = await this.ownRecord(id, user);
+    const plans = { ...((r.matchPlans as Record<string, string>) || {}) };
+    if (at) {
+      const date = new Date(at);
+      if (Number.isNaN(date.getTime())) throw new BadRequestException('Heure invalide.');
+      plans[key] = date.toISOString();
+    } else delete plans[key];
+    await this.prisma.tournament.update({ where: { id }, data: { matchPlans: plans } });
+    return this.getState(id);
   }
 
   /** Carte pour le listing (dérive joueurs/cagnotte depuis l'état du moteur). */
@@ -326,7 +413,7 @@ export class TournamentsService {
   /** Tournois créés par l'utilisateur (espace organisateur). */
   async mine(user: JwtUser) {
     const rows = await this.prisma.tournament.findMany({
-      where: { createdById: user.sub },
+      where: { OR: [{ createdById: user.sub }, { coAdminIds: { has: user.sub } }] },
       orderBy: { createdAt: 'desc' },
       include: { event: { select: { id: true, name: true, accentColor: true, status: true } } },
     });
@@ -1271,7 +1358,7 @@ export class TournamentsService {
   async remove(id: string, user: JwtUser) {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('Tournoi introuvable');
-    this.assertCanManage(r, user);
+    this.assertOwner(r, user);
     await this.prisma.match.deleteMany({ where: { tournamentId: id } });
     await this.prisma.tournament.delete({ where: { id } });
     // Remboursement du crédit uniquement si le tournoi n'a jamais été lancé (sinon l'organisateur
@@ -1360,7 +1447,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown; coAdminIds: string[]; matchPlans: unknown; announcements: unknown }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
@@ -1553,7 +1640,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null; matchPlans?: unknown; announcements?: unknown } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1638,6 +1725,8 @@ export class TournamentsService {
       streamMatchKey,
       // Chronomètre par match : heure de début (ms) par activeKey, et durée prévue (minutes) — voir setMatchStart.
       matchStarts: (extra.matchStarts as Record<string, number>) || {},
+      matchPlans: (extra.matchPlans as Record<string, string>) || {},
+      announcements: Array.isArray(extra.announcements) ? [...(extra.announcements as unknown[])].reverse() : [],
       matchMinutes: extra.matchMinutes ?? null,
       // Règlement et lot (texte libre saisi par l'organisateur).
       rules: extra.rules ?? null,
@@ -1710,6 +1799,7 @@ export class TournamentsService {
       Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
     }
     await this.persist(id, t);
+    await this.logActivity(id, user, 'Tournoi lancé');
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
@@ -1740,6 +1830,9 @@ export class TournamentsService {
       throw new BadRequestException('Égalité impossible ici : le match nul n\'existe que dans les formats à points (championnat).');
     }
     await this.persist(id, t);
+    const last = t.log[t.log.length - 1];
+    const played = [...t.log].reverse().find((e) => e.a && e.b);
+    if (accepted && last && played) await this.logActivity(id, user, `Résultat : ${Engine.playerName(t, played.a)} ${played.sa ?? 0}–${played.sb ?? 0} ${Engine.playerName(t, played.b!)}`);
     // Le match est joué : son chronomètre s'arrête (une clé de poule sert à des matchs successifs).
     let record = l.record;
     const key = dto.matchId || dto.poolId;
@@ -1772,6 +1865,7 @@ export class TournamentsService {
     const corrected = Engine.correctResult(l.t, dto.logId, dto.winnerId, dto.scoreA ?? 0, dto.scoreB ?? 0);
     if (!corrected) throw new ConflictException('Correction impossible : match introuvable, vainqueur invalide, ou trop ancien pour être corrigé.');
     await this.persist(id, corrected);
+    await this.logActivity(id, user, 'Résultat corrigé');
     return this.toState(id, corrected, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 

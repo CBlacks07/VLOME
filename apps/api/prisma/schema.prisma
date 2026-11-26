@@ -270,6 +270,10 @@ model Tournament {
   // état complet du moteur @vlome/engine (JSON natif Postgres)
   engineState       Json?
   createdById       String? // propriétaire (organisateur)
+  coAdminIds        String[] @default([]) // autres comptes (organisateur, association, admin) autorisés à piloter ce tournoi
+  matchPlans        Json? // heure prévue par match, clé = activeKey côté web : { cle: date ISO } (le lieu est le « poste »)
+  announcements     Json? // annonces publiques : [{ id, text, ts, by }]
+  activity          Json? // journal des actions de l'organisation : [{ ts, by, text }]
   eventId           String? // événement auquel ce tournoi est rattaché (facultatif)
   event             Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
   scheduleItems     EventScheduleItem[]

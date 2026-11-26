@@ -289,8 +289,7 @@ test('bracket simple : la petite finale n\'existe que si elle peut réellement s
     const tp = t.finals.bracket.thirdPlace;
     if (!tp) continue;
     assert.ok(!isBye(tp.a) && !isBye(tp.b), `n=${n} : la petite finale doit opposer deux vrais joueurs`);
-    assert.ok(E.reportFinals(t, tp.id, tp.a, 1, 0), `n=${n} : la petite finale doit pouvoir être jouée`);
-    assert.equal(tp.winner, tp.a);
+    assert.ok(t.finals.bracket.thirdPlace.winner, `n=${n} : la petite finale est jouée avant la clôture`);
   }
   // 12 joueurs : le tour 3 contient un exempt, donc un seul perdant de demi-finale -> pas de petite finale.
   for (const n of [3, 5, 6, 10, 12]) assert.equal(launched('single', n).finals.bracket.thirdPlace, null, `n=${n} : pas de petite finale`);
@@ -608,4 +607,39 @@ test('course : meilleur temps ou temps cumulé, un abandon passe derrière', () 
     assert.equal(E.playerName(t, t.champion), expected, rank);
     assert.equal(E.playerName(t, E.finalPlacements(t)[2][0]), 'C', rank);
   }
+});
+
+test('poule finalisée à la main : classement imposé, qualifiés repris, annulable', () => {
+  const t = E.newTournament({ format: 'roundrobin', nbPools: 2, qualifyPerPool: 2, finalsFormat: 'single' });
+  E.setPlayers(t, ['A', 'B', 'C', 'D', 'E', 'F']);
+  E.launchTournament(t);
+  const [p1] = t.pools;
+  const order = p1.playerIds.slice().reverse();
+  assert.ok(!E.finalizePool(t, p1.id, order.slice(1)), 'classement incomplet refusé');
+  assert.ok(E.finalizePool(t, p1.id, order));
+  assert.equal(p1.phase, 'done');
+  assert.deepEqual(E.poolQualified(t, p1), order.slice(0, 2));
+  assert.deepEqual(E.poolRRRanking(t, p1).map((r) => r.id), order);
+  assert.equal(E.currentMatch(p1), null);
+  assert.ok(!E.finalizePool(t, p1.id, order), 'déjà terminée');
+  const back = E.undo(t);
+  assert.equal(back.pools[0].phase, 'roundrobin');
+  assert.ok(E.finalizePool(back, back.pools[0].id, order));
+  assert.ok(E.finalizePool(back, back.pools[1].id, back.pools[1].playerIds.slice()));
+  E.startFinals(back);
+  assert.ok(back.finals);
+  assert.ok(!E.finalizePool(back, back.pools[0].id, order), 'phase finale lancée');
+});
+
+test('la petite finale se joue avant la clôture, même après la finale', () => {
+  const t = launched('single', 4);
+  const f = t.finals.bracket;
+  for (const m of f.rounds[0]) E.reportFinals(t, m.id, m.a, 1, 0);
+  const final = f.rounds[1][0];
+  E.reportFinals(t, final.id, final.a, 1, 0);
+  assert.equal(t.status, 'live');
+  const third = t.finals.bracket.thirdPlace;
+  assert.ok(E.reportFinals(t, third.id, third.a, 1, 0));
+  assert.equal(t.status, 'finished');
+  assert.equal(E.finalPlacements(t)[2].length, 1);
 });

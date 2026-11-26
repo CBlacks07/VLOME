@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
-import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto, PublicationDto } from './tournaments.dto';
+import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto, PublicationDto, FinalizePoolDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { OptionalJwtGuard } from '../common/optional-jwt.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
@@ -470,6 +470,13 @@ export class TournamentsController {
     const s = await this.service.distributePools(id, user);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
+  }
+
+  @Post(':id/pools/:poolId/finalize')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  finalizePool(@Param('id') id: string, @Param('poolId') poolId: string, @Body() dto: FinalizePoolDto, @CurrentUser() user: JwtUser) {
+    return this.service.finalizePool(id, poolId, dto.order, user);
   }
 
   @Post(':id/pools/:poolId/shuffle')

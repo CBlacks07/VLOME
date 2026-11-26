@@ -91,6 +91,8 @@ export interface Pool {
     /** Qualifiés de la poule, dans l'ordre du classement — généralise top1/top2 à N qualifiés (voir
      *  Tournament.qualifyPerPool). Vide sur d'anciennes données : retomber sur top1/top2. */
     qualified: string[];
+    /** Classement arrêté à la main par l'organisateur (poule finalisée) — il prime sur tout classement calculé. */
+    finalOrder?: string[];
     /** Série de victoires en cours par joueur dans cette poule (matchs de stage 'survival' uniquement,
      *  remise à 0 dès une défaite) — sert au bonus striker, pour les deux modes de poule. */
     streaks: Record<string, number>;
@@ -384,6 +386,9 @@ export interface LeagueRow {
  *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
  *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
 export declare function poolRRRanking(t: Tournament, pool: Pool): LeagueRow[];
+/** Arrête le classement d'une poule à la main (avant la phase finale), même si tous ses matchs ne sont pas joués :
+ *  abandon, retard, égalité à trancher. Les matchs restants ne sont plus à jouer ; « Annuler » revient en arrière. */
+export declare function finalizePool(t: Tournament, poolId: string, order: string[]): boolean;
 /**
  * Point d'entrée unique du lancement, quel que soit le format. Le format survival garde
  * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :

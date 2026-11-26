@@ -265,6 +265,10 @@ export class PlayerReportDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
 
+export class FinalizePoolDto {
+  @IsArray() @ArrayMaxSize(256) @IsString({ each: true }) order!: string[];
+}
+
 export class PublicationDto {
   @IsIn(['DRAFT', 'OPEN', 'CLOSED']) status!: 'DRAFT' | 'OPEN' | 'CLOSED';
 }

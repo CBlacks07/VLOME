@@ -168,6 +168,7 @@ type State = {
   matchScores: Record<string, { a: number; b: number }>;
   matchSets: Record<string, [number, number][]>;
   orgData: Detail | null;
+  poolFinal: Detail | null;
   scoreReports: Detail | null;
   // Match DÉJÀ joué en cours de correction (crayon) — id de son entrée de journal (t.log), ou null.
   // Distinct de activeMatchIds/matchScores (qui concernent les matchs à VENIR) : une correction remet
@@ -4033,7 +4034,7 @@ function parseRaceTime(text: string): number | null {
 }
 function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   const f = t.finals;
-  const champ = f.champion
+  const champ = f.champion && !t.finalRanking
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(f.champion)}</div></div>`
     : "";
   const games: Detail[] = f.games;
@@ -4145,7 +4146,7 @@ function buildPoster(t: Detail): string {
   const withPts = usesBareme(t.mainFormat) || (t.mainFormat === "battle_royale" && (!t.finals?.rank || t.finals.rank === "points"));
   let champHtml = "";
   if (t.status === "finished" && t.champion) {
-    const top3 = overall.slice(0, 3);
+    const top3: Detail[] = t.finalRanking ? (t.finalRanking as Detail[]).slice(0, 3) : overall.slice(0, 3);
     champHtml = `<div class="pa-champ"><div class="pa-clabel">Champion du tournoi</div><div class="pa-cname">${escHtml(t.champion)}</div></div>
       <div class="pa-podium">${top3.map((r: Detail, i: number) => `<div class="pa-pod"><span class="pa-rk">${i + 1}</span> ${escHtml(r.name)}${withPts ? ` <span class="pa-pp">${r.pts} pts</span>` : ""}</div>`).join("")}</div>`;
   }
@@ -4399,7 +4400,11 @@ function tieButtons(rows: Detail[], i: number, manage: boolean): string {
   return b(1, "▲", "Départage manuel : faire monter") + b(-1, "▼", "Départage manuel : faire descendre");
 }
 function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = [], wide = false): string {
-  const html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log, wide);
+  let html = poolCardBase(S, p, manage, poolFormat, countGoalDiff, log, wide);
+  const foot = manage && p.canFinalize ? `<div style="display:flex;justify-content:flex-end;padding:10px 14px"><button data-poolfinal="${p.id}" style="background:transparent;border:1px solid var(--border-strong);color:var(--text-muted);border-radius:9px;padding:7px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">Finaliser la poule…</button></div>`
+    : p.finalized ? `<div style="padding:8px 14px;font-size:11.5px;color:#FBBF24;font-weight:700">Classement arrêté par l'organisateur</div>` : "";
+  const end = html.lastIndexOf("</div>");
+  if (foot && end >= 0) html = html.slice(0, end) + foot + html.slice(end);
   const b = p.current || (p.rrmatches || []).some((m: Detail) => m.playable) ? liveBadges(p.id) : "";
   if (!b) return html;
   const i = html.indexOf(">");
@@ -5081,7 +5086,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
   const poolsToggleBtn = hasPools ? `<span data-bracketview="pools" style="font-size:11.5px;font-weight:${S.bracketView === "pools" ? 750 : 700};color:${S.bracketView === "pools" ? "#04222a" : "var(--text-muted)"};background:${S.bracketView === "pools" ? "#22D3EE" : "transparent"};border:1px solid ${S.bracketView === "pools" ? "#22D3EE" : "var(--border)"};border-radius:8px;padding:7px 12px;cursor:pointer">Poules</span>` : "";
   const poolsGrid = poolsPager(S, t, manage, t.pools || []);
 
-  const champ = t.finals?.champion
+  const champ = t.finals?.champion && !t.finalRanking
     ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin:18px 28px 0"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
     : "";
 
@@ -5227,6 +5232,51 @@ function orgPanel(S: State, t: Detail): string {
   return `${announce}${players}${answerList}${admins}${journal}`;
 }
 
+const PLACE_COLORS = ["#FBBF24", "#CBD5E1", "#D6A37A"];
+const placeLabel = (n: number) => (n === 1 ? "1er" : `${n}e`);
+function recordText(r: Detail, t: Detail): string {
+  if (t.finals?.format === "battle_royale") {
+    const row: Detail | undefined = (t.finals.standings as Detail[])?.find((x) => x.id === r.id);
+    return t.finals.rank && t.finals.rank !== "points" ? raceTime(t.finals.rank === "best" ? row?.best : row?.total) : `${r.pts} pts`;
+  }
+  const record = `${r.wins} V · ${r.draws ? `${r.draws} N · ` : ""}${r.losses} D`;
+  return usesBareme(t.mainFormat) ? `${r.pts} pts · ${record}` : record;
+}
+/** Tournoi terminé : podium (jusqu'à la 3e place) puis classement complet. */
+function finalResultsBlock(t: Detail, pad = "0"): string {
+  const rows: Detail[] = t.finalRanking ?? [];
+  if (t.status !== "finished" || !rows.length) return "";
+  const podium = rows.filter((r) => r.place <= 3).slice(0, 4);
+  const card = (r: Detail) => {
+    const color = PLACE_COLORS[r.place - 1];
+    return `<div style="flex:1 1 200px;min-width:0;border:1px solid ${color}66;border-top:3px solid ${color};border-radius:14px;background:linear-gradient(180deg,${color}14,var(--surface));padding:16px 18px;display:flex;align-items:center;gap:13px">
+      <span style="flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:13px;background:${color};color:#1a1305;font-family:'Bebas Neue',sans-serif;font-size:21px">${placeLabel(r.place)}</span>
+      <span style="min-width:0"><span style="display:block;font-family:'Bebas Neue',sans-serif;font-size:${r.place === 1 ? 28 : 23}px;letter-spacing:.6px;line-height:1.05;overflow-wrap:break-word">${escHtml(r.name)}</span><span style="display:block;font-size:12px;color:var(--text-muted);font-weight:700;margin-top:3px">${recordText(r, t)}</span></span>
+    </div>`;
+  };
+  const table = rows.map((r) => `<div style="display:flex;align-items:center;gap:12px;padding:9px 4px;border-top:1px solid var(--surface-4);font-size:13.5px"><span style="width:38px;flex:none;font-weight:800;color:${PLACE_COLORS[r.place - 1] ?? "var(--text-faint)"}">${placeLabel(r.place)}</span><span style="flex:1;min-width:0;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}${r.disqualified ? ` <span style="color:#FB7185;font-size:11px">disqualifié</span>` : ""}</span><span style="flex:none;color:var(--text-muted);font-size:12.5px">${recordText(r, t)}</span></div>`).join("");
+  return `<section style="margin:${pad};margin-bottom:20px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;gap:9px">${ic(I.crown, 19)}Résultats finaux</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${podium.map(card).join("")}</div>
+    <details style="margin-top:12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:12px 16px"><summary style="cursor:pointer;font-weight:750;font-size:13.5px">Classement complet (${rows.length})</summary><div style="margin-top:8px">${table}</div></details>
+  </section>`;
+}
+
+/** Fenêtre « Finaliser la poule » : l'organisateur arrête le classement, puis valide. */
+function poolFinalModal(S: State): string {
+  const p = S.poolFinal;
+  if (!p) return "";
+  const arrow = (i: number, dir: number, label: string, off: boolean) => `<button data-pfmove="${i}|${dir}" ${off ? "disabled" : ""} aria-label="${label}" style="width:30px;height:30px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border-strong);color:${off ? "var(--text-faint)" : "var(--text)"};cursor:${off ? "default" : "pointer"}">${dir < 0 ? "▲" : "▼"}</button>`;
+  return `<div data-pfcancel="1" style="position:fixed;inset:0;z-index:295;display:flex;align-items:flex-start;justify-content:center;padding:min(6vh,60px) 18px;background:rgba(6,6,10,.78);backdrop-filter:blur(6px);overflow-y:auto">
+    <div data-stop="1" style="width:100%;max-width:460px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:20px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px">Finaliser ${escHtml(p.name)}</div>
+      <p style="margin:6px 0 14px;font-size:12.5px;color:var(--text-muted);line-height:1.6">Range les joueurs dans l'ordre final. Les matchs non joués de la poule sont abandonnés ; les ${p.qualify} premier${p.qualify > 1 ? "s" : ""} se qualifie${p.qualify > 1 ? "nt" : ""}. « Annuler » en régie permet de revenir en arrière.</p>
+      ${p.order.map((x: Detail, i: number) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--surface-4)"><span style="width:30px;font-weight:800;color:${i < p.qualify ? "#34D399" : "var(--text-faint)"}">${i + 1}</span><span style="flex:1;min-width:0;font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(x.name)}</span>${arrow(i, -1, "Monter", i === 0)}${arrow(i, 1, "Descendre", i === p.order.length - 1)}</div>`).join("")}
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button data-pfcancel="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Fermer</button><button data-pfsave="1" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:pointer">Valider le classement</button></div>
+    </div>
+  </div>`;
+}
+
 /** Étapes avant démarrage d'un tournoi indépendant : Brouillon → Inscriptions ouvertes → Inscriptions closes → lancement. */
 function publicationBar(t: Detail): string {
   const order = ["DRAFT", "OPEN", "CLOSED"];
@@ -5286,7 +5336,7 @@ function regiePage(S: State): string {
       <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, actives)}</div>
       <div class="regie-control" style="border-left:1px solid var(--surface-3);padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${reportsBox(S, t)}${control}${matchQueuePanel(t, actives)}${regieRosterMini(S, t)}</div>
     </div>
-  </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${cartDrawer(S)}`;
+  </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${poolFinalModal(S)}${cartDrawer(S)}`;
 }
 
 /** Pronostics d'un tournoi en direct (page publique) : choisir le vainqueur des matchs à venir, voir la
@@ -5484,7 +5534,7 @@ function pTournoi(S: State) {
   const org = manage ? `<details style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:12px 16px;margin-bottom:16px" ${S.orgData?.tid === t.id ? "open" : ""}><summary style="cursor:pointer;font-weight:750;font-size:13.5px">Organisation : annonces, co-administrateurs, journal</summary>${orgPanel(S, t)}</details>` : "";
   const myMatches = !manage ? (S.myNext ?? []).filter((m: Detail) => m.tournamentId === t.id) : [];
   const mineBox = myMatches.length ? nextMatchCard({ ...S, myNext: myMatches }) : "";
-  const head = `${eventSwitcher}${cover}${infoCard}${announcementsBox(t, manage)}${mineBox}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const head = `${eventSwitcher}${cover}${finalResultsBlock(t)}${infoCard}${announcementsBox(t, manage)}${mineBox}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -5787,7 +5837,7 @@ function pTournoi(S: State) {
   if (t.finals && t.finals.format === "battle_royale") {
     finalsHtml = `<div class="rise" style="margin-top:26px">${battleRoyaleCenter(S, t, manage)}</div>`;
   } else if (t.finals) {
-    const champ = t.finals.champion
+    const champ = t.finals.champion && !t.finalRanking
       ? `<div style="border:1px solid rgba(251,191,36,.4);border-radius:16px;background:linear-gradient(180deg,rgba(251,191,36,.08),var(--surface));padding:24px;text-align:center;margin-bottom:18px"><div style="display:flex;align-items:center;gap:7px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#FBBF24;font-weight:800">${ic(I.crown, 16)} Champion du tournoi</div><div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:1px;margin-top:6px">${escHtml(t.finals.champion)}</div></div>`
       : "";
     let body: string;
@@ -6470,7 +6520,8 @@ function pShowInner(S: State) {
     return `<div style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4vh 3vw;position:relative">${close}${brand}
       <div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:1vh;color:#FBBF24;font-size:2vh;letter-spacing:2px;text-transform:uppercase;font-weight:800">${ic(I.crown, 22)} Champion du tournoi</div>
       <div style="font-family:'Bebas Neue',sans-serif;font-size:14vh;line-height:.9;color:#22D3EE;letter-spacing:1px;margin-top:1vh">${escHtml(t.champion)}</div>
-      <div style="color:var(--text-muted);font-size:2.4vh;margin-top:1vh">${escHtml(t.name)}</div></div></div>`;
+      <div style="color:var(--text-muted);font-size:2.4vh;margin-top:1vh">${escHtml(t.name)}</div></div>
+      <div style="display:flex;gap:3vw;justify-content:center;flex-wrap:wrap;margin-top:4vh">${((t.finalRanking ?? []) as Detail[]).filter((r) => r.place > 1 && r.place <= 3).slice(0, 3).map((r) => `<div style="text-align:center"><div style="font-size:1.8vh;font-weight:800;letter-spacing:2px;color:${PLACE_COLORS[r.place - 1]}">${placeLabel(r.place)}</div><div style="font-family:'Bebas Neue',sans-serif;font-size:5.5vh;line-height:1;color:var(--text)">${escHtml(r.name)}</div></div>`).join("")}</div></div>`;
   }
 
   // Construit les diapositives disponibles pour l'état actuel (format + phase) — tournent automatiquement.
@@ -7033,14 +7084,14 @@ function renderPageBody(S: State) {
   if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return `<div data-force-theme="dark">${regiePage(S)}</div>`;
   if (RAIL_PAGES[S.page]) {
     const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page === "club" ? "classements" : S.page;
-    return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);
+    return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S);
   }
   const body = S.page === "auth" ? pAuth(S)
     : S.page === "mentions-legales" ? pLegal(S, "legal")
     : S.page === "confidentialite" ? pLegal(S, "privacy")
     : pAccueil(S);
   const footer = siteFooter(S);
-  return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S);
+  return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S);
 }
 
 /* ================= Composant ================= */
@@ -7066,7 +7117,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, scoreReports: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, poolFinal: null, scoreReports: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -9902,7 +9953,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -10009,6 +10060,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const next = { ...cur, [side]: Math.max(0, cur[side] + (dir === "1" ? 1 : -1)) };
         return { ...s, matchScores: { ...s.matchScores, [key]: next }, ...(pi >= 0 ? { poolView: pi } : {}) };
       });
+    }
+    else if (d.poolfinal) {
+      const pool: Detail | undefined = (S.detail?.pools as Detail[] | undefined)?.find((x) => x.id === d.poolfinal);
+      if (pool && S.detail) setS((s) => ({ ...s, poolFinal: { tid: S.detail.id, id: pool.id, name: pool.name, qualify: S.detail.qualifyPerPool || 2, order: (pool.ranking as Detail[]).map((r) => ({ id: r.id, name: r.name })) } }));
+    }
+    else if (d.pfcancel !== undefined) { setS((s) => ({ ...s, poolFinal: null })); }
+    else if (d.pfmove) {
+      const [i, dir] = d.pfmove.split("|").map(Number);
+      setS((s) => {
+        if (!s.poolFinal) return s;
+        const order = s.poolFinal.order.slice();
+        const j = i + dir;
+        if (j < 0 || j >= order.length) return s;
+        [order[i], order[j]] = [order[j], order[i]];
+        return { ...s, poolFinal: { ...s.poolFinal, order } };
+      });
+    }
+    else if (d.pfsave !== undefined) {
+      const p = S.poolFinal;
+      if (p) { void act(`${API}/api/tournaments/${p.tid}/pools/${p.id}/finalize`, { order: (p.order as Detail[]).map((x) => x.id) }); setS((s) => ({ ...s, poolFinal: null })); }
     }
     else if (d.publish) {
       const [tid, status] = d.publish.split("|");
@@ -10752,7 +10823,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "plrem") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}`, undefined, "DELETE"); }
         else if (kind === "plremall") removeAllPlayers(arg);
         else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
-        else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); setS((s) => ({ ...s, orgData: null, scoreReports: null })); }
+        else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); setS((s) => ({ ...s, orgData: null, poolFinal: null, scoreReports: null })); }
         else if (kind === "rosterdel") rosterAct(`${API}/api/roster/${arg}`, "DELETE");
         else if (kind === "gamedel") rosterAct(`${API}/api/games/${arg}`, "DELETE");
       }

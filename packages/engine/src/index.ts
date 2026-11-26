@@ -80,6 +80,8 @@ export interface Pool {
   /** Qualifiés de la poule, dans l'ordre du classement — généralise top1/top2 à N qualifiés (voir
    *  Tournament.qualifyPerPool). Vide sur d'anciennes données : retomber sur top1/top2. */
   qualified: string[];
+  /** Classement arrêté à la main par l'organisateur (poule finalisée) — il prime sur tout classement calculé. */
+  finalOrder?: string[];
   /** Série de victoires en cours par joueur dans cette poule (matchs de stage 'survival' uniquement,
    *  remise à 0 dès une défaite) — sert au bonus striker, pour les deux modes de poule. */
   streaks: Record<string, number>;
@@ -742,7 +744,26 @@ function leagueTable(t: Tournament, ids: string[], matches: BracketMatch[]): Lea
  *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
  *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
 export function poolRRRanking(t: Tournament, pool: Pool): LeagueRow[] {
-  return leagueTable(t, pool.order.length ? pool.order : pool.playerIds, pool.rrmatches || []);
+  const rows = leagueTable(t, pool.order.length ? pool.order : pool.playerIds, pool.rrmatches || []);
+  const manual = pool.finalOrder;
+  return manual ? rows.sort((a, b) => manual.indexOf(a.id) - manual.indexOf(b.id)) : rows;
+}
+
+/** Arrête le classement d'une poule à la main (avant la phase finale), même si tous ses matchs ne sont pas joués :
+ *  abandon, retard, égalité à trancher. Les matchs restants ne sont plus à jouer ; « Annuler » revient en arrière. */
+export function finalizePool(t: Tournament, poolId: string, order: string[]): boolean {
+  if (t.status !== 'live' || t.finals) return false;
+  const pool = t.pools.find(p => p.id === poolId);
+  if (!pool || pool.phase === 'done') return false;
+  if (order.length !== pool.playerIds.length || new Set(order).size !== order.length || !order.every(id => pool.playerIds.includes(id))) return false;
+  snapshot(t);
+  pool.finalOrder = order.slice();
+  const ranked = order.filter(id => !t.disqualified.includes(id));
+  pool.qualified = ranked.slice(0, clampQualifyPerPool(t.qualifyPerPool));
+  pool.top1 = ranked[0] || null;
+  pool.top2 = ranked[1] || null;
+  pool.phase = 'done';
+  return true;
 }
 
 /** Fin d'une poule round robin : toutes les rencontres jouées — classement, qualifiés, top1/top2. */
@@ -1166,6 +1187,7 @@ export function allPoolsDone(t: Tournament): boolean {
  *  voit pas un ordre et n'en qualifie pas un autre. Sert à qualifier plus de deux joueurs par poule
  *  dans ces deux modes (le Round Robin a son propre classement, voir poolRRRanking). */
 export function poolFinishOrder(t: Tournament, pool: Pool): string[] {
+  if (pool.finalOrder) return pool.finalOrder.slice();
   const ids = pool.order.length ? pool.order : pool.playerIds;
   const pts: Record<string, number> = {}, wins: Record<string, number> = {};
   t.log.forEach(l => {
@@ -1618,6 +1640,9 @@ function checkFinalsChampion(t: Tournament): void {
   if (f.format === 'single') {
     // Avec des matchs de classement, le tournoi ne se clôt qu'une fois tous joués.
     if (f.bracket.maxPlace && bracketMatches(f.bracket).some(m => !m.winner && !m.bye)) return;
+    // Hors Survival (dont la cagnotte ne la compte pas), la petite finale se joue même après la finale : sans elle, pas de 3e place.
+    const third = f.bracket.thirdPlace;
+    if (t.format && t.format !== 'survival' && third && !third.winner && third.a && third.b) return;
     finishFinals(t, bracketChampion(f.bracket));
   } else if (f.format === 'double') {
     if (f.gf.winner) {
@@ -1931,7 +1956,8 @@ export function cagnotte(t: Tournament, simulatedPlayers = 0): { total: number; 
   // donc au même tarif (survWin/loserWin/poolFinalWin), pas finalsWin. On l'ajoute directement aux
   // compteurs de poule plutôt que dans finalsMatches, et elle compte comme une poule de plus pour le
   // pire cas du bonus striker (elle peut, elle aussi, produire un strikeur).
-  const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat) * (t.finalsFormat === 'roundrobin' ? clampLegs(t.rrLegs) : 1);
+  const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat) * (t.finalsFormat === 'roundrobin' ? clampLegs(t.rrLegs) : 1)
+    + (t.format !== 'survival' && t.finalsFormat === 'single' && q >= 4 ? 1 : 0); // petite finale, jouée hors Survival
   if (t.finalsFormat === 'survival' && q >= 2) {
     surv += q - 1; los += Math.max(0, q - 2); pf += 1; nRealPools++;
   }
@@ -2048,7 +2074,7 @@ export function finalPlacements(t: Tournament): string[][] {
     for (let r = f.lb.length - 1; r >= 0; r--) add(f.lb[r].map(loserOf));
   }
   if (t.pools.length) {
-    const orders = t.pools.map(p => (p.phase === 'roundrobin' || p.rrmatches?.length ? poolRRRanking(t, p).map(r => r.id) : poolFinishOrder(t, p)));
+    const orders = t.pools.map(p => (p.finalOrder ?? (p.phase === 'roundrobin' || p.rrmatches?.length ? poolRRRanking(t, p).map(r => r.id) : poolFinishOrder(t, p))));
     const depth = orders.reduce((m, o) => Math.max(m, o.length), 0);
     for (let rank = 0; rank < depth; rank++) add(orders.map(o => o[rank]));
   }

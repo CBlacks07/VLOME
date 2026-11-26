@@ -233,6 +233,17 @@ export class TournamentsService {
     return this.getState(id);
   }
 
+  /** Poule arrêtée à la main : classement donné par l'organisateur, matchs restants abandonnés. */
+  async finalizePool(id: string, poolId: string, order: string[], user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    if (!Engine.finalizePool(l.t, poolId, order)) throw new ConflictException('Cette poule ne peut pas être finalisée (déjà terminée, phase finale lancée, ou classement incomplet).');
+    await this.persist(id, l.t);
+    await this.logActivity(id, user, `${l.t.pools.find((p) => p.id === poolId)?.name || 'Poule'} finalisée à la main`);
+    return this.getState(id);
+  }
+
   async findOne(id: string) {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) return null;
@@ -1702,11 +1713,27 @@ export class TournamentsService {
     const wins: Record<string, number> = {};
     t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
     // Hors Survival, l'ordre affiché est celui qui décide des qualifiés (victoires, manches, confrontation directe).
-    const ordered = t.format && t.format !== 'survival'
+    const ordered = pool.finalOrder || (t.format && t.format !== 'survival')
       ? Engine.poolFinishOrder(t, pool)
       : pool.playerIds.slice().sort((a, b) => (t.points[b] || 0) - (t.points[a] || 0) || (wins[b] || 0) - (wins[a] || 0));
     return ordered
       .map((pid) => ({ id: pid, name: Engine.playerName(t, pid), pts: t.points[pid] || 0, wins: wins[pid] || 0 }));
+  }
+
+  /** Classement final : une place par groupe d'ex æquo (éliminés au même tour), avec le bilan de chacun. */
+  private finalRanking(t: Engine.Tournament) {
+    let place = 1;
+    const out: { id: string; name: string; place: number; wins: number; losses: number; draws: number; pts: number; disqualified: boolean }[] = [];
+    for (const group of Engine.finalPlacements(t)) {
+      for (const id of group) {
+        const duels = t.log.filter((l) => l.a && l.b && (l.a === id || l.b === id));
+        const wins = duels.filter((l) => l.winner === id).length;
+        const draws = duels.filter((l) => l.winner === Engine.DRAW).length;
+        out.push({ id, name: Engine.playerName(t, id), place, wins, draws, losses: duels.length - wins - draws, pts: t.points[id] || 0, disqualified: (t.disqualified || []).includes(id) });
+      }
+      place += group.length;
+    }
+    return out;
   }
 
   private serializeMatch(t: Engine.Tournament, mm: Engine.BracketMatch) {
@@ -1830,6 +1857,7 @@ export class TournamentsService {
       const m = Engine.currentMatch(p);
       return {
         id: p.id, name: p.name, phase: p.phase, done: p.phase === 'done',
+        finalized: !!p.finalOrder, canFinalize: t.status === 'live' && !t.finals && p.phase !== 'done',
         top1: p.top1 ? Engine.playerName(t, p.top1) : null,
         top2: p.top2 ? Engine.playerName(t, p.top2) : null,
         current: m && m.a && m.b
@@ -1877,6 +1905,7 @@ export class TournamentsService {
       players: t.players.map((p) => ({ id: p.id, name: p.name, club: p.club, disqualified: t.disqualified.includes(p.id) })),
       // Classement global (id/nom/points/V/D), format-agnostique — utile hors survival où il n'y a pas de poules pour dériver un classement.
       standings: Engine.overallRanking(t),
+      finalRanking: t.status === 'finished' ? this.finalRanking(t) : null,
       nbPools: t.nbPools,
       pointsPerPlayer: t.pointsPerPlayer,
       scoring: t.scoring,
@@ -1998,6 +2027,8 @@ export class TournamentsService {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
+    if (l.t.finals) throw new ConflictException('La phase finale est déjà lancée.');
+    if (l.t.pools.length && !Engine.allPoolsDone(l.t)) throw new ConflictException('Toutes les poules doivent être terminées (ou finalisées) avant la phase finale.');
     Engine.startFinals(l.t, format);
     await this.persist(id, l.t);
     return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);

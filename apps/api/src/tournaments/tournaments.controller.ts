@@ -292,6 +292,14 @@ export class TournamentsController {
     return this.service.setPublication(id, user, dto.status);
   }
 
+  /** Aperçu sans rien enregistrer : l'arbre (ou les poules) que produirait le lancement, ou la phase finale à venir. */
+  @Get(':id/preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  preview(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.service.preview(id, user);
+  }
+
   @Get(':id/score-reports')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')

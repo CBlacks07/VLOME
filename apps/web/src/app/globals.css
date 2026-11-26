@@ -264,6 +264,8 @@ tr:hover td { background: var(--hover-2); }
 }
 
 /* ---- Assistant de création : modal fixe → plein écran empilé sous 1024px. ---- */
+/* Parcours d'un joueur mis en évidence au survol. */
+.hl-on { background: rgba(251,191,36,.2) !important; box-shadow: inset 3px 0 0 #FBBF24; }
 .match-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
 @media (max-width: 900px) { .match-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .match-board { grid-template-columns: minmax(0, 1fr); } }

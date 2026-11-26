@@ -244,6 +244,33 @@ export class TournamentsService {
     return this.getState(id);
   }
 
+  async preview(id: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const copy = JSON.parse(JSON.stringify(l.t)) as Engine.Tournament;
+    copy._undo = [];
+    if (copy.status === 'setup') {
+      if (copy.players.length < 2) throw new BadRequestException("Ajoute au moins deux participants pour voir l'aperçu.");
+      this.startEngine(copy);
+    } else if (!copy.finals && copy.pools.length && Engine.allPoolsDone(copy)) {
+      Engine.startFinals(copy);
+    } else {
+      throw new ConflictException("Il n'y a rien à prévisualiser à ce stade.");
+    }
+    return this.toState(id, copy, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, {}, null, l.record);
+  }
+
+  /** Démarre la compétition sur un état de moteur (lancement réel et aperçu). */
+  private startEngine(t: Engine.Tournament) {
+    if (t.format === 'survival') {
+      if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
+      Engine.launch(t);
+    } else {
+      Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
+    }
+  }
+
   async findOne(id: string) {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) return null;
@@ -2046,12 +2073,7 @@ export class TournamentsService {
     const { t } = l;
     if (!l.record.eventId && l.record.publication === 'DRAFT') throw new ConflictException('Publie le tournoi (ouvre les inscriptions) avant de le lancer.');
     if (!t.players.length) throw new BadRequestException('Ajoute des joueurs avant de lancer le tournoi.');
-    if (t.format === 'survival') {
-      if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }
-      Engine.launch(t);
-    } else {
-      Engine.launchTournament(t); // single/double/roundrobin/swiss/battle_royale : pas de poules, structure de compétition directement à partir de tous les joueurs
-    }
+    this.startEngine(t);
     await this.persist(id, t);
     await this.logActivity(id, user, 'Tournoi lancé');
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);

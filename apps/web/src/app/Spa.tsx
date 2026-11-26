@@ -169,6 +169,7 @@ type State = {
   matchSets: Record<string, [number, number][]>;
   orgData: Detail | null;
   poolFinal: Detail | null;
+  preview: Detail | null;
   scoreReports: Detail | null;
   // Match DÉJÀ joué en cours de correction (crayon) — id de son entrée de journal (t.log), ou null.
   // Distinct de activeMatchIds/matchScores (qui concernent les matchs à VENIR) : une correction remet
@@ -4282,9 +4283,9 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
       ? `<button data-editmatch="${logId}" title="Corriger ce match" style="flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:transparent;border:0;color:var(--text-faint);cursor:pointer">${ic(I.edit, 12)}</button>`
       : "";
     return `<div style="display:grid;grid-template-columns:1fr auto 1fr auto;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #15151f;${isCurrent ? "background:rgba(34,211,238,.05)" : ""}">
-      <div style="text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
+      <div data-hl="${escAttr(m.aName || "")}" style="text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.aName, m.aId, m.winnerId === m.aId)}</div>
       <div style="text-align:center;min-width:40px">${center}</div>
-      <div style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
+      <div data-hl="${escAttr(m.bName || "")}" style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nameCell(m.bName, m.bId, m.winnerId === m.bId)}</div>
       <div>${pencil}</div>
     </div>`;
   };
@@ -4573,7 +4574,7 @@ function matchBox(m: Detail, manage: boolean, logByMatch: Record<string, string>
     : "";
   return `<div style="border:${v.border};border-radius:10px;overflow:hidden;background:${v.bg}">
     <div style="display:flex;align-items:center;padding:6px 11px;background:var(--surface-7);border-bottom:1px solid var(--surface-3)"><span style="font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:${v.badgeColor}">${v.badgeText}</span>${m.playable ? `<span style="display:inline-flex;gap:4px;margin-left:6px">${liveBadges(m.matchId, true)}</span>` : ""}${pencil}</div>
-    ${matchLine(m.aName, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}<div style="border-top:1px solid var(--surface-3)">${matchLine(m.bName, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div>
+    <div data-hl="${escAttr(m.aName || "")}">${matchLine(m.aName, m.winnerId === m.aId, m.playable, m.matchId, manage, hasScore ? m.sa : null)}</div><div data-hl="${escAttr(m.bName || "")}" style="border-top:1px solid var(--surface-3)">${matchLine(m.bName, m.winnerId === m.bId, m.playable, m.matchId, manage, hasScore ? m.sb : null)}</div>
   </div>`;
 }
 // hideByes (1er tour d'un bracket uniquement) : un exempt n'a pas de vraie rencontre à montrer — le
@@ -4594,6 +4595,7 @@ function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
     : t.finalsFormat === "roundrobin" ? "round robin"
     : "double élimination";
   return `<div style="text-align:center;margin:24px 0">
+      <div style="margin-bottom:10px"><button data-preview="${t.id}|finals" style="background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Aperçu de la phase finale</button></div>
       <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (${finalsLabel})</button></div>
     </div>`;
 }
@@ -4794,7 +4796,7 @@ function matchTreeBox(m: Detail, x: number, y: number, w: number, active: boolea
   const row = (name: string | null, win: boolean, score: number | null, sep: boolean) => {
     const base = `flex:1;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 10px${sep ? ";border-top:1px solid var(--surface-3)" : ""}`;
     return name
-      ? `<div style="${base};font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "var(--text)"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "var(--text-faint)"};flex:none">${score}</span>` : ""}</div>`
+      ? `<div data-hl="${escAttr(name)}" style="${base};font-size:12.5px;font-weight:600;color:${win ? "#34D399" : "var(--text)"}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(name)}${win ? " ✓" : ""}</span>${score !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:11.5px;color:${win ? "#34D399" : "var(--text-faint)"};flex:none">${score}</span>` : ""}</div>`
       : `<div style="${base};color:var(--text-faint);font-style:italic;font-size:11.5px">à venir</div>`;
   };
   // La mise en avant du prochain match jouable reste visible côté spectateur (on voit ce qui arrive) ;
@@ -5342,6 +5344,30 @@ function matchBoard(S: State, t: Detail): string {
     </div>`;
 }
 
+/** Aperçu (rien n'est enregistré) : poules et arbre tels que les produirait le lancement ou la phase finale. */
+function previewModal(S: State): string {
+  const p = S.preview;
+  if (!p) return "";
+  const t: Detail = p.state;
+  const head = (label: string) => `<div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin:18px 0 10px">${label}</div>`;
+  const pools: Detail[] = p.finals ? [] : t.pools ?? [];
+  const poolHtml = pools.length ? `${head("Poules")}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${pools.map((x: Detail) => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px 14px"><div style="font-weight:800;font-size:13px;margin-bottom:6px;color:#22D3EE">${escHtml(x.name)}</div>${(x.order as Detail[]).map((q, i) => `<div style="font-size:13px;padding:5px 0;border-top:1px solid var(--surface-4)"><span style="color:var(--text-faint);display:inline-block;width:22px">${i + 1}</span>${escHtml(q.name)}</div>`).join("")}</div>`).join("")}</div>` : "";
+  const f = t.finals;
+  let finalsHtml = "";
+  if (f?.format === "single") finalsHtml = `${head("Arbre")}<div style="overflow-x:auto">${bracketTree(f.rounds, [], false)}</div>${f.thirdPlace ? `${head("Petite finale")}<div style="max-width:280px">${matchBox(f.thirdPlace, false)}</div>` : ""}`;
+  else if (f?.format === "double") finalsHtml = `${head("Arbre")}<div style="overflow-x:auto">${doubleElimTree(f, [], false)}</div>`;
+  else if (f?.format === "roundrobin") finalsHtml = `${head("Calendrier")}${journeeCalendar((f.standings as Detail[]).map((r) => ({ id: r.id, name: r.name })), f.matches, false, () => null, false)}`;
+  else if (f?.format === "swiss") finalsHtml = `${head(`Première ronde (sur ${f.roundCount})`)}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${(f.rounds[0]?.matches as Detail[] ?? []).map((m) => matchBox(m, false)).join("")}</div>`;
+  else if (f?.format === "battle_royale") finalsHtml = `${head("Parties")}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">${(f.games as Detail[]).map((g) => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px 14px;font-size:13px"><b style="color:#22D3EE">${escHtml(g.label)}</b><div style="margin-top:6px;line-height:1.7">${g.players ? (g.players as Detail[]).map((q) => escHtml(q.name)).join("<br>") : "Tous les participants"}</div></div>`).join("")}</div>`;
+  return `<div data-previewclose="1" style="position:fixed;inset:0;z-index:285;display:flex;align-items:flex-start;justify-content:center;padding:min(5vh,40px) 18px;background:rgba(6,6,10,.8);backdrop-filter:blur(6px);overflow-y:auto">
+    <div data-stop="1" style="width:100%;max-width:1100px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);padding:20px 22px">
+      <div style="display:flex;align-items:center;gap:12px"><div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;flex:1">${p.finals ? "Aperçu de la phase finale" : "Aperçu avant lancement"}</div><button data-previewclose="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer">Fermer</button></div>
+      <p style="margin:6px 0 0;font-size:12.5px;color:var(--text-muted)">Rien n'est enregistré.${p.finals ? " Les affiches suivent le classement des poules." : " Pour changer les affiches, change l'ordre ou la répartition des participants avant de lancer."}</p>
+      ${poolHtml}${finalsHtml}
+    </div>
+  </div>`;
+}
+
 /** Overlay Joueurs / Paiements / Réglages ouvert depuis le bas du rail de régie. */
 function regieOverlay(S: State, t: Detail, manage: boolean): string {
   // Le barème n'a pas de sens hors Survival (voir regieRail, qui n'affiche même plus le bouton) —
@@ -5379,7 +5405,7 @@ function regiePage(S: State): string {
       <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, actives)}</div>
       <div class="regie-control" style="border-left:1px solid var(--surface-3);padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${reportsBox(S, t)}${control}${matchQueuePanel(t, actives)}${regieRosterMini(S, t)}</div>
     </div>
-  </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${poolFinalModal(S)}${cartDrawer(S)}`;
+  </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${poolFinalModal(S)}${previewModal(S)}${cartDrawer(S)}`;
 }
 
 /** Pronostics d'un tournoi en direct (page publique) : choisir le vainqueur des matchs à venir, voir la
@@ -5860,6 +5886,7 @@ function pTournoi(S: State) {
       ${feeBadge}${pointBadge}
       ${capBar}
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
+      ${manage && rosterCount >= 2 ? `<button data-preview="${t.id}|launch" style="display:block;width:100%;margin-bottom:12px;background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Voir l'aperçu</button>` : ""}
       ${action}
     </div>`;
     const left = `<div class="rise d1 detail-left tf-col" style="flex:1;min-width:0;padding:24px 40px 44px;border-right:1px solid var(--surface-3)">${statTiles}${formatInfo}${manage && t.status === "setup" ? setupConfigCard(S, t) : ""}${participantsAndPools}${pendingPanel}</div>`;
@@ -7127,14 +7154,14 @@ function renderPageBody(S: State) {
   if (S.page === "tournoi" && canManage(S) && S.detail && S.detail.status === "live") return `<div data-force-theme="dark">${regiePage(S)}</div>`;
   if (RAIL_PAGES[S.page]) {
     const activeKey = S.page === "tournoi" ? "tournois" : S.page === "evenement" ? "evenements" : S.page === "club" ? "classements" : S.page;
-    return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S);
+    return railShell(S, activeKey, RAIL_PAGES[S.page](S)) + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S) + previewModal(S);
   }
   const body = S.page === "auth" ? pAuth(S)
     : S.page === "mentions-legales" ? pLegal(S, "legal")
     : S.page === "confidentialite" ? pLegal(S, "privacy")
     : pAccueil(S);
   const footer = siteFooter(S);
-  return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S);
+  return header(S) + partnersMarquee(S) + body + footer + cartDrawer(S) + confirmModal(S) + matchCorrectModal(S) + poolFinalModal(S) + previewModal(S);
 }
 
 /* ================= Composant ================= */
@@ -7160,7 +7187,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, poolFinal: null, scoreReports: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, poolFinal: null, preview: null, scoreReports: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -8059,6 +8086,14 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const sr = await fetch(`${API}/api/tournaments/${tid}/state`, { headers: authHeaders() });
       if (sr.ok) { const detail = await sr.json(); setS((s) => (s.openId === tid ? { ...s, detail } : s)); }
     } catch { showToast("Impossible de prévenir les joueurs."); }
+  }
+  async function openPreview(tid: string, finals: boolean) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/preview`, { headers: authHeaders() });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(d?.message || "Aperçu indisponible."); return; }
+      setS((s) => ({ ...s, preview: { state: d, finals } }));
+    } catch { alert("Aperçu indisponible — réessaie dans un instant."); }
   }
   async function broadcast(tid: string, keys: string[], text: string) {
     try {
@@ -9358,6 +9393,16 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   const fileChangeRef = useRef<(t: HTMLInputElement) => void>(() => {});
   useEffect(() => { fileChangeRef.current = handleFileChange; });
   useEffect(() => {
+    // Survol (ou appui) sur un joueur : tout son parcours s'allume dans l'arbre et le calendrier.
+    let lit = "";
+    const onHover = (e: Event) => {
+      const name = (e.target as HTMLElement | null)?.closest?.<HTMLElement>("[data-hl]")?.dataset.hl || "";
+      if (name === lit) return;
+      lit = name;
+      document.querySelectorAll(".hl-on").forEach((el) => el.classList.remove("hl-on"));
+      if (name) document.querySelectorAll<HTMLElement>("[data-hl]").forEach((el) => { if (el.dataset.hl === name) el.classList.add("hl-on"); });
+    };
+    document.addEventListener("mouseover", onHover);
     const onNativeChange = (e: Event) => {
       const el = e.target as HTMLInputElement | null;
       if (el?.dataset?.draft && el.id) REPORT_DRAFT[el.id] = el.value;
@@ -9370,7 +9415,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (t && t.tagName === "SELECT" && t.id === "tourn-fmt-sel") setS((s) => ({ ...s, fmt: t.value }));
     };
     document.addEventListener("change", onNativeChange, true);
-    return () => document.removeEventListener("change", onNativeChange, true);
+    return () => { document.removeEventListener("change", onNativeChange, true); document.removeEventListener("mouseover", onHover); };
   }, []);
 
   // Jauge de cagnotte en direct (étape Barème) : écouteurs natifs posés directement sur les champs,
@@ -10009,7 +10054,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-callmatch],[data-uncall],[data-boardplay],[data-broadcast],[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-preview],[data-previewclose],[data-callmatch],[data-uncall],[data-boardplay],[data-broadcast],[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -10583,6 +10628,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (pi >= 0) setS((s) => ({ ...s, poolView: pi }));
     }
     else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }
+    else if (d.preview) { const [tid, kind] = d.preview.split("|"); void openPreview(tid, kind === "finals"); }
+    else if (d.previewclose !== undefined) { setS((s) => ({ ...s, preview: null })); }
     else if (d.callmatch) { const [tid, key] = d.callmatch.split("|"); void notifyMatch(tid, key); }
     else if (d.uncall) { const [tid, key] = d.uncall.split("|"); act(`${API}/api/tournaments/${tid}/match-uncall`, { key }); }
     else if (d.boardplay) {
@@ -10899,7 +10946,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "plrem") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}`, undefined, "DELETE"); }
         else if (kind === "plremall") removeAllPlayers(arg);
         else if (kind === "pldq") { const [tid, pid] = rest; act(`${API}/api/tournaments/${tid}/players/${pid}/disqualify`, undefined, "POST"); }
-        else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); setS((s) => ({ ...s, orgData: null, poolFinal: null, scoreReports: null })); }
+        else if (kind === "treset") { act(`${API}/api/tournaments/${arg}/reset`, undefined, "POST"); setS((s) => ({ ...s, orgData: null, poolFinal: null, preview: null, scoreReports: null })); }
         else if (kind === "rosterdel") rosterAct(`${API}/api/roster/${arg}`, "DELETE");
         else if (kind === "gamedel") rosterAct(`${API}/api/games/${arg}`, "DELETE");
       }

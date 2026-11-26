@@ -7551,11 +7551,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const r = await fetch(`${API}/api/tournaments/${tid}/notify-match`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ key }) });
       const d = await r.json().catch(() => null);
       if (!r.ok) { showToast(d?.message || "Impossible de prévenir les joueurs."); return; }
-      const parts: string[] = [];
-      if (d.sent.length) parts.push(`Prévenu : ${d.sent.join(", ")}`);
-      if (d.unreachable.length) parts.push(`Sans compte (à appeler) : ${d.unreachable.join(", ")}`);
-      if (d.mailFailed) parts.push(`${d.mailFailed} e-mail non envoyé`);
-      showToast(parts.join(" · ") || "Aucun joueur à prévenir.");
+      showToast(`Les joueurs ${d.players.join(" et ")} sont appelés.`);
     } catch { showToast("Impossible de prévenir les joueurs."); }
   }
   /** Lance le prochain match de la file : l'ajoute à la régie, lui donne le premier poste libre

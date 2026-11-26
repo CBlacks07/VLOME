@@ -267,8 +267,8 @@ export class AssociationsService {
     const memberUserIds = players.map((p) => p.userId).filter((x): x is string => !!x);
     // Un admin responsable d'un club crée aussi les tournois de la plateforme : ils ne sont pas attribués au club.
     const creatorIds = [club.owner?.role === 'ADMIN' ? null : club.ownerId, ...players.filter((p) => p.user?.role === 'ORGANIZER').map((p) => p.userId)].filter((x): x is string => !!x);
-    // Jamais un tournoi rattaché à un événement non publié.
-    const visible = { OR: [{ eventId: null }, { event: { is: { status: 'PUBLISHED' } } }] };
+    // Jamais un brouillon, ni un tournoi rattaché à un événement non publié.
+    const visible = { OR: [{ eventId: null, publication: { not: 'DRAFT' } }, { event: { is: { status: 'PUBLISHED' } } }] };
     const [organized, played] = await Promise.all([
       this.prisma.tournament.findMany({ where: { createdById: { in: creatorIds }, AND: [visible] }, orderBy: { createdAt: 'desc' }, take: MAX_PUBLIC_TOURNAMENTS, select: TOURNAMENT_SELECT }),
       this.prisma.tournament.findMany({ where: { registrations: { some: { userId: { in: memberUserIds } } }, AND: [visible] }, orderBy: { createdAt: 'desc' }, take: MAX_PUBLIC_TOURNAMENTS, select: TOURNAMENT_SELECT }),

@@ -29,6 +29,13 @@ function engineFormatFor(dbFormat: string | null | undefined): Engine.Tournament
   return DB_TO_ENGINE_FORMAT[dbFormat || 'SURVIVAL'] || 'survival';
 }
 
+/** Ce que le public voit : un tournoi indépendant une fois publié, ou un tournoi d'un événement publié. Un brouillon (ou un
+ *  tournoi d'un événement encore en préparation) ne doit apparaître ni dans les listes ni dans les statistiques. */
+export const PUBLIC_TOURNAMENTS = [
+  { eventId: null, publication: { not: 'DRAFT' } },
+  { event: { status: 'PUBLISHED' } },
+];
+
 @Injectable()
 export class TournamentsService {
   constructor(private prisma: PrismaService, private loyalty: LoyaltyService, private credits: CreditsService, private mail: MailService) {}
@@ -144,7 +151,7 @@ export class TournamentsService {
     id: string; name: string; game: string | null; format: string; status: string;
     date: Date | null; place: string | null; pointsPerPlayer: number; engineState: unknown;
     imageUrl?: string | null; bannerUrl?: string | null; entryFeeXof?: number; givesLoyaltyPoint?: boolean; eventId?: string | null;
-    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null; maxPlayers?: number | null;
+    event?: { id: string; name: string; accentColor: string | null } | null; tier?: string | null; maxPlayers?: number | null; publication?: string;
   }) {
     const st = r.engineState as { players?: unknown[] } | null;
     const players = st && Array.isArray(st.players) ? st.players.length : 0;
@@ -159,7 +166,8 @@ export class TournamentsService {
       format: FORMAT_LABEL[r.format] || r.format,
       mainFormat: engineFormatFor(r.format),
       live: r.status === 'LIVE',
-      status: r.status === 'FINISHED' ? 'Terminé' : r.status === 'LIVE' ? '' : 'À venir',
+      status: r.status === 'FINISHED' ? 'Terminé' : r.status === 'LIVE' ? '' : !r.eventId && r.publication === 'DRAFT' ? 'Brouillon' : 'À venir',
+      publication: r.eventId ? null : r.publication ?? 'OPEN',
       date: r.date ? new Date(r.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '',
       // Date brute (ISO), en plus du libellé ci-dessus déjà utilisé partout ailleurs : sert au calendrier
       // jour par jour de la page événement (regroupement + détection du jour passé), qui a besoin d'une
@@ -191,15 +199,38 @@ export class TournamentsService {
   /** Liste publique : cache les tournois programmés dans un événement encore en brouillon (l'événement
    * n'est pas prêt à être montré, ses tournois ne devraient pas « fuiter » avant lui) — un tournoi sans
    * événement, ou dont l'événement est publié, reste visible normalement. */
-  async findAll() {
+  /** Ses brouillons s'ajoutent à la liste pour qui les gère (tous pour un administrateur). */
+  async findAll(user?: JwtUser) {
+    const mine = !user ? [] : user.role === 'ADMIN' ? [{ eventId: null }] : [{ eventId: null, createdById: user.sub }, { eventId: null, coAdminIds: { has: user.sub } }];
     const rows = await this.prisma.tournament.findMany({
-      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
+      where: { OR: [...PUBLIC_TOURNAMENTS, ...mine] },
       orderBy: { createdAt: 'desc' },
       include: { event: { select: { id: true, name: true, accentColor: true, status: true } } },
     });
     return rows
       .map((r) => this.toCard(r))
       .sort((a, b) => Number(b.live) - Number(a.live)); // les tournois en direct d'abord
+  }
+
+  /** Un brouillon indépendant n'existe, pour les autres, qu'une fois publié : même réponse qu'un tournoi inconnu. */
+  async assertVisible(id: string, user?: JwtUser) {
+    const r = await this.prisma.tournament.findUnique({ where: { id }, select: { eventId: true, publication: true, status: true, createdById: true, coAdminIds: true } });
+    if (!r || r.eventId || r.status !== 'DRAFT' || r.publication !== 'DRAFT') return;
+    const manager = !!user && (user.role === 'ADMIN' || r.createdById === user.sub || r.coAdminIds.includes(user.sub));
+    if (!manager) throw new NotFoundException('Tournoi introuvable');
+  }
+
+  async setPublication(id: string, user: JwtUser, status: 'DRAFT' | 'OPEN' | 'CLOSED') {
+    const r = await this.ownRecord(id, user);
+    if (r.eventId) throw new ConflictException("Ce tournoi suit la publication de son événement.");
+    if (r.status !== 'DRAFT') throw new ConflictException('Le tournoi a déjà démarré.');
+    if (status === 'DRAFT' && (await this.prisma.registration.count({ where: { tournamentId: id } })) > 0) {
+      throw new ConflictException('Des joueurs sont inscrits : ferme les inscriptions au lieu de repasser en brouillon.');
+    }
+    if (status === 'CLOSED' && r.publication === 'DRAFT') throw new ConflictException("Publie d'abord le tournoi.");
+    await this.prisma.tournament.update({ where: { id }, data: { publication: status } });
+    await this.logActivity(id, user, status === 'OPEN' ? 'Tournoi publié : inscriptions ouvertes' : status === 'CLOSED' ? 'Inscriptions fermées' : 'Tournoi repassé en brouillon');
+    return this.getState(id);
   }
 
   async findOne(id: string) {
@@ -498,7 +529,7 @@ export class TournamentsService {
       // brouillon (en préparation, pas publié) n'alimente pas le classement réel tant que l'événement
       // n'est pas publié — sinon des matchs de test/réglage avant publication fausseraient les stats
       // des vrais joueurs qui y sont inscrits.
-      where: { ...where, OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
+      where: { ...where, OR: PUBLIC_TOURNAMENTS },
       select: { id: true, game: true, engineState: true, teams: true, tier: true },
     });
     const acct = await this.accountMap();
@@ -636,7 +667,7 @@ export class TournamentsService {
     const tournaments = await this.prisma.tournament.findMany({
       // Même garde que computeLeaderboard() : un tournoi d'un événement encore en brouillon ne doit
       // pas apparaître dans les vraies stats du joueur.
-      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
+      where: { OR: PUBLIC_TOURNAMENTS },
       select: { id: true, name: true, game: true, status: true, date: true, engineState: true, teams: true, tier: true },
     });
     const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
@@ -692,7 +723,7 @@ export class TournamentsService {
     const tournaments = await this.prisma.tournament.findMany({
       // Même garde que computeLeaderboard()/playerProfile() : un tournoi d'un événement encore en
       // brouillon ne doit pas peser sur une confrontation entre deux joueurs.
-      where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
+      where: { OR: PUBLIC_TOURNAMENTS },
       select: { id: true, name: true, game: true, engineState: true, teams: true },
     });
     let aWins = 0, bWins = 0, draws = 0;
@@ -729,6 +760,8 @@ export class TournamentsService {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('Tournoi introuvable');
     if (r.status !== 'DRAFT') throw new ConflictException('Les inscriptions sont closes : le tournoi a démarré.');
+    if (!r.eventId && r.publication === 'DRAFT') throw new NotFoundException('Tournoi introuvable');
+    if (!r.eventId && r.publication === 'CLOSED') throw new ConflictException('Les inscriptions sont closes.');
     const existing = await this.prisma.registration.findUnique({
       where: { userId_tournamentId: { userId: user.sub, tournamentId: id } },
     });
@@ -1564,6 +1597,7 @@ export class TournamentsService {
       const dbStatus = t.status === 'finished' ? 'FINISHED' : t.status === 'live' ? 'LIVE' : 'DRAFT';
       await this.prisma.tournament.create({
         data: {
+          publication: 'OPEN',
           name: d.name, game: d.game ?? null, format: (d.format ?? 'SURVIVAL') as any, status: dbStatus as any,
           place: d.place ?? null, date: d.date ? new Date(d.date) : null,
           pointsPerPlayer: d.pointsPerPlayer ?? 5, nbPools: d.nbPools ?? 2, engineState: JSON.parse(JSON.stringify(t)),
@@ -1575,7 +1609,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown; coAdminIds: string[]; matchPlans: unknown; announcements: unknown; allowPlayerReports: boolean; questions: unknown }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown; coAdminIds: string[]; matchPlans: unknown; announcements: unknown; allowPlayerReports: boolean; questions: unknown; publication: string }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
@@ -1790,7 +1824,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null; matchPlans?: unknown; announcements?: unknown; allowPlayerReports?: boolean; questions?: unknown } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null; matchPlans?: unknown; announcements?: unknown; allowPlayerReports?: boolean; questions?: unknown; eventId?: string | null; publication?: string } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1880,6 +1914,7 @@ export class TournamentsService {
       matchStarts: (extra.matchStarts as Record<string, number>) || {},
       matchPlans: (extra.matchPlans as Record<string, string>) || {},
       allowPlayerReports: !!extra.allowPlayerReports,
+      publication: extra.eventId ? null : extra.publication ?? 'OPEN',
       questions: Array.isArray(extra.questions) ? extra.questions : [],
       announcements: Array.isArray(extra.announcements) ? [...(extra.announcements as unknown[])].reverse() : [],
       matchMinutes: extra.matchMinutes ?? null,
@@ -1946,6 +1981,7 @@ export class TournamentsService {
     if (!l) return null;
     this.assertCanManage(l.record, user);
     const { t } = l;
+    if (!l.record.eventId && l.record.publication === 'DRAFT') throw new ConflictException('Publie le tournoi (ouvre les inscriptions) avant de le lancer.');
     if (!t.players.length) throw new BadRequestException('Ajoute des joueurs avant de lancer le tournoi.');
     if (t.format === 'survival') {
       if (!t.pools.length) { Engine.distributePools(t); t.pools.forEach((p) => (p.order = p.playerIds.slice())); }

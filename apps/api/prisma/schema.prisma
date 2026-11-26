@@ -296,6 +296,7 @@ model Tournament {
   matchPlans        Json? // heure prévue par match, clé = activeKey côté web : { cle: date ISO } (le lieu est le « poste »)
   announcements     Json? // annonces publiques : [{ id, text, ts, by }]
   activity          Json? // journal des actions de l'organisation : [{ ts, by, text }]
+  publication       String   @default("DRAFT") // hors événement, avant le lancement : 'DRAFT' | 'OPEN' | 'CLOSED' (un tournoi d'événement suit l'événement)
   allowPlayerReports Boolean @default(false) // les joueurs inscrits envoient eux-mêmes le score de leur match
   questions         Json? // questions posées à l'inscription : [{ id, label, required }]
   scoreReports      ScoreReport[]

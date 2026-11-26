@@ -265,6 +265,10 @@ export class PlayerReportDto {
   @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
 
+export class PublicationDto {
+  @IsIn(['DRAFT', 'OPEN', 'CLOSED']) status!: 'DRAFT' | 'OPEN' | 'CLOSED';
+}
+
 export class ReviewReportDto {
   @IsIn(['accept', 'reject']) decision!: 'accept' | 'reject';
 }

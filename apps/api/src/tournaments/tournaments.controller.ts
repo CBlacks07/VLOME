@@ -1,8 +1,9 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
-import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto } from './tournaments.dto';
+import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto, PublicationDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
+import { OptionalJwtGuard } from '../common/optional-jwt.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
 import { RolesGuard } from '../common/roles.guard';
@@ -15,8 +16,9 @@ export class TournamentsController {
   /* ---------- Lecture (public) ---------- */
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  @UseGuards(OptionalJwtGuard)
+  findAll(@CurrentUser() user?: JwtUser) {
+    return this.service.findAll(user);
   }
 
   // Réservé à l'admin : n'insère les 7 tournois de démo que si la table est vide (voir
@@ -79,7 +81,9 @@ export class TournamentsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  @UseGuards(OptionalJwtGuard)
+  async findOne(@Param('id') id: string, @CurrentUser() user?: JwtUser) {
+    await this.service.assertVisible(id, user);
     const t = await this.service.findOne(id);
     if (!t) throw new NotFoundException('Tournoi introuvable');
     return t;
@@ -103,7 +107,9 @@ export class TournamentsController {
   }
 
   @Get(':id/state')
-  async state(@Param('id') id: string) {
+  @UseGuards(OptionalJwtGuard)
+  async state(@Param('id') id: string, @CurrentUser() user?: JwtUser) {
+    await this.service.assertVisible(id, user);
     const s = await this.service.getState(id);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
@@ -261,6 +267,14 @@ export class TournamentsController {
   @UseGuards(JwtAuthGuard)
   playerReport(@Param('id') id: string, @Body() dto: PlayerReportDto, @CurrentUser() user: JwtUser) {
     return this.service.playerReport(id, user, dto);
+  }
+
+  /** Brouillon → inscriptions ouvertes → closes (tournoi hors événement, avant le lancement). */
+  @Post(':id/publication')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  publication(@Param('id') id: string, @Body() dto: PublicationDto, @CurrentUser() user: JwtUser) {
+    return this.service.setPublication(id, user, dto.status);
   }
 
   @Get(':id/score-reports')

@@ -344,6 +344,10 @@ function ic(p: string, s = 18) { return `<svg width="${s}" height="${s}" viewBox
 /** I.arrow pointe à droite (utilisé partout pour "suivant/continuer") — retourné horizontalement pour les actions "retour/précédent/annuler". */
 function icBack(s = 18) { return `<span style="display:inline-flex;transform:scaleX(-1)">${ic(I.arrow, s)}</span>`; }
 const I = {
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z"/>',
+  chat: '<path d="M21 12a8 8 0 0 1-8 8 8.6 8.6 0 0 1-3.6-.8L4 20l1.2-4.2A7.9 7.9 0 0 1 4 12a8 8 0 0 1 8-8h1a8 8 0 0 1 8 8Z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3Z"/>',
   bolt: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
@@ -573,6 +577,28 @@ function pageSkeleton(): string {
 /** Pied de page du site : mentions légales obligatoires. Partagé entre le shell rail (accueil,
  * tournois, galerie, boutique, classements) et la page d'accueil de repli — il était auparavant
  * cantonné à cette dernière, donc invisible sur toutes les pages réellement visitées. */
+/** Réseaux proposés dans Admin → Site → Contact. */
+const SOCIALS: [string, string][] = [["facebook", "Facebook"], ["instagram", "Instagram"], ["tiktok", "TikTok"], ["youtube", "YouTube"], ["discord", "Discord"]];
+
+/** Colonne « Nous contacter » du pied de page : seuls les champs remplis apparaissent. */
+function footerContact(c: Detail | undefined): string {
+  if (!c) return "";
+  const val = (k: string) => String(c[k] ?? "").trim();
+  const link = (href: string, icon: string, label: string, out = false) =>
+    `<a href="${escAttr(href)}" class="foot-link"${out ? ` target="_blank" rel="noopener noreferrer"` : ""}><span style="color:#22D3EE;display:inline-flex;flex:none">${ic(icon, 15)}</span><span style="overflow-wrap:anywhere">${escHtml(label)}</span></a>`;
+  const rows: string[] = [];
+  const email = val("email"), phone = val("phone"), wa = val("whatsapp").replace(/\D/g, "");
+  if (email) rows.push(link(`mailto:${email}`, I.mail, email));
+  if (phone) rows.push(link(`tel:${phone.replace(/[^\d+]/g, "")}`, I.phone, phone));
+  if (wa) rows.push(link(`https://wa.me/${wa}`, I.chat, "WhatsApp", true));
+  for (const [k, label] of SOCIALS) {
+    const raw = val(k);
+    // Toujours une adresse web : « facebook.com/… » est complété, tout autre protocole est neutralisé par le préfixe.
+    if (raw) rows.push(link(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`, I.globe, label, true));
+  }
+  return rows.length ? `<nav class="foot-contact" aria-label="Pied de page : contact"><h4 class="foot-h">Nous contacter</h4><div class="foot-links">${rows.join("")}</div></nav>` : "";
+}
+
 function siteFooter(S?: State): string {
   const nav = RAIL_NAV.filter(([k]) => k !== "accueil").map(([key, label, icon]) =>
     `<button data-go="${key}" class="foot-link"><span style="color:#22D3EE;display:inline-flex">${ic(icon, 15)}</span>${label}</button>`).join("");
@@ -595,6 +621,7 @@ function siteFooter(S?: State): string {
         </div>
         <nav aria-label="Pied de page : explorer"><h4 class="foot-h">Explorer</h4><div class="foot-links foot-links-two">${nav}</div></nav>
         <nav aria-label="Pied de page : informations"><h4 class="foot-h">Informations</h4><div class="foot-links">${legal("mentions-legales", "Mentions légales")}${legal("confidentialite", "Politique de confidentialité")}</div></nav>
+        ${footerContact(S?.site?.contact)}
       </div>
       <div class="foot-bottom">
         <span>© ${new Date().getFullYear()} MIABE ESPORT · Tous droits réservés</span>
@@ -3077,6 +3104,12 @@ function adminSite(S: State) {
       <label style="${lbl}">Nom (partie 2, en couleur)<input id="b-name2" value="${escAttr(b.name2 ?? "ESPORT")}" style="${adminInp}" /></label>
     </div>`);
 
+  const c: Detail = S.site?.contact ?? {};
+  const ct = (k: string, label: string, hint: string) => `<label style="${lbl}">${label}<input id="ct-${k}" value="${escAttr(c[k] ?? "")}" placeholder="${escAttr(hint)}" maxlength="200" style="${adminInp}" /></label>`;
+  const contactSec = sec("Contact · pied de page", `
+    <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 12px">Un champ vide n'est pas affiché sur le site.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">${ct("email", "E-mail", "contact@exemple.tg")}${ct("phone", "Téléphone", "+228 90 00 00 00")}${ct("whatsapp", "WhatsApp (numéro avec indicatif)", "228 90 00 00 00")}${SOCIALS.map(([k, label]) => ct(k, label, "Adresse de la page")).join("")}</div>`);
+
   const heroSec = sec("Accueil · section principale (héro)", `
     <label style="${lbl};display:block">Sur-titre<input id="h-kicker" value="${escAttr(hz.kicker)}" style="${adminInp}" /></label>
     <label style="${lbl};display:block;margin-top:12px">Grand titre (une ligne par retour à la ligne)<textarea id="h-title" rows="2" style="${adminInp};resize:vertical">${escHtml(hz.title)}</textarea></label>
@@ -3163,7 +3196,7 @@ function adminSite(S: State) {
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><button data-mailtest="1" ${mt?.busy || !ms.configured ? "disabled" : ""} style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:${mt?.busy || !ms.configured ? "default" : "pointer"};opacity:${mt?.busy || !ms.configured ? ".6" : "1"};font-family:inherit">${mt?.busy ? "Envoi…" : "Envoyer un e-mail de test"}</button><span style="color:var(--text-faint);font-size:12px">à l'adresse de ton compte admin</span></div>
         ${mt && !mt.busy ? `<div style="color:${mt.ok ? "#34D399" : "#FB7185"};font-size:12.5px;line-height:1.5;background:${mt.ok ? "rgba(52,211,153,.07)" : "rgba(251,113,133,.06)"};border:1px solid ${mt.ok ? "rgba(52,211,153,.3)" : "rgba(251,113,133,.3)"};border-radius:10px;padding:10px 12px">${escHtml(mt.msg)}</div>` : ""}
       </div>`);
-  return mailSec + identite + heroSec + slidesSec + partnersSec + adsSec + saveBar;
+  return mailSec + identite + contactSec + heroSec + slidesSec + partnersSec + adsSec + saveBar;
 }
 
 function adminOverview(a: NonNullable<State["admin"]>) {
@@ -8636,6 +8669,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     for (const p of partnerRows) { const im = await tryUpload(`pt-${p.key}-logo`); if (im) p.logoUrl = im; }
     for (const a of adRows) { const im = await tryUpload(`ad-${a.key}-img`); if (im) a.imageUrl = im; }
     const brand = { name1: val("b-name1").trim() || "Miabe", name2: val("b-name2").trim(), logoUrl };
+    const contact = Object.fromEntries(["email", "phone", "whatsapp", ...SOCIALS.map(([k]) => k)].map((k) => [k, val(`ct-${k}`).trim()]));
     const hero = {
       kicker: val("h-kicker").trim(), title: val("h-title"), subtitle: val("h-sub").trim(),
       bgUrl: heroBg,
@@ -8650,7 +8684,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const save = (key: string, value: unknown) => fetch(`${API}/api/admin/settings/${key}`, {
         method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ value }),
       });
-      const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads)]);
+      const rs = await Promise.all([save("brand", brand), save("hero", hero), save("slides", slides), save("partners", partners), save("ads", ads), save("contact", contact)]);
       if (rs.every((r) => r.ok)) {
         await loadSettings();
         setS((s) => ({

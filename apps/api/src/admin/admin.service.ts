@@ -11,9 +11,11 @@ import { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS } from '../c
 export { DEFAULT_PREDICTIONS_SETTINGS, DEFAULT_TIER_POINTS_SETTINGS };
 
 /** Clés de réglages éditables + valeurs par défaut (contenu de lancement). */
-export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'tierPoints', 'legal', 'privacy'] as const;
+export const SETTING_KEYS = ['brand', 'hero', 'slides', 'partners', 'ads', 'loyalty', 'credits', 'predictions', 'tierPoints', 'legal', 'privacy', 'contact'] as const;
 export const DEFAULT_SETTINGS: Record<string, unknown> = {
   brand: { name1: 'Miabe', name2: 'ESPORT', logoUrl: null },
+  // Coordonnées affichées en pied de page (celles des mentions légales) ; un champ vide n'est pas affiché.
+  contact: { email: 'miabeapeto@miabe-esport.community', phone: '+228 90 12 54 50', whatsapp: '', facebook: '', instagram: '', tiktok: '', youtube: '', discord: '' },
   loyalty: DEFAULT_LOYALTY_SETTINGS,
   credits: DEFAULT_CREDITS_SETTINGS,
   predictions: DEFAULT_PREDICTIONS_SETTINGS,

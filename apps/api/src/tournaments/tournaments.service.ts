@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { computeElo, ELO_START } from './elo';
-import { attributeStats } from './player-stats';
+import { accountsByName, attributeStats } from './player-stats';
 import type { Fiche, Totals } from './player-stats';
 import type { EloMatch } from './elo';
 import * as Engine from '@vlome/engine';
@@ -214,8 +214,8 @@ export class TournamentsService {
 
   /** Un brouillon indépendant n'existe, pour les autres, qu'une fois publié : même réponse qu'un tournoi inconnu. */
   async assertVisible(id: string, user?: JwtUser) {
-    const r = await this.prisma.tournament.findUnique({ where: { id }, select: { eventId: true, publication: true, status: true, createdById: true, coAdminIds: true } });
-    if (!r || r.eventId || r.status !== 'DRAFT' || r.publication !== 'DRAFT') return;
+    const r = await this.prisma.tournament.findUnique({ where: { id }, select: { eventId: true, publication: true, createdById: true, coAdminIds: true } });
+    if (!r || r.eventId || r.publication !== 'DRAFT') return;
     const manager = !!user && (user.role === 'ADMIN' || r.createdById === user.sub || r.coAdminIds.includes(user.sub));
     if (!manager) throw new NotFoundException('Tournoi introuvable');
   }
@@ -223,7 +223,9 @@ export class TournamentsService {
   async setPublication(id: string, user: JwtUser, status: 'DRAFT' | 'OPEN' | 'CLOSED') {
     const r = await this.ownRecord(id, user);
     if (r.eventId) throw new ConflictException("Ce tournoi suit la publication de son événement.");
-    if (r.status !== 'DRAFT') throw new ConflictException('Le tournoi a déjà démarré.');
+    if (r.status !== 'DRAFT') {
+      throw new ConflictException(r.publication === 'DRAFT' ? 'Ce tournoi a été lancé en essai : réinitialise-le avant de le publier.' : 'Le tournoi a déjà démarré.');
+    }
     if (status === 'DRAFT' && (await this.prisma.registration.count({ where: { tournamentId: id } })) > 0) {
       throw new ConflictException('Des joueurs sont inscrits : ferme les inscriptions au lieu de repasser en brouillon.');
     }
@@ -542,12 +544,33 @@ export class TournamentsService {
     return this.computeLeaderboard({ eventId });
   }
 
-  /** Compte (userId) derrière chaque pseudo inscrit à un tournoi : clé « tournoi|pseudo ». Sert à distinguer
-   * deux joueurs qui portent le même nom, dès lors qu'ils sont inscrits avec un compte (les joueurs saisis à
-   * la main par l'organisateur n'ont pas de compte et restent regroupés par nom). */
-  private async accountMap(): Promise<Map<string, string>> {
-    const regs = await this.prisma.registration.findMany({ where: { paymentStatus: 'paid' }, select: { tournamentId: true, playerName: true, userId: true } });
-    return new Map(regs.map((r) => [`${r.tournamentId}|${r.playerName}`, r.userId]));
+  /** Compte (userId) derrière un participant, par clé « tournoi|pseudo » : d'abord l'inscription faite par le joueur ;
+   * sinon (nom saisi par l'organisateur) le compte de la fiche de la base de joueurs qui porte ce nom — voir
+   * accountsByName. Sans l'un ni l'autre, le résultat reste rattaché au seul nom. */
+  private async accountMap(): Promise<{ get(key: string): string | undefined }> {
+    const [regs, fiches] = await Promise.all([
+      this.prisma.registration.findMany({ where: { paymentStatus: 'paid' }, select: { tournamentId: true, playerName: true, userId: true } }),
+      this.prisma.player.findMany({ select: { id: true, name: true, userId: true } }),
+    ]);
+    const byEntry = new Map(regs.map((r) => [`${r.tournamentId}|${r.playerName}`, r.userId]));
+    const byName = accountsByName(fiches);
+    return { get: (key) => byEntry.get(key) ?? byName.get(key.slice(key.indexOf('|') + 1).toLowerCase()) };
+  }
+
+  /** Tournois publics où ce compte figure (inscrit par lui-même, ou saisi par l'organisateur sous le nom de sa fiche). */
+  async accountEntries(userId: string) {
+    const [acct, tournaments] = await Promise.all([
+      this.accountMap(),
+      this.prisma.tournament.findMany({
+        where: { OR: PUBLIC_TOURNAMENTS },
+        select: { id: true, name: true, game: true, status: true, engineState: true, teams: true },
+      }),
+    ]);
+    return tournaments.flatMap((t) => {
+      const st = t.engineState as unknown as Engine.Tournament | null;
+      const player = st ? this.findEntrant(st, (t.teams as Record<string, string[]> | null) || {}, t.id, '', userId, acct) : undefined;
+      return st && player ? [{ id: t.id, name: t.name, game: t.game, status: t.status, st, player }] : [];
+    });
   }
 
   /** Totaux réels (tous jeux confondus) des fiches demandées, indexés par identifiant de fiche — pour la base de joueurs
@@ -626,7 +649,7 @@ export class TournamentsService {
         const members = teams[p.name];
         // eloKey : la clé sous laquelle l'ELO de ce concurrent est calculé (un membre d'équipe reprend l'ELO de son équipe).
         const targets: { key: string; name: string; uid: string | null; team?: string[]; eloKey: string }[] = members
-          ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members, eloKey: `team:${p.name}||${game}` }, ...members.map((m) => ({ key: `${m}||${game}`, name: m, uid: null, eloKey: `team:${p.name}||${game}` }))]
+          ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members, eloKey: `team:${p.name}||${game}` }, ...members.map((m) => { const u = acct.get(`${t.id}|${m}`) ?? null; return { key: `${u ? 'u:' + u : m}||${game}`, name: m, uid: u, eloKey: `team:${p.name}||${game}` }; })]
           : [{ key: `${uid ? 'u:' + uid : p.name}||${game}`, name: p.name, uid, eloKey: `${uid ? 'u:' + uid : p.name}||${game}` }];
         for (const tg of targets) {
           const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, draws: 0, championships: 0, tournaments: new Set(), eloKey: tg.eloKey };
@@ -688,11 +711,13 @@ export class TournamentsService {
 
   /** Le concurrent (côté moteur) que désigne un nom : un joueur/une équipe du tournoi, ou — en tournoi par
    * équipes — un membre d'équipe, qui reprend alors les stats de son équipe. */
-  private findEntrant(st: Engine.Tournament, teams: Record<string, string[]>, tournamentId: string, name: string, uid: string | undefined, acct: Map<string, string> | null): Engine.Player | undefined {
-    const direct = st.players?.find((p) => p.name === name && (!uid || acct?.get(`${tournamentId}|${p.name}`) === uid));
-    if (direct || uid) return direct;
+  private findEntrant(st: Engine.Tournament, teams: Record<string, string[]>, tournamentId: string, name: string, uid: string | undefined, acct: { get(key: string): string | undefined } | null): Engine.Player | undefined {
     const lower = name.toLowerCase();
-    const teamName = Object.keys(teams).find((k) => teams[k].some((m) => m.toLowerCase() === lower));
+    // Par compte, le pseudo ne compte pas (il a pu changer d'un tournoi à l'autre) ; par nom, la casse ne compte pas.
+    const mine = (n: string) => (uid ? acct?.get(`${tournamentId}|${n}`) === uid : n.toLowerCase() === lower);
+    const direct = st.players?.find((p) => p.name === name && mine(p.name)) ?? st.players?.find((p) => mine(p.name));
+    if (direct) return direct;
+    const teamName = Object.keys(teams).find((k) => teams[k].some(mine));
     return teamName ? st.players?.find((p) => p.name === teamName) : undefined;
   }
 
@@ -1186,6 +1211,8 @@ export class TournamentsService {
   }
 
   async predict(tournamentId: string, user: JwtUser, matchKey: string, pick: string) {
+    const pub = await this.prisma.tournament.findUnique({ where: { id: tournamentId }, select: { eventId: true, publication: true } });
+    if (pub && !pub.eventId && pub.publication === 'DRAFT') throw new ConflictException('Pas de pronostics sur un tournoi en brouillon.');
     const l = await this.loadEngine(tournamentId);
     if (!l) throw new NotFoundException('Tournoi introuvable');
     if (l.t.status === 'setup') throw new ConflictException('Les pronostics ouvrent quand le tournoi est lancé.');
@@ -2089,7 +2116,6 @@ export class TournamentsService {
     if (!l) return null;
     this.assertCanManage(l.record, user);
     const { t } = l;
-    if (!l.record.eventId && l.record.publication === 'DRAFT') throw new ConflictException('Publie le tournoi (ouvre les inscriptions) avant de le lancer.');
     if (!t.players.length) throw new BadRequestException('Ajoute des joueurs avant de lancer le tournoi.');
     this.startEngine(t);
     await this.persist(id, t);

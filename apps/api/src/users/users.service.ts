@@ -56,27 +56,21 @@ export class UsersService {
    * le joueur (et l'admin) voient sa performance jeu par jeu, pas seulement un total global.
    */
   private async computeResults(userId: string) {
-    const regs = await this.prisma.registration.findMany({
-      where: { userId, paymentStatus: 'paid' },
-      include: { tournament: { select: { id: true, name: true, game: true, status: true, engineState: true } } },
-    });
+    const entries = await this.tournaments.accountEntries(userId);
     let totalPoints = 0, totalWins = 0, championships = 0, tournamentsPlayed = 0;
     const breakdown: Array<{ tournamentId: string; tournamentName: string; game: string; status: string; points: number; wins: number; champion: boolean }> = [];
     const byGameMap = new Map<string, { game: string; points: number; wins: number; championships: number; tournamentsPlayed: number }>();
-    for (const r of regs) {
-      const st = r.tournament.engineState as unknown as Engine.Tournament | null;
-      if (!st) continue;
-      const player = st.players?.find((p) => p.name === r.playerName);
-      if (!player) continue;
+    for (const t of entries) {
+      const { st, player } = t;
       const points = Engine.rankingPoints(st)[player.id] || 0;
       const wins = st.log?.filter((l) => l.winner === player.id).length || 0;
       const champion = st.champion === player.id;
-      const game = r.tournament.game || 'Autre';
+      const game = t.game || 'Autre';
       totalPoints += points; totalWins += wins; tournamentsPlayed++;
       if (champion) championships++;
       breakdown.push({
-        tournamentId: r.tournament.id, tournamentName: r.tournament.name, game,
-        status: r.tournament.status === 'FINISHED' ? 'Terminé' : r.tournament.status === 'LIVE' ? 'En direct' : 'À venir',
+        tournamentId: t.id, tournamentName: t.name, game,
+        status: t.status === 'FINISHED' ? 'Terminé' : t.status === 'LIVE' ? 'En direct' : 'À venir',
         points, wins, champion,
       });
       const g = byGameMap.get(game) || { game, points: 0, wins: 0, championships: 0, tournamentsPlayed: 0 };

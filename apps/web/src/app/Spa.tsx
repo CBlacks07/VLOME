@@ -170,6 +170,7 @@ type State = {
   orgData: Detail | null;
   poolFinal: Detail | null;
   preview: Detail | null;
+  stageOpen?: boolean; // panneau « second tour de poules » déplié
   scoreReports: Detail | null;
   // Match DÉJÀ joué en cours de correction (crayon) — id de son entrée de journal (t.log), ou null.
   // Distinct de activeMatchIds/matchScores (qui concernent les matchs à VENIR) : une correction remet
@@ -479,7 +480,7 @@ const RAIL_NAV: [string, string, string][] = [
 
 /** Barre "en direct" épinglée en haut du shell rail — pointe vers le premier tournoi live trouvé (rien si aucun). */
 function railLiveBar(S: State): string {
-  const live = (S.tourns ?? []).find((t) => t.live);
+  const live = (S.tourns ?? []).find((t) => t.live && !isDraftCard(t));
   if (!live) return "";
   return `<div data-open="${live.id}" class="rise live-bar" style="display:flex;align-items:center;gap:14px;height:46px;padding:0 20px;background:#04222a;border-bottom:1px solid rgba(34,211,238,.35);cursor:pointer;flex:none;overflow:hidden">
     <span style="display:inline-flex;align-items:center;gap:8px;flex:none;white-space:nowrap;font-size:11.5px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#22D3EE"><span style="width:7px;height:7px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span>En direct</span>
@@ -665,9 +666,10 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
   const isFull = !!cap && t.players >= cap && !t.live && !finished;
   const capPct = cap ? Math.min(100, (t.players / cap) * 100) : 0;
   const capColor = isFull ? "#FB7185" : capPct >= 80 ? "#FBBF24" : "#22D3EE";
-  const draft = t.status === "Brouillon";
+  const draft = isDraftCard(t);
+  const live = !!t.live && !draft; // un essai n'est jamais présenté comme un direct
   const closed = !draft && !t.live && !finished && t.publication === "CLOSED";
-  const [stLabel, stColor] = t.live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : draft ? ["Brouillon", "#CBD5E1"] : isFull ? ["Complet", "#FB7185"] : closed ? ["Inscriptions closes", "#FBBF24"] : ["À venir", "#C4C7FF"];
+  const [stLabel, stColor] = draft ? [draftLabel(t), "#CBD5E1"] : live ? ["En direct", "#22D3EE"] : finished ? ["Terminé", "#FBBF24"] : isFull ? ["Complet", "#FB7185"] : closed ? ["Inscriptions closes", "#FBBF24"] : ["À venir", "#C4C7FF"];
   // La carte montre l'affiche (portrait) en priorité — la couverture (paysage, pensée pour le fond
   // large de la page détail) y serait mal cadrée. Elle ne sert ici qu'en dernier repli avant le dégradé généré.
   const cover = t.imageUrl || t.bannerUrl || gameCover(t.game || main);
@@ -680,11 +682,11 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
     ? `<span aria-hidden="true" style="position:absolute;inset:-18px;background:url('${mediaUrl(cover)}') center/cover;filter:blur(18px) brightness(.65) saturate(1.2)"></span><span aria-hidden="true" style="position:absolute;inset:0;background-image:linear-gradient(180deg,rgba(8,8,14,.05) 35%,rgba(8,8,14,.85)),url('${mediaUrl(cover)}');background-size:100% 100%,contain;background-position:center,center;background-repeat:no-repeat"></span>`
     : "";
   const mark = cover ? "" : `<span aria-hidden="true" style="position:absolute;right:-6px;bottom:-22px;font-family:'Bebas Neue',sans-serif;font-size:118px;line-height:1;letter-spacing:-2px;color:#fff;opacity:.09;pointer-events:none;user-select:none">${escHtml(gameAbbrev(t.game || t.name))}</span>`;
-  const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${t.live ? "#04222a" : stColor};background:${t.live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${t.live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${t.live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
+  const statusChip = `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:${live ? "#04222a" : stColor};background:${live ? "#22D3EE" : "rgba(8,8,14,.55)"};border:1px solid ${live ? "#22D3EE" : stColor + "66"};backdrop-filter:blur(6px);border-radius:99px;padding:4px 10px;white-space:nowrap">${live ? '<span style="width:6px;height:6px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>' : ""}${stLabel}</span>`;
   const elite = t.tier === "ELITE" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#04222a;background:linear-gradient(135deg,#FBBF24,#F59E0B);border-radius:99px;padding:4px 10px">${ic(I.crown, 10)}Élite</span>` : "";
   const paid = !!t.entryFeeXof && t.entryFeeXof > 0;
   const fee = paid ? money(t.entryFeeXof!) : "Gratuit";
-  const goLabel = t.live ? "Suivre le direct" : finished ? "Voir les résultats" : draft ? "Préparer" : isFull ? "Complet" : closed ? "Voir le tournoi" : "S'inscrire";
+  const goLabel = draft ? "Ouvrir" : live ? "Suivre le direct" : finished ? "Voir les résultats" : isFull ? "Complet" : closed ? "Voir le tournoi" : "S'inscrire";
   const openAttr = t.id ? `data-open="${t.id}"` : `data-go="tournois"`;
   const meta = (icon: string, text: string, color = "var(--text-muted)", tip = "") => `<span ${tip ? `title="${tip}"` : ""} style="display:inline-flex;align-items:center;gap:4px;color:${color};font-size:12px;font-weight:700;white-space:nowrap">${ic(icon, 13)}${text}</span>`;
   const pill = (text: string, color: string, bg = "var(--surface-3)") => `<span style="font-size:10.5px;font-weight:800;color:${color};background:${bg};border-radius:99px;padding:3px 8px;white-space:nowrap">${text}</span>`;
@@ -696,7 +698,7 @@ function tournPoster(t: TournCard, showPlace = false, menu = false): string {
         <div class="clamp2" style="font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.8px;line-height:1;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.55);word-break:break-word">${escHtml(main)}</div>
         ${sub ? `<div style="margin-top:5px;font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.78);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sub)}</div>` : ""}
       </div>
-      <span class="tp-go${finished || isFull ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(t.live ? I.bolt : I.arrow, 17)}</span>
+      <span class="tp-go${finished || isFull ? " tp-go-ghost" : ""}" role="img" aria-label="${goLabel}" title="${goLabel}">${ic(live ? I.bolt : I.arrow, 17)}</span>
     </div>
     <div style="position:relative;padding:11px 12px 13px;display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
       ${t.date ? meta(I.calendar, escHtml(t.date), "var(--text)") : ""}
@@ -752,7 +754,7 @@ function pAccueil(S: State) {
   const heroKicker = escHtml(hero0?.kicker ?? "Miabe Esport · Togo");
   const heroSub = escHtml(hero0?.subtitle ?? "Compétitions, classements, communauté et boutique — une seule plateforme pour fédérer les gamers du Togo et professionnaliser l'esport de la région.");
   const heroStats: { v: string; k: string }[] = hero0?.stats?.length ? hero0.stats : [{ v: "2 400+", k: "Joueurs" }, { v: "18", k: "Tournois / an" }, { v: "24", k: "Clubs" }];
-  const tourns = (S.tourns ?? []).filter((t) => t.status !== "Brouillon");
+  const tourns = (S.tourns ?? []).filter((t) => !isDraftCard(t));
   const dots = slides.map((_, i) => { const on = i === S.slide; return `<span data-slide="${i}" style="width:${on ? 26 : 10}px;height:6px;border-radius:99px;background:${on ? "#22D3EE" : "var(--border-strong)"};cursor:pointer"></span>`; }).join("");
   // Fond du héro : vidéo ou image (réglages admin), sinon halos lumineux animés.
   const heroBg = hero0?.bgUrl as string | undefined;
@@ -1349,7 +1351,7 @@ function wizInfosStep(S: State) {
         ${formatPicker ? wide(formatPicker) : ""}
       </div>`)}${wizFoot("Annuler", 0, nextStep)}`;
 }
-const WIZ_CREATE_GUIDE = `Seul le nom est obligatoire. Le tournoi est créé en brouillon (invisible) tant que tu ne le publies pas. Le format, les poules, la phase finale et le barème se règlent ensuite sur la page du tournoi, tant qu'il n'est pas lancé.`;
+const WIZ_CREATE_GUIDE = `Seul le nom est obligatoire. Le tournoi est créé en brouillon (invisible) : tu peux l'essayer tel quel, puis le publier. Le format, les poules, la phase finale et le barème se règlent ensuite sur la page du tournoi, tant qu'il n'est pas lancé.`;
 const WIZ_EDIT_GUIDE = `Tout reste modifiable tant que le tournoi n'est pas lancé. Ensuite, seuls les réglages sans effet sur le déroulé le restent (nom, lieu, frais…).`;
 
 const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
@@ -1725,14 +1727,18 @@ function tournamentWizard(S: State) {
 }
 
 /** Statuts affichables sur la liste — dérivés des mêmes champs réels que les cartes (t.live / t.status). */
+/** Tournoi hors événement jamais publié : brouillon, ou essai en cours / terminé. */
+function isDraftCard(t: { publication?: string | null }): boolean { return t.publication === "DRAFT"; }
+function draftLabel(t: { live?: boolean; status?: string }): string { return t.live ? "Test en cours" : t.status === "Terminé" ? "Test terminé" : "Brouillon"; }
 const TOURN_STATUSES = ["Tous", "En direct", "Ouverts", "À lancer", "Terminés", "Brouillons"] as const;
 function matchesTournStatus(t: TournCard, status: string): boolean {
   if (status === "Tous") return true;
+  if (status === "Brouillons") return isDraftCard(t);
+  if (isDraftCard(t)) return false;
   if (status === "En direct") return t.live;
   if (status === "Terminés") return t.status === "Terminé";
   if (status === "À lancer") return !t.live && t.status === "À lancer";
-  if (status === "Brouillons") return t.status === "Brouillon";
-  if (status === "Ouverts") return !t.live && t.status !== "Terminé" && t.status !== "À lancer" && t.status !== "Brouillon" && t.publication !== "CLOSED";
+  if (status === "Ouverts") return !t.live && t.status !== "Terminé" && t.status !== "À lancer" && t.publication !== "CLOSED";
   return true;
 }
 
@@ -1758,13 +1764,13 @@ function pTournois(S: State) {
     ? `<button data-act="create-open" style="display:inline-flex;align-items:center;gap:8px;background:#22D3EE;color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:14px;cursor:pointer">${ic(I.plus, 16)}Créer un tournoi</button>`
     : "";
   const searchBox = `<div class="search-wide" style="position:relative;width:340px"><span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-faint)">${ic(I.search, 15)}</span><input id="hsearch" value="${escAttr(S.q)}" placeholder="Rechercher un tournoi, un jeu, un lieu…" aria-label="Rechercher un tournoi" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:11px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 14px 12px 36px" /></div>`;
-  const head = railPageHead("Tournois", source.length === 0 ? "Les prochains tournois seront annoncés ici — inscriptions en ligne, brackets en direct et récompenses." : `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${source.length ? searchBox : ""}${createBtn}`);
+  const head = railPageHead("Tournois", source.length === 0 ? "Les prochains tournois seront annoncés ici — inscriptions en ligne, brackets en direct et récompenses." : `${source.length} tournoi${source.length > 1 ? "s" : ""} · ${source.filter((t) => t.live && !isDraftCard(t)).length} en direct · ${source.filter((t) => matchesTournStatus(t, "Ouverts")).length} inscription${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""} ouverte${source.filter((t) => matchesTournStatus(t, "Ouverts")).length > 1 ? "s" : ""}`, `${source.length ? searchBox : ""}${createBtn}`);
 
   const form = S.creating && manage ? tournamentWizard(S) : "";
 
   // Tournoi en direct mis en avant, extrait de la grille : bandeau large avec accès direct régie/Mode
   // Show à gauche, et le même bloc d'infos (format, joueurs, lieu, date) que sur la fiche détail à droite.
-  const liveT = source.find((t) => t.live);
+  const liveT = source.find((t) => t.live && !isDraftCard(t));
   const heroStat = (label: string, val: string) => `<div style="background:rgba(11,11,17,.5);padding:12px 18px;min-width:112px"><div style="font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;color:#7FA9B2;font-weight:700">${label}</div><div style="font-size:14.5px;font-weight:700;color:#fff;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">${escHtml(val)}</div></div>`;
   const eyebrow = liveT?.event?.name || liveT?.game || "Tournoi";
   const featured = liveT ? `<div class="rise d2 page-hpad" style="padding:26px 44px 0"><div data-open="${liveT.id}" class="hcard glow" style="position:relative;border:1px solid rgba(34,211,238,.4);border-radius:14px;overflow:hidden;background:linear-gradient(100deg,#0f2932 10%,#13303a 45%,#1a1435);padding:26px 30px;cursor:pointer;display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:center">
@@ -1787,7 +1793,7 @@ function pTournois(S: State) {
 
   const selStyle = "background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 30px 8px 13px";
   // Le filtre « Brouillons » n'apparaît qu'à qui en a.
-  const statuses = TOURN_STATUSES.filter((st) => st !== "Brouillons" || source.some((t) => t.status === "Brouillon"));
+  const statuses = TOURN_STATUSES.filter((st) => st !== "Brouillons" || source.some(isDraftCard));
   const statusSel = `<select id="tourn-status-sel" style="${selStyle}">${statuses.map((st) => {
     const n = st === "Tous" ? source.length : source.filter((t) => matchesTournStatus(t, st)).length;
     return `<option value="${st}" ${S.tournStatus === st ? "selected" : ""}>${st} (${n})</option>`;
@@ -2893,9 +2899,9 @@ function consoleOverview(S: State) {
       <td class="col-game" style="padding:12px;color:var(--text-muted)">${escHtml(t.game)} · ${escHtml(t.format)}</td>
       <td style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace">${t.players}</td>
       <td class="col-pot" style="padding:12px;text-align:right;font-family:'JetBrains Mono',monospace;color:${t.cagnotte !== null ? "#FBBF24" : "var(--text-faint)"}">${t.cagnotte !== null ? t.cagnotte : "—"}</td>
-      <td style="padding:12px 18px;text-align:right">${t.live
+      <td style="padding:12px 18px;text-align:right">${t.live && !isDraftCard(t)
         ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 10px"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>Live</span>`
-        : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--border-strong);border-radius:99px;padding:4px 10px">${escHtml(t.status)}</span>`}</td>
+        : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--border-strong);border-radius:99px;padding:4px 10px">${escHtml(isDraftCard(t) ? draftLabel(t) : t.status)}</span>`}</td>
     </tr>`).join("") : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--text-faint)">${isAdmin ? "Aucun tournoi pour l'instant." : "Tu n'as pas encore créé de tournoi."}</td></tr>`;
   const table = `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;margin-bottom:20px">
     <div style="padding:13px 18px;border-bottom:1px solid var(--surface-3);font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750">${isAdmin ? "Tournois" : "Mes tournois"} (${tourns.length})</div>
@@ -2935,7 +2941,7 @@ function consoleOverview(S: State) {
 function consolePinnedLive(S: State): string {
   const isAdmin = S.user?.role === "ADMIN";
   const source: TournCard[] = ((isAdmin ? S.tourns : S.myTourns) ?? []) as TournCard[];
-  const live = source.find((t) => t.live);
+  const live = source.find((t) => t.live && !isDraftCard(t));
   if (!live) return "";
   return `<div data-open="${live.id}" style="margin:14px 12px;border:1px solid rgba(34,211,238,.4);border-radius:12px;background:rgba(34,211,238,.06);padding:13px;cursor:pointer">
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><span style="width:6px;height:6px;border-radius:50%;background:#22D3EE;animation:blink 1.2s infinite"></span><span style="font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE">En direct</span></div>
@@ -4596,12 +4602,20 @@ function finalsStartPanel(S: State, t: Detail, manage: boolean): string {
   const finalsLabel = t.finalsFormat === "single" ? "bracket simple"
     : t.finalsFormat === "roundrobin" ? "round robin"
     : "double élimination";
+  // Second tour de poules : option rare, repliée. Au moins 3 joueurs par poule, sinon il n'y a rien à classer.
   const q: number = t.qualifiedCount || 0;
-  const maxPools = Math.floor(q / 2);
-  const another = t.mainFormat !== "survival" && maxPools >= 1 && q >= 4 ? `<div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:12.5px;color:var(--text-muted)">${q} qualifiés. Encore un tour de poules :</span><select id="next-stage-pools" style="${adminInp};margin-top:0;width:auto;padding:8px 12px">${Array.from({ length: maxPools }, (_, i) => `<option value="${i + 1}" ${i + 1 === Math.min(2, maxPools) ? "selected" : ""}>${i + 1} poule${i ? "s" : ""}</option>`).join("")}</select><button data-nextstage="${t.id}" style="background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Lancer cette phase</button></div>` : "";
+  const maxPools = Math.floor(q / 3);
+  const another = t.mainFormat === "survival" || q < 4 ? ""
+    : !S.stageOpen ? `<div style="margin-top:14px"><button data-stageopen="1" style="background:transparent;border:0;color:var(--text-muted);text-decoration:underline;font-size:12.5px;cursor:pointer;font-family:inherit">Option : ajouter un second tour de poules avant la phase finale</button></div>`
+    : `<div style="max-width:480px;margin:14px auto 0;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:16px">
+      <b style="font-size:13.5px">Second tour de poules (facultatif)</b>
+      <p style="font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:6px 0 12px">Les ${q} qualifiés rejouent entre eux dans de nouvelles poules, compteurs à zéro. La phase finale viendra après ce tour.</p>
+      <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap"><select id="next-stage-pools" style="${adminInp};margin-top:0;width:auto;padding:8px 12px">${Array.from({ length: maxPools }, (_, i) => { const n = i + 1, lo = Math.floor(q / n), hi = Math.ceil(q / n); return `<option value="${n}">${n} poule${i ? "s" : ""} de ${lo === hi ? lo : `${lo} à ${hi}`}</option>`; }).join("")}</select><button data-nextstage="${t.id}" style="background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Lancer ce second tour</button><button data-stageopen="1" style="background:transparent;border:0;color:var(--text-muted);font-size:12.5px;cursor:pointer;font-family:inherit">Annuler</button></div>
+    </div>`;
   return `<div style="text-align:center;margin:24px 0">
-      ${another}<div style="margin-bottom:10px"><button data-preview="${t.id}|finals" style="background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Aperçu de la phase finale</button></div>
-      <div><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (${finalsLabel})</button></div>
+      <div style="margin-bottom:10px"><button data-finals-start="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 24px;font-weight:750;font-size:15px;cursor:pointer;box-shadow:0 0 30px rgba(34,211,238,.22)">${ic(I.crown)}Lancer la phase finale (${finalsLabel})</button></div>
+      <div><button data-preview="${t.id}|finals" style="background:transparent;border:1px solid var(--border-strong);color:var(--text);border-radius:10px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Aperçu de la phase finale</button></div>
+      ${another}
     </div>`;
 }
 
@@ -5060,7 +5074,7 @@ function regieTopBanner(S: State, t: Detail): string {
     <div style="min-width:0">
       <div style="display:flex;align-items:center;gap:10px">
         <h1 style="font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;margin:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px">${escHtml(t.name)}</h1>
-        <span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px;flex:none"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>En direct</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#04222a;background:#22D3EE;border-radius:99px;padding:4px 9px;flex:none"><span style="width:5px;height:5px;border-radius:50%;background:#04222a;animation:blink 1.2s infinite"></span>${t.publication === "DRAFT" ? "Essai" : "En direct"}</span>
       </div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${[t.game, t.format, t.matchFormatLabel].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
     </div>
@@ -5285,13 +5299,19 @@ function poolFinalModal(S: State): string {
   </div>`;
 }
 
+/** Essai en cours ou terminé : rappel permanent, avec la sortie (réinitialiser, puis publier). */
+function testRunBanner(t: Detail, manage: boolean, margin: string): string {
+  if (!manage || t.publication !== "DRAFT" || t.status === "setup") return "";
+  return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px dashed #CBD5E188;border-radius:12px;background:rgba(203,213,225,.08);padding:10px 16px;margin:${margin}"><span style="flex:1;min-width:220px;font-size:12.5px;line-height:1.6;color:var(--text-muted)"><b style="color:var(--text)">Essai en brouillon</b> : visible par toi seul, hors classements. Réinitialise pour rejouer ou publier.</span><button data-reset="${t.id}" style="background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:9px;padding:8px 14px;font-weight:750;font-size:12.5px;cursor:pointer;font-family:inherit">Terminer l'essai et réinitialiser</button></div>`;
+}
+
 /** Étapes avant démarrage d'un tournoi indépendant : Brouillon → Inscriptions ouvertes → Inscriptions closes → lancement. */
 function publicationBar(t: Detail): string {
   const order = ["DRAFT", "OPEN", "CLOSED"];
   const at = order.indexOf(t.publication);
   const step = (label: string, i: number) => `<span style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:${i === at ? 800 : 650};color:${i === at ? "var(--text)" : "var(--text-faint)"}"><span style="display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:800;background:${i === at ? "#22D3EE" : i < at ? "rgba(52,211,153,.16)" : "var(--surface-4)"};color:${i === at ? "#04222a" : i < at ? "#34D399" : "var(--text-faint)"}">${i < at ? "✓" : i + 1}</span>${label}</span>`;
   const btn = (status: string, label: string, primary: boolean) => `<button data-publish="${t.id}|${status}" style="border-radius:10px;padding:10px 16px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit;${primary ? "background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0" : "background:var(--surface-3);color:var(--text);border:1px solid var(--border-strong)"}">${label}</button>`;
-  const [note, actions] = t.publication === "DRAFT" ? ["Visible par toi seul. Publie-le pour qu'il apparaisse sur le site et ouvre les inscriptions.", btn("OPEN", "Publier et ouvrir les inscriptions", true)]
+  const [note, actions] = t.publication === "DRAFT" ? ["Visible par toi seul. Publie-le pour ouvrir les inscriptions, ou lance-le en brouillon pour l'essayer de bout en bout.", btn("OPEN", "Publier et ouvrir les inscriptions", true)]
     : t.publication === "OPEN" ? ["En ligne : les joueurs peuvent s'inscrire.", `${btn("CLOSED", "Fermer les inscriptions", true)}${btn("DRAFT", "Repasser en brouillon", false)}`]
     : ["En ligne, inscriptions fermées. Lance le tournoi quand tout est prêt.", btn("OPEN", "Rouvrir les inscriptions", false)];
   const arrow = `<span style="color:var(--text-faint)">→</span>`;
@@ -5411,6 +5431,7 @@ function regiePage(S: State): string {
     : `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Aucune confrontation en cours…</div>`;
   return `<div class="regie-page-outer" style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
+    ${testRunBanner(t, manage, "10px 18px 0")}
     <div class="regie-grid" style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, actives)}
       <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, actives)}</div>
@@ -5560,7 +5581,7 @@ function pTournoi(S: State) {
   const manage = canManage(S); // seuls organisateur/admin voient les contrôles de pilotage
   const statusMap: Record<string, [string, string]> = { setup: ["À lancer", "var(--text-muted)"], live: ["En direct", "#22D3EE"], finished: ["Terminé", "#FBBF24"] };
   const pubMap: Record<string, [string, string]> = { DRAFT: ["Brouillon", "#CBD5E1"], OPEN: ["Inscriptions ouvertes", "#34D399"], CLOSED: ["Inscriptions closes", "#FBBF24"] };
-  const [slabel, scolor] = (t.status === "setup" && t.publication ? pubMap[t.publication] : statusMap[t.status]) || ["", "var(--text-muted)"];
+  const [slabel, scolor] = (t.publication === "DRAFT" && t.status !== "setup" ? [`Essai · ${statusMap[t.status]?.[0] ?? ""}`, "#CBD5E1"] : t.status === "setup" && t.publication ? pubMap[t.publication] : statusMap[t.status]) || ["", "var(--text-muted)"];
   const dist = t.distributed || 0, total = t.cagnotte?.total || 0;
   const pct = total ? Math.min(100, (dist / total) * 100) : 0;
 
@@ -5614,7 +5635,7 @@ function pTournoi(S: State) {
   const org = manage ? `<details style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:12px 16px;margin-bottom:16px" ${S.orgData?.tid === t.id ? "open" : ""}><summary style="cursor:pointer;font-weight:750;font-size:13.5px">Organisation : annonces, co-administrateurs, journal</summary>${orgPanel(S, t)}</details>` : "";
   const myMatches = !manage ? (S.myNext ?? []).filter((m: Detail) => m.tournamentId === t.id) : [];
   const mineBox = myMatches.length ? nextMatchCard({ ...S, myNext: myMatches }) : "";
-  const head = `${eventSwitcher}${cover}${finalResultsBlock(t)}${previousStagesBlock(t)}${infoCard}${announcementsBox(t, manage)}${mineBox}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const head = `${eventSwitcher}${cover}${testRunBanner(t, manage, "0 0 16px")}${finalResultsBlock(t)}${previousStagesBlock(t)}${infoCard}${announcementsBox(t, manage)}${mineBox}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -5660,10 +5681,8 @@ function pTournoi(S: State) {
     const isPending = myReg?.status === "pending";
     const fee: number = t.entryFeeXof || 0;
     let action: string;
-    if (manage && t.publication === "DRAFT") {
-      action = "";
-    } else if (manage) {
-      action = `<button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : "Lancer le tournoi"}</button>`;
+    if (manage) {
+      action = `<button data-launch="${t.id}" ${S.detailBusy ? "disabled" : ""} style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:${S.detailBusy ? "default" : "pointer"};opacity:${S.detailBusy ? ".6" : "1"};box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.bolt)}${S.detailBusy ? "Lancement…" : t.publication === "DRAFT" ? "Lancer en test" : "Lancer le tournoi"}</button>`;
     } else if (!S.user) {
       action = `<button data-auth-open="1" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.user, 18)}Se connecter pour s'inscrire</button>`;
     } else if (isPending) {
@@ -5724,7 +5743,7 @@ function pTournoi(S: State) {
     }
     const capLeft = Math.max(0, capMax - rosterCount);
     const capBar = capMax ? `<div style="margin:0 0 16px;text-align:left"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:6px"><span>Places</span><b style="color:${full ? "#FB7185" : "var(--text)"}">${rosterCount} / ${capMax}</b></div><div style="height:8px;border-radius:99px;background:var(--surface-4);overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, (rosterCount / capMax) * 100)}%;background:${full ? "#FB7185" : capLeft <= Math.ceil(capMax * 0.2) ? "#FBBF24" : "linear-gradient(90deg,#22D3EE,#7C82FF)"}"></span></div><div style="font-size:11.5px;font-weight:700;margin-top:6px;color:${full ? "#FB7185" : capLeft <= Math.ceil(capMax * 0.2) ? "#FBBF24" : "var(--text-muted)"}">${full ? "Complet" : `${capLeft} place${capLeft > 1 ? "s" : ""} restante${capLeft > 1 ? "s" : ""}`}</div></div>` : "";
-    const sub = manage && t.publication === "DRAFT" ? "Règle le tournoi puis publie-le : le bouton de lancement apparaîtra ensuite."
+    const sub = manage && t.publication === "DRAFT" ? "Tu peux le lancer sans le publier : un essai complet, visible par toi seul et hors classements. Réinitialise-le ensuite pour le publier."
       : manage
       ? t.mainFormat === "survival"
         ? "Le lancement répartit les joueurs en poules et démarre le mode Survival. L'ordre de passage est verrouillé."
@@ -5893,7 +5912,7 @@ function pTournoi(S: State) {
     // "Changer le format" (brouillon uniquement) : rouvre l'assistant complet plutôt que d'obliger à
     // supprimer et recréer le tournoi pour changer de type — les participants déjà saisis sont conservés.
     const actionRail = `<div id="reg-rail" style="border:1px solid rgba(34,211,238,.35);border-radius:12px;background:rgba(34,211,238,.05);padding:20px;text-align:center">
-      <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? (t.publication === "DRAFT" ? "En préparation" : "Prêt à démarrer") : "Inscription"}</div>
+      <div style="font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:#22D3EE;font-weight:800;margin-bottom:10px">${manage ? (t.publication === "DRAFT" ? "Prêt à essayer" : "Prêt à démarrer") : "Inscription"}</div>
       ${feeBadge}${pointBadge}
       ${capBar}
       <p style="color:var(--text-muted);font-size:13.5px;margin:0 0 18px">${sub}</p>
@@ -6140,6 +6159,7 @@ function playerDetailModal(S: State) {
       ${infoRow("Ville", p.city ? escHtml(p.city) : "—")}
       ${infoRow("Points (tournois)", `${p.points ?? 0}`)}
       ${infoRow("Matchs joués", `${p.matches ?? 0}`)}
+      ${infoRow("Titres", `${p.titles ?? 0}`)}
       ${infoRow("Membre de la base depuis", new Date(p.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }))}
     </div>`;
     if (!p.linked || !acc) {
@@ -10065,7 +10085,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-nextstage],[data-preview],[data-previewclose],[data-callmatch],[data-uncall],[data-boardplay],[data-broadcast],[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-nextstage],[data-preview],[data-previewclose],[data-stageopen],[data-callmatch],[data-uncall],[data-boardplay],[data-broadcast],[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -10642,9 +10662,10 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.nextstage) {
       const nbPools = parseInt((document.getElementById("next-stage-pools") as HTMLSelectElement | null)?.value || "") || 1;
       act(`${API}/api/tournaments/${d.nextstage}/pools/next-stage`, { nbPools });
-      setS((s) => ({ ...s, poolView: 0 }));
+      setS((s) => ({ ...s, poolView: 0, stageOpen: false }));
     }
     else if (d.preview) { const [tid, kind] = d.preview.split("|"); void openPreview(tid, kind === "finals"); }
+    else if (d.stageopen !== undefined) { setS((s) => ({ ...s, stageOpen: !s.stageOpen })); }
     else if (d.previewclose !== undefined) { setS((s) => ({ ...s, preview: null })); }
     else if (d.callmatch) { const [tid, key] = d.callmatch.split("|"); void notifyMatch(tid, key); }
     else if (d.uncall) { const [tid, key] = d.uncall.split("|"); act(`${API}/api/tournaments/${tid}/match-uncall`, { key }); }

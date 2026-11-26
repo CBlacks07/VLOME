@@ -90,7 +90,9 @@ export class TournamentsController {
   }
 
   @Get(':id/predictions')
-  predictionBoard(@Param('id') id: string) {
+  @UseGuards(OptionalJwtGuard)
+  async predictionBoard(@Param('id') id: string, @CurrentUser() user?: JwtUser) {
+    await this.service.assertVisible(id, user);
     return this.service.predictionBoard(id);
   }
 

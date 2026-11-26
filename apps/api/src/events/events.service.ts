@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TournamentsService } from '../tournaments/tournaments.service';
 import type { JwtUser } from '../common/jwt-auth.guard';
@@ -257,11 +257,13 @@ export class EventsService {
     const ev = await this.prisma.event.findUnique({ where: { id } });
     if (!ev) throw new NotFoundException('Événement introuvable.');
     this.assertCanManage(ev, user);
-    const t = await this.prisma.tournament.findUnique({ where: { id: tid }, select: { id: true, createdById: true, eventId: true } });
+    const t = await this.prisma.tournament.findUnique({ where: { id: tid }, select: { id: true, createdById: true, eventId: true, publication: true, status: true } });
     if (!t) throw new NotFoundException('Tournoi introuvable.');
     if (t.createdById && t.createdById !== user.sub && user.role !== 'ADMIN') {
       throw new ForbiddenException('Tu ne peux rattacher que tes propres tournois.');
     }
+    // Un essai en cours ou terminé deviendrait public avec l'événement.
+    if (!t.eventId && t.publication === 'DRAFT' && t.status !== 'DRAFT') throw new ConflictException("Ce tournoi a été lancé en essai : réinitialise-le avant de le rattacher à un événement.");
     await this.prisma.tournament.update({ where: { id: tid }, data: { eventId: id } });
     return { attached: true };
   }

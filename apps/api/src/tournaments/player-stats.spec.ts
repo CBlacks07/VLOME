@@ -1,4 +1,4 @@
-import { attributeStats } from './player-stats';
+import { accountsByName, attributeStats } from './player-stats';
 
 const row = (name: string, userId: string | null, points: number, team: string[] | null = null) => ({ name, userId, team, points, wins: 1, matches: 2 });
 
@@ -26,5 +26,16 @@ describe('attributeStats', () => {
     const b = { id: 'b', name: 'Ama', userId: null };
     const r = attributeStats([a, b], [a, b], [row('Ama', null, 9), row('Ama', null, 9, ['x'])]);
     expect([r.get('a')!.points, r.get('b')!.points]).toEqual([0, 0]);
+  });
+});
+
+describe('accountsByName', () => {
+  it('rattache un nom saisi à la main au compte de l\'unique fiche qui le porte, sans tenir compte de la casse', () => {
+    expect(accountsByName([{ id: '1', name: 'Dark Master', userId: 'u1' }]).get('dark master')).toBe('u1');
+  });
+
+  it('n\'attribue rien à un compte tant qu\'une fiche sans compte porte le même nom (reprise à valider)', () => {
+    const map = accountsByName([{ id: '1', name: 'Kira', userId: null }, { id: '2', name: 'Kira', userId: 'u2' }]);
+    expect(map.has('kira')).toBe(false);
   });
 });

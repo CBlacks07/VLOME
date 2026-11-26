@@ -18,10 +18,10 @@ import { ClubDto, GameDto, RosterPlayerDto } from './roster.dto';
 export class RosterService {
   constructor(private prisma: PrismaService, private users: UsersService, private tournaments: TournamentsService, private membership: MembershipService, private associations: AssociationsService) {}
 
-  private toPlayerDto(p: { id: string; name: string; city: string | null; userId?: string | null; user?: { avatarUrl: string | null } | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number }) {
+  private toPlayerDto(p: { id: string; name: string; city: string | null; userId?: string | null; user?: { avatarUrl: string | null } | null; clubId: string | null; club: { id: string; name: string; logoUrl: string | null } | null; createdAt: Date }, totals?: { points: number; matches: number; titles?: number }) {
     return {
       // points/matchs : RÉELS (calculés sur les tournois joués), pas les anciennes colonnes de la base qui n'ont jamais été alimentées.
-      id: p.id, name: p.name, city: p.city, points: totals?.points ?? 0, matches: totals?.matches ?? 0,
+      id: p.id, name: p.name, city: p.city, points: totals?.points ?? 0, matches: totals?.matches ?? 0, titles: totals?.titles ?? 0,
       avatarUrl: p.user?.avatarUrl ?? null, hasAccount: !!p.userId, clubId: p.clubId, clubName: p.club?.name ?? null, clubLogoUrl: p.club?.logoUrl ?? null, createdAt: p.createdAt,
     };
   }
@@ -76,7 +76,7 @@ export class RosterService {
   async playerDetail(id: string) {
     const p = await this.prisma.player.findUnique({ where: { id }, include: { club: { select: { id: true, name: true, logoUrl: true } }, user: { select: { avatarUrl: true } } } });
     if (!p) throw new NotFoundException('Joueur introuvable.');
-    const base = this.toPlayerDto(p);
+    const base = this.toPlayerDto(p, (await this.tournaments.playerStats([p])).get(p.id));
     if (!p.userId) return { ...base, linked: false };
     const profile = await this.users.profileForAdmin(p.userId);
     return { ...base, linked: true, account: profile };

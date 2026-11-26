@@ -137,7 +137,7 @@ export class DashboardService {
       this.prisma.$queryRaw<DayRow[]>`SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, count(*)::int AS n, COALESCE(sum("amountXof") FILTER (WHERE "paymentStatus" = 'paid'), 0)::int AS amt FROM "Registration" WHERE "createdAt" >= ${from} GROUP BY 1`,
       this.prisma.$queryRaw<DayRow[]>`SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, count(*)::int AS n, COALESCE(sum("totalXof") FILTER (WHERE "status" IN ('paid', 'delivered')), 0)::int AS amt FROM "Order" WHERE "createdAt" >= ${from} GROUP BY 1`,
       this.prisma.$queryRaw<DayRow[]>`SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, count(*)::int AS n, COALESCE(sum("amountXof") FILTER (WHERE "status" = 'paid'), 0)::int AS amt FROM "CreditPurchase" WHERE "createdAt" >= ${from} GROUP BY 1`,
-      this.prisma.tournament.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.tournament.groupBy({ by: ['status'], _count: { _all: true }, where: { NOT: { eventId: null, publication: 'DRAFT', status: { not: 'DRAFT' } } } }), // essais en brouillon exclus
       this.prisma.event.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.registration.count({ where: { paymentStatus: 'pending' } }),
       this.prisma.order.count({ where: { status: 'pending', archived: false } }),
@@ -147,7 +147,7 @@ export class DashboardService {
       this.prisma.registration.aggregate({ _sum: { amountXof: true }, where: { paymentStatus: 'paid' } }),
       this.prisma.order.aggregate({ _sum: { totalXof: true }, where: { status: { in: ['paid', 'delivered'] } } }),
       this.prisma.creditPurchase.aggregate({ _sum: { amountXof: true }, where: { status: 'paid' } }),
-      this.prisma.tournament.findMany({ where: { status: 'LIVE' }, take: 12, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, game: true, format: true, engineState: true } }),
+      this.prisma.tournament.findMany({ where: { status: 'LIVE', NOT: { eventId: null, publication: 'DRAFT' } }, take: 12, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, game: true, format: true, engineState: true } }),
       this.prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 8, select: { displayName: true, role: true, organizerStatus: true, createdAt: true, ownedClub: { select: { status: true } } } }),
       this.prisma.registration.findMany({ orderBy: { createdAt: 'desc' }, take: 12, select: { playerName: true, amountXof: true, paymentStatus: true, createdAt: true, tournament: { select: { name: true } } } }),
       this.prisma.order.findMany({ orderBy: { createdAt: 'desc' }, take: 8, select: { reference: true, totalXof: true, status: true, createdAt: true, user: { select: { displayName: true } } } }),

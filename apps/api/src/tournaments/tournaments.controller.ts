@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
-import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto, PublicationDto, FinalizePoolDto } from './tournaments.dto';
+import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto, AnnouncementDto, CoAdminDto, MatchTimeDto, PlayerReportDto, ReviewReportDto, PublicationDto, FinalizePoolDto, BroadcastDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { OptionalJwtGuard } from '../common/optional-jwt.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
@@ -212,6 +212,21 @@ export class TournamentsController {
   @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   setMatchMinutes(@Param('id') id: string, @Body() dto: MatchMinutesDto, @CurrentUser() user: JwtUser) {
     return this.service.setMatchMinutes(id, dto.minutes, user);
+  }
+
+  /** Annule l'appel d'un match (joueurs appelés par erreur). */
+  @Post(':id/match-uncall')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  uncallMatch(@Param('id') id: string, @Body() dto: NotifyMatchDto, @CurrentUser() user: JwtUser) {
+    return this.service.uncallMatch(id, dto.key, user);
+  }
+
+  @Post(':id/broadcast')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  broadcast(@Param('id') id: string, @Body() dto: BroadcastDto, @CurrentUser() user: JwtUser) {
+    return this.service.broadcast(id, dto.keys, dto.text, user);
   }
 
   @Post(':id/notify-match')

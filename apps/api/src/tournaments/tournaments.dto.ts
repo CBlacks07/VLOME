@@ -247,6 +247,12 @@ export class NotifyMatchDto {
   @IsString() @MaxLength(60) key!: string;
 }
 
+// Message envoyé aux joueurs d'un groupe de matchs ouverts (e-mail).
+export class BroadcastDto {
+  @IsArray() @ArrayMaxSize(256) @IsString({ each: true }) keys!: string[];
+  @IsString() @MinLength(2) @MaxLength(600) text!: string;
+}
+
 export class RegisterDto {
   // Tournoi par équipes : nom de l'équipe et ses joueurs (le capitaine inscrit toute l'équipe).
   @IsOptional() @IsString() @MaxLength(40) teamName?: string;

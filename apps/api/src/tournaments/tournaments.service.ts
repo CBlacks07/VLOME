@@ -1431,6 +1431,9 @@ export class TournamentsService {
     }
     if (!pair) throw new NotFoundException('Match introuvable ou pas encore prêt.');
     const p = pair as { a: string; b: string };
+    // Les joueurs sont appelés, que l'e-mail parte ou non (l'organisateur peut aussi les appeler à voix haute).
+    const calls = { ...((l.record.matchCalls as Record<string, number>) || {}), [key]: Date.now() };
+    await this.prisma.tournament.update({ where: { id: tournamentId }, data: { matchCalls: calls } });
     const station = ((l.record.stations as Record<string, string>) || {})[key] || null;
     const regs = await this.prisma.registration.findMany({
       where: { tournamentId, playerName: { in: [p.a, p.b] } },
@@ -1455,6 +1458,36 @@ export class TournamentsService {
     }
     const reachable = new Set(regs.map((r) => r.playerName));
     return { players: [p.a, p.b], sent, unreachable: [p.a, p.b].filter((n) => !sent.includes(n) && !reachable.has(n)), mailFailed: regs.length - sent.length };
+  }
+
+  async uncallMatch(id: string, key: string, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    const matchCalls = { ...((l.record.matchCalls as Record<string, number>) || {}) };
+    delete matchCalls[key];
+    await this.prisma.tournament.update({ where: { id }, data: { matchCalls } });
+    return this.getState(id);
+  }
+
+  /** Même message aux joueurs de plusieurs matchs ouverts ; chacun ne le reçoit qu'une fois. */
+  async broadcast(id: string, keys: string[], text: string, user: JwtUser) {
+    const { l, matches } = await this.openMatches(id);
+    this.assertCanManage(l.record, user);
+    const names = Array.from(new Set(matches.filter((m) => keys.includes(m.key)).flatMap((m) => [m.a, m.b])));
+    if (!names.length) throw new BadRequestException('Aucun match ouvert dans cette sélection.');
+    const regs = await this.prisma.registration.findMany({ where: { tournamentId: id, playerName: { in: names } }, include: { user: { select: { email: true, displayName: true } } } });
+    const sent: string[] = [];
+    for (const reg of regs) {
+      const ok = await this.mail.send(reg.user.email, `Message de l'organisation — ${l.t.name}`, this.mail.layout(
+        "Message de l'organisation",
+        `<p>Bonjour ${escapeHtml(reg.user.displayName)},</p><p>${escapeHtml(text.trim()).replace(/\n/g, '<br>')}</p>`,
+        { label: 'Voir le tournoi', url: `${this.mail.siteUrl}/tournois/${id}` },
+      ));
+      if (ok) sent.push(reg.playerName);
+    }
+    await this.logActivity(id, user, `Message aux joueurs (${sent.length}/${names.length} joints) : ${text.trim().slice(0, 120)}`);
+    return { players: names.length, sent: sent.length, unreachable: names.filter((n) => !sent.includes(n)) };
   }
 
   /** Pointage de présence (organisateur/admin) : par QR code / code court, ou directement sur une inscription. */
@@ -1620,7 +1653,7 @@ export class TournamentsService {
 
   /* ---------- Pilotage (état du moteur persisté) ---------- */
 
-  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown; coAdminIds: string[]; matchPlans: unknown; announcements: unknown; allowPlayerReports: boolean; questions: unknown; publication: string }; t: Engine.Tournament } | null> {
+  private async loadEngine(id: string): Promise<{ record: { id: string; createdById: string | null; eventId: string | null; entryFeeXof: number; imageUrl: string | null; format: string; place: string | null; date: Date | null; givesLoyaltyPoint: boolean; stations: unknown; streamMatchKey: string | null; matchStarts: unknown; matchMinutes: number | null; rules: string | null; prize: string | null; teamSize: number | null; teams: unknown; coAdminIds: string[]; matchPlans: unknown; announcements: unknown; allowPlayerReports: boolean; questions: unknown; publication: string; matchCalls: unknown }; t: Engine.Tournament } | null> {
     const r = await this.prisma.tournament.findUnique({ where: { id } });
     if (!r || !r.engineState) return null;
     const t = this.applyEngineCompat(r.engineState as unknown as Engine.Tournament);
@@ -1851,7 +1884,7 @@ export class TournamentsService {
     id: string, t: Engine.Tournament, entryFeeXof = 0, imageUrl: string | null = null,
     format: string | null = null, place: string | null = null, date: Date | null = null, givesLoyaltyPoint = true,
     stations: unknown = null, streamMatchKey: string | null = null,
-    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null; matchPlans?: unknown; announcements?: unknown; allowPlayerReports?: boolean; questions?: unknown; eventId?: string | null; publication?: string } = {},
+    extra: { matchStarts?: unknown; matchMinutes?: number | null; rules?: string | null; prize?: string | null; teamSize?: number | null; teams?: unknown; tier?: string; maxPlayers?: number | null; bannerUrl?: string | null; matchPlans?: unknown; announcements?: unknown; allowPlayerReports?: boolean; questions?: unknown; eventId?: string | null; publication?: string; matchCalls?: unknown } = {},
   ) {
     const pools = t.pools.map((p) => {
       const m = Engine.currentMatch(p);
@@ -1940,6 +1973,7 @@ export class TournamentsService {
       // Match actuellement à l'antenne (un seul à la fois) — voir setStreamMatch.
       streamMatchKey,
       // Chronomètre par match : heure de début (ms) par activeKey, et durée prévue (minutes) — voir setMatchStart.
+      matchCalls: (extra.matchCalls as Record<string, number>) || {},
       matchStarts: (extra.matchStarts as Record<string, number>) || {},
       matchPlans: (extra.matchPlans as Record<string, string>) || {},
       allowPlayerReports: !!extra.allowPlayerReports,
@@ -2063,10 +2097,12 @@ export class TournamentsService {
     let record = l.record;
     const key = dto.matchId || dto.poolId;
     const starts = { ...((l.record.matchStarts as Record<string, number>) || {}) };
-    if (key && starts[key]) {
+    const calls = { ...((l.record.matchCalls as Record<string, number>) || {}) };
+    if (key && (starts[key] || calls[key])) {
       delete starts[key];
-      await this.prisma.tournament.update({ where: { id }, data: { matchStarts: starts } });
-      record = { ...l.record, matchStarts: starts };
+      delete calls[key];
+      await this.prisma.tournament.update({ where: { id }, data: { matchStarts: starts, matchCalls: calls } });
+      record = { ...l.record, matchStarts: starts, matchCalls: calls };
     }
     return this.toState(id, t, record.entryFeeXof, record.imageUrl, record.format, record.place, record.date, record.givesLoyaltyPoint, record.stations, record.streamMatchKey, record);
   }
@@ -2200,10 +2236,10 @@ export class TournamentsService {
     Engine.resetTournament(l.t);
     await this.persist(id, l.t);
     // Journal, postes, horaires, chronos et envois des joueurs portaient sur des matchs qui n'existent plus.
-    await this.prisma.tournament.update({ where: { id }, data: { activity: [], stations: {}, matchPlans: {}, matchStarts: {}, streamMatchKey: null } });
+    await this.prisma.tournament.update({ where: { id }, data: { activity: [], stations: {}, matchPlans: {}, matchStarts: {}, matchCalls: {}, streamMatchKey: null } });
     await this.prisma.scoreReport.deleteMany({ where: { tournamentId: id } });
     await this.logActivity(id, user, 'Tournoi réinitialisé');
-    const record = { ...l.record, stations: {}, matchPlans: {}, matchStarts: {}, streamMatchKey: null };
+    const record = { ...l.record, stations: {}, matchPlans: {}, matchStarts: {}, matchCalls: {}, streamMatchKey: null };
     return this.toState(id, l.t, record.entryFeeXof, record.imageUrl, record.format, record.place, record.date, record.givesLoyaltyPoint, record.stations, record.streamMatchKey, record);
   }
 

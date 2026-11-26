@@ -176,7 +176,7 @@ type State = {
   // Engine.correctResult) — le score en cours de saisie pour la correction réutilise matchScores avec
   // ce même id comme clé, préfixé "c:" pour ne jamais entrer en collision avec un match actif.
   correctingId: string | null;
-  regiePanel: "joueurs" | "paiements" | "reglages" | "organisation" | null; // overlay ouvert depuis le bas du rail de régie
+  regiePanel: "joueurs" | "paiements" | "reglages" | "organisation" | "suivi" | null; // overlay ouvert depuis le bas du rail de régie
   dash: { data: Detail | null; at: number; err: boolean; busy?: boolean } | null; // tableau de bord de pilotage (admin), actualisé en continu
   poolView: number; // index de la poule affichée (une poule par page, flèches précédent/suivant)
   bracketView: "tree" | "list" | "pools"; // bascule d'affichage de la phase finale (régie + page publique) — "pools" revient au tableau des poules une fois en phase finale
@@ -5046,6 +5046,7 @@ function regieTopBanner(S: State, t: Detail): string {
     </div>
     <span style="width:1px;height:32px;background:var(--surface-4)"></span>` : "";
   // Placé juste avant la cagnotte (Survival) ou à droite du titre (autres formats).
+  const boardBtn = `<button data-regiepanel="suivi" title="Matchs appelés, en cours et terminés ; message aux joueurs" style="flex:none;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.5);color:#22D3EE;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:750;cursor:pointer">Suivi</button>`;
   const orgBtn = `<button data-regiepanel="organisation" title="Annonces, co-administrateurs et journal" style="flex:none;background:transparent;border:1px solid var(--border-strong);color:#FBBF24;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:750;cursor:pointer">Organisation</button>`;
   return `<div class="regie-banner" style="display:flex;align-items:center;gap:16px;padding:0 26px;height:70px;border-bottom:1px solid var(--surface-3);background:linear-gradient(90deg,rgba(34,211,238,.07),transparent 46%)">
     <button data-back="1" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);flex:none;cursor:pointer">${icBack(14)}</button>
@@ -5057,7 +5058,7 @@ function regieTopBanner(S: State, t: Detail): string {
       <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${[t.game, t.format, t.matchFormatLabel].filter(Boolean).map((v: string) => escHtml(v)).join(" · ")}</div>
     </div>
     <span style="flex:1"></span>
-    ${orgBtn}${cagnotteBlock}
+    ${boardBtn}${orgBtn}${cagnotteBlock}
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
     <button data-print="${t.id}" style="display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);border-radius:10px;padding:11px 15px;font-weight:700;font-size:13px;flex:none;cursor:pointer">${ic(I.printer, 15)}Affiche</button>
@@ -5300,18 +5301,60 @@ function reportsBox(S: State, t: Detail): string {
   return `<div style="border:1px solid rgba(251,191,36,.45);border-radius:12px;background:rgba(251,191,36,.06);padding:12px 14px"><div style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#FBBF24;margin-bottom:4px">Scores envoyés par les joueurs (${list.length})</div>${list.map((r: Detail) => `<div style="padding:9px 0;border-top:1px solid rgba(251,191,36,.2)"><div style="font-size:13px;font-weight:700">${escHtml(r.aName)} ${r.scoreA !== null ? `<span style="font-family:'JetBrains Mono',monospace">${r.scoreA}–${r.scoreB}</span>` : "vs"} ${escHtml(r.bName)}${r.dispute ? ` <span style="font-size:10px;font-weight:800;color:#FB7185;border:1px solid #FB7185;border-radius:99px;padding:0 7px">LITIGE</span>` : ""}</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">par ${escHtml(r.by)}${r.note ? ` : « ${escHtml(r.note)} »` : ""}</div><div style="display:flex;gap:8px;margin-top:6px">${btnSm(`data-reportrev="${r.id}|reject"`, "Écarter", "#FB7185", "rgba(251,113,133,.35)")}${r.scoreA !== null ? btnSm(`data-reportrev="${r.id}|accept"`, "Valider ce score", "#34D399", "rgba(52,211,153,.4)") : ""}</div></div>`).join("")}</div>`;
 }
 
+const sinceText = (ts: number) => { const m = Math.max(0, Math.round((Date.now() - ts) / 60000)); return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : `il y a ${Math.floor(m / 60)} h ${m % 60}`; };
+/** Tous les matchs ouverts du moment (poules et phase finale), avec leur étape. */
+function openBoardMatches(t: Detail): { key: string; label: string; a: string; b: string }[] {
+  const out: { key: string; label: string; a: string; b: string }[] = [];
+  (t.pools ?? []).forEach((p: Detail) => { if (p.current) out.push({ key: p.id, label: p.name, a: p.current.aName, b: p.current.bName }); });
+  if (t.finals && t.finals.format !== "survival") for (const { label, m } of finalsLabelledMatches(t.finals)) if (m.playable) out.push({ key: m.matchId, label, a: m.aName, b: m.bName });
+  return out;
+}
+const BOARD_COLUMNS: [string, string, string][] = [["todo", "Pas commencés", "var(--text-muted)"], ["called", "Joueurs appelés", "#FBBF24"], ["live", "En cours", "#22D3EE"], ["done", "Terminés", "#34D399"]];
+/** Suivi en salle : où en est chaque match, avec les actions du moment et un message groupé aux joueurs. */
+function matchBoard(S: State, t: Detail): string {
+  if (t.finals?.format === "battle_royale") return `<div style="color:var(--text-muted);text-align:center;padding:20px">Pas de duels dans ce format : la saisie se fait partie par partie.</div>`;
+  const calls: Record<string, number> = t.matchCalls ?? {}, starts: Record<string, number> = t.matchStarts ?? {}, stations: Record<string, string> = t.stations ?? {};
+  const open = openBoardMatches(t);
+  const column = (m: { key: string }) => (starts[m.key] ? "live" : calls[m.key] ? "called" : "todo");
+  const btn = (attr: string, label: string, primary = false) => `<button ${attr} style="border-radius:8px;padding:6px 10px;font-weight:750;font-size:11.5px;cursor:pointer;font-family:inherit;${primary ? "background:#22D3EE;color:#04222a;border:0" : "background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)"}">${label}</button>`;
+  const card = (m: { key: string; label: string; a: string; b: string }, col: string) => `<div style="border:1px solid var(--border);border-radius:11px;background:var(--surface);padding:10px 11px">
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--text-faint)"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.label)}</span>${stations[m.key] ? `<span style="color:#22D3EE;flex:none">${escHtml(stations[m.key])}</span>` : ""}</div>
+    <div style="font-weight:750;font-size:13.5px;line-height:1.45;margin-top:5px;overflow-wrap:break-word">${escHtml(m.a)}<br><span style="color:var(--text-faint);font-size:11px">contre</span> ${escHtml(m.b)}</div>
+    ${col === "called" ? `<div style="font-size:11px;color:#FBBF24;margin-top:4px">Appelés ${sinceText(calls[m.key])}</div>` : col === "live" ? `<div style="font-size:11px;color:#22D3EE;margin-top:4px">Commencé ${sinceText(starts[m.key])}</div>` : ""}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${col === "todo" ? `${btn(`data-callmatch="${t.id}|${m.key}"`, "Appeler", true)}${btn(`data-matchstart="${t.id}|${m.key}"`, "Démarrer")}`
+      : col === "called" ? `${btn(`data-matchstart="${t.id}|${m.key}"`, "Démarrer", true)}${btn(`data-callmatch="${t.id}|${m.key}"`, "Rappeler")}${btn(`data-uncall="${t.id}|${m.key}"`, "Annuler")}`
+      : btn(`data-boardplay="${m.key}"`, "Saisir le score", true)}</div>
+  </div>`;
+  const played: Detail[] = (t.log ?? []).filter((l: Detail) => l.aName && l.bName);
+  const done = played.slice(-12).reverse();
+  const doneCard = (l: Detail) => `<div style="border:1px solid var(--border);border-radius:11px;background:var(--surface);padding:9px 11px;font-size:12.5px;line-height:1.5"><b>${escHtml(l.aName)}</b> <span style="font-family:'JetBrains Mono',monospace">${l.sa ?? 0}–${l.sb ?? 0}</span> <b>${escHtml(l.bName)}</b></div>`;
+  const cols = BOARD_COLUMNS.map(([id, label, color]) => {
+    const list = id === "done" ? done : open.filter((m) => column(m) === id);
+    const cards = id === "done" ? done.map(doneCard).join("") : (list as typeof open).map((m) => card(m, id)).join("");
+    return `<div style="min-width:0;display:flex;flex-direction:column;gap:8px"><div style="border-top:3px solid ${color};padding-top:8px;font-size:11.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:${color}">${label} · ${id === "done" ? played.length : list.length}</div>${cards || `<div style="font-size:12px;color:var(--text-faint);padding:4px 0">—</div>`}</div>`;
+  }).join("");
+  const audience = ([["all", "Tous les matchs ouverts"], ["todo", "Pas commencés"], ["called", "Joueurs appelés"], ["live", "En cours"]] as [string, string][]).map(([v, l]) => `<option value="${v}">${l} (${v === "all" ? open.length : open.filter((m) => column(m) === v).length})</option>`).join("");
+  return `<div class="match-board">${cols}</div>
+    <div style="border-top:1px solid var(--border);margin-top:18px;padding-top:14px">
+      <div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:800;margin-bottom:8px">Message aux joueurs (e-mail)</div>
+      <textarea id="board-text" data-draft="1" rows="2" maxlength="600" placeholder="Ex. : les matchs reprennent dans 10 minutes." style="${adminInp};margin-top:0;resize:vertical">${escHtml(REPORT_DRAFT["board-text"] ?? "")}</textarea>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"><select id="board-audience" style="${adminInp};margin-top:0;width:auto;min-width:240px">${audience}</select><button data-broadcast="${t.id}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:10px 18px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Envoyer</button></div>
+    </div>`;
+}
+
 /** Overlay Joueurs / Paiements / Réglages ouvert depuis le bas du rail de régie. */
 function regieOverlay(S: State, t: Detail, manage: boolean): string {
   // Le barème n'a pas de sens hors Survival (voir regieRail, qui n'affiche même plus le bouton) —
   // filet de sécurité si l'état retenait ce panneau d'un tournoi Survival visité juste avant.
   if (!S.regiePanel || (S.regiePanel === "reglages" && t.mainFormat !== "survival")) return "";
-  const titles: Record<string, string> = { joueurs: "Joueurs", paiements: "Paiements en attente", reglages: "Réglages & barème", organisation: "Organisation" };
+  const titles: Record<string, string> = { joueurs: "Joueurs", paiements: "Paiements en attente", reglages: "Réglages & barème", organisation: "Organisation", suivi: "Suivi des matchs" };
   const body = S.regiePanel === "joueurs" ? (playersRosterPanel(S, t, manage) || `<div style="color:var(--text-muted);text-align:center;padding:20px">Aucun joueur.</div>`)
     : S.regiePanel === "paiements" ? (paymentsPanel(S, t.id) || `<div style="color:var(--text-muted);text-align:center;padding:20px">Aucun paiement en attente.</div>`)
     : S.regiePanel === "organisation" ? `${announcementsBox(t, manage)}${orgPanel(S, t)}`
+    : S.regiePanel === "suivi" ? matchBoard(S, t)
     : regieScoringForm(t);
   return `<div data-regiepanel="" style="position:fixed;inset:0;z-index:270;display:flex;align-items:flex-start;justify-content:center;padding:min(6vh,60px) 18px;background:rgba(6,6,10,.75);backdrop-filter:blur(6px);overflow-y:auto">
-    <div data-stop="1" style="width:100%;max-width:520px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);box-shadow:0 30px 80px rgba(0,0,0,.6);animation:fadeUp .18s ease both">
+    <div data-stop="1" style="width:100%;max-width:${S.regiePanel === "suivi" ? 1180 : 520}px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2);box-shadow:0 30px 80px rgba(0,0,0,.6);animation:fadeUp .18s ease both">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--surface-3)"><span style="font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px">${titles[S.regiePanel]}</span><button data-regiepanel="" style="display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--surface-3);border:1px solid var(--border);color:var(--text-muted);cursor:pointer">${ic(I.x, 13)}</button></div>
       <div style="padding:18px 20px;max-height:70vh;overflow-y:auto">${body}</div>
     </div>
@@ -8013,7 +8056,20 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const d = await r.json().catch(() => null);
       if (!r.ok) { showToast(d?.message || "Impossible de prévenir les joueurs."); return; }
       showToast(`Les joueurs ${d.players.join(" et ")} sont appelés.`);
+      const sr = await fetch(`${API}/api/tournaments/${tid}/state`, { headers: authHeaders() });
+      if (sr.ok) { const detail = await sr.json(); setS((s) => (s.openId === tid ? { ...s, detail } : s)); }
     } catch { showToast("Impossible de prévenir les joueurs."); }
+  }
+  async function broadcast(tid: string, keys: string[], text: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/broadcast`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ keys, text }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(Array.isArray(d?.message) ? d.message.join("\n") : d?.message || "Envoi impossible."); return; }
+      delete REPORT_DRAFT["board-text"];
+      const field = document.getElementById("board-text") as HTMLTextAreaElement | null;
+      if (field) field.value = "";
+      showToast(`Message envoyé à ${d.sent} joueur${d.sent > 1 ? "s" : ""} sur ${d.players}.`);
+    } catch { alert("Envoi impossible — réessaie dans un instant."); }
   }
   /** Lance le prochain match de la file : l'ajoute à la régie, lui donne le premier poste libre
    * (« Table 1 », « Table 2 »… — même préfixe que les postes déjà utilisés) puis prévient les joueurs. */
@@ -9953,7 +10009,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-callmatch],[data-uncall],[data-boardplay],[data-broadcast],[data-poolfinal],[data-pfmove],[data-pfsave],[data-pfcancel],[data-publish],[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -10527,6 +10583,26 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (pi >= 0) setS((s) => ({ ...s, poolView: pi }));
     }
     else if (d.matchminutes) { const v = parseInt((document.getElementById("match-minutes") as HTMLInputElement | null)?.value || "0") || 0; act(`${API}/api/tournaments/${d.matchminutes}/match-minutes`, { minutes: v }); }
+    else if (d.callmatch) { const [tid, key] = d.callmatch.split("|"); void notifyMatch(tid, key); }
+    else if (d.uncall) { const [tid, key] = d.uncall.split("|"); act(`${API}/api/tournaments/${tid}/match-uncall`, { key }); }
+    else if (d.boardplay) {
+      const t = S.detail;
+      if (t) {
+        const current = getActiveMatches(S, t).map(activeKey);
+        const pi = (t.pools || []).findIndex((pp: Detail) => pp.id === d.boardplay);
+        setS((s) => ({ ...s, regiePanel: null, activeMatchIds: current.includes(d.boardplay!) ? current : [d.boardplay!, ...current], ...(pi >= 0 ? { poolView: pi } : {}) }));
+      }
+    }
+    else if (d.broadcast) {
+      const text = ((document.getElementById("board-text") as HTMLTextAreaElement | null)?.value || "").trim();
+      const audience = (document.getElementById("board-audience") as HTMLSelectElement | null)?.value || "all";
+      const t = S.detail;
+      if (!t) return;
+      if (text.length < 2) { alert("Écris le message à envoyer."); return; }
+      const keys = openBoardMatches(t).filter((m) => audience === "all" || (t.matchStarts?.[m.key] ? "live" : t.matchCalls?.[m.key] ? "called" : "todo") === audience).map((m) => m.key);
+      if (!keys.length) { alert("Aucun match dans cette sélection."); return; }
+      void broadcast(d.broadcast, keys, text);
+    }
     else if (d.notifymatch) { const [tid, key] = d.notifymatch.split("|"); notifyMatch(tid, key); }
     else if (d.embedclose !== undefined) setS((s) => ({ ...s, embedTarget: null }));
     else if (d.embedcopy) copyEmbedCode();

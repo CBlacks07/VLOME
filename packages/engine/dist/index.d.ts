@@ -24,6 +24,8 @@ export interface BracketMatch {
     bye: boolean;
     sa?: number;
     sb?: number;
+    sets?: SetScore[];
+    leg?: number;
 }
 export interface Bracket {
     rounds: BracketMatch[][];
@@ -88,6 +90,8 @@ export interface Pool {
 }
 export type Stage = 'survival' | 'losers' | 'poolFinal' | 'finals' | 'championBonus' | 'streakBonus' | 'adjust';
 export interface LogEntry {
+    /** Détail des sets quand le match en comptait plusieurs. */
+    sets?: SetScore[];
     id: string;
     poolId: string;
     stage: Stage;
@@ -102,6 +106,22 @@ export interface LogEntry {
     matchId?: string;
 }
 export type Status = 'setup' | 'live' | 'finished';
+/** Score d'un set : [côté A, côté B]. */
+export type SetScore = [number, number];
+/** Points d'un classement de championnat / Swiss (hors Survival). */
+export interface LeaguePoints {
+    win: number;
+    draw: number;
+    loss: number;
+    bye: number;
+}
+export declare const DEFAULT_LEAGUE_POINTS: LeaguePoints;
+/** Critère principal d'un championnat : points, victoires, manches gagnées, % de manches, différence de manches,
+ *  points (buts) marqués, différence de points. */
+export type RankBy = 'points' | 'wins' | 'games' | 'gamePct' | 'gameDiff' | 'scored' | 'pointDiff';
+export declare const RANK_BY: RankBy[];
+/** Comment plusieurs sets désignent le vainqueur : le plus de sets gagnés, ou le total cumulé (aller-retour). */
+export type SetsMode = 'sets' | 'aggregate';
 export type FinalsFormat = 'single' | 'double' | 'roundrobin' | 'survival';
 /**
  * Format principal du tournoi (phase de poules) :
@@ -214,6 +234,15 @@ export interface Tournament {
      *  parties déjà jouées). Absents sur d'anciennes données : traiter comme DEFAULT_BR_POINTS / 1. */
     brPointsTable?: number[];
     brKillPoints?: number;
+    /** Barème de championnat et de Swiss (hors Survival) — absent : 3 / 1 / 0, exempt = victoire. */
+    league?: LeaguePoints;
+    /** Critère principal du championnat — absent : les points. */
+    rankBy?: RankBy;
+    /** Nombre de fois que chacun affronte chacun en championnat (1 = aller simple). */
+    rrLegs?: number;
+    setsMode?: SetsMode;
+    /** Départage manuel posé par l'organisateur : à égalité parfaite, la plus grande valeur passe devant. */
+    manualOrder?: Record<string, number>;
     /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
     _undo?: string[];
 }
@@ -232,7 +261,7 @@ export declare function winsNeeded(f: MatchFormat): number;
 /** Étiquette courte affichée sur les match(s) et l'en-tête de phase — "Bo3", "Ft10". */
 export declare function matchFormatLabel(f: MatchFormat): string;
 /** Critères de départage disponibles (voir Tournament.tiebreakers). */
-export type Tiebreaker = 'h2h' | 'gd' | 'gf' | 'ga';
+export type Tiebreaker = 'h2h' | 'gd' | 'gf' | 'ga' | 'wins';
 export declare const TIEBREAKERS: Tiebreaker[];
 /** Nettoie une liste de critères reçue de l'extérieur : valeurs connues, sans doublon, ordre conservé. undefined si ce n'est pas un tableau. */
 export declare function normalizeTiebreakers(v: unknown): Tiebreaker[] | undefined;
@@ -242,6 +271,13 @@ export declare function effectiveTiebreakers(t: Pick<Tournament, 'countGoalDiff'
 export declare function usesScoreTiebreak(tbs: Tiebreaker[]): boolean;
 export declare function uid(): string;
 export declare function newTournament(cfg?: Partial<Tournament>): Tournament;
+export declare function clampLegs(v?: number): number;
+export declare function normalizeLeaguePoints(v?: Partial<LeaguePoints> | null): LeaguePoints;
+export declare function leaguePoints(t: Tournament): LeaguePoints;
+/** Nettoie des sets saisis (au plus 15, scores entiers positifs). undefined s'il n'y a rien d'exploitable. */
+export declare function normalizeSets(v: unknown): SetScore[] | undefined;
+/** Score d'un match à partir de ses sets : un seul set = son score ; plusieurs = sets gagnés, ou total cumulé. */
+export declare function scoreFromSets(t: Tournament, sets: SetScore[]): [number, number];
 /** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */
 export declare function swissRoundCount(nPlayers: number): number;
 export declare const DEFAULT_BR_POINTS: number[];
@@ -313,8 +349,12 @@ export interface LeagueRow {
     id: string;
     wins: number;
     draws: number;
+    losses: number;
     played: number;
     gd: number;
+    gf: number;
+    gamesWon: number;
+    gamesLost: number;
     pts: number;
 }
 /** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
@@ -361,7 +401,7 @@ export declare const LEAGUE_DRAW = 1;
 /** Le nul n'existe que dans les formats à points (championnat : poule ou phase finale en Round Robin), jamais dans un arbre
  *  à élimination ni en Swiss, et jamais en Survival (son barème récompense uniquement des victoires). */
 export declare function drawsAllowed(t: Tournament, poolId: string): boolean;
-export declare function reportResult(t: Tournament, poolId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
+export declare function reportResult(t: Tournament, poolId: string, winnerId: string, sa?: number, sb?: number, reason?: string, sets?: SetScore[]): {
     winnerId: string;
     loserId: string;
     pts: number;
@@ -409,7 +449,7 @@ export declare function startFinals(t: Tournament, format?: FinalsFormat): void;
 /** Toutes les rencontres de la phase finale, quel que soit le format — pour recherche/affichage générique. */
 export declare function allFinalsMatches(t: Tournament): BracketMatch[];
 export declare function findFinalsMatch(t: Tournament, matchId: string): BracketMatch | null;
-export declare function reportFinals(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
+export declare function reportFinals(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string, sets?: SetScore[]): {
     winnerId: string;
     pts: number;
 } | null;
@@ -417,10 +457,13 @@ export declare function reportFinals(t: Tournament, matchId: string, winnerId: s
 export declare function swissStandings(t: Tournament): {
     id: string;
     wins: number;
+    draws: number;
+    losses: number;
+    pts: number;
     buchholz: number;
 }[];
 /** Rapporte le résultat d'un match Swiss de la ronde en cours ; enchaîne la ronde suivante ou couronne le champion. */
-export declare function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
+export declare function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa?: number, sb?: number, reason?: string, sets?: SetScore[]): {
     winnerId: string;
     pts: number;
 } | null;
@@ -463,6 +506,8 @@ export declare function cagnotte(t: Tournament, simulatedPlayers?: number): {
  * l'organisateur. */
 export declare function autoFitScoring(t: Tournament, simulatedPlayers?: number): void;
 export declare function distributed(t: Tournament): number;
+/** Départage manuel : fait monter ou descendre un joueur parmi ceux qui sont à égalité parfaite avec lui. */
+export declare function adjustManualOrder(t: Tournament, playerId: string, delta: number): boolean;
 export interface RankRow {
     id: string;
     name: string;

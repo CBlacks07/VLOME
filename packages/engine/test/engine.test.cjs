@@ -490,3 +490,63 @@ test('classement du site hors Survival : rien en cours de route, puis des points
 test('barème de placement', () => {
   assert.deepEqual([1, 2, 3, 4, 5, 8, 9].map(E.placementPoints), [10, 7, 5, 5, 3, 3, 1]);
 });
+
+/* ---------- Règles de championnat réglables ---------- */
+
+test('barème personnalisé : points par victoire, nul et défaite', () => {
+  const t = league(['A', 'B', 'C'], { league: { win: 2, draw: 1, loss: 0.5 } });
+  const [m] = rrMatches(t);
+  play(t, m, 3, 0);
+  const rows = E.rrRanking(t);
+  assert.equal(rows.find((r) => r.id === m.a).pts, 2);
+  assert.equal(rows.find((r) => r.id === m.b).pts, 0.5);
+});
+
+test('aller-retour : chacun se rencontre deux fois, côtés inversés', () => {
+  const t = league(['A', 'B', 'C'], { rrLegs: 2 });
+  const ms = rrMatches(t);
+  assert.equal(ms.length, 6);
+  assert.deepEqual([...new Set(ms.map((m) => m.leg))], [1, 2]);
+  const first = ms[0], back = ms.find((m) => m.leg === 2 && m.a === first.b && m.b === first.a);
+  assert.ok(back);
+});
+
+test('plusieurs sets : le plus de sets gagne, ou le total en aller-retour', () => {
+  const bySets = league(['A', 'B', 'C']);
+  const m1 = rrMatches(bySets)[0];
+  assert.ok(E.reportFinals(bySets, m1.id, m1.a, 0, 0, undefined, [[5, 0], [0, 1], [0, 1]]));
+  assert.equal(m1.winner, m1.b);
+  assert.deepEqual([m1.sa, m1.sb, m1.sets.length], [1, 2, 3]);
+  const agg = league(['A', 'B', 'C'], { setsMode: 'aggregate' });
+  const m2 = rrMatches(agg)[0];
+  E.reportFinals(agg, m2.id, m2.a, 0, 0, undefined, [[5, 0], [0, 1], [0, 1]]);
+  assert.equal(m2.winner, m2.a);
+  assert.deepEqual([m2.sa, m2.sb], [5, 2]);
+});
+
+test('critère principal : différence de points avant les points de championnat', () => {
+  const t = league(['A', 'B', 'C'], { rankBy: 'pointDiff' });
+  const id = (n) => t.players.find((p) => p.name === n).id;
+  const find = (x, y) => rrMatches(t).find((m) => [m.a, m.b].includes(id(x)) && [m.a, m.b].includes(id(y)));
+  const beat = (x, y, w, l) => { const m = find(x, y); play(t, m, m.a === id(x) ? w : l, m.a === id(x) ? l : w); };
+  beat('A', 'B', 1, 0); beat('A', 'C', 1, 0); beat('B', 'C', 9, 0);
+  assert.equal(E.rrRanking(t)[0].id, id('B'));
+});
+
+test('départage manuel : à égalité parfaite, l\'organisateur tranche', () => {
+  const t = league(['A', 'B', 'C'], { tiebreakers: [] });
+  const id = (n) => t.players.find((p) => p.name === n).id;
+  for (const m of [...rrMatches(t)]) play(t, m, 1, 1);
+  assert.ok(E.adjustManualOrder(t, id('C'), 1));
+  assert.equal(E.rrRanking(t)[0].id, id('C'));
+});
+
+test('swiss : nul autorisé et classement aux points avec exempt', () => {
+  const t = E.newTournament({ format: 'swiss', nbPools: 1 });
+  E.setPlayers(t, ['A', 'B', 'C', 'D']);
+  E.launchTournament(t);
+  const m = t.finals.rounds[0].find((x) => x.a && x.b);
+  assert.ok(E.reportSwiss(t, m.id, E.DRAW, 1, 1));
+  const rows = E.swissStandings(t);
+  assert.equal(rows.find((r) => r.id === m.a).pts, 1);
+});

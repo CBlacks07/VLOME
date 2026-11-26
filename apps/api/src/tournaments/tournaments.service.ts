@@ -110,6 +110,14 @@ export class TournamentsService {
     return { ...this.toCard(r), engine: r.engineState ?? null };
   }
 
+  /** Barème de championnat saisi (complété par l'existant) ; undefined si rien n'est précisé. */
+  private leagueFrom(dto: { leagueWin?: number; leagueDraw?: number; leagueLoss?: number; leagueBye?: number }, prev?: Engine.LeaguePoints): Engine.LeaguePoints | undefined {
+    if ([dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye].every((v) => v === undefined)) return prev;
+    return Engine.normalizeLeaguePoints({
+      win: dto.leagueWin ?? prev?.win, draw: dto.leagueDraw ?? prev?.draw, loss: dto.leagueLoss ?? prev?.loss, bye: dto.leagueBye ?? prev?.bye,
+    });
+  }
+
   async create(dto: CreateTournamentDto, user?: JwtUser) {
     const userId = user?.sub;
     // Seul un ORGANIZER (pas un ADMIN, qui n'est pas un client de la plateforme) est soumis à la
@@ -167,6 +175,7 @@ export class TournamentsService {
       streakLength: dto.streakLength,
       matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : undefined,
       countGoalDiff: dto.countGoalDiff, tiebreakers: dto.tiebreakers,
+      league: this.leagueFrom(dto), rankBy: dto.rankBy, rrLegs: dto.rrLegs, setsMode: dto.setsMode,
       brPointsTable: dto.brPointsTable, brKillPoints: dto.brKillPoints,
       ...(hasScoring ? {
         scoring: {
@@ -245,6 +254,7 @@ export class TournamentsService {
         streakLength: dto.streakLength,
         matchFormat: dto.matchMode ? { mode: dto.matchMode, value: dto.matchValue ?? (dto.matchMode === 'ft' ? 10 : 1) } : prev?.matchFormat,
         countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff, tiebreakers: dto.tiebreakers ?? prev?.tiebreakers,
+        league: this.leagueFrom(dto, prev?.league), rankBy: dto.rankBy ?? prev?.rankBy, rrLegs: dto.rrLegs ?? prev?.rrLegs, setsMode: dto.setsMode ?? prev?.setsMode,
         brPointsTable: dto.brPointsTable ?? prev?.brPointsTable, brKillPoints: dto.brKillPoints ?? prev?.brKillPoints,
         ...(hasScoring ? {
           scoring: {
@@ -266,7 +276,8 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    if (dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.tiebreakers !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
+    const rulesChanged = [dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye, dto.rankBy, dto.rrLegs, dto.setsMode].some((v) => v !== undefined);
+    if (rulesChanged || dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.tiebreakers !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
       if (dto.pointsPerPlayer !== undefined) data.pointsPerPlayer = dto.pointsPerPlayer;
@@ -280,6 +291,11 @@ export class TournamentsService {
       if (dto.matchMode !== undefined) t.matchFormat = Engine.clampMatchFormat({ mode: dto.matchMode, value: dto.matchValue });
       if (dto.countGoalDiff !== undefined) { t.countGoalDiff = dto.countGoalDiff; if (!dto.countGoalDiff && dto.tiebreakers === undefined) t.tiebreakers = []; }
       if (dto.tiebreakers !== undefined) { t.tiebreakers = Engine.normalizeTiebreakers(dto.tiebreakers) ?? []; t.countGoalDiff = Engine.usesScoreTiebreak(t.tiebreakers); }
+      const league = this.leagueFrom(dto, t.league);
+      if (league) t.league = league;
+      if (dto.rankBy !== undefined) t.rankBy = dto.rankBy;
+      if (dto.rrLegs !== undefined) t.rrLegs = Engine.clampLegs(dto.rrLegs);
+      if (dto.setsMode !== undefined) t.setsMode = dto.setsMode;
       if (dto.brPointsTable !== undefined) t.brPointsTable = dto.brPointsTable;
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
@@ -1061,6 +1077,7 @@ export class TournamentsService {
       finalsWin: t.scoring.finalsWin, championBonus: t.scoring.championBonus, streakBonus: t.scoring.streakBonus,
       streakLength: t.streakLength, finalsFormat: t.finalsFormat, poolFormat: t.poolFormat, qualifyPerPool: t.qualifyPerPool,
       matchMode: t.matchFormat.mode, matchValue: t.matchFormat.value, countGoalDiff: t.countGoalDiff, tiebreakers: Engine.effectiveTiebreakers(t),
+      leagueWin: t.league?.win, leagueDraw: t.league?.draw, leagueLoss: t.league?.loss, leagueBye: t.league?.bye, rankBy: t.rankBy, rrLegs: t.rrLegs, setsMode: t.setsMode,
       brPointsTable: t.brPointsTable, brKillPoints: t.brKillPoints,
       rules: r.rules ?? undefined, prize: r.prize ?? undefined, teamSize: r.teamSize ?? undefined,
       tier: (r.tier ?? undefined) as 'AMATEUR' | 'ELITE' | undefined,
@@ -1431,7 +1448,7 @@ export class TournamentsService {
       // Pts = points de championnat (3 par victoire), pas les points de récompense du tournoi
       // (t.points) — même convention que le classement Round Robin de phase finale, voir plus bas.
       // En Survival, aucun nul n'existe : pts = 3 par victoire comme avant.
-      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: r.pts, wins: r.wins, draws: r.draws, played: r.played, losses: r.played - r.wins - r.draws, gd: r.gd }));
+      return Engine.poolRRRanking(t, pool).map((r) => ({ ...r, name: Engine.playerName(t, r.id) }));
     }
     const wins: Record<string, number> = {};
     t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
@@ -1449,7 +1466,7 @@ export class TournamentsService {
       matchId: mm.id, bye: mm.bye,
       aName: real(mm.a) ? Engine.playerName(t, mm.a) : null, bName: real(mm.b) ? Engine.playerName(t, mm.b) : null,
       aId: real(mm.a), bId: real(mm.b), winnerId: real(mm.winner),
-      sa: mm.sa ?? null, sb: mm.sb ?? null,
+      sa: mm.sa ?? null, sb: mm.sb ?? null, sets: mm.sets ?? null, leg: mm.leg ?? null,
       playable: !!(real(mm.a) && real(mm.b) && !mm.winner && !mm.bye),
     };
   }
@@ -1467,7 +1484,7 @@ export class TournamentsService {
       // Pts du classement Round Robin = points de championnat (3 par victoire, 1 par nul) : une notion de
       // classement distincte des points de récompense du tournoi (t.points, barème/cagnotte), qui
       // restent calculés et distribués séparément.
-      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, draws: r.draws, played: r.played, losses: r.played - r.wins - r.draws, gd: r.gd, pts: r.pts }));
+      const standings = Engine.rrRanking(t).map((r) => ({ ...r, name: Engine.playerName(t, r.id) }));
       return { format: 'roundrobin' as const, champion, matches: f.matches.map((mm) => this.serializeMatch(t, mm)), standings };
     }
     if (f.format === 'double') {
@@ -1480,7 +1497,7 @@ export class TournamentsService {
       };
     }
     if (f.format === 'swiss') {
-      const standings = Engine.swissStandings(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, buchholz: r.buchholz, pts: t.points[r.id] || 0 }));
+      const standings = Engine.swissStandings(t).map((r) => ({ ...r, name: Engine.playerName(t, r.id) }));
       return {
         format: 'swiss' as const, champion, roundCount: f.roundCount,
         rounds: f.rounds.map((round, r) => ({ label: 'Ronde ' + (r + 1), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
@@ -1559,7 +1576,7 @@ export class TournamentsService {
           matchId: mm.id, aId: mm.a, bId: mm.b,
           aName: mm.a ? Engine.playerName(t, mm.a) : null,
           bName: mm.b ? Engine.playerName(t, mm.b) : null,
-          winnerId: mm.winner, sa: mm.sa ?? null, sb: mm.sb ?? null,
+          winnerId: mm.winner, sa: mm.sa ?? null, sb: mm.sb ?? null, sets: mm.sets ?? null, leg: mm.leg ?? null,
           playable: !!(m && m.matchId === mm.id && !mm.winner && !mm.bye),
         })),
         // Mini-bracket double élimination de la poule (poolFormat 'double') — même forme que la
@@ -1600,6 +1617,10 @@ export class TournamentsService {
       matchFormatLabel: Engine.matchFormatLabel(t.matchFormat),
       countGoalDiff: t.countGoalDiff,
       tiebreakers: Engine.effectiveTiebreakers(t),
+      league: Engine.leaguePoints(t),
+      rankBy: t.rankBy ?? 'points',
+      rrLegs: Engine.clampLegs(t.rrLegs),
+      setsMode: t.setsMode ?? 'sets',
       // Battle Royale : barème pré-lancement (préremplissage de l'assistant en édition) — une fois
       // lancé, la valeur qui compte réellement est celle figée dans finals.pointsTable/killPoints
       // (voir serializeFinals), ces deux-là ne représentent alors plus que le réglage figé au départ.
@@ -1636,7 +1657,7 @@ export class TournamentsService {
       log: t.log.filter((l) => l.a && l.b).map((l) => ({
         id: l.id, poolId: l.poolId, matchId: l.matchId ?? null,
         aId: l.a, aName: Engine.playerName(t, l.a), bId: l.b, bName: Engine.playerName(t, l.b),
-        winnerId: l.winner, sa: l.sa ?? null, sb: l.sb ?? null, ts: l.ts,
+        winnerId: l.winner, sa: l.sa ?? null, sb: l.sb ?? null, sets: l.sets ?? null, ts: l.ts,
       })),
     };
   }
@@ -1709,11 +1730,13 @@ export class TournamentsService {
     const sa = dto.scoreA ?? 0, sb = dto.scoreB ?? 0;
     let accepted: unknown = true;
     if (dto.matchId) {
-      if (t.finals?.format === 'swiss') accepted = Engine.reportSwiss(t, dto.matchId, dto.winnerId ?? '', sa, sb);
-      else accepted = Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+      if (t.finals?.format === 'swiss') accepted = Engine.reportSwiss(t, dto.matchId, dto.winnerId ?? '', sa, sb, undefined, dto.sets as Engine.SetScore[]);
+      else accepted = Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb, undefined, dto.sets as Engine.SetScore[]);
     }
-    else if (dto.poolId) accepted = Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
-    if (!accepted && sa === sb && (sa > 0 || dto.winnerId === Engine.DRAW)) {
+    else if (dto.poolId) accepted = Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb, undefined, dto.sets as Engine.SetScore[]);
+    const sets = Engine.normalizeSets(dto.sets);
+    const [ra, rb] = sets ? Engine.scoreFromSets(t, sets) : [sa, sb];
+    if (!accepted && ra === rb && (ra > 0 || !!sets || dto.winnerId === Engine.DRAW)) {
       throw new BadRequestException('Égalité impossible ici : le match nul n\'existe que dans les formats à points (championnat).');
     }
     await this.persist(id, t);
@@ -1727,6 +1750,15 @@ export class TournamentsService {
       record = { ...l.record, matchStarts: starts };
     }
     return this.toState(id, t, record.entryFeeXof, record.imageUrl, record.format, record.place, record.date, record.givesLoyaltyPoint, record.stations, record.streamMatchKey, record);
+  }
+
+  async tiebreak(id: string, playerId: string, delta: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    if (!Engine.adjustManualOrder(l.t, playerId, delta)) throw new BadRequestException('Joueur introuvable.');
+    await this.persist(id, l.t);
+    return this.toState(id, l.t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);
   }
 
   /** Corrige un match déjà joué (score/vainqueur saisi par erreur) — voir Engine.correctResult :

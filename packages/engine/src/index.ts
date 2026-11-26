@@ -21,7 +21,7 @@ export const BYE = '__bye__';
 export type StreakLength = 3 | 5;
 export const DEFAULT_STREAK_LENGTH: StreakLength = 5;
 
-export interface BracketMatch { id: string; a: string | null; b: string | null; winner: string | null; bye: boolean; sa?: number; sb?: number; }
+export interface BracketMatch { id: string; a: string | null; b: string | null; winner: string | null; bye: boolean; sa?: number; sb?: number; sets?: SetScore[]; leg?: number; }
 export interface Bracket {
   rounds: BracketMatch[][];
   /** Petite finale (3e place), entre les deux perdants de demi-finale — seulement s'il existe une
@@ -84,6 +84,8 @@ export interface Pool {
 export type Stage = 'survival' | 'losers' | 'poolFinal' | 'finals' | 'championBonus' | 'streakBonus' | 'adjust';
 
 export interface LogEntry {
+  /** Détail des sets quand le match en comptait plusieurs. */
+  sets?: SetScore[];
   id: string; poolId: string; stage: Stage;
   a: string | null; b: string | null; winner: string;
   pts: number; ts: number; reason?: string;
@@ -96,6 +98,18 @@ export interface LogEntry {
 }
 
 export type Status = 'setup' | 'live' | 'finished';
+
+/** Score d'un set : [côté A, côté B]. */
+export type SetScore = [number, number];
+/** Points d'un classement de championnat / Swiss (hors Survival). */
+export interface LeaguePoints { win: number; draw: number; loss: number; bye: number }
+export const DEFAULT_LEAGUE_POINTS: LeaguePoints = { win: 3, draw: 1, loss: 0, bye: 3 };
+/** Critère principal d'un championnat : points, victoires, manches gagnées, % de manches, différence de manches,
+ *  points (buts) marqués, différence de points. */
+export type RankBy = 'points' | 'wins' | 'games' | 'gamePct' | 'gameDiff' | 'scored' | 'pointDiff';
+export const RANK_BY: RankBy[] = ['points', 'wins', 'games', 'gamePct', 'gameDiff', 'scored', 'pointDiff'];
+/** Comment plusieurs sets désignent le vainqueur : le plus de sets gagnés, ou le total cumulé (aller-retour). */
+export type SetsMode = 'sets' | 'aggregate';
 
 export type FinalsFormat = 'single' | 'double' | 'roundrobin' | 'survival';
 
@@ -187,6 +201,15 @@ export interface Tournament {
    *  parties déjà jouées). Absents sur d'anciennes données : traiter comme DEFAULT_BR_POINTS / 1. */
   brPointsTable?: number[];
   brKillPoints?: number;
+  /** Barème de championnat et de Swiss (hors Survival) — absent : 3 / 1 / 0, exempt = victoire. */
+  league?: LeaguePoints;
+  /** Critère principal du championnat — absent : les points. */
+  rankBy?: RankBy;
+  /** Nombre de fois que chacun affronte chacun en championnat (1 = aller simple). */
+  rrLegs?: number;
+  setsMode?: SetsMode;
+  /** Départage manuel posé par l'organisateur : à égalité parfaite, la plus grande valeur passe devant. */
+  manualOrder?: Record<string, number>;
   /** Pile d'annulation (états JSON précédents) — interne, jamais renvoyée telle quelle à l'API. */
   _undo?: string[];
 }
@@ -214,8 +237,8 @@ export function matchFormatLabel(f: MatchFormat): string {
 }
 
 /** Critères de départage disponibles (voir Tournament.tiebreakers). */
-export type Tiebreaker = 'h2h' | 'gd' | 'gf' | 'ga';
-export const TIEBREAKERS: Tiebreaker[] = ['h2h', 'gd', 'gf', 'ga'];
+export type Tiebreaker = 'h2h' | 'gd' | 'gf' | 'ga' | 'wins';
+export const TIEBREAKERS: Tiebreaker[] = ['h2h', 'gd', 'gf', 'ga', 'wins'];
 /** Nettoie une liste de critères reçue de l'extérieur : valeurs connues, sans doublon, ordre conservé. undefined si ce n'est pas un tableau. */
 export function normalizeTiebreakers(v: unknown): Tiebreaker[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -231,7 +254,7 @@ export function effectiveTiebreakers(t: Pick<Tournament, 'countGoalDiff' | 'tieb
 export function usesScoreTiebreak(tbs: Tiebreaker[]): boolean {
   return tbs.some((k) => k !== 'h2h');
 }
-type TbStat = { gd: number; gf: number; ga: number; beat: Set<string> };
+type TbStat = { gd: number; gf: number; ga: number; beat: Set<string>; wins?: number };
 /** Compare deux joueurs à égalité de victoires selon les critères actifs (négatif = x devant). 0 = toujours à égalité. */
 function tbCompare(tbs: Tiebreaker[], x: string, y: string, st: Record<string, TbStat>): number {
   for (const k of tbs) {
@@ -239,6 +262,7 @@ function tbCompare(tbs: Tiebreaker[], x: string, y: string, st: Record<string, T
     if (k === 'gd') c = st[y].gd - st[x].gd;
     else if (k === 'gf') c = st[y].gf - st[x].gf;
     else if (k === 'ga') c = st[x].ga - st[y].ga;
+    else if (k === 'wins') c = (st[y].wins || 0) - (st[x].wins || 0);
     else if (k === 'h2h') c = (st[y].beat.has(x) ? 1 : 0) - (st[x].beat.has(y) ? 1 : 0);
     if (c) return c;
   }
@@ -291,7 +315,41 @@ export function newTournament(cfg: Partial<Tournament> = {}): Tournament {
     countGoalDiff: normalizeTiebreakers(cfg.tiebreakers) ? usesScoreTiebreak(normalizeTiebreakers(cfg.tiebreakers)!) : (cfg.countGoalDiff ?? true),
     brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : DEFAULT_BR_POINTS.slice(),
     brKillPoints: cfg.brKillPoints ?? 1,
+    ...(cfg.league ? { league: normalizeLeaguePoints(cfg.league) } : {}),
+    ...(cfg.rankBy && RANK_BY.includes(cfg.rankBy) ? { rankBy: cfg.rankBy } : {}),
+    ...(cfg.rrLegs ? { rrLegs: clampLegs(cfg.rrLegs) } : {}),
+    ...(cfg.setsMode ? { setsMode: cfg.setsMode === 'aggregate' ? 'aggregate' as const : 'sets' as const } : {}),
     champion: null, _undo: [],
+  };
+}
+
+export function clampLegs(v?: number): number { return Math.max(1, Math.min(3, Math.round(Number(v) || 1))); }
+export function normalizeLeaguePoints(v?: Partial<LeaguePoints> | null): LeaguePoints {
+  const n = (x: unknown, d: number) => { const k = Number(x); return Number.isFinite(k) ? Math.max(0, Math.min(999, Math.round(k * 100) / 100)) : d; };
+  return { win: n(v?.win, 3), draw: n(v?.draw, 1), loss: n(v?.loss, 0), bye: n(v?.bye, n(v?.win, 3)) };
+}
+export function leaguePoints(t: Tournament): LeaguePoints { return t.league ? normalizeLeaguePoints(t.league) : DEFAULT_LEAGUE_POINTS; }
+
+/** Nettoie des sets saisis (au plus 15, scores entiers positifs). undefined s'il n'y a rien d'exploitable. */
+export function normalizeSets(v: unknown): SetScore[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.slice(0, 15).filter((x) => Array.isArray(x) && x.length === 2 && x.every((n) => Number.isFinite(Number(n))))
+    .map((x) => [Math.max(0, Math.round(Number((x as number[])[0]))), Math.max(0, Math.round(Number((x as number[])[1])))] as SetScore);
+  return out.length ? out : undefined;
+}
+/** Score d'un match à partir de ses sets : un seul set = son score ; plusieurs = sets gagnés, ou total cumulé. */
+export function scoreFromSets(t: Tournament, sets: SetScore[]): [number, number] {
+  if (sets.length === 1) return [sets[0][0], sets[0][1]];
+  if (t.setsMode === 'aggregate') return sets.reduce<[number, number]>((acc, [a, b]) => [acc[0] + a, acc[1] + b], [0, 0]);
+  return [sets.filter(([a, b]) => a > b).length, sets.filter(([a, b]) => b > a).length];
+}
+/** Manches gagnées et points marqués d'un match, pour les départages. */
+function matchTotals(m: { sa?: number; sb?: number; sets?: SetScore[] }): { ga: number; gb: number; pa: number; pb: number } {
+  const sa = m.sa || 0, sb = m.sb || 0;
+  if (!m.sets || m.sets.length < 2) return { ga: sa, gb: sb, pa: sa, pb: sb };
+  return {
+    ga: m.sets.filter(([a, b]) => a > b).length, gb: m.sets.filter(([a, b]) => b > a).length,
+    pa: m.sets.reduce((n, [a]) => n + a, 0), pb: m.sets.reduce((n, [, b]) => n + b, 0),
   };
 }
 
@@ -560,7 +618,7 @@ export function movePlayerToPool(t: Tournament, playerId: string, poolId: string
 export function launch(t: Tournament): void {
   t.pools.forEach(p => {
     if (!p.order.length) p.order = shuffle(p.playerIds);
-    if (t.poolFormat === 'roundrobin') initPoolRoundRobin(p);
+    if (t.poolFormat === 'roundrobin') initPoolRoundRobin(p, t.rrLegs);
     else if (t.poolFormat === 'double') initPoolDouble(p);
     else if (t.poolFormat === 'single') initPoolSingle(p);
     else initSurvival(p);
@@ -611,40 +669,51 @@ function checkPoolDoubleChampion(pool: Pool): void {
 
 /** Lance une poule en mini round robin (poolFormat 'roundrobin') : chacun affronte tous les autres
  *  de sa poule. Le classement de poule désigne ensuite les qualifiés (voir qualifyPerPool). */
-function initPoolRoundRobin(pool: Pool): void {
+function initPoolRoundRobin(pool: Pool, legs = 1): void {
   if (pool.order.length < 2) {
     pool.top1 = pool.order[0] || null;
     pool.qualified = pool.order.slice(0, 1);
     pool.phase = 'done';
     return;
   }
-  pool.rrmatches = buildRoundRobin(pool.order).matches;
+  pool.rrmatches = buildRoundRobin(pool.order, legs).matches;
   pool.phase = 'roundrobin';
 }
 
-export interface LeagueRow { id: string; wins: number; draws: number; played: number; gd: number; pts: number }
+export interface LeagueRow { id: string; wins: number; draws: number; losses: number; played: number; gd: number; gf: number; gamesWon: number; gamesLost: number; pts: number }
 
 /** Classement d'un championnat : points (3 par victoire, 1 par nul), puis les critères de départage choisis, puis les
  *  victoires et les points du tournoi. Sans nul, l'ordre est le même qu'un classement aux victoires. */
 function leagueTable(t: Tournament, ids: string[], matches: BracketMatch[]): LeagueRow[] {
   const wins: Record<string, number> = {}, draws: Record<string, number> = {}, played: Record<string, number> = {}, st: Record<string, TbStat> = {};
-  ids.forEach(id => { wins[id] = 0; draws[id] = 0; played[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set() }; });
+  const gw: Record<string, number> = {}, gl: Record<string, number> = {};
+  ids.forEach(id => { wins[id] = 0; draws[id] = 0; played[id] = 0; gw[id] = 0; gl[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set(), wins: 0 }; });
   matches.forEach(m => {
     if (!m.winner || !m.a || !m.b || !st[m.a] || !st[m.b]) return;
     played[m.a]++; played[m.b]++;
     if (m.winner === DRAW) { draws[m.a]++; draws[m.b]++; }
-    else if (st[m.winner]) { wins[m.winner]++; st[m.winner].beat.add(m.winner === m.a ? m.b : m.a); }
+    else if (st[m.winner]) { wins[m.winner]++; st[m.winner].wins = wins[m.winner]; st[m.winner].beat.add(m.winner === m.a ? m.b : m.a); }
     if (m.sa != null && m.sb != null) {
-      st[m.a].gd += m.sa - m.sb; st[m.b].gd += m.sb - m.sa;
-      st[m.a].gf += m.sa; st[m.b].gf += m.sb;
-      st[m.a].ga += m.sb; st[m.b].ga += m.sa;
+      const x = matchTotals(m);
+      gw[m.a] += x.ga; gl[m.a] += x.gb; gw[m.b] += x.gb; gl[m.b] += x.ga;
+      st[m.a].gd += x.pa - x.pb; st[m.b].gd += x.pb - x.pa;
+      st[m.a].gf += x.pa; st[m.b].gf += x.pb;
+      st[m.a].ga += x.pb; st[m.b].ga += x.pa;
     }
   });
-  const pts = (id: string) => wins[id] * LEAGUE_WIN + draws[id] * LEAGUE_DRAW;
+  const lp = leaguePoints(t);
+  const losses = (id: string) => played[id] - wins[id] - draws[id];
+  const pts = (id: string) => Math.round((wins[id] * lp.win + draws[id] * lp.draw + losses(id) * lp.loss) * 100) / 100;
+  const metric: Record<RankBy, (id: string) => number> = {
+    points: pts, wins: (id) => wins[id], games: (id) => gw[id], gamePct: (id) => (gw[id] + gl[id] ? gw[id] / (gw[id] + gl[id]) : 0),
+    gameDiff: (id) => gw[id] - gl[id], scored: (id) => st[id].gf, pointDiff: (id) => st[id].gd,
+  };
+  const main = metric[t.rankBy || 'points'] || pts;
   const tbs = effectiveTiebreakers(t);
+  const manual = (id: string) => t.manualOrder?.[id] || 0;
   return ids.slice()
-    .sort((x, y) => pts(y) - pts(x) || tbCompare(tbs, x, y, st) || wins[y] - wins[x] || (t.points[y] || 0) - (t.points[x] || 0))
-    .map(id => ({ id, wins: wins[id], draws: draws[id], played: played[id], gd: st[id].gd, pts: pts(id) }));
+    .sort((x, y) => main(y) - main(x) || tbCompare(tbs, x, y, st) || manual(y) - manual(x) || wins[y] - wins[x] || (t.points[y] || 0) - (t.points[x] || 0))
+    .map(id => ({ id, wins: wins[id], draws: draws[id], losses: losses(id), played: played[id], gd: st[id].gd, gf: st[id].gf, gamesWon: gw[id], gamesLost: gl[id], pts: pts(id) }));
 }
 
 /** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
@@ -726,7 +795,7 @@ export function launchTournament(t: Tournament): void {
       killPoints: t.brKillPoints ?? 1,
     };
   } else if (t.format === 'roundrobin') {
-    const rr = buildRoundRobin(ids);
+    const rr = buildRoundRobin(ids, t.rrLegs);
     t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
     checkFinalsChampion(t); // couronne immédiatement les cas triviaux (0-1 match, ex. 1-2 joueurs)
   } else if (t.format === 'double') {
@@ -918,7 +987,7 @@ export const LEAGUE_DRAW = 1;
  *  à élimination ni en Swiss, et jamais en Survival (son barème récompense uniquement des victoires). */
 export function drawsAllowed(t: Tournament, poolId: string): boolean {
   if (t.format === 'survival' || !t.format) return false;
-  if (poolId === 'finals') return t.finals?.format === 'roundrobin';
+  if (poolId === 'finals') return t.finals?.format === 'roundrobin' || t.finals?.format === 'swiss';
   const pool = t.pools.find(p => p.id === poolId);
   return !!pool && pool.phase === 'roundrobin';
 }
@@ -933,11 +1002,13 @@ function decideWinner(allowDraw: boolean, a: string, b: string, winnerId: string
 
 /* ---------- Résultat (poules) ---------- */
 
-export function reportResult(t: Tournament, poolId: string, winnerId: string, sa = 0, sb = 0, reason?: string): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
+export function reportResult(t: Tournament, poolId: string, winnerId: string, sa = 0, sb = 0, reason?: string, sets?: SetScore[]): { winnerId: string; loserId: string; pts: number; stage: Stage } | null {
   const pool = t.pools.find(p => p.id === poolId);
   if (!pool) return null;
   const m = currentMatch(pool);
   if (!m) return null;
+  const played = normalizeSets(sets);
+  if (played) [sa, sb] = scoreFromSets(t, played);
   const decided = decideWinner(drawsAllowed(t, pool.id), m.a, m.b, winnerId, sa, sb);
   if (!decided) return null;
   winnerId = decided;
@@ -947,7 +1018,7 @@ export function reportResult(t: Tournament, poolId: string, winnerId: string, sa
   const loserId = drawn ? '' : winnerId === m.a ? m.b : m.a;
   const pts = drawn ? 0 : stagePoints(t, m.stage);
   if (!drawn) award(t, winnerId, pts);
-  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(m.matchId ? { matchId: m.matchId } : {}), ...(reason ? { reason } : {}) });
+  t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), ...(m.matchId ? { matchId: m.matchId } : {}), ...(reason ? { reason } : {}) });
 
   // Bonus striker : série de t.streakLength (3 OU 5, un seul palier actif par tournoi) victoires
   // d'affilée sur le "bracket vainqueurs" de la poule (stage 'survival', que la poule soit en mode
@@ -967,16 +1038,16 @@ export function reportResult(t: Tournament, poolId: string, winnerId: string, sa
 
   if (pool.phase === 'roundrobin') {
     const match = (pool.rrmatches || []).find(x => x.id === m.matchId);
-    if (match) { match.winner = winnerId; if (sa || sb || drawn) { match.sa = sa; match.sb = sb; } }
+    if (match) { match.winner = winnerId; if (sa || sb || drawn) { match.sa = sa; match.sb = sb; } if (played) match.sets = played; }
     checkPoolRoundRobinDone(t, pool);
   } else if (pool.phase === 'single') {
     const nm = nextBracketMatch(pool.sbracket);
-    if (nm && nm.match.id === m.matchId) { nm.match.winner = winnerId; if (sa || sb) { nm.match.sa = sa; nm.match.sb = sb; } propagateBracket(pool.sbracket!); }
+    if (nm && nm.match.id === m.matchId) { nm.match.winner = winnerId; if (sa || sb) { nm.match.sa = sa; nm.match.sb = sb; } if (played) nm.match.sets = played; propagateBracket(pool.sbracket!); }
     checkPoolSingleDone(pool);
   } else if (pool.phase === 'double') {
     const f = pool.dbracket!;
     const match = ([] as BracketMatch[]).concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []).find(x => x.id === m.matchId);
-    if (match) { match.winner = winnerId; if (sa || sb) { match.sa = sa; match.sb = sb; } propagateDouble(f); }
+    if (match) { match.winner = winnerId; if (sa || sb) { match.sa = sa; match.sb = sb; } if (played) match.sets = played; propagateDouble(f); }
     checkPoolDoubleChampion(pool);
   } else if (m.stage === 'survival') {
     pool.wLosers.push(loserId);
@@ -1115,11 +1186,16 @@ export function qualifiersSplit(t: Tournament): { top: string[]; bottom: string[
   };
 }
 
-function buildRoundRobin(ids: string[]): { players: string[]; matches: BracketMatch[] } {
+function buildRoundRobin(ids: string[], legs = 1): { players: string[]; matches: BracketMatch[] } {
   const matches: BracketMatch[] = [];
-  for (let i = 0; i < ids.length; i++)
-    for (let j = i + 1; j < ids.length; j++)
-      matches.push({ id: uid(), a: ids[i], b: ids[j], winner: null, bye: false });
+  const n = clampLegs(legs);
+  for (let leg = 1; leg <= n; leg++)
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++) {
+        // Un tour sur deux, les côtés sont inversés (match retour).
+        const [a, b] = leg % 2 === 0 ? [ids[j], ids[i]] : [ids[i], ids[j]];
+        matches.push({ id: uid(), a, b, winner: null, bye: false, ...(n > 1 ? { leg } : {}) });
+      }
   return { players: ids.slice(), matches };
 }
 
@@ -1356,7 +1432,7 @@ export function startFinals(t: Tournament, format?: FinalsFormat): void {
   if (fmt === 'survival') {
     startFinalsSurvivalPool(t, q);
   } else if (fmt === 'roundrobin') {
-    const rr = buildRoundRobin(q);
+    const rr = buildRoundRobin(q, t.rrLegs);
     t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
   } else if (fmt === 'double') {
     // Entrée scindée par moitié de poule (voir qualifiersSplit) plutôt qu'un bracket vainqueurs
@@ -1400,11 +1476,13 @@ export function findFinalsMatch(t: Tournament, matchId: string): BracketMatch | 
   return allFinalsMatches(t).find(m => m.id === matchId) || null;
 }
 
-export function reportFinals(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0, reason?: string): { winnerId: string; pts: number } | null {
+export function reportFinals(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0, reason?: string, sets?: SetScore[]): { winnerId: string; pts: number } | null {
   const f = t.finals; if (!f) return null;
   const match = findFinalsMatch(t, matchId);
   if (!match) return null;
   if (match.bye || match.winner || !match.a || !match.b || match.a === BYE || match.b === BYE) return null;
+  const played = normalizeSets(sets);
+  if (played) [sa, sb] = scoreFromSets(t, played);
   const decided = decideWinner(drawsAllowed(t, 'finals'), match.a, match.b, winnerId, sa, sb);
   if (!decided) return null;
   winnerId = decided;
@@ -1413,9 +1491,10 @@ export function reportFinals(t: Tournament, matchId: string, winnerId: string, s
   snapshot(t);
   match.winner = winnerId;
   if (sa || sb || drawn) { match.sa = sa; match.sb = sb; }
+  if (played) match.sets = played;
   const pts = drawn ? 0 : t.scoring.finalsWin;
   if (!drawn) award(t, winnerId, pts);
-  t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
+  t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), matchId: match.id, ...(reason ? { reason } : {}) });
 
   if (f.format === 'single') propagateBracket(f.bracket);
   else if (f.format === 'double') propagateDouble(f, !!f.seeded);
@@ -1496,20 +1575,30 @@ function checkFinalsChampion(t: Tournament): void {
 function pairKey(a: string, b: string): string { return a < b ? a + '|' + b : b + '|' + a; }
 
 /** Classement Swiss courant : victoires puis Buchholz (somme des victoires des adversaires affrontés) puis points. */
-export function swissStandings(t: Tournament): { id: string; wins: number; buchholz: number }[] {
+export function swissStandings(t: Tournament): { id: string; wins: number; draws: number; losses: number; pts: number; buchholz: number }[] {
   const f = t.finals; if (!f || f.format !== 'swiss') return [];
-  const wins: Record<string, number> = {};
+  const wins: Record<string, number> = {}, draws: Record<string, number> = {}, losses: Record<string, number> = {}, byes: Record<string, number> = {};
   const opponents: Record<string, string[]> = {};
-  t.players.forEach(p => { wins[p.id] = 0; opponents[p.id] = []; });
+  t.players.forEach(p => { wins[p.id] = 0; draws[p.id] = 0; losses[p.id] = 0; byes[p.id] = 0; opponents[p.id] = []; });
   f.rounds.forEach(round => round.forEach(m => {
     if (!m.a) return;
-    if (m.b) { opponents[m.a] = (opponents[m.a] || []).concat(m.b); opponents[m.b] = (opponents[m.b] || []).concat(m.a); }
-    if (m.winner) wins[m.winner] = (wins[m.winner] || 0) + 1;
+    if (!m.b) { if (m.winner) byes[m.a] = (byes[m.a] || 0) + 1; return; }
+    opponents[m.a] = (opponents[m.a] || []).concat(m.b); opponents[m.b] = (opponents[m.b] || []).concat(m.a);
+    if (!m.winner) return;
+    if (m.winner === DRAW) { draws[m.a]++; draws[m.b]++; return; }
+    wins[m.winner] = (wins[m.winner] || 0) + 1;
+    const loser = m.winner === m.a ? m.b : m.a;
+    losses[loser] = (losses[loser] || 0) + 1;
   }));
-  const buchholz = (id: string) => (opponents[id] || []).reduce((s, oid) => s + (wins[oid] || 0), 0);
+  // Survival n'a pas de Swiss ; sans barème réglé, un point par victoire garde l'ordre historique (aux victoires).
+  const lp = leaguePoints(t);
+  const pts = (id: string) => Math.round(((wins[id] || 0) * lp.win + (draws[id] || 0) * lp.draw + (losses[id] || 0) * lp.loss + (byes[id] || 0) * lp.bye) * 100) / 100;
+  // Buchholz : somme des points obtenus par les adversaires affrontés.
+  const buchholz = (id: string) => Math.round((opponents[id] || []).reduce((s, oid) => s + pts(oid), 0) * 100) / 100;
+  const manual = (id: string) => t.manualOrder?.[id] || 0;
   return t.players.slice()
-    .sort((a, b) => (wins[b.id] || 0) - (wins[a.id] || 0) || buchholz(b.id) - buchholz(a.id) || (t.points[b.id] || 0) - (t.points[a.id] || 0))
-    .map(p => ({ id: p.id, wins: wins[p.id] || 0, buchholz: buchholz(p.id) }));
+    .sort((a, b) => pts(b.id) - pts(a.id) || buchholz(b.id) - buchholz(a.id) || manual(b.id) - manual(a.id) || (t.points[b.id] || 0) - (t.points[a.id] || 0))
+    .map(p => ({ id: p.id, wins: (wins[p.id] || 0) + (byes[p.id] || 0), draws: draws[p.id] || 0, losses: losses[p.id] || 0, pts: pts(p.id), buchholz: buchholz(p.id) }));
 }
 
 /** Génère la ronde Swiss suivante : apparie par classement courant, évite les rematchs quand c'est possible, exempte le surnombre. */
@@ -1554,21 +1643,25 @@ function advanceSwissIfRoundDone(t: Tournament): void {
 }
 
 /** Rapporte le résultat d'un match Swiss de la ronde en cours ; enchaîne la ronde suivante ou couronne le champion. */
-export function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0, reason?: string): { winnerId: string; pts: number } | null {
+export function reportSwiss(t: Tournament, matchId: string, winnerId: string, sa = 0, sb = 0, reason?: string, sets?: SetScore[]): { winnerId: string; pts: number } | null {
   const f = t.finals; if (!f || f.format !== 'swiss') return null;
   const round = f.rounds[f.rounds.length - 1];
   const match = round && round.find(m => m.id === matchId);
   if (!match || match.winner || match.bye || !match.a || !match.b) return null;
-  const decided = decideWinner(false, match.a, match.b, winnerId, sa, sb);
+  const played = normalizeSets(sets);
+  if (played) [sa, sb] = scoreFromSets(t, played);
+  const decided = decideWinner(drawsAllowed(t, 'finals'), match.a, match.b, winnerId, sa, sb);
   if (!decided) return null;
   winnerId = decided;
+  const drawn = winnerId === DRAW;
 
   snapshot(t);
   match.winner = winnerId;
-  if (sa || sb) { match.sa = sa; match.sb = sb; }
-  const pts = t.scoring.finalsWin;
-  award(t, winnerId, pts);
-  t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
+  if (sa || sb || drawn) { match.sa = sa; match.sb = sb; }
+  if (played) match.sets = played;
+  const pts = drawn ? 0 : t.scoring.finalsWin;
+  if (!drawn) award(t, winnerId, pts);
+  t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), matchId: match.id, ...(reason ? { reason } : {}) });
 
   advanceSwissIfRoundDone(t);
   return { winnerId, pts };
@@ -1725,7 +1818,7 @@ export function cagnotte(t: Tournament, simulatedPlayers = 0): { total: number; 
     nRealPools++;
     if (t.poolFormat === 'roundrobin') {
       // Round robin de poule : chacun affronte tous les autres, toutes les rencontres au tarif survWin.
-      surv += (n * (n - 1)) / 2;
+      surv += (n * (n - 1) / 2) * clampLegs(t.rrLegs);
     } else if (t.poolFormat === 'double') {
       const c = doublePoolMatchCounts(n, true);
       surv += c.wb; los += c.lb; pf += c.gf;
@@ -1746,7 +1839,7 @@ export function cagnotte(t: Tournament, simulatedPlayers = 0): { total: number; 
   // donc au même tarif (survWin/loserWin/poolFinalWin), pas finalsWin. On l'ajoute directement aux
   // compteurs de poule plutôt que dans finalsMatches, et elle compte comme une poule de plus pour le
   // pire cas du bonus striker (elle peut, elle aussi, produire un strikeur).
-  const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat);
+  const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat) * (t.finalsFormat === 'roundrobin' ? clampLegs(t.rrLegs) : 1);
   if (t.finalsFormat === 'survival' && q >= 2) {
     surv += q - 1; los += Math.max(0, q - 2); pf += 1; nRealPools++;
   }
@@ -1795,6 +1888,15 @@ export function distributed(t: Tournament): number {
 }
 
 /* ---------- Classements ---------- */
+
+/** Départage manuel : fait monter ou descendre un joueur parmi ceux qui sont à égalité parfaite avec lui. */
+export function adjustManualOrder(t: Tournament, playerId: string, delta: number): boolean {
+  if (!t.players.some(p => p.id === playerId) || !delta) return false;
+  snapshot(t);
+  const map = t.manualOrder || (t.manualOrder = {});
+  map[playerId] = Math.max(-99, Math.min(99, (map[playerId] || 0) + (delta > 0 ? 1 : -1)));
+  return true;
+}
 
 export interface RankRow { id: string; name: string; pts: number; wins: number; losses: number; }
 

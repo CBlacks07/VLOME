@@ -53,7 +53,15 @@ export class CreateTournamentDto {
   @IsOptional() @IsBoolean() countGoalDiff?: boolean;
   // Critères de départage, DANS L'ORDRE d'application (h2h confrontation directe, gd différence, gf marqués, ga encaissés).
   // Liste vide : seules les victoires comptent. Remplace countGoalDiff (gardé pour compatibilité).
-  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsIn(['h2h', 'gd', 'gf', 'ga'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga')[];
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsIn(['h2h', 'gd', 'gf', 'ga', 'wins'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga' | 'wins')[];
+  // Règles de championnat / Swiss (hors Survival), modifiables avant le lancement.
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueWin?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueDraw?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueLoss?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueBye?: number;
+  @IsOptional() @IsIn(['points', 'wins', 'games', 'gamePct', 'gameDiff', 'scored', 'pointDiff']) rankBy?: 'points' | 'wins' | 'games' | 'gamePct' | 'gameDiff' | 'scored' | 'pointDiff';
+  @IsOptional() @IsInt() @Min(1) @Max(3) rrLegs?: number;
+  @IsOptional() @IsIn(['sets', 'aggregate']) setsMode?: 'sets' | 'aggregate';
   // Battle Royale uniquement : palier de points par classement de partie (index 0 = 1er) et bonus par
   // élimination — réglables avant lancement, valeurs par défaut du moteur sinon (Engine.DEFAULT_BR_POINTS / 1).
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
@@ -88,7 +96,15 @@ export class UpdateTournamentDto {
   @IsOptional() @IsBoolean() countGoalDiff?: boolean;
   // Critères de départage, DANS L'ORDRE d'application (h2h confrontation directe, gd différence, gf marqués, ga encaissés).
   // Liste vide : seules les victoires comptent. Remplace countGoalDiff (gardé pour compatibilité).
-  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsIn(['h2h', 'gd', 'gf', 'ga'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga')[];
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsIn(['h2h', 'gd', 'gf', 'ga', 'wins'], { each: true }) tiebreakers?: ('h2h' | 'gd' | 'gf' | 'ga' | 'wins')[];
+  // Règles de championnat / Swiss (hors Survival), modifiables avant le lancement.
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueWin?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueDraw?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueLoss?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(999) leagueBye?: number;
+  @IsOptional() @IsIn(['points', 'wins', 'games', 'gamePct', 'gameDiff', 'scored', 'pointDiff']) rankBy?: 'points' | 'wins' | 'games' | 'gamePct' | 'gameDiff' | 'scored' | 'pointDiff';
+  @IsOptional() @IsInt() @Min(1) @Max(3) rrLegs?: number;
+  @IsOptional() @IsIn(['sets', 'aggregate']) setsMode?: 'sets' | 'aggregate';
   // Changement de format — uniquement tant que le tournoi est en brouillon (aucun match joué) : le
   // moteur est reconstruit à neuf pour le nouveau format, en conservant les participants déjà saisis.
   @IsOptional() @IsIn(['SURVIVAL', 'SINGLE_ELIM', 'DOUBLE_ELIM', 'SWISS', 'ROUND_ROBIN', 'BATTLE_ROYALE']) format?: string;
@@ -165,6 +181,14 @@ export class ReportDto {
   @IsOptional() @IsString() winnerId?: string;
   @IsOptional() @IsInt() @Min(0) scoreA?: number;
   @IsOptional() @IsInt() @Min(0) scoreB?: number;
+  // Plusieurs sets : [[a, b], …] — le moteur en déduit le score et le vainqueur (voir Engine.scoreFromSets).
+  @IsOptional() @IsArray() @ArrayMaxSize(15) sets?: number[][];
+}
+
+// Départage manuel : monte (+1) ou descend (-1) un joueur parmi ceux à égalité parfaite.
+export class TiebreakDto {
+  @IsString() playerId!: string;
+  @IsInt() @Min(-1) @Max(1) delta!: number;
 }
 
 // Corrige un match DÉJÀ joué, identifié par l'id de son entrée de journal (voir Engine.correctResult)

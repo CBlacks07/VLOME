@@ -1,10 +1,7 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { TournamentsService } from './tournaments.service';
-import {
-  AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto,
-  RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto,
-} from './tournaments.dto';
+import { AddPlayerDto, AdjustDto, BattleRoyaleReportDto, CheckinDto, ClubDto, CorrectResultDto, CreateTournamentDto, MoveOrderDto, PoolPlayerMoveDto, QualifyPerPoolDto, RegisterDto, ReportDto, StationDto, StreamMatchDto, NotifyMatchDto, PredictDto, TeamMembersDto, MatchStartDto, MatchMinutesDto, RosterMoveDto, ScoringDto, StartFinalsDto, UpdateTournamentDto, TiebreakDto } from './tournaments.dto';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import type { JwtUser } from '../common/jwt-auth.guard';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -260,6 +257,13 @@ export class TournamentsController {
   }
 
   /** Corrige un match déjà joué (crayon) — voir TournamentsService.correctResult. */
+  @Post(':id/tiebreak')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
+  tiebreak(@Param('id') id: string, @Body() dto: TiebreakDto, @CurrentUser() user: JwtUser) {
+    return this.service.tiebreak(id, dto.playerId, dto.delta, user);
+  }
+
   @Post(':id/correct')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')

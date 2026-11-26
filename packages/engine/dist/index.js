@@ -5,7 +5,7 @@
    Portage TypeScript du moteur éprouvé de Survival Challonge.
    ========================================================= */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LEAGUE_DRAW = exports.LEAGUE_WIN = exports.DRAW = exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.TIEBREAKERS = exports.DEFAULT_MATCH_FORMAT = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
+exports.LEAGUE_DRAW = exports.LEAGUE_WIN = exports.DRAW = exports.POOLED_FORMATS = exports.DEFAULT_BR_POINTS = exports.TIEBREAKERS = exports.DEFAULT_MATCH_FORMAT = exports.RANK_BY = exports.DEFAULT_LEAGUE_POINTS = exports.DEFAULT_QUALIFY_PER_POOL = exports.DEFAULT_STREAK_LENGTH = exports.BYE = void 0;
 exports.clampQualifyPerPool = clampQualifyPerPool;
 exports.clampMatchFormat = clampMatchFormat;
 exports.winsNeeded = winsNeeded;
@@ -15,6 +15,11 @@ exports.effectiveTiebreakers = effectiveTiebreakers;
 exports.usesScoreTiebreak = usesScoreTiebreak;
 exports.uid = uid;
 exports.newTournament = newTournament;
+exports.clampLegs = clampLegs;
+exports.normalizeLeaguePoints = normalizeLeaguePoints;
+exports.leaguePoints = leaguePoints;
+exports.normalizeSets = normalizeSets;
+exports.scoreFromSets = scoreFromSets;
 exports.swissRoundCount = swissRoundCount;
 exports.parseEntry = parseEntry;
 exports.setPlayers = setPlayers;
@@ -66,6 +71,7 @@ exports.disqualifyPlayer = disqualifyPlayer;
 exports.cagnotte = cagnotte;
 exports.autoFitScoring = autoFitScoring;
 exports.distributed = distributed;
+exports.adjustManualOrder = adjustManualOrder;
 exports.overallRanking = overallRanking;
 exports.finalPlacements = finalPlacements;
 exports.placementPoints = placementPoints;
@@ -82,6 +88,8 @@ exports.DEFAULT_QUALIFY_PER_POOL = 2;
 function clampQualifyPerPool(v) {
     return Math.max(1, Math.round(Number(v) || exports.DEFAULT_QUALIFY_PER_POOL));
 }
+exports.DEFAULT_LEAGUE_POINTS = { win: 3, draw: 1, loss: 0, bye: 3 };
+exports.RANK_BY = ['points', 'wins', 'games', 'gamePct', 'gameDiff', 'scored', 'pointDiff'];
 exports.DEFAULT_MATCH_FORMAT = { mode: 'bo', value: 1 };
 /** Borne un format de manche : Bo1/3/5/7/9 pour "bo", 1 à 99 pour "ft". */
 function clampMatchFormat(v) {
@@ -101,7 +109,7 @@ function winsNeeded(f) {
 function matchFormatLabel(f) {
     return f.mode === 'ft' ? `Ft${f.value}` : `Bo${f.value}`;
 }
-exports.TIEBREAKERS = ['h2h', 'gd', 'gf', 'ga'];
+exports.TIEBREAKERS = ['h2h', 'gd', 'gf', 'ga', 'wins'];
 /** Nettoie une liste de critères reçue de l'extérieur : valeurs connues, sans doublon, ordre conservé. undefined si ce n'est pas un tableau. */
 function normalizeTiebreakers(v) {
     if (!Array.isArray(v))
@@ -130,6 +138,8 @@ function tbCompare(tbs, x, y, st) {
             c = st[y].gf - st[x].gf;
         else if (k === 'ga')
             c = st[x].ga - st[y].ga;
+        else if (k === 'wins')
+            c = (st[y].wins || 0) - (st[x].wins || 0);
         else if (k === 'h2h')
             c = (st[y].beat.has(x) ? 1 : 0) - (st[x].beat.has(y) ? 1 : 0);
         if (c)
@@ -179,7 +189,43 @@ function newTournament(cfg = {}) {
         countGoalDiff: normalizeTiebreakers(cfg.tiebreakers) ? usesScoreTiebreak(normalizeTiebreakers(cfg.tiebreakers)) : (cfg.countGoalDiff ?? true),
         brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : exports.DEFAULT_BR_POINTS.slice(),
         brKillPoints: cfg.brKillPoints ?? 1,
+        ...(cfg.league ? { league: normalizeLeaguePoints(cfg.league) } : {}),
+        ...(cfg.rankBy && exports.RANK_BY.includes(cfg.rankBy) ? { rankBy: cfg.rankBy } : {}),
+        ...(cfg.rrLegs ? { rrLegs: clampLegs(cfg.rrLegs) } : {}),
+        ...(cfg.setsMode ? { setsMode: cfg.setsMode === 'aggregate' ? 'aggregate' : 'sets' } : {}),
         champion: null, _undo: [],
+    };
+}
+function clampLegs(v) { return Math.max(1, Math.min(3, Math.round(Number(v) || 1))); }
+function normalizeLeaguePoints(v) {
+    const n = (x, d) => { const k = Number(x); return Number.isFinite(k) ? Math.max(0, Math.min(999, Math.round(k * 100) / 100)) : d; };
+    return { win: n(v?.win, 3), draw: n(v?.draw, 1), loss: n(v?.loss, 0), bye: n(v?.bye, n(v?.win, 3)) };
+}
+function leaguePoints(t) { return t.league ? normalizeLeaguePoints(t.league) : exports.DEFAULT_LEAGUE_POINTS; }
+/** Nettoie des sets saisis (au plus 15, scores entiers positifs). undefined s'il n'y a rien d'exploitable. */
+function normalizeSets(v) {
+    if (!Array.isArray(v))
+        return undefined;
+    const out = v.slice(0, 15).filter((x) => Array.isArray(x) && x.length === 2 && x.every((n) => Number.isFinite(Number(n))))
+        .map((x) => [Math.max(0, Math.round(Number(x[0]))), Math.max(0, Math.round(Number(x[1])))]);
+    return out.length ? out : undefined;
+}
+/** Score d'un match à partir de ses sets : un seul set = son score ; plusieurs = sets gagnés, ou total cumulé. */
+function scoreFromSets(t, sets) {
+    if (sets.length === 1)
+        return [sets[0][0], sets[0][1]];
+    if (t.setsMode === 'aggregate')
+        return sets.reduce((acc, [a, b]) => [acc[0] + a, acc[1] + b], [0, 0]);
+    return [sets.filter(([a, b]) => a > b).length, sets.filter(([a, b]) => b > a).length];
+}
+/** Manches gagnées et points marqués d'un match, pour les départages. */
+function matchTotals(m) {
+    const sa = m.sa || 0, sb = m.sb || 0;
+    if (!m.sets || m.sets.length < 2)
+        return { ga: sa, gb: sb, pa: sa, pb: sb };
+    return {
+        ga: m.sets.filter(([a, b]) => a > b).length, gb: m.sets.filter(([a, b]) => b > a).length,
+        pa: m.sets.reduce((n, [a]) => n + a, 0), pb: m.sets.reduce((n, [, b]) => n + b, 0),
     };
 }
 /** Nombre de rondes Swiss standard pour n joueurs (assez pour départager, sans exploser la durée). */
@@ -468,7 +514,7 @@ function launch(t) {
         if (!p.order.length)
             p.order = shuffle(p.playerIds);
         if (t.poolFormat === 'roundrobin')
-            initPoolRoundRobin(p);
+            initPoolRoundRobin(p, t.rrLegs);
         else if (t.poolFormat === 'double')
             initPoolDouble(p);
         else if (t.poolFormat === 'single')
@@ -539,21 +585,22 @@ function checkPoolDoubleChampion(pool) {
 }
 /** Lance une poule en mini round robin (poolFormat 'roundrobin') : chacun affronte tous les autres
  *  de sa poule. Le classement de poule désigne ensuite les qualifiés (voir qualifyPerPool). */
-function initPoolRoundRobin(pool) {
+function initPoolRoundRobin(pool, legs = 1) {
     if (pool.order.length < 2) {
         pool.top1 = pool.order[0] || null;
         pool.qualified = pool.order.slice(0, 1);
         pool.phase = 'done';
         return;
     }
-    pool.rrmatches = buildRoundRobin(pool.order).matches;
+    pool.rrmatches = buildRoundRobin(pool.order, legs).matches;
     pool.phase = 'roundrobin';
 }
 /** Classement d'un championnat : points (3 par victoire, 1 par nul), puis les critères de départage choisis, puis les
  *  victoires et les points du tournoi. Sans nul, l'ordre est le même qu'un classement aux victoires. */
 function leagueTable(t, ids, matches) {
     const wins = {}, draws = {}, played = {}, st = {};
-    ids.forEach(id => { wins[id] = 0; draws[id] = 0; played[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set() }; });
+    const gw = {}, gl = {};
+    ids.forEach(id => { wins[id] = 0; draws[id] = 0; played[id] = 0; gw[id] = 0; gl[id] = 0; st[id] = { gd: 0, gf: 0, ga: 0, beat: new Set(), wins: 0 }; });
     matches.forEach(m => {
         if (!m.winner || !m.a || !m.b || !st[m.a] || !st[m.b])
             return;
@@ -565,22 +612,36 @@ function leagueTable(t, ids, matches) {
         }
         else if (st[m.winner]) {
             wins[m.winner]++;
+            st[m.winner].wins = wins[m.winner];
             st[m.winner].beat.add(m.winner === m.a ? m.b : m.a);
         }
         if (m.sa != null && m.sb != null) {
-            st[m.a].gd += m.sa - m.sb;
-            st[m.b].gd += m.sb - m.sa;
-            st[m.a].gf += m.sa;
-            st[m.b].gf += m.sb;
-            st[m.a].ga += m.sb;
-            st[m.b].ga += m.sa;
+            const x = matchTotals(m);
+            gw[m.a] += x.ga;
+            gl[m.a] += x.gb;
+            gw[m.b] += x.gb;
+            gl[m.b] += x.ga;
+            st[m.a].gd += x.pa - x.pb;
+            st[m.b].gd += x.pb - x.pa;
+            st[m.a].gf += x.pa;
+            st[m.b].gf += x.pb;
+            st[m.a].ga += x.pb;
+            st[m.b].ga += x.pa;
         }
     });
-    const pts = (id) => wins[id] * exports.LEAGUE_WIN + draws[id] * exports.LEAGUE_DRAW;
+    const lp = leaguePoints(t);
+    const losses = (id) => played[id] - wins[id] - draws[id];
+    const pts = (id) => Math.round((wins[id] * lp.win + draws[id] * lp.draw + losses(id) * lp.loss) * 100) / 100;
+    const metric = {
+        points: pts, wins: (id) => wins[id], games: (id) => gw[id], gamePct: (id) => (gw[id] + gl[id] ? gw[id] / (gw[id] + gl[id]) : 0),
+        gameDiff: (id) => gw[id] - gl[id], scored: (id) => st[id].gf, pointDiff: (id) => st[id].gd,
+    };
+    const main = metric[t.rankBy || 'points'] || pts;
     const tbs = effectiveTiebreakers(t);
+    const manual = (id) => t.manualOrder?.[id] || 0;
     return ids.slice()
-        .sort((x, y) => pts(y) - pts(x) || tbCompare(tbs, x, y, st) || wins[y] - wins[x] || (t.points[y] || 0) - (t.points[x] || 0))
-        .map(id => ({ id, wins: wins[id], draws: draws[id], played: played[id], gd: st[id].gd, pts: pts(id) }));
+        .sort((x, y) => main(y) - main(x) || tbCompare(tbs, x, y, st) || manual(y) - manual(x) || wins[y] - wins[x] || (t.points[y] || 0) - (t.points[x] || 0))
+        .map(id => ({ id, wins: wins[id], draws: draws[id], losses: losses(id), played: played[id], gd: st[id].gd, gf: st[id].gf, gamesWon: gw[id], gamesLost: gl[id], pts: pts(id) }));
 }
 /** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
  *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
@@ -670,7 +731,7 @@ function launchTournament(t) {
         };
     }
     else if (t.format === 'roundrobin') {
-        const rr = buildRoundRobin(ids);
+        const rr = buildRoundRobin(ids, t.rrLegs);
         t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
         checkFinalsChampion(t); // couronne immédiatement les cas triviaux (0-1 match, ex. 1-2 joueurs)
     }
@@ -875,7 +936,7 @@ function drawsAllowed(t, poolId) {
     if (t.format === 'survival' || !t.format)
         return false;
     if (poolId === 'finals')
-        return t.finals?.format === 'roundrobin';
+        return t.finals?.format === 'roundrobin' || t.finals?.format === 'swiss';
     const pool = t.pools.find(p => p.id === poolId);
     return !!pool && pool.phase === 'roundrobin';
 }
@@ -889,13 +950,16 @@ function decideWinner(allowDraw, a, b, winnerId, sa, sb) {
     return winnerId === a || winnerId === b ? winnerId : null;
 }
 /* ---------- Résultat (poules) ---------- */
-function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
+function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason, sets) {
     const pool = t.pools.find(p => p.id === poolId);
     if (!pool)
         return null;
     const m = currentMatch(pool);
     if (!m)
         return null;
+    const played = normalizeSets(sets);
+    if (played)
+        [sa, sb] = scoreFromSets(t, played);
     const decided = decideWinner(drawsAllowed(t, pool.id), m.a, m.b, winnerId, sa, sb);
     if (!decided)
         return null;
@@ -906,7 +970,7 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
     const pts = drawn ? 0 : stagePoints(t, m.stage);
     if (!drawn)
         award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(m.matchId ? { matchId: m.matchId } : {}), ...(reason ? { reason } : {}) });
+    t.log.push({ id: uid(), poolId, stage: m.stage, a: m.a, b: m.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), ...(m.matchId ? { matchId: m.matchId } : {}), ...(reason ? { reason } : {}) });
     // Bonus striker : série de t.streakLength (3 OU 5, un seul palier actif par tournoi) victoires
     // d'affilée sur le "bracket vainqueurs" de la poule (stage 'survival', que la poule soit en mode
     // classique ou double élim) — une seule fois par joueur dans la poule.
@@ -933,6 +997,8 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
                 match.sa = sa;
                 match.sb = sb;
             }
+            if (played)
+                match.sets = played;
         }
         checkPoolRoundRobinDone(t, pool);
     }
@@ -944,6 +1010,8 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
                 nm.match.sa = sa;
                 nm.match.sb = sb;
             }
+            if (played)
+                nm.match.sets = played;
             propagateBracket(pool.sbracket);
         }
         checkPoolSingleDone(pool);
@@ -957,6 +1025,8 @@ function reportResult(t, poolId, winnerId, sa = 0, sb = 0, reason) {
                 match.sa = sa;
                 match.sb = sb;
             }
+            if (played)
+                match.sets = played;
             propagateDouble(f);
         }
         checkPoolDoubleChampion(pool);
@@ -1125,11 +1195,16 @@ function qualifiersSplit(t) {
         bottom: interleave(bottomPerPool).filter(isQualified),
     };
 }
-function buildRoundRobin(ids) {
+function buildRoundRobin(ids, legs = 1) {
     const matches = [];
-    for (let i = 0; i < ids.length; i++)
-        for (let j = i + 1; j < ids.length; j++)
-            matches.push({ id: uid(), a: ids[i], b: ids[j], winner: null, bye: false });
+    const n = clampLegs(legs);
+    for (let leg = 1; leg <= n; leg++)
+        for (let i = 0; i < ids.length; i++)
+            for (let j = i + 1; j < ids.length; j++) {
+                // Un tour sur deux, les côtés sont inversés (match retour).
+                const [a, b] = leg % 2 === 0 ? [ids[j], ids[i]] : [ids[i], ids[j]];
+                matches.push({ id: uid(), a, b, winner: null, bye: false, ...(n > 1 ? { leg } : {}) });
+            }
     return { players: ids.slice(), matches };
 }
 /** Classement round robin : victoires, puis les critères de départage choisis (voir Tournament.tiebreakers), puis points.
@@ -1430,7 +1505,7 @@ function startFinals(t, format) {
         startFinalsSurvivalPool(t, q);
     }
     else if (fmt === 'roundrobin') {
-        const rr = buildRoundRobin(q);
+        const rr = buildRoundRobin(q, t.rrLegs);
         t.finals = { format: 'roundrobin', players: rr.players, matches: rr.matches };
     }
     else if (fmt === 'double') {
@@ -1478,7 +1553,7 @@ function allFinalsMatches(t) {
 function findFinalsMatch(t, matchId) {
     return allFinalsMatches(t).find(m => m.id === matchId) || null;
 }
-function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
+function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason, sets) {
     const f = t.finals;
     if (!f)
         return null;
@@ -1487,6 +1562,9 @@ function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
         return null;
     if (match.bye || match.winner || !match.a || !match.b || match.a === exports.BYE || match.b === exports.BYE)
         return null;
+    const played = normalizeSets(sets);
+    if (played)
+        [sa, sb] = scoreFromSets(t, played);
     const decided = decideWinner(drawsAllowed(t, 'finals'), match.a, match.b, winnerId, sa, sb);
     if (!decided)
         return null;
@@ -1498,10 +1576,12 @@ function reportFinals(t, matchId, winnerId, sa = 0, sb = 0, reason) {
         match.sa = sa;
         match.sb = sb;
     }
+    if (played)
+        match.sets = played;
     const pts = drawn ? 0 : t.scoring.finalsWin;
     if (!drawn)
         award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), matchId: match.id, ...(reason ? { reason } : {}) });
     if (f.format === 'single')
         propagateBracket(f.bracket);
     else if (f.format === 'double')
@@ -1601,23 +1681,39 @@ function swissStandings(t) {
     const f = t.finals;
     if (!f || f.format !== 'swiss')
         return [];
-    const wins = {};
+    const wins = {}, draws = {}, losses = {}, byes = {};
     const opponents = {};
-    t.players.forEach(p => { wins[p.id] = 0; opponents[p.id] = []; });
+    t.players.forEach(p => { wins[p.id] = 0; draws[p.id] = 0; losses[p.id] = 0; byes[p.id] = 0; opponents[p.id] = []; });
     f.rounds.forEach(round => round.forEach(m => {
         if (!m.a)
             return;
-        if (m.b) {
-            opponents[m.a] = (opponents[m.a] || []).concat(m.b);
-            opponents[m.b] = (opponents[m.b] || []).concat(m.a);
+        if (!m.b) {
+            if (m.winner)
+                byes[m.a] = (byes[m.a] || 0) + 1;
+            return;
         }
-        if (m.winner)
-            wins[m.winner] = (wins[m.winner] || 0) + 1;
+        opponents[m.a] = (opponents[m.a] || []).concat(m.b);
+        opponents[m.b] = (opponents[m.b] || []).concat(m.a);
+        if (!m.winner)
+            return;
+        if (m.winner === exports.DRAW) {
+            draws[m.a]++;
+            draws[m.b]++;
+            return;
+        }
+        wins[m.winner] = (wins[m.winner] || 0) + 1;
+        const loser = m.winner === m.a ? m.b : m.a;
+        losses[loser] = (losses[loser] || 0) + 1;
     }));
-    const buchholz = (id) => (opponents[id] || []).reduce((s, oid) => s + (wins[oid] || 0), 0);
+    // Survival n'a pas de Swiss ; sans barème réglé, un point par victoire garde l'ordre historique (aux victoires).
+    const lp = leaguePoints(t);
+    const pts = (id) => Math.round(((wins[id] || 0) * lp.win + (draws[id] || 0) * lp.draw + (losses[id] || 0) * lp.loss + (byes[id] || 0) * lp.bye) * 100) / 100;
+    // Buchholz : somme des points obtenus par les adversaires affrontés.
+    const buchholz = (id) => Math.round((opponents[id] || []).reduce((s, oid) => s + pts(oid), 0) * 100) / 100;
+    const manual = (id) => t.manualOrder?.[id] || 0;
     return t.players.slice()
-        .sort((a, b) => (wins[b.id] || 0) - (wins[a.id] || 0) || buchholz(b.id) - buchholz(a.id) || (t.points[b.id] || 0) - (t.points[a.id] || 0))
-        .map(p => ({ id: p.id, wins: wins[p.id] || 0, buchholz: buchholz(p.id) }));
+        .sort((a, b) => pts(b.id) - pts(a.id) || buchholz(b.id) - buchholz(a.id) || manual(b.id) - manual(a.id) || (t.points[b.id] || 0) - (t.points[a.id] || 0))
+        .map(p => ({ id: p.id, wins: (wins[p.id] || 0) + (byes[p.id] || 0), draws: draws[p.id] || 0, losses: losses[p.id] || 0, pts: pts(p.id), buchholz: buchholz(p.id) }));
 }
 /** Génère la ronde Swiss suivante : apparie par classement courant, évite les rematchs quand c'est possible, exempte le surnombre. */
 function generateSwissRound(t) {
@@ -1686,7 +1782,7 @@ function advanceSwissIfRoundDone(t) {
     }
 }
 /** Rapporte le résultat d'un match Swiss de la ronde en cours ; enchaîne la ronde suivante ou couronne le champion. */
-function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason) {
+function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason, sets) {
     const f = t.finals;
     if (!f || f.format !== 'swiss')
         return null;
@@ -1694,19 +1790,26 @@ function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason) {
     const match = round && round.find(m => m.id === matchId);
     if (!match || match.winner || match.bye || !match.a || !match.b)
         return null;
-    const decided = decideWinner(false, match.a, match.b, winnerId, sa, sb);
+    const played = normalizeSets(sets);
+    if (played)
+        [sa, sb] = scoreFromSets(t, played);
+    const decided = decideWinner(drawsAllowed(t, 'finals'), match.a, match.b, winnerId, sa, sb);
     if (!decided)
         return null;
     winnerId = decided;
+    const drawn = winnerId === exports.DRAW;
     snapshot(t);
     match.winner = winnerId;
-    if (sa || sb) {
+    if (sa || sb || drawn) {
         match.sa = sa;
         match.sb = sb;
     }
-    const pts = t.scoring.finalsWin;
-    award(t, winnerId, pts);
-    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, matchId: match.id, ...(reason ? { reason } : {}) });
+    if (played)
+        match.sets = played;
+    const pts = drawn ? 0 : t.scoring.finalsWin;
+    if (!drawn)
+        award(t, winnerId, pts);
+    t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: match.a, b: match.b, winner: winnerId, pts, ts: Date.now(), sa, sb, ...(played ? { sets: played } : {}), matchId: match.id, ...(reason ? { reason } : {}) });
     advanceSwissIfRoundDone(t);
     return { winnerId, pts };
 }
@@ -1877,7 +1980,7 @@ function cagnotte(t, simulatedPlayers = 0) {
         nRealPools++;
         if (t.poolFormat === 'roundrobin') {
             // Round robin de poule : chacun affronte tous les autres, toutes les rencontres au tarif survWin.
-            surv += (n * (n - 1)) / 2;
+            surv += (n * (n - 1) / 2) * clampLegs(t.rrLegs);
         }
         else if (t.poolFormat === 'double') {
             const c = doublePoolMatchCounts(n, true);
@@ -1905,7 +2008,7 @@ function cagnotte(t, simulatedPlayers = 0) {
     // donc au même tarif (survWin/loserWin/poolFinalWin), pas finalsWin. On l'ajoute directement aux
     // compteurs de poule plutôt que dans finalsMatches, et elle compte comme une poule de plus pour le
     // pire cas du bonus striker (elle peut, elle aussi, produire un strikeur).
-    const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat);
+    const finalsMatches = t.finalsFormat === 'survival' ? 0 : finalsMatchCount(q, t.finalsFormat) * (t.finalsFormat === 'roundrobin' ? clampLegs(t.rrLegs) : 1);
     if (t.finalsFormat === 'survival' && q >= 2) {
         surv += q - 1;
         los += Math.max(0, q - 2);
@@ -1953,6 +2056,16 @@ function autoFitScoring(t, simulatedPlayers = 0) {
 }
 function distributed(t) {
     return Math.round(Object.values(t.points).reduce((a, b) => a + b, 0) * 100) / 100;
+}
+/* ---------- Classements ---------- */
+/** Départage manuel : fait monter ou descendre un joueur parmi ceux qui sont à égalité parfaite avec lui. */
+function adjustManualOrder(t, playerId, delta) {
+    if (!t.players.some(p => p.id === playerId) || !delta)
+        return false;
+    snapshot(t);
+    const map = t.manualOrder || (t.manualOrder = {});
+    map[playerId] = Math.max(-99, Math.min(99, (map[playerId] || 0) + (delta > 0 ? 1 : -1)));
+    return true;
 }
 function overallRanking(t) {
     const wins = {}, losses = {};

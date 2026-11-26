@@ -5066,7 +5066,7 @@ function regiePage(S: State): string {
   const actives = getActiveMatches(S, t);
   const control = actives.length
     ? actives.map((a) => matchScoreControl(S, t, a)).join("<div style=\"height:2px\"></div>")
-    : `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Aucun match en attente pour l'instant.</div>`;
+    : `<div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Aucune confrontation en cours…</div>`;
   return `<div class="regie-page-outer" style="height:100vh;overflow:hidden;background:#08080d;display:flex;flex-direction:column">
     ${regieTopBanner(S, t)}
     <div class="regie-grid" style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
@@ -5979,7 +5979,7 @@ function showStandingsTable(rows: { name: string; pts: number }[], ptsLabel: str
 }
 /** Un à trois duels en gros plan (Mode Show) — phase finale single/double/round robin/swiss, ou file d'attente Survival. */
 function showMatchesFocus(matches: { aName: string; bName: string; label?: string; station?: string; onStream?: boolean }[]): string {
-  if (!matches.length) return `<div style="text-align:center;color:var(--text-faint);font-size:2.2vh;margin-top:3vh">En attente du prochain match…</div>`;
+  if (!matches.length) return `<div style="text-align:center;color:var(--text-faint);font-size:2.2vh;margin-top:3vh">Aucune confrontation en cours…</div>`;
   // Le match "à l'antenne" (voir setStreamMatch) passe en tête de la liste, comme la file d'attente de la régie.
   const sorted = [...matches].sort((a, b) => Number(!!b.onStream) - Number(!!a.onStream));
   const box = (m: { aName: string; bName: string; label?: string; station?: string; onStream?: boolean }) => `<div>
@@ -6065,7 +6065,7 @@ function pEvShow(S: State) {
     const rows = ms.length
       ? ms.map((m) => `<div style="padding:1.2vh 0;border-top:1px solid var(--surface-4)"><div style="display:flex;align-items:center;justify-content:space-between;gap:1vh;margin-bottom:.5vh"><span style="color:var(--text-muted);font-size:1.3vh;letter-spacing:1.4px;text-transform:uppercase;font-weight:800">${escHtml(m.label)}</span><span style="display:flex;align-items:center;gap:.6vh">${m.onStream ? `<span style="display:inline-flex;align-items:center;gap:.4vh;font-size:1.2vh;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:.3vh 1vh;white-space:nowrap">${ic(I.tv, 10)}Sur le stream</span>` : ""}${m.station ? `<span style="font-size:1.3vh;font-weight:800;color:#04222a;background:${accent};border-radius:99px;padding:.3vh 1vh;white-space:nowrap">${escHtml(m.station)}</span>` : ""}</span></div>
           <div style="display:flex;align-items:baseline;justify-content:center;gap:1.4vw;flex-wrap:wrap"><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:${accent};letter-spacing:1px">${escHtml(m.a)}</span><span style="color:var(--text-faint);font-size:1.6vh;font-weight:800">VS</span><span style="font-family:'Bebas Neue',sans-serif;font-size:3.6vh;color:#F43F7E;letter-spacing:1px">${escHtml(m.b)}</span></div></div>`).join("")
-      : `<div style="text-align:center;color:var(--text-faint);padding:2vh 0;font-size:1.8vh">${st ? "En attente du prochain match…" : "Chargement…"}</div>`;
+      : `<div style="text-align:center;color:var(--text-faint);padding:2vh 0;font-size:1.8vh">${st ? "Aucune confrontation en cours…" : "Chargement…"}</div>`;
     return `<div style="border:1px solid ${streamed ? "#F43F7E" : accent + "55"};border-radius:18px;background:linear-gradient(180deg,rgba(20,20,29,.92),rgba(14,14,22,.92));padding:2.4vh 1.8vw">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:1vw;flex-wrap:wrap"><div style="font-family:'Bebas Neue',sans-serif;font-size:3.4vh;letter-spacing:1.2px;line-height:1">${escHtml(t.name)}</div>${phase ? `<span style="font-size:1.3vh;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#04222a;background:${accent};border-radius:99px;padding:.6vh 1.2vh;white-space:nowrap">${phase}</span>` : ""}</div>
       <div style="color:var(--text-muted);font-size:1.5vh;margin:.6vh 0 1vh">${[t.game, t.format, `${t.players} joueurs`].filter(Boolean).map(escHtml).join(" · ")}</div>${rows}</div>`;
@@ -7561,7 +7561,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!t) return;
     const actives = getActiveMatches(S, t);
     const next = queueItemsOf(t, actives)[0];
-    if (!next) { showToast("Aucun match en attente."); return; }
+    if (!next) { showToast("Aucune confrontation en cours…"); return; }
     const currentKeys = actives.map(activeKey);
     setS((s) => ({ ...s, activeMatchIds: [...currentKeys, next.id] }));
     if (!(t.stations && t.stations[next.id])) {

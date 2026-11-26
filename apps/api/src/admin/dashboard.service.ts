@@ -56,7 +56,10 @@ export function recentResults(row: { name: string; engineState: unknown }, since
     .slice(-limit)
     .map((l) => {
       const loser = l.winner === l.a ? l.b! : l.a!;
-      return { type: 'result' as const, ts: Number(l.ts), tone: 'good' as const, title: `${names.get(l.winner!) ?? 'Un joueur'} bat ${names.get(loser) ?? 'un joueur'}`, detail: row.name };
+      const title = l.winner === '__draw__'
+        ? `Match nul entre ${names.get(l.a!) ?? 'un joueur'} et ${names.get(l.b!) ?? 'un joueur'}`
+        : `${names.get(l.winner!) ?? 'Un joueur'} bat ${names.get(loser) ?? 'un joueur'}`;
+      return { type: 'result' as const, ts: Number(l.ts), tone: 'good' as const, title, detail: row.name };
     });
 }
 

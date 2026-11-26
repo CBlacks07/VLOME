@@ -379,7 +379,7 @@ export class TournamentsService {
     });
     const acct = await this.accountMap();
     const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
-    type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; championships: number; tournaments: Set<string>; eloKey: string };
+    type Agg = { team?: string[]; userId: string | null; name: string; game: string; points: number; wins: number; matches: number; draws: number; championships: number; tournaments: Set<string>; eloKey: string };
     const agg = new Map<string, Agg>();
     // Matchs de chaque jeu, pour rejouer l'ELO dans l'ordre chronologique (un classement ELO par jeu, jamais mélangé).
     const eloMatches = new Map<string, EloMatch[]>();
@@ -402,17 +402,20 @@ export class TournamentsService {
         const ka = eloKeyOf.get(l.a), kb = eloKeyOf.get(l.b);
         if (!ka || !kb) continue;
         const list = eloMatches.get(game) ?? [];
-        list.push({ ts: l.ts, a: ka, b: kb, winner: l.winner === l.a ? 'a' : 'b' });
+        list.push({ ts: l.ts, a: ka, b: kb, winner: l.winner === Engine.DRAW ? 'draw' : l.winner === l.a ? 'a' : 'b' });
         eloMatches.set(game, list);
       }
+      // Survival : points du barème ; autres formats : points selon la place finale.
+      const ranking = Engine.rankingPoints(st);
       for (const p of st.players) {
         const uid = acct.get(`${t.id}|${p.name}`) ?? null;
-        const points = (st.points?.[p.id] || 0) * tierMult;
+        const points = (ranking[p.id] || 0) * tierMult;
         // Un vrai duel a toujours un adversaire (b non nul) — exclut le bonus champion/les ajustements
         // manuels (b: null), qui gonfleraient sinon le nombre de matchs et de victoires du champion.
         const realMatches = st.log.filter((l) => l.a && l.b);
         const matches = realMatches.filter((l) => l.a === p.id || l.b === p.id).length;
         const wins = realMatches.filter((l) => l.winner === p.id).length;
+        const draws = realMatches.filter((l) => l.winner === Engine.DRAW && (l.a === p.id || l.b === p.id)).length;
         const champion = st.champion === p.id;
         // Tournoi par équipes : l'équipe a sa ligne (marquée « team »), et chaque membre reçoit les MÊMES stats
         // sur sa propre ligne de joueur.
@@ -422,8 +425,8 @@ export class TournamentsService {
           ? [{ key: `team:${p.name}||${game}`, name: p.name, uid: null, team: members, eloKey: `team:${p.name}||${game}` }, ...members.map((m) => ({ key: `${m}||${game}`, name: m, uid: null, eloKey: `team:${p.name}||${game}` }))]
           : [{ key: `${uid ? 'u:' + uid : p.name}||${game}`, name: p.name, uid, eloKey: `${uid ? 'u:' + uid : p.name}||${game}` }];
         for (const tg of targets) {
-          const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, championships: 0, tournaments: new Set(), eloKey: tg.eloKey };
-          entry.points += points; entry.wins += wins; entry.matches += matches;
+          const entry = agg.get(tg.key) ?? { team: tg.team, userId: tg.uid, name: tg.name, game, points: 0, wins: 0, matches: 0, draws: 0, championships: 0, tournaments: new Set(), eloKey: tg.eloKey };
+          entry.points += points; entry.wins += wins; entry.matches += matches; entry.draws += draws;
           if (champion) entry.championships++;
           if (matches > 0) entry.tournaments.add(t.id);
           agg.set(tg.key, entry);
@@ -463,7 +466,8 @@ export class TournamentsService {
         game: e.game,
         points: Math.round(e.points * 10) / 10,
         wins: e.wins,
-        losses: e.matches - e.wins,
+        losses: e.matches - e.wins - e.draws,
+        draws: e.draws,
         matches: e.matches,
         winrate: e.matches ? Math.round((e.wins / e.matches) * 100) : 0,
         // ELO réel de ce jeu (rejoué sur tous ses matchs) ; 1000 = n'a pas encore été départagé par un adversaire.
@@ -514,7 +518,7 @@ export class TournamentsService {
     const { amateurMultiplier, eliteMultiplier } = await this.getTierMultipliers();
     let points = 0, wins = 0, losses = 0, championships = 0, tournamentsPlayed = 0;
     const byGameMap = new Map<string, { game: string; points: number; wins: number; losses: number; championships: number; tournamentsPlayed: number }>();
-    const history: Array<{ tournamentId: string; tournamentName: string; game: string; opponent: string; sa: number | null; sb: number | null; won: boolean; ts: number }> = [];
+    const history: Array<{ tournamentId: string; tournamentName: string; game: string; opponent: string; sa: number | null; sb: number | null; won: boolean; draw: boolean; ts: number }> = [];
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
@@ -522,10 +526,10 @@ export class TournamentsService {
       if (!me) continue;
       const game = t.game || 'Autre';
       // Même barème que computeLeaderboard() : multiplicateur par palier, réglable en admin.
-      const tPoints = (st.points?.[me.id] || 0) * (t.tier === 'ELITE' ? eliteMultiplier : amateurMultiplier);
+      const tPoints = (Engine.rankingPoints(st)[me.id] || 0) * (t.tier === 'ELITE' ? eliteMultiplier : amateurMultiplier);
       const logs = st.log.filter((l) => l.a && l.b && (l.a === me.id || l.b === me.id));
       const tWins = logs.filter((l) => l.winner === me.id).length;
-      const tLosses = logs.length - tWins;
+      const tLosses = logs.filter((l) => l.winner !== me.id && l.winner !== Engine.DRAW).length;
       const champion = st.champion === me.id;
       points += tPoints; wins += tWins; losses += tLosses; tournamentsPlayed++;
       if (champion) championships++;
@@ -541,7 +545,7 @@ export class TournamentsService {
         history.push({
           tournamentId: t.id, tournamentName: t.name, game,
           opponent, sa: l.a === me.id ? (l.sa ?? null) : (l.sb ?? null), sb: l.a === me.id ? (l.sb ?? null) : (l.sa ?? null),
-          won, ts: l.ts,
+          won, draw: l.winner === Engine.DRAW, ts: l.ts,
         });
       }
     }
@@ -567,8 +571,8 @@ export class TournamentsService {
       where: { OR: [{ eventId: null }, { event: { status: 'PUBLISHED' } }] },
       select: { id: true, name: true, game: true, engineState: true, teams: true },
     });
-    let aWins = 0, bWins = 0;
-    const matches: Array<{ tournamentId: string; tournamentName: string; game: string; sa: number | null; sb: number | null; winner: 'a' | 'b'; ts: number }> = [];
+    let aWins = 0, bWins = 0, draws = 0;
+    const matches: Array<{ tournamentId: string; tournamentName: string; game: string; sa: number | null; sb: number | null; winner: 'a' | 'b' | 'draw'; ts: number }> = [];
     for (const t of tournaments) {
       const st = t.engineState as unknown as Engine.Tournament | null;
       if (!st) continue;
@@ -579,8 +583,8 @@ export class TournamentsService {
       const logs = st.log.filter((l) => l.a && l.b && l.winner && ((l.a === pa.id && l.b === pb.id) || (l.a === pb.id && l.b === pa.id)));
       for (const l of logs) {
         const aIsA = l.a === pa.id;
-        const winner: 'a' | 'b' = l.winner === pa.id ? 'a' : 'b';
-        if (winner === 'a') aWins++; else bWins++;
+        const winner: 'a' | 'b' | 'draw' = l.winner === Engine.DRAW ? 'draw' : l.winner === pa.id ? 'a' : 'b';
+        if (winner === 'a') aWins++; else if (winner === 'b') bWins++; else draws++;
         matches.push({
           tournamentId: t.id, tournamentName: t.name, game: t.game || 'Autre',
           sa: aIsA ? (l.sa ?? null) : (l.sb ?? null), sb: aIsA ? (l.sb ?? null) : (l.sa ?? null),
@@ -588,7 +592,7 @@ export class TournamentsService {
         });
       }
     }
-    return { a: nameA, b: nameB, aWins, bWins, matches: matches.sort((x, y) => y.ts - x.ts) };
+    return { a: nameA, b: nameB, aWins, bWins, draws, matches: matches.sort((x, y) => y.ts - x.ts) };
   }
 
   /**
@@ -921,7 +925,8 @@ export class TournamentsService {
   /** Nom du vainqueur d'un match joué (depuis le journal), ou null s'il n'est pas encore joué. */
   private winnerOf(t: Engine.Tournament, matchKey: string): string | null {
     const l = t.log.find((e) => e.matchId === matchKey && e.winner && e.a && e.b);
-    return l ? Engine.playerName(t, l.winner!) : null;
+    if (!l) return null;
+    return l.winner === Engine.DRAW ? Engine.DRAW : Engine.playerName(t, l.winner!);
   }
 
   /** Barème des pronostics — réglable depuis Admin → Pronostics (Setting générique, clé "predictions"). */
@@ -961,7 +966,7 @@ export class TournamentsService {
     const preds = await this.prisma.prediction.findMany({ where: { tournamentId, userId }, orderBy: { createdAt: 'asc' } });
     return preds.map((p) => {
       const w = this.winnerOf(l.t, p.matchKey);
-      return { matchKey: p.matchKey, pick: p.pick, result: w === null ? 'pending' : w === p.pick ? 'won' : 'lost' };
+      return { matchKey: p.matchKey, pick: p.pick, result: w === null ? 'pending' : w === Engine.DRAW ? 'draw' : w === p.pick ? 'won' : 'lost' };
     });
   }
 
@@ -1007,6 +1012,7 @@ export class TournamentsService {
       const t = engines.get(p.tournamentId);
       const w = t ? this.winnerOf(this.applyEngineCompat(t), p.matchKey) : null;
       if (w === null) e.pending++;
+      else if (w === Engine.DRAW) { /* match nul : pronostic annulé, ni compté ni récompensé */ }
       // Bonus outsider : la cote figée au moment du pronostic (pas celle du jour où le match se termine).
       else { e.total++; if (w === p.pick) { e.correct++; e.score += p.oddsPct !== null && p.oddsPct < outsiderThreshold ? basePoints * outsiderMultiplier : basePoints; } }
       agg.set(p.userId, e);
@@ -1424,12 +1430,16 @@ export class TournamentsService {
     if (t.poolFormat === 'roundrobin') {
       // Pts = points de championnat (3 par victoire), pas les points de récompense du tournoi
       // (t.points) — même convention que le classement Round Robin de phase finale, voir plus bas.
-      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: r.wins * 3, wins: r.wins, played: r.played, losses: r.played - r.wins, gd: r.gd }));
+      // En Survival, aucun nul n'existe : pts = 3 par victoire comme avant.
+      return Engine.poolRRRanking(t, pool).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), pts: r.pts, wins: r.wins, draws: r.draws, played: r.played, losses: r.played - r.wins - r.draws, gd: r.gd }));
     }
     const wins: Record<string, number> = {};
     t.log.filter((l) => l.poolId === pool.id).forEach((l) => { wins[l.winner] = (wins[l.winner] || 0) + 1; });
-    return pool.playerIds.slice()
-      .sort((a, b) => (t.points[b] || 0) - (t.points[a] || 0) || (wins[b] || 0) - (wins[a] || 0))
+    // Hors Survival, l'ordre affiché est celui qui décide des qualifiés (victoires, manches, confrontation directe).
+    const ordered = t.format && t.format !== 'survival'
+      ? Engine.poolFinishOrder(t, pool)
+      : pool.playerIds.slice().sort((a, b) => (t.points[b] || 0) - (t.points[a] || 0) || (wins[b] || 0) - (wins[a] || 0));
+    return ordered
       .map((pid) => ({ id: pid, name: Engine.playerName(t, pid), pts: t.points[pid] || 0, wins: wins[pid] || 0 }));
   }
 
@@ -1454,11 +1464,10 @@ export class TournamentsService {
     // (voir toState), rendue par le même composant que n'importe quelle poule.
     if (f.format === 'survival') return { format: 'survival' as const, champion };
     if (f.format === 'roundrobin') {
-      // Pts du classement Round Robin = points de championnat (3 par victoire, convention standard
-      // de nombreux sports — pas de match nul en 1v1 donc rien à ajouter pour ça) : une notion de
+      // Pts du classement Round Robin = points de championnat (3 par victoire, 1 par nul) : une notion de
       // classement distincte des points de récompense du tournoi (t.points, barème/cagnotte), qui
       // restent calculés et distribués séparément.
-      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, played: r.played, losses: r.played - r.wins, gd: r.gd, pts: r.wins * 3 }));
+      const standings = Engine.rrRanking(t).map((r) => ({ id: r.id, name: Engine.playerName(t, r.id), wins: r.wins, draws: r.draws, played: r.played, losses: r.played - r.wins - r.draws, gd: r.gd, pts: r.pts }));
       return { format: 'roundrobin' as const, champion, matches: f.matches.map((mm) => this.serializeMatch(t, mm)), standings };
     }
     if (f.format === 'double') {
@@ -1698,11 +1707,15 @@ export class TournamentsService {
     this.assertCanManage(l.record, user);
     const { t } = l;
     const sa = dto.scoreA ?? 0, sb = dto.scoreB ?? 0;
+    let accepted: unknown = true;
     if (dto.matchId) {
-      if (t.finals?.format === 'swiss') Engine.reportSwiss(t, dto.matchId, dto.winnerId ?? '', sa, sb);
-      else Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+      if (t.finals?.format === 'swiss') accepted = Engine.reportSwiss(t, dto.matchId, dto.winnerId ?? '', sa, sb);
+      else accepted = Engine.reportFinals(t, dto.matchId, dto.winnerId ?? '', sa, sb);
     }
-    else if (dto.poolId) Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
+    else if (dto.poolId) accepted = Engine.reportResult(t, dto.poolId, dto.winnerId ?? '', sa, sb);
+    if (!accepted && sa === sb && (sa > 0 || dto.winnerId === Engine.DRAW)) {
+      throw new BadRequestException('Égalité impossible ici : le match nul n\'existe que dans les formats à points (championnat).');
+    }
     await this.persist(id, t);
     // Le match est joué : son chronomètre s'arrête (une clé de poule sert à des matchs successifs).
     let record = l.record;

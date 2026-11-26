@@ -68,7 +68,7 @@ export class UsersService {
       if (!st) continue;
       const player = st.players?.find((p) => p.name === r.playerName);
       if (!player) continue;
-      const points = st.points?.[player.id] || 0;
+      const points = Engine.rankingPoints(st)[player.id] || 0;
       const wins = st.log?.filter((l) => l.winner === player.id).length || 0;
       const champion = st.champion === player.id;
       const game = r.tournament.game || 'Autre';

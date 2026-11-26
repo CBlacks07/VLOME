@@ -14,7 +14,7 @@ export interface EloMatch {
   /** Clés des deux concurrents (une clé = un joueur, ou une équipe). */
   a: string;
   b: string;
-  winner: 'a' | 'b';
+  winner: 'a' | 'b' | 'draw';
 }
 
 /** Probabilité de victoire de A contre B d'après leurs ELO. */
@@ -30,7 +30,7 @@ export function computeElo(matches: EloMatch[]): Map<string, number> {
     if (!m.a || !m.b || m.a === m.b) continue;
     const ra = get(m.a), rb = get(m.b);
     const ea = expectedScore(ra, rb);
-    const sa = m.winner === 'a' ? 1 : 0;
+    const sa = m.winner === 'a' ? 1 : m.winner === 'draw' ? 0.5 : 0;
     rating.set(m.a, ra + ELO_K * (sa - ea));
     rating.set(m.b, rb + ELO_K * ((1 - sa) - (1 - ea)));
   }

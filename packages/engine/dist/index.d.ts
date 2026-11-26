@@ -309,15 +309,18 @@ export declare function moveInOrder(pool: Pool, index: number, dir: number): boo
  * poule (au moins 1 joueur doit y rester) et refuse hors du statut 'setup'. */
 export declare function movePlayerToPool(t: Tournament, playerId: string, poolId: string, dir: number): boolean;
 export declare function launch(t: Tournament): void;
+export interface LeagueRow {
+    id: string;
+    wins: number;
+    draws: number;
+    played: number;
+    gd: number;
+    pts: number;
+}
 /** Classement d'une poule round robin : victoires, puis différence de manches, puis points acquis.
  *  "played" (matchs joués) et la défaite qui s'en déduit (played - wins) sont exposés pour un vrai
  *  tableau de championnat (# / Équipe / J / G / P / Pts) plutôt qu'une seule colonne victoires. */
-export declare function poolRRRanking(t: Tournament, pool: Pool): {
-    id: string;
-    wins: number;
-    played: number;
-    gd: number;
-}[];
+export declare function poolRRRanking(t: Tournament, pool: Pool): LeagueRow[];
 /**
  * Point d'entrée unique du lancement, quel que soit le format. Le format survival garde
  * exactement le comportement historique (poules). Les autres formats n'ont pas de poules :
@@ -350,6 +353,14 @@ export interface CurrentMatch {
     matchId?: string;
 }
 export declare function currentMatch(pool: Pool): CurrentMatch | null;
+/** « Vainqueur » d'un match nul : le match est joué, personne ne l'a gagné. */
+export declare const DRAW = "__draw__";
+/** Points d'un classement de championnat (hors barème Survival). */
+export declare const LEAGUE_WIN = 3;
+export declare const LEAGUE_DRAW = 1;
+/** Le nul n'existe que dans les formats à points (championnat : poule ou phase finale en Round Robin), jamais dans un arbre
+ *  à élimination ni en Swiss, et jamais en Survival (son barème récompense uniquement des victoires). */
+export declare function drawsAllowed(t: Tournament, poolId: string): boolean;
 export declare function reportResult(t: Tournament, poolId: string, winnerId: string, sa?: number, sb?: number, reason?: string): {
     winnerId: string;
     loserId: string;
@@ -389,12 +400,7 @@ export declare function qualifiersSplit(t: Tournament): {
 /** Classement round robin : victoires, puis les critères de départage choisis (voir Tournament.tiebreakers), puis points.
  *  La confrontation directe ne tranche qu'entre deux joueurs qui se sont affrontés — un blocage à 3+ retombe sur le
  *  critère suivant, comme la plupart des règlements amateurs qui n'ouvrent pas de mini-poule. */
-export declare function rrRanking(t: Tournament): {
-    id: string;
-    wins: number;
-    played: number;
-    gd: number;
-}[];
+export declare function rrRanking(t: Tournament): LeagueRow[];
 /** Lance un tournoi à poules en mode "double élimination fusionné" (voir groupedDoubleElimIds) :
  *  t.finals EST le bracket, dès le lancement — pas de phase de poules distincte à faire aboutir
  *  d'abord (t.pools ne sert plus qu'à la prévisualisation/au rééquilibrage avant lancement). */
@@ -465,4 +471,12 @@ export interface RankRow {
     losses: number;
 }
 export declare function overallRanking(t: Tournament): RankRow[];
+/** Places finales d'un tournoi, de la 1re à la dernière : chaque groupe réunit les joueurs à la même place (éliminés au même
+ *  tour). Les éliminés en poules viennent après les finalistes, selon leur rang dans leur poule. */
+export declare function finalPlacements(t: Tournament): string[][];
+/** Points attribués selon la place finale, hors Survival. */
+export declare function placementPoints(rank: number): number;
+/** Ce qu'un tournoi rapporte au classement du site, par joueur. Survival : les points du barème, au fil de l'eau. Autres
+ *  formats : des points selon la place, une fois le tournoi terminé, pour ceux qui ont réellement joué. */
+export declare function rankingPoints(t: Tournament): Record<string, number>;
 export declare function ratings(tournaments: Tournament[]): Record<string, number>;

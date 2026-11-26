@@ -1323,7 +1323,7 @@ const WIZ_FORMAT_EXPLAIN: Record<string, string> = {
   SURVIVAL: `<b style="color:var(--text)">Cagnotte</b> = participants × points en jeu.<br>Chaque victoire distribue une part de cette cagnotte selon le barème que tu définiras à l'étape 4.<br><br><b style="color:var(--text)">Déroulé</b> : dans chaque poule, le vainqueur reste sur le terrain et enchaîne les adversaires. Les perdants ont une seconde chance (repêchage), puis les meilleurs se rejoignent en phase finale.`,
   SINGLE_ELIM: `<b style="color:var(--text)">Bracket simple</b> : élimination directe — une défaite élimine. Chaque victoire vaut les points en jeu ; un bonus couronne le champion.<br><br>Par défaut tous les participants entrent directement dans le bracket. Une phase de groupes en amont reste possible (réglable à l'étape suivante) si tu préfères répartir en poules avant l'élimination directe.`,
   DOUBLE_ELIM: `<b style="color:var(--text)">Double élimination</b> : deux brackets (vainqueurs et perdants). Une première défaite fait basculer dans le bracket des perdants, une deuxième élimine. La grande finale peut se rejouer une fois si le finaliste du bracket des perdants gagne.<br><br>Par défaut tous les participants entrent directement dans le bracket. Une phase de groupes en amont reste possible (réglable à l'étape suivante) si tu préfères répartir en poules avant l'élimination.`,
-  ROUND_ROBIN: `<b style="color:var(--text)">Round Robin</b> : chaque participant affronte tous les autres, une seule fois. Classement final aux victoires (départage à la différence de manches, puis aux buts marqués, puis à la confrontation directe).<br><br>Par défaut tout le monde s'affronte dans un seul groupe. Une phase de poules en amont reste possible (réglable à l'étape suivante) : les qualifiés de chaque poule se retrouvent alors dans un Round Robin final.`,
+  ROUND_ROBIN: `<b style="color:var(--text)">Round Robin</b> : chaque participant affronte tous les autres, une seule fois. Classement aux points : 3 par victoire, 1 par match nul, 0 par défaite (départage à la différence de manches, puis aux buts marqués, puis à la confrontation directe).<br><br>Par défaut tout le monde s'affronte dans un seul groupe. Une phase de poules en amont reste possible (réglable à l'étape suivante) : les qualifiés de chaque poule se retrouvent alors dans un Round Robin final.`,
   SWISS: `<b style="color:var(--text)">Système suisse</b> : à chaque ronde, les joueurs sont réappariés selon leur classement du moment (le moteur évite de refaire jouer deux adversaires déjà rencontrés quand c'est possible). Le nombre de rondes est calculé automatiquement selon l'effectif. Pas d'élimination : tout le monde joue toutes les rondes.`,
   BATTLE_ROYALE: `<b style="color:var(--text)">Battle Royale</b> : des parties à plusieurs joueurs, classées du 1er au dernier à chaque fois. Des points sont attribués par palier de classement (1er, 2e, 3e…) et cumulés sur l'ensemble des parties. Le nombre de parties se règle à l'étape suivante.`,
 };
@@ -1947,7 +1947,7 @@ function pPlayerProfile(S: State) {
   const history: Detail[] = p.history || [];
   const historyList = history.length ? `<div style="display:flex;flex-direction:column;gap:2px">
     ${history.map((h) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--surface-3)">
-      <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:${h.won ? "#34D399" : "#FB7185"};background:${h.won ? "rgba(52,211,153,.1)" : "rgba(251,113,133,.1)"};border:1px solid ${h.won ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:6px;padding:3px 7px;flex:none">${h.won ? "V" : "D"}</span>
+      <span style="font-size:10px;font-weight:800;letter-spacing:.5px;color:${h.draw ? "#FBBF24" : h.won ? "#34D399" : "#FB7185"};background:${h.draw ? "rgba(251,191,36,.1)" : h.won ? "rgba(52,211,153,.1)" : "rgba(251,113,133,.1)"};border:1px solid ${h.draw ? "rgba(251,191,36,.35)" : h.won ? "rgba(52,211,153,.35)" : "rgba(251,113,133,.35)"};border-radius:6px;padding:3px 7px;flex:none">${h.draw ? "N" : h.won ? "V" : "D"}</span>
       <span style="font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">contre ${escHtml(h.opponent)}</span>
       ${h.sa !== null && h.sb !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text-muted);flex:none">${h.sa}–${h.sb}</span>` : ""}
       <span style="font-size:11.5px;color:var(--text-faint);flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.tournamentName)}</span>
@@ -1956,11 +1956,11 @@ function pPlayerProfile(S: State) {
 
   const h2h = S.h2hData;
   const h2hBody = S.h2hBusy ? `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:12px 0">Recherche…</div>`
-    : h2h ? (h2h.aWins + h2h.bWins === 0
+    : h2h ? (!h2h.matches.length
       ? `<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:12px 0">${escHtml(p.name)} et ${escHtml(h2h.b)} ne se sont jamais affrontés.</div>`
-      : `<div style="text-align:center;margin:10px 0 14px"><span style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1px">${h2h.aWins}<span style="color:var(--text-faint);font-size:22px"> – </span>${h2h.bWins}</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${escHtml(p.name)} vs ${escHtml(h2h.b)}</div></div>
+      : `<div style="text-align:center;margin:10px 0 14px"><span style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1px">${h2h.aWins}<span style="color:var(--text-faint);font-size:22px"> – </span>${h2h.bWins}</span><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${escHtml(p.name)} vs ${escHtml(h2h.b)}${h2h.draws ? ` · ${h2h.draws} nul${h2h.draws > 1 ? "s" : ""}` : ""}</div></div>
         <div style="display:flex;flex-direction:column;gap:2px">${h2h.matches.slice(0, 10).map((m: Detail) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--surface-3)">
-          <span style="font-size:10px;font-weight:800;color:${m.winner === "a" ? "#34D399" : "#FB7185"}">${m.winner === "a" ? escHtml(p.name) : escHtml(h2h.b)}</span>
+          <span style="font-size:10px;font-weight:800;color:${m.winner === "draw" ? "#FBBF24" : m.winner === "a" ? "#34D399" : "#FB7185"}">${m.winner === "draw" ? "Match nul" : m.winner === "a" ? escHtml(p.name) : escHtml(h2h.b)}</span>
           ${m.sa !== null && m.sb !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted)">${m.sa}–${m.sb}</span>` : ""}
           <span style="flex:1"></span><span style="font-size:11px;color:var(--text-faint)">${escHtml(m.tournamentName)}</span></div>`).join("")}</div>`)
     : "";
@@ -4095,8 +4095,8 @@ function buildPoster(t: Detail): string {
     } else if (f.format === "roundrobin") {
       const names = f.standings.map((r: Detail) => ({ id: r.id, name: r.name }));
       const showDiff = t.countGoalDiff !== false;
-      const rowsHtml = f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.losses}</td>${showDiff ? `<td>${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td><b>${r.pts}</b></td></tr>`).join("");
-      const table = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>J</th><th>G</th><th>P</th>${showDiff ? "<th>Diff.</th>" : ""}<th>Pts</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+      const rowsHtml = f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.played}</td><td>${r.wins}</td><td>${r.draws ?? 0}</td><td>${r.losses}</td>${showDiff ? `<td>${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td><b>${r.pts}</b></td></tr>`).join("");
+      const table = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>J</th><th>G</th><th>N</th><th>P</th>${showDiff ? "<th>Diff.</th>" : ""}<th>Pts</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
       bracketHtml = table + `<div style="margin-top:10px">${unscroll(journeeCalendar(names, f.matches, false, () => null, false))}</div>`;
     } else if (f.format === "swiss") {
       const rowsHtml = f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td>${r.wins}</td><td>${r.buchholz}</td></tr>`).join("");
@@ -4180,7 +4180,7 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
     const nameCell = (name: string, id: string, isWin: boolean) => {
       const attr = manage ? reportAttr(m, id) : null;
       if (attr) return `<button ${attr} style="background:transparent;border:0;color:var(--text);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:3px 6px;border-radius:6px;text-align:inherit">${escHtml(name)}</button>`;
-      return `<span style="color:${isWin ? "#22D3EE" : m.winnerId ? "var(--text-faint)" : "var(--text)"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
+      return `<span style="color:${isWin ? "#22D3EE" : isDraw(m) ? "#FBBF24" : m.winnerId ? "var(--text-faint)" : "var(--text)"};font-weight:${isWin ? 750 : 600}">${escHtml(name)}${isWin ? " ✓" : ""}</span>`;
     };
     const hasScore = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
     // highlightCurrent : n'a de sens que quand "playable" désigne LE match du moment parmi d'autres
@@ -4190,7 +4190,7 @@ function journeeCalendar(names: { id: string; name: string }[], matches: Detail[
     // noie l'info utile (jouée/à venir) sous un mur bleu identique partout — on reste neutre.
     const isCurrent = highlightCurrent && m.playable;
     const center = hasScore
-      ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#34D399">${m.sa}–${m.sb}</span>`
+      ? `<span style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:${isDraw(m) ? "#FBBF24" : "#34D399"}">${m.sa}–${m.sb}</span>`
       : m.winnerId
         ? `<span style="font-size:10px;font-weight:800;letter-spacing:.3px;color:#34D399">JOUÉ</span>`
         : isCurrent
@@ -4227,6 +4227,10 @@ function poolHistoryList(log: Detail[], poolId: string, manage: boolean): string
   if (!entries.length) return "";
   const rows = entries.map((l: Detail) => {
     const aWin = l.winnerId === l.aId;
+    if (isDraw(l)) {
+      const side = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#FBBF24;font-weight:600";
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--surface-3);font-size:12.5px"><span style="${side}">${escHtml(l.aName)}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint);flex:none">${l.sa ?? 0}–${l.sb ?? 0} nul</span><span style="${side};text-align:right">${escHtml(l.bName)}</span>${manage ? `<button data-editmatch="${l.id}" title="Corriger ce match" style="flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;background:transparent;border:0;color:var(--text-faint);cursor:pointer">${ic(I.edit, 12)}</button>` : ""}</div>`;
+    }
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--surface-3);font-size:12.5px">
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${aWin ? "#34D399" : "var(--text-muted)"};font-weight:${aWin ? 700 : 500}">${escHtml(l.aName)}${aWin ? " ✓" : ""}</span>
       ${l.sa !== null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-faint);flex:none">${l.sa}–${l.sb}</span>` : ""}
@@ -4257,6 +4261,11 @@ function liveBadges(key: string | undefined, small = false): string {
     : "";
   return `${timer}${stream ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:${fs};font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:#F43F7E;border-radius:99px;padding:2px 7px">${ic(I.tv, small ? 8 : 10)}Antenne</span>` : ""}${station ? `<span style="font-size:${fs};font-weight:800;color:#04222a;background:#22D3EE;border-radius:99px;padding:2px 7px">${escHtml(station)}</span>` : ""}`;
 }
+/** « Vainqueur » d'un match nul (voir Engine.DRAW). */
+const DRAW = "__draw__";
+const isDraw = (m: Detail | null | undefined) => m?.winnerId === DRAW;
+/** Le nul n'existe que dans les formats à points hors Survival : championnat, en poule ou en phase finale. */
+const drawsOk = (t: Detail | null | undefined, kind: "pool" | "finals") => !!t && t.mainFormat !== "survival" && (kind === "pool" ? t.poolFormat === "roundrobin" : t.finals?.format === "roundrobin");
 /** Le barème de points (cagnotte, victoire en poule, repêchage, bonus champion…) n'existe qu'en mode Survival. Les autres
  * formats se classent de façon standard : victoires / défaites et manches ; 3 points par victoire en championnat. */
 const usesBareme = (mainFormat?: string) => mainFormat === "survival";
@@ -4268,7 +4277,7 @@ function poolTallies(log: Detail[], poolId: string): Map<string, { played: numbe
     if (m.poolId !== poolId || !m.winnerId) continue;
     const a = row(m.aId), b = row(m.bId);
     a.played++; b.played++;
-    if (m.winnerId === m.aId) { a.wins++; b.losses++; } else { b.wins++; a.losses++; }
+    if (m.winnerId === m.aId) { a.wins++; b.losses++; } else if (m.winnerId === m.bId) { b.wins++; a.losses++; }
     if (typeof m.sa === "number" && typeof m.sb === "number") { a.diff += m.sa - m.sb; b.diff += m.sb - m.sa; }
   }
   return out;
@@ -4363,15 +4372,16 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
   const isRR = poolFormat === "roundrobin";
   const hasGd = isRR && countGoalDiff !== false;
   const bareme = !isRR && usesBareme(S.detail?.mainFormat);
+  const withDraws = isRR && !usesBareme(S.detail?.mainFormat);
   const tallies = poolTallies(log, p.id);
   const head = (label: string) => `<td style="padding:6px 4px;text-align:right">${label}</td>`;
   const num = (v: string | number) => `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${v}</td>`;
   const strong = (v: string | number) => `<td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${v}</td>`;
   // Championnat : J G P (Diff.) Pts — Survival : V Pts (barème) — bracket de poule : J V D et différence de manches.
-  const columns = isRR ? `${head("J")}${head("G")}${head("P")}${hasGd ? head("Diff.") : ""}${head("Pts")}`
+  const columns = isRR ? `${head("J")}${head("G")}${withDraws ? head("N") : ""}${head("P")}${hasGd ? head("Diff.") : ""}${head("Pts")}`
     : bareme ? `${head("V")}${head("Pts")}` : `${head("J")}${head("V")}${head("D")}${head("+/−")}`;
   const cells = (r: Detail) => {
-    if (isRR) return `${num(r.played)}${num(r.wins)}${num(r.losses)}${hasGd ? num(signed(r.gd)) : ""}${strong(r.pts)}`;
+    if (isRR) return `${num(r.played)}${num(r.wins)}${withDraws ? num(r.draws ?? 0) : ""}${num(r.losses)}${hasGd ? num(signed(r.gd)) : ""}${strong(r.pts)}`;
     if (bareme) return `${num(r.wins)}${strong(r.pts)}`;
     const x = tallies.get(r.id) ?? { played: 0, wins: 0, losses: 0, diff: 0 };
     return `${num(x.played)}${strong(x.wins)}${num(x.losses)}${num(signed(x.diff))}`;
@@ -4580,7 +4590,9 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
   const key = activeKey(active);
   const sc = S.matchScores[key] || { a: 0, b: 0 };
   const sa = sc.a, sb = sc.b;
-  const canValidate = sa !== sb && !S.detailBusy;
+  // Égalité : validable comme match nul dans un championnat (avec confirmation), refusée ailleurs.
+  const asDraw = sa === sb && drawsOk(t, active.kind === "pool" ? "pool" : "finals");
+  const canValidate = (sa !== sb || asDraw) && !S.detailBusy;
   const side = (name: string, score: number, k: "a" | "b") => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--surface-5);border:1px solid var(--border);flex:1 1 230px;min-width:0">
       <span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);font-size:11px;font-weight:800;color:#22D3EE;flex:none">${escHtml(name).charAt(0).toUpperCase()}</span>
@@ -4621,7 +4633,7 @@ function matchScoreControl(S: State, t: Detail, active: ActiveMatch): string {
     </div>
     <div style="padding:14px">
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${side(active.aName, sa, "a")}${side(active.bName, sb, "b")}</div>
-      <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="${key}" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#22D3EE" : "var(--surface-4)"};color:${canValidate ? "#04222a" : "var(--text-faint)"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">Valider le vainqueur</button></div>
+      <div style="display:flex;justify-content:center;margin-top:12px"><button data-matchvalidate="${key}" ${canValidate ? "" : "disabled"} style="display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? (asDraw ? "#FBBF24" : "#22D3EE") : "var(--surface-4)"};color:${canValidate ? "#04222a" : "var(--text-faint)"};border:0;border-radius:9px;padding:11px 20px;font-weight:800;font-size:13px;cursor:${canValidate ? "pointer" : "default"}">${asDraw ? `Valider le match nul (${sa}–${sb})` : "Valider le vainqueur"}</button></div>
       <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:750;margin-top:12px">Déclarer forfait</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button data-matchforfeit="${key}|a" style="flex:1;text-align:center;border:1px solid rgba(244,63,126,.4);color:#F43F7E;background:transparent;border-radius:8px;padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(active.aName)}</button>
@@ -4999,7 +5011,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
     const showDiff = isSwiss || t.countGoalDiff !== false;
     // J/G/P (joués/gagnés/perdus) : même tableau de championnat que les poules Round Robin — le Swiss
     // n'a pas de notion de "perdus" comparable (byes, rondes variables), il garde sa colonne V seule.
-    const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td>${isSwiss ? `<td style="padding:6px 8px;text-align:right">V</td>` : `<td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">P</td>`}${showDiff ? `<td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 8px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td>${isSwiss ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td>` : `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.losses}</td>`}${showDiff ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
+    const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td>${isSwiss ? `<td style="padding:6px 8px;text-align:right">V</td>` : `<td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">N</td><td style="padding:6px 8px;text-align:right">P</td>`}${showDiff ? `<td style="padding:6px 8px;text-align:right">${isSwiss ? "Buchholz" : "Diff."}</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 8px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td>${isSwiss ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td>` : `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.draws ?? 0}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.losses}</td>`}${showDiff ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${isSwiss ? r.buchholz : (r.gd > 0 ? "+" : "") + r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
     const label = isSwiss ? `Ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : `${t.finals.matches.filter((m: Detail) => m.winnerId).length}/${t.finals.matches.length} matchs joués`;
     const rrBackBtn = `<span data-bracketview="tree" style="font-size:11.5px;font-weight:700;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer">${isSwiss ? "Classement Swiss" : "Round Robin"}</span>`;
     if (S.bracketView === "pools" && hasPools) {
@@ -5114,7 +5126,7 @@ function predictionsCard(S: State, t: Detail, manage: boolean): string {
   const mine: Detail[] = S.myPreds ?? [];
   const pickOf = (key: string) => mine.find((m) => m.matchKey === key)?.pick as string | undefined;
   const matches: Detail[] = board.matches || [];
-  const done = mine.filter((m) => m.result !== "pending").length;
+  const done = mine.filter((m) => m.result !== "pending" && m.result !== "draw").length;
   if (!matches.length && !done) return "";
   // Barème réglable depuis Admin → Pronostics — jamais de chiffre en dur ici, pour que la carte reflète
   // toujours ce que rapportera vraiment un bon pronostic.
@@ -5597,7 +5609,7 @@ function pTournoi(S: State) {
       fmtLabel = " · Round Robin";
       // Colonne masquée si le tournoi a désactivé le départage par différence de buts (voir wizInfosStep).
       const showDiff = t.countGoalDiff !== false;
-      const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">P</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 8px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.losses}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
+      const standings = `<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px"><thead><tr style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><td style="padding:6px 8px">#</td><td style="padding:6px 8px">Joueur</td><td style="padding:6px 8px;text-align:right">J</td><td style="padding:6px 8px;text-align:right">G</td><td style="padding:6px 8px;text-align:right">N</td><td style="padding:6px 8px;text-align:right">P</td>${showDiff ? `<td style="padding:6px 8px;text-align:right">Diff.</td>` : ""}<td style="padding:6px 8px;text-align:right">Pts</td></tr></thead><tbody>${t.finals.standings.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 8px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:16px">${i + 1}</td><td style="padding:7px 8px;font-weight:600">${escHtml(r.name)}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.draws ?? 0}</td><td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.losses}</td>${showDiff ? `<td style="padding:7px 8px;text-align:right;color:var(--text-muted)">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 8px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody></table>`;
       // Calendrier par journées plutôt que la grille plate de mini-cartes — même traitement que les
       // poules Round Robin, cohérent avec "faut corriger tous les tableaux comme ça".
       const calendar = journeeCalendar(t.finals.standings.map((r: Detail) => ({ id: r.id, name: r.name })), t.finals.matches, manage, (m) => m.playable ? `data-activematch="${m.matchId}"` : null, false, logByMatchId(t.log));
@@ -5905,7 +5917,8 @@ function matchCorrectModal(S: State): string {
   const key = "c:" + entry.id;
   const sc = S.matchScores[key] || { a: entry.sa ?? 0, b: entry.sb ?? 0 };
   const sa = sc.a, sb = sc.b;
-  const canValidate = sa !== sb && !S.detailBusy;
+  const asDraw = sa === sb && drawsOk(t, entry.poolId === "finals" ? "finals" : "pool");
+  const canValidate = (sa !== sb || asDraw) && !S.detailBusy;
   const side = (name: string, score: number, k: "a" | "b") => `
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--surface-5);border:1px solid var(--border)">
       <span style="display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-4);font-size:11px;font-weight:800;color:#FBBF24;flex:none">${escHtml(name).charAt(0).toUpperCase()}</span>
@@ -5923,7 +5936,7 @@ function matchCorrectModal(S: State): string {
       <div style="padding:20px">
         <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 14px">Tout ce qui a été joué après ce match sera remis à rejouer.</p>
         <div style="display:flex;flex-direction:column;gap:8px">${side(entry.aName, sa, "a")}${side(entry.bName, sb, "b")}</div>
-        <button data-correctvalidate="${entry.id}" ${canValidate ? "" : "disabled"} style="width:100%;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#FBBF24" : "var(--surface-4)"};color:${canValidate ? "#04222a" : "var(--text-faint)"};border:0;border-radius:10px;padding:12px;font-weight:800;font-size:13.5px;cursor:${canValidate ? "pointer" : "default"}">Enregistrer la correction</button>
+        <button data-correctvalidate="${entry.id}" ${canValidate ? "" : "disabled"} style="width:100%;margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px;background:${canValidate ? "#FBBF24" : "var(--surface-4)"};color:${canValidate ? "#04222a" : "var(--text-faint)"};border:0;border-radius:10px;padding:12px;font-weight:800;font-size:13.5px;cursor:${canValidate ? "pointer" : "default"}">${asDraw ? `Enregistrer le match nul (${sa}–${sb})` : `Enregistrer la correction`}</button>
       </div>
     </div>
   </div>`;
@@ -6027,6 +6040,7 @@ function showRecentResults(matches: Detail[]): string {
     const aWon = m.winnerId === m.aId;
     const win = aWon ? m.aName : m.bName, lose = aWon ? m.bName : m.aName;
     const score = hasScore(m) ? `<span style="color:#22D3EE;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:2vh">${aWon ? m.sa : m.sb}–${aWon ? m.sb : m.sa}</span>` : "";
+    if (isDraw(m)) return `<div style="display:flex;align-items:center;justify-content:center;gap:1.2vw;font-size:2.4vh;border-bottom:1px solid var(--surface-3);padding-bottom:1.4vh"><span style="color:#FBBF24;font-weight:800">${escHtml(m.aName)}</span><span style="color:var(--text-faint);font-size:1.9vh">match nul ${m.sa ?? 0}–${m.sb ?? 0}</span><span style="color:#FBBF24;font-weight:800">${escHtml(m.bName)}</span></div>`;
     return `<div style="display:flex;align-items:center;justify-content:center;gap:1.2vw;font-size:2.4vh;border-bottom:1px solid var(--surface-3);padding-bottom:1.4vh">${ic(I.crown, 18)}<span style="color:#22D3EE;font-weight:800">${escHtml(win)}</span><span style="color:var(--text-faint);font-size:1.9vh">a battu</span><span style="color:var(--text-faint)">${escHtml(lose)}</span>${score}</div>`;
   }).join("")}</div>`;
 }
@@ -6156,9 +6170,10 @@ function showResultLine(m: Detail, prefix = ""): string {
   const aWon = m.winnerId === m.aId;
   const win = aWon ? m.aName : m.bName, lose = aWon ? m.bName : m.aName;
   const scored = m.sa !== null && m.sa !== undefined && m.sb !== null && m.sb !== undefined;
-  const score = scored ? `${aWon ? m.sa : m.sb}–${aWon ? m.sb : m.sa}` : "bat";
+  const draw = isDraw(m);
+  const score = draw ? `${m.sa ?? 0}–${m.sb ?? 0}` : scored ? `${aWon ? m.sa : m.sb}–${aWon ? m.sb : m.sa}` : "bat";
   const side = "flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-  return `<div style="display:flex;align-items:center;gap:.8vw;padding:.55vh 0;border-top:1px solid var(--surface-4)">${prefix ? `<span style="flex:none;width:3.4vh;font-family:'Bebas Neue',sans-serif;color:var(--text-faint);font-size:1.9vh">${escHtml(prefix)}</span>` : ""}<span style="${side};text-align:right;font-weight:800;color:#22D3EE">${escHtml(win)}</span><span style="flex:none;font-family:'JetBrains Mono',monospace;font-weight:800;background:var(--surface-4);border-radius:.8vh;padding:.1vh .9vh">${score}</span><span style="${side};color:var(--text-muted)">${escHtml(lose)}</span></div>`;
+  return `<div style="display:flex;align-items:center;gap:.8vw;padding:.55vh 0;border-top:1px solid var(--surface-4)">${prefix ? `<span style="flex:none;width:3.4vh;font-family:'Bebas Neue',sans-serif;color:var(--text-faint);font-size:1.9vh">${escHtml(prefix)}</span>` : ""}<span style="${side};text-align:right;font-weight:800;color:${draw ? "#FBBF24" : "#22D3EE"}">${escHtml(draw ? m.aName : win)}</span><span style="flex:none;font-family:'JetBrains Mono',monospace;font-weight:800;background:var(--surface-4);border-radius:.8vh;padding:.1vh .9vh">${score}</span><span style="${side};color:${draw ? "#FBBF24" : "var(--text-muted)"}">${escHtml(draw ? m.bName : lose)}</span></div>`;
 }
 /** Classement d'une poule ; les places qualificatives sont surlignées. */
 function showPoolRanking(t: Detail, p: Detail, rows: Detail[], fontVh: number): string {
@@ -6170,6 +6185,7 @@ function showPoolRanking(t: Detail, p: Detail, rows: Detail[], fontVh: number): 
     const x = tallies.get(r.id);
     const muted = (v: string) => `<td style="width:6.4vh;padding:.45vh .5vh;text-align:right;color:var(--text-muted);white-space:nowrap">${v}</td>`;
     const strong = (v: string) => `<td style="width:9vh;padding:.45vh .5vh;text-align:right;font-weight:800;color:#22D3EE;white-space:nowrap">${v}</td>`;
+    if (isRR && !usesBareme(t.mainFormat)) return `${muted(`${r.wins ?? 0} V`)}${muted(`${r.draws ?? 0} N`)}${strong(ptsText(r.pts))}`;
     if (isRR || bareme) return `${muted(`${r.wins ?? 0} V`)}${strong(ptsText(r.pts))}`;
     return `${strong(`${x?.wins ?? 0} V`)}${muted(`${x?.losses ?? 0} D`)}${muted(signed(x?.diff ?? 0))}`;
   };
@@ -7654,6 +7670,18 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   function showToast(msg: string) {
     setS((s) => ({ ...s, toast: msg }));
     setTimeout(() => setS((s) => (s.toast === msg ? { ...s, toast: null } : s)), 4000);
+  }
+  /** Enregistre un match nul confirmé (championnat). */
+  function reportDraw(key: string) {
+    const t = S.detail;
+    const active = t ? getActiveMatches(S, t).find((a) => activeKey(a) === key) : null;
+    if (!t || !active) return;
+    const sc = S.matchScores[key] || { a: 0, b: 0 };
+    if (sc.a !== sc.b) return;
+    const body = active.kind === "pool" ? { poolId: active.poolId, winnerId: DRAW, scoreA: sc.a, scoreB: sc.b } : { matchId: active.matchId, winnerId: DRAW, scoreA: sc.a, scoreB: sc.b };
+    act(`${API}/api/tournaments/${t.id}/report`, body);
+    const pi = active.kind === "pool" ? (t.pools || []).findIndex((pp: Detail) => pp.id === active.poolId) : -1;
+    setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, activeMatchIds: s.activeMatchIds.filter((id) => id !== key), matchScores: ms, ...(pi >= 0 ? { poolView: pi } : {}) }; });
   }
   /** Prévient par e-mail les joueurs d'un match (voir TournamentsService.notifyMatch). */
   async function notifyMatch(tid: string, key: string) {
@@ -9696,7 +9724,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const active = t ? getActiveMatches(S, t).find((a) => activeKey(a) === key) : null;
       if (t && active) {
         const sc = S.matchScores[key] || { a: 0, b: 0 };
-        if (sc.a !== sc.b) {
+        if (sc.a === sc.b && drawsOk(t, active.kind === "pool" ? "pool" : "finals")) {
+          setS((s) => ({ ...s, confirmBox: { title: "Match nul", message: `Enregistrer ${sc.a}–${sc.b} entre « ${active.aName} » et « ${active.bName} » ? Chacun marque 1 point.`, okLabel: "Enregistrer le nul", action: `draw|${key}` } }));
+        } else if (sc.a !== sc.b) {
           const winnerId = sc.a > sc.b ? active.aId : active.bId;
           const body = active.kind === "pool" ? { poolId: active.poolId, winnerId, scoreA: sc.a, scoreB: sc.b } : { matchId: active.matchId, winnerId, scoreA: sc.a, scoreB: sc.b };
           act(`${API}/api/tournaments/${t.id}/report`, body);
@@ -9762,8 +9792,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (t && entry) {
         const key = "c:" + logId;
         const sc = S.matchScores[key] || { a: entry.sa ?? 0, b: entry.sb ?? 0 };
-        if (sc.a !== sc.b) {
-          const winnerId = sc.a > sc.b ? entry.aId : entry.bId;
+        if (sc.a !== sc.b || drawsOk(t, entry.poolId === "finals" ? "finals" : "pool")) {
+          const winnerId = sc.a === sc.b ? DRAW : sc.a > sc.b ? entry.aId : entry.bId;
           act(`${API}/api/tournaments/${t.id}/correct`, { logId, winnerId, scoreA: sc.a, scoreB: sc.b });
           setS((s) => { const ms = { ...s.matchScores }; delete ms[key]; return { ...s, correctingId: null, matchScores: ms }; });
         }
@@ -10342,6 +10372,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         else if (kind === "gocredits") { setS((st) => ({ ...st, creating: false, page: "profil", adminTab: "credits" })); window.scrollTo({ top: 0 }); loadCreditsMe(); }
         else if (kind === "assocrm") assocRemoveMember(arg);
         else if (kind === "assocadmin") { const [aid, decision] = arg.split("|"); void adminClubAct(`associations/${aid}/${decision}`, "POST"); }
+        else if (kind === "draw") reportDraw(arg);
         else if (kind === "myclubleave") { void myClubAct("leave", "POST"); }
         else if (kind === "adminowner") { void adminClubAct(`associations/${arg}/owner`, "DELETE"); }
         else if (kind === "adminclubdel") { void adminClubAct(`clubs/${arg}`, "DELETE"); }

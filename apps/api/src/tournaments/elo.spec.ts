@@ -34,6 +34,13 @@ describe('computeElo', () => {
     expect(r1.get('A')).toBeCloseTo(r2.get('A')!, 6);
   });
 
+  it('un match nul entre égaux ne change rien ; contre mieux classé, il rapporte des points', () => {
+    const even = computeElo([{ ts: 1, a: 'A', b: 'B', winner: 'draw' }]);
+    expect(Math.round(even.get('A')!)).toBe(ELO_START);
+    const r = computeElo([{ ts: 1, a: 'A', b: 'X', winner: 'a' }, { ts: 2, a: 'A', b: 'B', winner: 'draw' }]);
+    expect(r.get('B')!).toBeGreaterThan(ELO_START);
+  });
+
   it('ignore un match d\'un concurrent contre lui-même', () => {
     expect(computeElo([{ ts: 1, a: 'A', b: 'A', winner: 'a' }]).size).toBe(0);
   });

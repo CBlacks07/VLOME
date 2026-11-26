@@ -399,3 +399,94 @@ test('départage : liste nettoyée (inconnus et doublons ignorés), confrontatio
   assert.equal(E.newTournament({ tiebreakers: ['h2h'] }).countGoalDiff, false);
   assert.equal(E.newTournament({ tiebreakers: ['h2h', 'gd'] }).countGoalDiff, true);
 });
+
+/* ---------- Matchs nuls et classements hors Survival ---------- */
+
+function league(names, cfg = {}) {
+  const t = E.newTournament({ format: 'roundrobin', nbPools: 1, ...cfg });
+  E.setPlayers(t, names);
+  E.launchTournament(t);
+  return t;
+}
+const rrMatches = (t) => (t.pools.length ? t.pools[0].rrmatches : t.finals.matches);
+function play(t, m, sa, sb) {
+  const winner = sa === sb ? E.DRAW : sa > sb ? m.a : m.b;
+  return t.pools.length ? E.reportResult(t, t.pools[0].id, winner, sa, sb) : E.reportFinals(t, m.id, winner, sa, sb);
+}
+
+test('nul : accepté en championnat, 1 point chacun, aucune victoire ni défaite', () => {
+  const t = league(['A', 'B', 'C']);
+  const m = rrMatches(t)[0];
+  assert.ok(play(t, m, 1, 1));
+  assert.equal(m.winner, E.DRAW);
+  assert.deepEqual([m.sa, m.sb], [1, 1]);
+  const rows = (t.pools.length ? E.poolRRRanking(t, t.pools[0]) : E.rrRanking(t));
+  const row = (id) => rows.find((r) => r.id === id);
+  assert.deepEqual([row(m.a).pts, row(m.a).draws, row(m.a).wins], [1, 1, 0]);
+  assert.equal(row(m.b).pts, 1);
+  assert.equal(E.distributed(t), 0);
+  assert.ok(E.overallRanking(t).every((r) => r.wins === 0 && r.losses === 0));
+});
+
+test('nul 0-0 : seulement s\'il est demandé explicitement ; un score égal avec un vainqueur désigné est refusé', () => {
+  const t = league(['A', 'B', 'C']);
+  const m = rrMatches(t)[0];
+  assert.equal(E.reportFinals(t, m.id, m.a, 2, 2), null);
+  assert.ok(E.reportFinals(t, m.id, E.DRAW, 0, 0));
+  assert.deepEqual([m.winner, m.sa, m.sb], [E.DRAW, 0, 0]);
+});
+
+test('championnat : 3 points par victoire, deux nuls ne valent pas une victoire, le champion est le premier aux points', () => {
+  const t = league(['A', 'B', 'C']);
+  const id = (n) => t.players.find((p) => p.name === n).id;
+  for (const m of [...rrMatches(t)]) {
+    const pair = [m.a, m.b];
+    if (pair.includes(id('A')) && pair.includes(id('B'))) play(t, m, m.a === id('A') ? 3 : 0, m.a === id('A') ? 0 : 3);
+    else play(t, m, 1, 1);
+  }
+  const rows = E.rrRanking(t);
+  assert.equal(t.status, 'finished');
+  assert.equal(t.champion, id('A'));
+  assert.deepEqual(rows.map((r) => r.pts), [4, 2, 1]);
+});
+
+test('nul refusé dans un arbre à élimination et en Survival', () => {
+  const k = launched('single', 4);
+  const m = E.allFinalsMatches(k).find((x) => x.a && x.b);
+  assert.equal(E.reportFinals(k, m.id, E.DRAW, 1, 1), null);
+  assert.equal(E.reportFinals(k, m.id, m.a, 1, 1), null);
+  const s = E.newTournament({ format: 'survival', poolFormat: 'roundrobin', nbPools: 1 });
+  E.setPlayers(s, ['A', 'B', 'C']);
+  E.distributePools(s); s.pools.forEach((p) => (p.order = p.playerIds.slice())); E.launch(s);
+  assert.equal(E.reportResult(s, s.pools[0].id, E.DRAW, 1, 1), null);
+});
+
+test('correction : un résultat peut devenir un nul', () => {
+  const t = league(['A', 'B', 'C']);
+  const m = rrMatches(t)[0];
+  play(t, m, 2, 0);
+  const fixed = E.correctResult(t, t.log[t.log.length - 1].id, E.DRAW, 1, 1);
+  assert.ok(fixed);
+  assert.equal(rrMatches(fixed)[0].winner, E.DRAW);
+  assert.equal(E.distributed(fixed), 0);
+});
+
+test('classement du site hors Survival : rien en cours de route, puis des points selon la place', () => {
+  const t = launched('single', 8);
+  assert.deepEqual(E.rankingPoints(t), {});
+  let guard = 0;
+  while (t.status !== 'finished' && guard++ < 50) {
+    const m = E.allFinalsMatches(t).find((x) => x.a && x.b && !x.winner && !x.bye && x.a !== E.BYE && x.b !== E.BYE);
+    E.reportFinals(t, m.id, m.a, 2, 0);
+  }
+  const pts = E.rankingPoints(t);
+  assert.equal(pts[t.champion], 10);
+  const sorted = Object.values(pts).sort((a, b) => b - a);
+  assert.equal(sorted[1], 7);
+  assert.equal(sorted.length, 8);
+  assert.equal(E.overallRanking(t)[0].id, t.champion);
+});
+
+test('barème de placement', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 8, 9].map(E.placementPoints), [10, 7, 5, 5, 3, 3, 1]);
+});

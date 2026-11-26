@@ -550,3 +550,62 @@ test('swiss : nul autorisé et classement aux points avec exempt', () => {
   const rows = E.swissStandings(t);
   assert.equal(rows.find((r) => r.id === m.a).pts, 1);
 });
+
+test('matchs de classement : toutes les places sont départagées', () => {
+  for (const [n, max] of [[8, 8], [16, 16], [6, 8], [11, 16], [32, 8], [5, 16]]) {
+    const t = E.newTournament({ format: 'single', nbPools: 1, placementMax: max });
+    for (let i = 0; i < n; i++) E.addPlayer(t, 'P' + i);
+    E.launchTournament(t);
+    playAll(t, (m) => m.a);
+    assert.equal(t.status, 'finished', `${n} joueurs, jusqu'à la ${max}e`);
+    assert.ok(E.allFinalsMatches(t).every((m) => m.winner || m.bye), `matchs restants (${n}/${max})`);
+    const places = E.finalPlacements(t);
+    assert.equal(places.flat().length, n);
+    // Chaque place jusqu'à la limite est occupée par un seul joueur.
+    for (let i = 0; i < Math.min(n, max); i++) assert.equal(places[i].length, 1, `place ${i + 1} (${n}/${max})`);
+  }
+});
+
+test('sans matchs de classement, le tournoi se clôt à la finale', () => {
+  const t = launched('single', 8);
+  playAll(t, (m) => m.a);
+  assert.equal(t.status, 'finished');
+  assert.equal(t.finals.bracket.subs, undefined);
+});
+
+test('free for all : chaque manche répartit tout le monde en séries', () => {
+  const t = E.newTournament({ format: 'battle_royale', nbPools: 3, brHeatSize: 4 });
+  for (let i = 0; i < 10; i++) E.addPlayer(t, 'P' + i);
+  E.launchTournament(t);
+  const games = t.finals.games;
+  assert.equal(games.length, 9);
+  for (const r of [1, 2, 3]) {
+    const heats = games.filter((g) => g.round === r);
+    assert.ok(heats.every((g) => g.playerIds.length >= 3 && g.playerIds.length <= 4));
+    assert.equal(new Set(heats.flatMap((g) => g.playerIds)).size, 10);
+  }
+  // Un joueur absent de la série ne peut pas y être classé.
+  const g = games[0];
+  const outsider = t.players.find((p) => !g.playerIds.includes(p.id)).id;
+  assert.ok(!E.reportBattleRoyale(t, g.id, [outsider]).ok);
+  for (const x of games) assert.ok(E.reportBattleRoyale(t, x.id, x.playerIds).ok);
+  assert.equal(t.status, 'finished');
+  assert.equal(t.champion, E.brStandings(t)[0].id);
+});
+
+test('course : meilleur temps ou temps cumulé, un abandon passe derrière', () => {
+  for (const [rank, expected] of [['best', 'A'], ['total', 'B']]) {
+    const t = E.newTournament({ format: 'battle_royale', nbPools: 2, brRank: rank });
+    E.setPlayers(t, ['A', 'B', 'C']);
+    E.launchTournament(t);
+    const id = (n) => t.players.find((p) => p.name === n).id;
+    const [g1, g2] = t.finals.games;
+    assert.ok(!E.reportBattleRoyale(t, g1.id, [id('A')]).ok, 'un temps est exigé');
+    E.reportBattleRoyale(t, g1.id, [], undefined, { [id('A')]: 50, [id('B')]: 55, [id('C')]: 60 });
+    assert.equal(E.overallRanking(t)[0].name, 'A');
+    E.reportBattleRoyale(t, g2.id, [], undefined, { [id('A')]: 70, [id('B')]: 56 });
+    assert.equal(t.status, 'finished');
+    assert.equal(E.playerName(t, t.champion), expected, rank);
+    assert.equal(E.playerName(t, E.finalPlacements(t)[2][0]), 'C', rank);
+  }
+});

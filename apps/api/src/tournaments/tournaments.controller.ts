@@ -340,7 +340,7 @@ export class TournamentsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ORGANIZER', 'ADMIN', 'ASSOCIATION')
   async reportBattleRoyale(@Param('id') id: string, @Body() dto: BattleRoyaleReportDto, @CurrentUser() user: JwtUser) {
-    const s = await this.service.reportBattleRoyale(id, dto.gameId, dto.ranking, user, dto.kills);
+    const s = await this.service.reportBattleRoyale(id, dto.gameId, dto.ranking, user, dto.kills, dto.times);
     if (!s) throw new NotFoundException('Tournoi introuvable');
     return s;
   }

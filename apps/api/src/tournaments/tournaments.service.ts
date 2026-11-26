@@ -268,6 +268,7 @@ export class TournamentsService {
       countGoalDiff: dto.countGoalDiff, tiebreakers: dto.tiebreakers,
       league: this.leagueFrom(dto), rankBy: dto.rankBy, rrLegs: dto.rrLegs, setsMode: dto.setsMode,
       brPointsTable: dto.brPointsTable, brKillPoints: dto.brKillPoints,
+      brHeatSize: dto.brHeatSize, brRank: dto.brRank, placementMax: dto.placementMax,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -352,6 +353,7 @@ export class TournamentsService {
         countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff, tiebreakers: dto.tiebreakers ?? prev?.tiebreakers,
         league: this.leagueFrom(dto, prev?.league), rankBy: dto.rankBy ?? prev?.rankBy, rrLegs: dto.rrLegs ?? prev?.rrLegs, setsMode: dto.setsMode ?? prev?.setsMode,
         brPointsTable: dto.brPointsTable ?? prev?.brPointsTable, brKillPoints: dto.brKillPoints ?? prev?.brKillPoints,
+        brHeatSize: dto.brHeatSize ?? prev?.brHeatSize, brRank: dto.brRank ?? prev?.brRank, placementMax: dto.placementMax ?? prev?.placementMax,
         ...(hasScoring ? {
           scoring: {
             survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -372,7 +374,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    const rulesChanged = [dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye, dto.rankBy, dto.rrLegs, dto.setsMode].some((v) => v !== undefined);
+    const rulesChanged = [dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye, dto.rankBy, dto.rrLegs, dto.setsMode, dto.brHeatSize, dto.brRank, dto.placementMax].some((v) => v !== undefined);
     if (rulesChanged || dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.tiebreakers !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
@@ -394,6 +396,9 @@ export class TournamentsService {
       if (dto.setsMode !== undefined) t.setsMode = dto.setsMode;
       if (dto.brPointsTable !== undefined) t.brPointsTable = dto.brPointsTable;
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
+      if (dto.brHeatSize !== undefined) t.brHeatSize = dto.brHeatSize;
+      if (dto.brRank !== undefined) t.brRank = dto.brRank;
+      if (dto.placementMax !== undefined) t.placementMax = dto.placementMax;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && t.players.length > 0 && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
       this.syncMeta(t, {
@@ -1539,7 +1544,7 @@ export class TournamentsService {
             } else if (engineFormat === 'battle_royale') {
               const f = t.finals as Engine.BattleRoyaleFinals;
               const g = f.games.find((x) => !x.ranking);
-              if (g) { Engine.reportBattleRoyale(t, g.id, t.players.map((p) => p.id)); acted = true; }
+              if (g) { const ids = g.playerIds || t.players.map((p) => p.id); Engine.reportBattleRoyale(t, g.id, ids, undefined, Object.fromEntries(ids.map((pid, i) => [pid, 60 + i]))); acted = true; }
             } else {
               for (const m of Engine.allFinalsMatches(t)) {
                 if (m.a && m.b && m.a !== Engine.BYE && m.b !== Engine.BYE && !m.winner && !m.bye) { Engine.reportFinals(t, m.id, m.a); acted = true; break; }
@@ -1722,22 +1727,26 @@ export class TournamentsService {
           totalKills[pid] = (totalKills[pid] || 0) + (g.kills?.[pid] || 0);
         });
       });
-      const standings = t.players.slice()
-        .sort((a, b) => (t.points[b.id] || 0) - (t.points[a.id] || 0))
-        .map((p) => ({
-          id: p.id, name: p.name, pts: t.points[p.id] || 0, kills: totalKills[p.id] || 0, wins: wins[p.id] || 0,
-          games: f.games.map((g) => {
-            const rk = g.ranking ? g.ranking.indexOf(p.id) : -1;
-            if (!g.ranking || rk < 0) return { played: false as const };
-            const k = g.kills?.[p.id] || 0;
-            return { played: true as const, rank: rk + 1, kills: k, pts: gamePts(rk, k) };
-          }),
-        }));
+      const timed = !!f.rank && f.rank !== 'points';
+      const heats = f.games.some((g) => !!g.playerIds);
+      // Une colonne par manche : en séries, chaque joueur n'en dispute qu'une par manche.
+      const roundsList = heats ? Array.from(new Set(f.games.map((g) => g.round!))).map((r) => f.games.filter((g) => g.round === r)) : f.games.map((g) => [g]);
+      const standings = Engine.brStandings(t).map((row) => ({
+        id: row.id, name: Engine.playerName(t, row.id), pts: row.pts, kills: totalKills[row.id] || 0, wins: wins[row.id] || 0, best: row.best, total: row.total,
+        games: roundsList.map((list) => {
+          const g = list.find((x) => x.ranking?.includes(row.id));
+          if (!g) return { played: false as const };
+          const rk = g.ranking!.indexOf(row.id);
+          const k = g.kills?.[row.id] || 0;
+          return { played: true as const, rank: rk + 1, kills: k, pts: timed ? 0 : gamePts(rk, k), time: g.times?.[row.id] ?? null };
+        }),
+      }));
       return {
-        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable, killPoints,
+        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable, killPoints, rank: f.rank || 'points', heats,
         games: f.games.map((g, i) => ({
-          id: g.id, label: 'Partie ' + (i + 1), played: !!g.ranking,
-          ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, kills: g.kills?.[pid] || 0, pts: gamePts(rk, g.kills?.[pid] || 0) })) : null,
+          id: g.id, label: heats ? `Manche ${g.round} · Série ${g.heat}` : 'Partie ' + (i + 1), played: !!g.ranking, round: g.round ?? i + 1,
+          players: g.playerIds ? g.playerIds.map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })) : null,
+          ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, kills: g.kills?.[pid] || 0, pts: timed ? 0 : gamePts(rk, g.kills?.[pid] || 0), time: g.times?.[pid] ?? null })) : null,
         })),
         standings,
       };
@@ -1748,7 +1757,25 @@ export class TournamentsService {
       rounds: f.bracket.rounds.map((round, r) => ({ label: this.roundLabel(r, total), matches: round.map((mm) => this.serializeMatch(t, mm)) })),
       // Petite finale (3e place) — n'existe que s'il y a eu une vraie demi-finale (voir Engine.buildBracket).
       thirdPlace: f.bracket.thirdPlace ? this.serializeMatch(t, f.bracket.thirdPlace) : null,
+      placements: this.placementRounds(t, f.bracket),
     };
+  }
+
+  /** Matchs de classement (au-delà de la 3e place), mis à plat : une colonne par tour, de la meilleure place à la moins bonne. */
+  private placementRounds(t: Engine.Tournament, bracket: Engine.Bracket): { label: string; matches: ReturnType<TournamentsService['serializeMatch']>[] }[] {
+    const out: { label: string; matches: ReturnType<TournamentsService['serializeMatch']>[] }[] = [];
+    const subs = (bracket.subs || []).slice().sort((a, b) => (a.bracket.basePlace || 0) - (b.bracket.basePlace || 0));
+    for (const { bracket: b } of subs) {
+      const base = b.basePlace || 1;
+      const size = b.rounds[0].reduce((n, m) => n + [m.a, m.b].filter((x) => x && x !== Engine.BYE).length, 0);
+      b.rounds.forEach((round, r) => {
+        const last = r === b.rounds.length - 1;
+        out.push({ label: last ? `Match pour la ${base}e place` : `Places ${base} à ${base + size - 1}${r ? ` · tour ${r + 1}` : ''}`, matches: round.map((mm) => this.serializeMatch(t, mm)) });
+      });
+      if (b.thirdPlace) out.push({ label: `Match pour la ${base + 2}e place`, matches: [this.serializeMatch(t, b.thirdPlace)] });
+      out.push(...this.placementRounds(t, b));
+    }
+    return out;
   }
 
   /** DTO « cockpit » : match courant, classement par poule, bracket finale. */
@@ -1829,6 +1856,9 @@ export class TournamentsService {
       // (voir serializeFinals), ces deux-là ne représentent alors plus que le réglage figé au départ.
       brPointsTable: t.brPointsTable,
       brKillPoints: t.brKillPoints,
+      brHeatSize: t.brHeatSize || 0,
+      brRank: t.brRank || 'points',
+      placementMax: t.placementMax || 3,
       streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),
       entryFeeXof,
@@ -1992,13 +2022,13 @@ export class TournamentsService {
   }
 
   /** Rapporte le classement complet d'une partie Battle Royale (du 1er au dernier), et optionnellement le nombre d'éliminations par joueur. */
-  async reportBattleRoyale(id: string, gameId: string, ranking: string[], user: JwtUser, kills?: Record<string, number>) {
+  async reportBattleRoyale(id: string, gameId: string, ranking: string[], user: JwtUser, kills?: Record<string, number>, times?: Record<string, number>) {
     const l = await this.loadEngine(id);
     if (!l) return null;
     this.assertCanManage(l.record, user);
     const { t } = l;
     if (t.finals?.format !== 'battle_royale') throw new ConflictException('Ce tournoi n\'est pas au format Battle Royale.');
-    const res = Engine.reportBattleRoyale(t, gameId, ranking, kills);
+    const res = Engine.reportBattleRoyale(t, gameId, ranking, kills, times);
     if (!res.ok) throw new BadRequestException('Partie introuvable, déjà rapportée, ou classement invalide.');
     await this.persist(id, t);
     return this.toState(id, t, l.record.entryFeeXof, l.record.imageUrl, l.record.format, l.record.place, l.record.date, l.record.givesLoyaltyPoint, l.record.stations, l.record.streamMatchKey, l.record);

@@ -46,6 +46,8 @@ exports.launch = launch;
 exports.poolRRRanking = poolRRRanking;
 exports.usesPools = usesPools;
 exports.launchTournament = launchTournament;
+exports.buildBrGames = buildBrGames;
+exports.bracketMatches = bracketMatches;
 exports.buildBracket = buildBracket;
 exports.propagateBracket = propagateBracket;
 exports.bracketChampion = bracketChampion;
@@ -67,6 +69,7 @@ exports.reportFinals = reportFinals;
 exports.swissStandings = swissStandings;
 exports.reportSwiss = reportSwiss;
 exports.reportBattleRoyale = reportBattleRoyale;
+exports.brStandings = brStandings;
 exports.disqualifyPlayer = disqualifyPlayer;
 exports.cagnotte = cagnotte;
 exports.autoFitScoring = autoFitScoring;
@@ -189,6 +192,9 @@ function newTournament(cfg = {}) {
         countGoalDiff: normalizeTiebreakers(cfg.tiebreakers) ? usesScoreTiebreak(normalizeTiebreakers(cfg.tiebreakers)) : (cfg.countGoalDiff ?? true),
         brPointsTable: cfg.brPointsTable && cfg.brPointsTable.length ? cfg.brPointsTable.slice(0, 24) : exports.DEFAULT_BR_POINTS.slice(),
         brKillPoints: cfg.brKillPoints ?? 1,
+        brHeatSize: cfg.brHeatSize,
+        brRank: cfg.brRank,
+        placementMax: cfg.placementMax,
         ...(cfg.league ? { league: normalizeLeaguePoints(cfg.league) } : {}),
         ...(cfg.rankBy && exports.RANK_BY.includes(cfg.rankBy) ? { rankBy: cfg.rankBy } : {}),
         ...(cfg.rrLegs ? { rrLegs: clampLegs(cfg.rrLegs) } : {}),
@@ -725,7 +731,8 @@ function launchTournament(t) {
         const nGames = Math.max(1, t.nbPools || 3); // réutilise nbPools comme "nombre de parties" pour ce format (pas de poules ici)
         t.finals = {
             format: 'battle_royale',
-            games: Array.from({ length: nGames }, () => ({ id: uid(), ranking: null, kills: null })),
+            games: buildBrGames(ids, nGames, t.brHeatSize),
+            ...(t.brRank && t.brRank !== 'points' ? { rank: t.brRank } : {}),
             pointsTable: t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : exports.DEFAULT_BR_POINTS,
             killPoints: t.brKillPoints ?? 1,
         };
@@ -740,9 +747,40 @@ function launchTournament(t) {
         checkFinalsChampion(t);
     }
     else {
-        t.finals = { format: 'single', bracket: buildBracket(ids, true) };
+        t.finals = { format: 'single', bracket: withPlacements(t, buildBracket(ids, true)) };
         checkFinalsChampion(t);
     }
+}
+/** Parties d'un format à plusieurs. En séries, chaque manche répartit tout le monde, en décalant d'une manche à
+ *  l'autre pour qu'on ne retombe pas toujours contre les mêmes. */
+function buildBrGames(ids, rounds, heatSize) {
+    const size = heatSize && heatSize >= 2 && heatSize < ids.length ? Math.floor(heatSize) : 0;
+    const games = [];
+    for (let r = 0; r < rounds; r++) {
+        if (!size) {
+            games.push({ id: uid(), ranking: null, kills: null });
+            continue;
+        }
+        const count = Math.ceil(ids.length / size);
+        const heats = Array.from({ length: count }, () => []);
+        ids.forEach((id, i) => heats[(i + r * Math.floor(i / count)) % count].push(id));
+        heats.forEach((playerIds, h) => games.push({ id: uid(), ranking: null, kills: null, playerIds, round: r + 1, heat: h + 1 }));
+    }
+    return games;
+}
+/** Active les matchs de classement demandés (hors Survival, dont la cagnotte ne les prévoit pas). */
+function withPlacements(t, bracket) {
+    if (t.format && t.format !== 'survival' && (t.placementMax || 3) > 3) {
+        bracket.maxPlace = t.placementMax;
+        propagateBracket(bracket);
+    }
+    return bracket;
+}
+/** Toutes les rencontres d'un arbre : tours, petite finale et arbres de classement. */
+function bracketMatches(b) {
+    return b.rounds.flat()
+        .concat(b.thirdPlace ? [b.thirdPlace] : [])
+        .concat(...(b.subs || []).map(s => bracketMatches(s.bracket)));
 }
 /* ---------- Bracket générique (élimination directe) ---------- */
 function nextPow2(n) { let p = 1; while (p < n)
@@ -860,6 +898,22 @@ function propagateBracket(bracket) {
             bracket.thirdPlace.a = loserOf(semis[0]);
             bracket.thirdPlace.b = loserOf(semis[1]);
         }
+    }
+    // Matchs de classement : les perdants d'un tour entièrement joué s'affrontent pour les places qui suivent les survivants.
+    if (bracket.maxPlace && bracket.maxPlace > 3) {
+        for (let r = 0; r < rounds.length - 2; r++) {
+            const start = (bracket.basePlace || 1) + rounds[r].length;
+            if (start >= bracket.maxPlace || bracket.subs?.some(s => s.round === r) || !rounds[r].every(m => m.winner))
+                continue;
+            const losers = rounds[r].map(m => (m.bye ? null : m.winner === m.a ? m.b : m.a)).filter((id) => !!id && id !== exports.BYE);
+            if (losers.length < 2)
+                continue;
+            const sub = buildBracket(losers, true);
+            sub.basePlace = start;
+            sub.maxPlace = bracket.maxPlace;
+            (bracket.subs || (bracket.subs = [])).push({ round: r, bracket: sub });
+        }
+        bracket.subs?.forEach(s => propagateBracket(s.bracket));
     }
 }
 function bracketChampion(bracket) {
@@ -1515,7 +1569,7 @@ function startFinals(t, format) {
         t.finals = buildDoubleElimSeeded(top, bottom);
     }
     else {
-        t.finals = { format: 'single', bracket: buildBracket(q, true) };
+        t.finals = { format: 'single', bracket: withPlacements(t, buildBracket(q, true)) };
     }
     checkFinalsChampion(t);
 }
@@ -1543,7 +1597,7 @@ function allFinalsMatches(t) {
     if (f.format === 'roundrobin')
         return f.matches;
     if (f.format === 'single')
-        return f.bracket.thirdPlace ? f.bracket.rounds.flat().concat([f.bracket.thirdPlace]) : f.bracket.rounds.flat();
+        return bracketMatches(f.bracket);
     if (f.format === 'double')
         return [].concat(f.wb.flat(), f.lb.flat(), [f.gf], f.gf2 ? [f.gf2] : []);
     if (f.format === 'swiss')
@@ -1645,6 +1699,9 @@ function checkFinalsChampion(t) {
     if (!f || t.status === 'finished')
         return;
     if (f.format === 'single') {
+        // Avec des matchs de classement, le tournoi ne se clôt qu'une fois tous joués.
+        if (f.bracket.maxPlace && bracketMatches(f.bracket).some(m => !m.winner && !m.bye))
+            return;
         finishFinals(t, bracketChampion(f.bracket));
     }
     else if (f.format === 'double') {
@@ -1818,19 +1875,27 @@ function reportSwiss(t, matchId, winnerId, sa = 0, sb = 0, reason, sets) {
  * optionnellement le nombre d'éliminations par joueur (kills[id]) ; chaque joueur marque les points
  * de son palier de classement (f.pointsTable) PLUS f.killPoints par élimination. Enchaîne ou couronne
  * le champion après la dernière partie. */
-function reportBattleRoyale(t, gameId, ranking, kills) {
+function reportBattleRoyale(t, gameId, ranking, kills, times) {
     const f = t.finals;
     if (!f || f.format !== 'battle_royale')
         return { ok: false };
     const game = f.games.find(g => g.id === gameId);
     if (!game || game.ranking)
         return { ok: false };
-    const validIds = new Set(t.players.map(p => p.id));
-    const clean = ranking.filter(id => validIds.has(id));
+    const validIds = new Set(game.playerIds || t.players.map(p => p.id));
+    const timed = !!f.rank && f.rank !== 'points';
+    const cleanTimes = {};
+    if (timed) {
+        for (const [id, v] of Object.entries(times || {}))
+            if (validIds.has(id) && typeof v === 'number' && Number.isFinite(v) && v > 0)
+                cleanTimes[id] = Math.round(v * 1000) / 1000;
+        ranking = Object.keys(cleanTimes).sort((a, b) => cleanTimes[a] - cleanTimes[b]); // sans temps : non classé (abandon)
+    }
+    const clean = Array.from(new Set(ranking.filter(id => validIds.has(id))));
     if (!clean.length)
         return { ok: false };
     const cleanKills = {};
-    if (kills)
+    if (kills && !timed)
         for (const id of clean) {
             const k = kills[id];
             if (typeof k === 'number' && k > 0)
@@ -1839,20 +1904,52 @@ function reportBattleRoyale(t, gameId, ranking, kills) {
     snapshot(t);
     game.ranking = clean;
     game.kills = Object.keys(cleanKills).length ? cleanKills : null;
+    if (timed)
+        game.times = cleanTimes;
     clean.forEach((pid, i) => {
         const placePts = f.pointsTable[i] ?? f.pointsTable[f.pointsTable.length - 1] ?? 0;
         const killPts = (f.killPoints || 0) * (cleanKills[pid] || 0);
-        const pts = placePts + killPts;
-        if (pts > 0) {
+        const pts = timed ? 0 : placePts + killPts;
+        if (timed)
+            t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: pid, b: null, winner: clean[0], pts: 0, ts: Date.now() });
+        else if (pts > 0) {
             award(t, pid, pts);
             t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: pid, b: null, winner: pid, pts, ts: Date.now() });
         }
     });
-    if (f.games.every(g => g.ranking)) {
-        const top = t.players.slice().sort((a, b) => (t.points[b.id] || 0) - (t.points[a.id] || 0))[0];
-        finishFinals(t, top ? top.id : null);
-    }
+    if (f.games.every(g => g.ranking))
+        finishFinals(t, brStandings(t)[0]?.id ?? null);
     return { ok: true };
+}
+/** Classement d'un format à plusieurs : aux points (puis nombre de 1res places), au meilleur temps, ou au temps cumulé
+ *  (celui qui a terminé le plus de manches passe devant). */
+function brStandings(t) {
+    const f = t.finals;
+    if (!f || f.format !== 'battle_royale')
+        return [];
+    const rows = t.players.map(p => {
+        let firsts = 0, played = 0, total = 0;
+        let best = null;
+        for (const g of f.games) {
+            if (g.ranking?.[0] === p.id)
+                firsts++;
+            const v = g.times?.[p.id];
+            if (v === undefined)
+                continue;
+            played++;
+            total += v;
+            if (best === null || v < best)
+                best = v;
+        }
+        return { id: p.id, pts: t.points[p.id] || 0, firsts, played, best, total: played ? Math.round(total * 1000) / 1000 : null };
+    });
+    if (f.rank === 'best')
+        rows.sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity));
+    else if (f.rank === 'total')
+        rows.sort((a, b) => b.played - a.played || (a.total ?? Infinity) - (b.total ?? Infinity));
+    else
+        rows.sort((a, b) => b.pts - a.pts || b.firsts - a.firsts);
+    return rows;
 }
 /* ---------- Disqualification (en direct) ---------- */
 /** Le match en cours (poule ou finale, tous formats) impliquant ce joueur, s'il y en a un. */
@@ -1860,11 +1957,7 @@ function pendingFinalsMatchFor(t, playerId) {
     const f = t.finals;
     if (!f)
         return null;
-    if (f.format === 'single') {
-        const nm = nextBracketMatch(f.bracket);
-        return nm && (nm.match.a === playerId || nm.match.b === playerId) ? nm.match : null;
-    }
-    // Double élim / round robin : plusieurs matchs peuvent être « prêts » en parallèle.
+    // Élimination / round robin : plusieurs matchs peuvent être « prêts » en parallèle.
     return allFinalsMatches(t).find(m => !m.winner && !m.bye && m.a && m.b && m.a !== exports.BYE && m.b !== exports.BYE && (m.a === playerId || m.b === playerId)) || null;
 }
 /**
@@ -2081,6 +2174,8 @@ function overallRanking(t) {
     const place = new Map();
     if (t.format && t.format !== 'survival' && t.status === 'finished')
         finalPlacements(t).forEach((g, i) => g.forEach(id => place.set(id, i)));
+    else if (t.finals?.format === 'battle_royale' && t.finals.rank && t.finals.rank !== 'points')
+        brStandings(t).forEach((r, i) => place.set(r.id, i));
     return t.players.slice()
         .sort((x, y) => (place.get(x.id) ?? 1e9) - (place.get(y.id) ?? 1e9) || (t.points[y.id] || 0) - (t.points[x.id] || 0) || (wins[y.id] || 0) - (wins[x.id] || 0))
         .map(p => ({ id: p.id, name: p.name, pts: t.points[p.id] || 0, wins: wins[p.id] || 0, losses: losses[p.id] || 0 }));
@@ -2104,21 +2199,30 @@ function finalPlacements(t) {
         rrRanking(t).forEach(r => add([r.id]));
     else if (f?.format === 'swiss')
         swissStandings(t).forEach(r => add([r.id]));
+    else if (f?.format === 'battle_royale' && f.rank && f.rank !== 'points')
+        brStandings(t).forEach(r => add([r.id]));
     else if (f?.format === 'battle_royale') {
         const byPts = new Map();
         t.players.forEach(p => { const v = t.points[p.id] || 0; byPts.set(v, (byPts.get(v) || []).concat(p.id)); });
         Array.from(byPts.keys()).sort((a, b) => b - a).forEach(v => add(byPts.get(v)));
     }
     else if (f?.format === 'single') {
-        const rounds = f.bracket.rounds;
-        for (let r = rounds.length - 1; r >= 0; r--) {
-            const third = f.bracket.thirdPlace;
-            if (r === rounds.length - 2 && third) {
-                add([third.winner]);
-                add([loserOf(third)]);
+        const walk = (b) => {
+            const rounds = b.rounds;
+            add([rounds[rounds.length - 1]?.[0]?.winner]);
+            for (let r = rounds.length - 1; r >= 0; r--) {
+                const third = b.thirdPlace;
+                if (r === rounds.length - 2 && third) {
+                    add([third.winner]);
+                    add([loserOf(third)]);
+                }
+                const sub = b.subs?.find(s => s.round === r);
+                if (sub)
+                    walk(sub.bracket);
+                add(rounds[r].map(loserOf));
             }
-            add(rounds[r].map(loserOf));
-        }
+        };
+        walk(f.bracket);
     }
     else if (f?.format === 'double') {
         add([loserOf(f.gf2) ?? loserOf(f.gf)]);

@@ -328,7 +328,7 @@ const WIZ_FORMATS: [string, string, string][] = [
   ["DOUBLE_ELIM", "Double élim", "Deux brackets (vainqueurs/perdants) : il faut deux défaites pour être éliminé."],
   ["ROUND_ROBIN", "Round Robin", "Tout le monde affronte tout le monde. Classement final aux victoires."],
   ["SWISS", "Swiss", "Rondes appariées selon le classement courant, sans reproduire les mêmes duels. Plusieurs rondes, pas d'élimination directe."],
-  ["BATTLE_ROYALE", "Battle Royale", "Parties à plusieurs joueurs classées du 1er au dernier, points par palier de classement cumulés sur plusieurs parties."],
+  ["BATTLE_ROYALE", "Battle Royale / Course", "Parties à plusieurs joueurs (Battle Royale, Free For All par séries, contre-la-montre) : points par place ou temps, cumulés sur plusieurs parties."],
 ];
 const ENGINE_TO_DB_FORMAT: Record<string, string> = {
   survival: "SURVIVAL", single: "SINGLE_ELIM", double: "DOUBLE_ELIM", roundrobin: "ROUND_ROBIN", swiss: "SWISS", battle_royale: "BATTLE_ROYALE",
@@ -1033,6 +1033,7 @@ function cfgRulesBlock(t: Detail, usesRR: boolean, usesSwiss: boolean): string {
   return `${points}<div style="display:flex;gap:12px;flex-wrap:wrap">
     ${usesRR ? select("cfg-rankby", "Classement par", t.rankBy || "points", RANK_BY_LABELS) : ""}
     ${usesRR ? select("cfg-legs", "Chacun se rencontre", t.rrLegs || 1, [[1, "1 fois (aller simple)"], [2, "2 fois (aller-retour)"], [3, "3 fois"]]) : ""}
+    ${(t.mainFormat === "single" || t.finalsFormat === "single") && t.mainFormat !== "survival" ? select("cfg-placement", "Matchs de classement", t.placementMax || 3, [[3, "Petite finale (3e place)"], [8, "Jusqu'à la 8e place"], [16, "Jusqu'à la 16e place"]]) : ""}
     ${select("cfg-sets", "Quand un match a plusieurs sets", t.setsMode || "sets", [["sets", "Le plus de sets gagnés l'emporte"], ["aggregate", "Le total cumulé l'emporte (aller-retour)"]])}
   </div>`;
 }
@@ -1066,8 +1067,10 @@ function setupConfigCard(S: State, t: Detail): string {
   // 2) Poules + phase finale
   let poolsBlock = "";
   if (isBR) {
-    poolsBlock = sect(head("2", "Parties", "Après chaque partie, tu saisis le classement ; les points se cumulent sur toutes les parties.")
+    poolsBlock = sect(head("2", "Parties", "Après chaque partie, tu saisis le classement ou les temps. En séries (Free For All), chaque manche répartit les joueurs en groupes.")
       + `<div style="display:flex;align-items:center;gap:9px"><label style="font-size:12.5px;color:var(--text-muted);font-weight:600">Nombre de parties</label><select id="cfg-pools" style="${WIZ_INP};width:auto;padding:9px 12px">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map((n) => `<option value="${n}" ${n === nbPools ? "selected" : ""}>${n}</option>`).join("")}</select></div>`
+      + `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px"><label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-muted);font-weight:650">Joueurs par série (0 = tous ensemble)${num("cfg-br-heat", t.brHeatSize || 0, "190px")}</label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-muted);font-weight:650">Classement<select id="cfg-br-rank" style="${WIZ_INP};width:auto;min-width:230px;padding:9px 12px">${[["points", "Points par place"], ["best", "Course : meilleur temps"], ["total", "Course : temps cumulé"]].map(([k, l]) => `<option value="${k}" ${k === (t.brRank || "points") ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>`
       + saveBtn("pools", "Enregistrer"));
   } else if (pooled) {
     const modes = wizPoolModes(fmtKey);
@@ -3854,8 +3857,15 @@ function finalsMatchGroups(finals: Detail): Detail[][] {
   } else {
     finals.rounds.forEach((r: Detail) => pools.push(r.matches));
     if (finals.thirdPlace) pools.push([finals.thirdPlace]);
+    (finals.placements || []).forEach((r: Detail) => pools.push(r.matches));
   }
   return pools;
+}
+/** Matchs de classement au-delà de la 3e place, en colonnes (chacun apparaît quand le tour dont il dépend est joué). */
+function placementBlock(t: Detail, manage: boolean, margin = "22px"): string {
+  const list: Detail[] = t.finals?.placements ?? [];
+  if (!list.length) return "";
+  return `<div style="margin-top:${margin}"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Matchs de classement</div><div style="display:flex;gap:24px;overflow-x:auto;padding-bottom:12px">${list.map((r) => roundCol(r.label, r.matches, manage, false, logByMatchId(t.log))).join("")}</div></div>`;
 }
 /** Comme finalsMatchGroups, mais en conservant le nom de l'étape de chaque affiche. Le Mode Show
  * s'en sert pour annoncer « Winners · Finale » ou « Grande finale » plutôt que deux noms sans
@@ -3872,6 +3882,7 @@ function finalsLabelledMatches(finals: Detail): { label: string; m: Detail }[] {
   } else {
     (finals.rounds || []).forEach((r: Detail) => push(r.label, r.matches));
     if (finals.thirdPlace) push("Petite finale", [finals.thirdPlace]);
+    (finals.placements || []).forEach((r: Detail) => push(r.label, r.matches));
   }
   return out;
 }
@@ -4001,6 +4012,19 @@ function doubleElimFinalStandings(t: Detail, pad = "8px 28px 0"): string {
  * consultables (résultat + éliminations), seule la prochaine encore à jouer est éditable — pas de
  * clic dans l'ordre d'arrivée mais un vrai placement + un nombre d'éliminations par joueur, en
  * inputs non contrôlés lus à la validation (voir data-brsubmit) comme la saisie de score des poules. */
+/** Temps de course lisible : 83.45 → « 1:23.45 ». */
+function raceTime(s: number | null | undefined): string {
+  if (s === null || s === undefined) return "—";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), rest = (s % 60).toFixed(2).padStart(5, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${rest}` : m ? `${m}:${rest}` : (s % 60).toFixed(2);
+}
+/** Saisie d'un temps : « 83,45 », « 1:23.45 » ou « 1:02:03 » → secondes ; null si illisible ou vide. */
+function parseRaceTime(text: string): number | null {
+  const parts = text.trim().replace(",", ".").split(":");
+  if (!text.trim() || parts.length > 3 || parts.some((p) => !/^\d+(\.\d+)?$/.test(p))) return null;
+  const v = parts.reduce((acc, p) => acc * 60 + parseFloat(p), 0);
+  return v > 0 ? v : null;
+}
 function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   const f = t.finals;
   const champ = f.champion
@@ -4011,25 +4035,29 @@ function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   const active = games.find((g: Detail) => g.id === S.brActiveGame) || nextGame || games[games.length - 1];
   // Barème réglé avant lancement (voir wizBrScoringStep) — rappelé ici pour que "pourquoi ce total ?"
   // ait toujours une réponse sous les yeux, sans devoir rouvrir l'assistant.
-  const legend = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:13px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface-8);margin-bottom:18px">
+  const timed = !!f.rank && f.rank !== "points";
+  const legend = timed ? `<div style="padding:13px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface-8);margin-bottom:18px;font-size:12.5px;color:var(--text-muted)"><b style="color:#22D3EE">Course</b> · ${f.rank === "best" ? "le meilleur temps l'emporte" : "temps cumulé : qui termine le plus de manches, puis le plus vite"}. Temps en secondes ou m:ss.cc ; laisse vide en cas d'abandon.</div>` : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:13px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface-8);margin-bottom:18px">
     <span style="font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;font-weight:800;flex:none">Barème</span>
     ${f.pointsTable.slice(0, 8).map((p: number, i: number) => `<span style="font-size:12px;color:#9aa5b1;background:rgba(255,255,255,.03);border-radius:8px;padding:5px 10px"><b style="color:#c7d0db">${i === 0 ? "1er" : i === 1 ? "2e" : `${i + 1}e`}</b> · <span style="color:#22D3EE;font-weight:700">${p} pts</span></span>`).join("")}
     ${f.killPoints ? `<span style="font-size:12px;color:#9aa5b1;background:rgba(255,255,255,.03);border-radius:8px;padding:5px 10px"><b style="color:#c7d0db">+${f.killPoints}</b> / élimination</span>` : ""}
   </div>`;
   const tabs = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${games.map((g: Detail, i: number) => {
     const on = g.id === active.id;
-    return `<button data-brgametab="${g.id}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;background:${on ? "#22D3EE" : "rgba(255,255,255,.04)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};color:${on ? "#04141a" : g.played ? "var(--text-muted)" : "#22D3EE"}">Partie ${i + 1}${!g.played && g.id === nextGame?.id ? " · à jouer" : ""}</button>`;
+    return `<button data-brgametab="${g.id}" style="font-size:12px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;background:${on ? "#22D3EE" : "rgba(255,255,255,.04)"};border:1px solid ${on ? "#22D3EE" : "var(--border)"};color:${on ? "#04141a" : g.played ? "var(--text-muted)" : "#22D3EE"}">${escHtml(g.label || `Partie ${i + 1}`)}${!g.played && g.id === nextGame?.id ? " · à jouer" : ""}</button>`;
   }).join("")}</div>`;
-  const players: { id: string; name: string }[] = Array.isArray(t.players) ? t.players : [];
+  const players: { id: string; name: string }[] = active.players || (Array.isArray(t.players) ? t.players : []);
   let entry: string;
   if (active.played) {
     const rows = (active.ranking as Detail[]).map((r: Detail) => `<div style="display:grid;grid-template-columns:44px 1fr 90px 90px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--surface-3)">
       <span style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${r.rank === 1 ? "#FBBF24" : "var(--text-faint)"}">${r.rank}</span>
       <span style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.name)}</span>
-      <span style="text-align:right;font-size:12.5px;color:var(--text-muted)">${r.kills} élim.</span>
-      <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:750;color:#22D3EE">${r.pts} pts</span>
+      <span style="text-align:right;font-size:12.5px;color:var(--text-muted)">${timed ? "" : `${r.kills} élim.`}</span>
+      <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:750;color:#22D3EE">${timed ? raceTime(r.time) : `${r.pts} pts`}</span>
     </div>`).join("");
     entry = `<div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface-8)">${rows}</div>`;
+  } else if (manage && timed) {
+    entry = `<div style="border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface-8)">${players.map((p) => `<div style="display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--surface-3)"><span style="font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</span><input id="br-tm-${p.id}" inputmode="decimal" placeholder="1:23.45" style="width:100%;text-align:center;background:#141b26;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;padding:7px" /></div>`).join("")}
+      <div style="padding:14px"><button data-brsubmit="${active.id}" style="width:100%;background:linear-gradient(135deg,#22D3EE,#0891b2);color:#04141a;border:0;border-radius:10px;padding:12px;font-weight:800;font-size:13px;letter-spacing:.4px;cursor:pointer">Valider les temps</button></div></div>`;
   } else if (manage) {
     const rows = players.map((p, i) => `<div style="display:grid;grid-template-columns:1fr 110px 110px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--surface-3)">
       <span style="font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</span>
@@ -4050,7 +4078,7 @@ function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
   // brLeaderboardTable pour être régénéré en direct à la frappe (voir brRecalcLeaderboard) sans
   // dupliquer le rendu.
   const standings = f.standings as Detail[];
-  const leaderboard = `<div id="br-leaderboard" style="overflow-x:auto">${brLeaderboardTable(standings, games.length)}</div>`;
+  const leaderboard = `<div id="br-leaderboard" style="overflow-x:auto">${brLeaderboardTable(standings, standings[0]?.games.length ?? games.length, f.rank)}</div>`;
   return `${champ}${legend}
     <div class="grid2c" style="display:grid;grid-template-columns:400px 1fr;gap:20px;align-items:start">
       <div>
@@ -4066,30 +4094,31 @@ function battleRoyaleCenter(S: State, t: Detail, manage: boolean): string {
 /** Tableau de classement Battle Royale — factorisé pour être appelé à la fois par le rendu React
  * normal (battleRoyaleCenter) et par brRecalcLeaderboard (recalcul en direct à la frappe, sans
  * re-rendu React, voir le commentaire de cette dernière) : un seul endroit qui sait dessiner une ligne. */
-function brLeaderboardTable(standings: Detail[], gamesCount: number): string {
-  const gridCols = `34px 1fr 62px repeat(${gamesCount}, 60px) 74px 56px`;
+function brLeaderboardTable(standings: Detail[], gamesCount: number, rank = "points"): string {
+  const timed = rank !== "points";
+  const gridCols = timed ? `34px 1fr repeat(${gamesCount}, 78px) 96px` : `34px 1fr 62px repeat(${gamesCount}, 60px) 74px 56px`;
   const headRow = `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;padding:0 14px 10px;align-items:center">
     <div></div><div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">Joueur</div>
-    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">Élims</div>
+    ${timed ? "" : `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">Élims</div>`}
     ${Array.from({ length: gamesCount }, (_, i) => `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">M${i + 1}</div>`).join("")}
-    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">Total</div>
-    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">WWCD</div>
+    <div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">${timed ? (rank === "best" ? "Meilleur" : "Cumul") : "Total"}</div>
+    ${timed ? "" : `<div style="text-align:center;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);font-weight:800">WWCD</div>`}
   </div>`;
   const bodyRows = standings.map((r: Detail, i: number) => {
     const top = i < 3;
     const gameCells = (r.games as Detail[]).map((g: Detail) => g.played
-      ? `<div style="text-align:center;${g.preview ? "opacity:.6" : ""}"><div style="font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:700;color:${g.rank === 1 ? "#FBBF24" : g.rank <= 3 ? "#22D3EE" : "var(--text-muted)"}">#${g.rank}</div><div style="font-size:9px;color:var(--text-faint)">${g.pts}p</div></div>`
+      ? `<div style="text-align:center;${g.preview ? "opacity:.6" : ""}"><div style="font-family:'Bebas Neue',sans-serif;font-size:13px;font-weight:700;color:${g.rank === 1 ? "#FBBF24" : g.rank <= 3 ? "#22D3EE" : "var(--text-muted)"}">#${g.rank}</div><div style="font-size:9px;color:var(--text-faint)">${timed ? raceTime(g.time) : `${g.pts}p`}</div></div>`
       : `<div style="text-align:center;color:#33384a;font-size:12px">—</div>`).join("");
     return `<div style="display:grid;grid-template-columns:${gridCols};gap:6px;align-items:center;padding:9px 14px;border-top:1px solid var(--surface-3);${top ? "background:rgba(34,211,238,.05);border-radius:10px;" : ""}">
       <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:${i === 0 ? "#FBBF24" : top ? "#22D3EE" : "var(--text-faint)"}">${i + 1}</div>
       <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px;font-weight:600">${escHtml(r.name)}</div>
-      <div style="text-align:center;font-size:13px;font-weight:700;color:var(--text-muted)">${r.kills}</div>
+      ${timed ? "" : `<div style="text-align:center;font-size:13px;font-weight:700;color:var(--text-muted)">${r.kills}</div>`}
       ${gameCells}
-      <div style="text-align:center;font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:700;color:#22D3EE">${r.pts}</div>
-      <div style="text-align:center;font-weight:700;color:${r.wins > 0 ? "#FBBF24" : "#4b5563"}">${r.wins}</div>
+      <div style="text-align:center;font-family:'Bebas Neue',sans-serif;font-size:18px;font-weight:700;color:#22D3EE">${timed ? raceTime(rank === "best" ? r.best : r.total) : r.pts}</div>
+      ${timed ? "" : `<div style="text-align:center;font-weight:700;color:${r.wins > 0 ? "#FBBF24" : "#4b5563"}">${r.wins}</div>`}
     </div>`;
   }).join("");
-  return `<div style="min-width:${360 + gamesCount * 62}px">${headRow}${bodyRows}</div>`;
+  return `<div style="min-width:${360 + gamesCount * (timed ? 84 : 62)}px">${headRow}${bodyRows}</div>`;
 }
 
 /** Affiche imprimable (résultats) : classement général, qualifiés par poule, phase finale. Données réelles uniquement (mêmes champs que le cockpit). */
@@ -4107,7 +4136,7 @@ function buildPoster(t: Detail): string {
   const overall: Detail[] = (t.pools || []).length
     ? ([] as Detail[]).concat(...t.pools.map((p: Detail) => p.ranking || [])).sort((a: Detail, b: Detail) => b.pts - a.pts || b.wins - a.wins)
     : (t.standings || []);
-  const withPts = usesBareme(t.mainFormat) || t.mainFormat === "battle_royale";
+  const withPts = usesBareme(t.mainFormat) || (t.mainFormat === "battle_royale" && (!t.finals?.rank || t.finals.rank === "points"));
   let champHtml = "";
   if (t.status === "finished" && t.champion) {
     const top3 = overall.slice(0, 3);
@@ -4130,7 +4159,8 @@ function buildPoster(t: Detail): string {
     const f = t.finals;
     if (f.format === "single") {
       bracketHtml = unscroll(bracketTree(f.rounds, [], false))
-        + (f.thirdPlace ? `<div class="pa-h" style="font-size:13px;margin-top:14px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(f.thirdPlace, false)}</div>` : "");
+        + (f.thirdPlace ? `<div class="pa-h" style="font-size:13px;margin-top:14px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(f.thirdPlace, false)}</div>` : "")
+        + unscroll(placementBlock(t, false, "14px"));
     } else if (f.format === "double") {
       bracketHtml = unscroll(doubleElimTree(f, [], false));
     } else if (f.format === "roundrobin") {
@@ -4145,7 +4175,7 @@ function buildPoster(t: Detail): string {
       const lastRound = f.rounds[f.rounds.length - 1];
       bracketHtml = table + (lastRound ? `<div class="pa-h" style="font-size:13px;margin-top:10px">${escHtml(lastRound.label)}</div><div class="pa-poolsgrid">${lastRound.matches.map((m: Detail) => `<div style="max-width:220px">${matchBox(m, false)}</div>`).join("")}</div>` : "");
     } else if (f.format === "battle_royale") {
-      bracketHtml = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>Points</th></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td><b>${r.pts}</b></td></tr>`).join("")}</tbody></table>`;
+      bracketHtml = `<table class="pa-table"><thead><tr><th>#</th><th>Joueur</th><th>${f.rank && f.rank !== "points" ? "Temps" : "Points"}</th></tr></thead><tbody>${f.standings.map((r: Detail, i: number) => `<tr><td>${i + 1}</td><td>${escHtml(r.name)}</td><td><b>${f.rank && f.rank !== "points" ? raceTime(f.rank === "best" ? r.best : r.total) : r.pts}</b></td></tr>`).join("")}</tbody></table>`;
     }
   }
   const now = new Date().toLocaleString("fr-FR");
@@ -5028,7 +5058,7 @@ function regieTopBanner(S: State, t: Detail): string {
 /** Centre de régie pour Battle Royale — même contenu que la page publique (battleRoyaleCenter), avec les contrôles d'organisateur. */
 function battleRoyaleRegieCenter(S: State, t: Detail): string {
   return `<div style="display:flex;align-items:flex-end;gap:14px;padding:22px 28px 0">
-      <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">Battle Royale</div>
+      <div><div style="display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#22D3EE;background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.35);border-radius:99px;padding:4px 10px">${t.finals.rank && t.finals.rank !== "points" ? "Course" : t.finals.heats ? "Free For All" : "Battle Royale"}</div>
       <h2 style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1.2px;margin:9px 0 0;line-height:1">Résultats &amp; classement</h2></div>
     </div>
     <div style="padding:18px 28px 30px">${battleRoyaleCenter(S, t, true)}</div>`;
@@ -5090,7 +5120,7 @@ function regieCenter(S: State, t: Detail, manage: boolean, actives: ActiveMatch[
       </div>
       ${champ}
       ${doubleElimFinalStandings(t)}
-      <div style="padding:22px 28px 30px">${body}${extra}</div>`;
+      <div style="padding:22px 28px 30px">${body}${extra}${placementBlock(t, manage)}</div>`;
   }
 
   if (t.finals && (t.finals.format === "roundrobin" || t.finals.format === "swiss")) {
@@ -5751,7 +5781,8 @@ function pTournoi(S: State) {
     } else if (t.finals.format === "single") {
       const tp = t.finals.thirdPlace;
       body = bracketTree(t.finals.rounds, [], manage, PARENTS_ELIM, logByMatchId(t.log))
-        + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage, logByMatchId(t.log))}</div></div>` : "");
+        + (tp ? `<div style="margin-top:22px"><div style="font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Petite finale · 3e place</div><div style="max-width:280px">${matchBox(tp, manage, logByMatchId(t.log))}</div></div>` : "")
+        + placementBlock(t, manage);
     } else if (t.finals.format === "survival") {
       // "Grande poule" finale (voir Engine.startFinalsSurvivalPool) : t.pools[0] EST la phase
       // finale, réunit tous les qualifiés, rendue par le même composant que n'importe quelle poule.
@@ -6387,10 +6418,10 @@ function pushPoolSlides(slides: { caption: string; body: string }[], t: Detail) 
   }
 }
 /** Classement long : plusieurs diapositives de 8 lignes plutôt qu'un « top 8 » qui cacherait le reste. */
-function pushStandingSlides(slides: { caption: string; body: string }[], rows: Detail[], caption: string) {
+function pushStandingSlides(slides: { caption: string; body: string }[], rows: Detail[], caption: string, unit = "Pts") {
   const pages = chunk(rows, 8).slice(0, 4);
-  if (!pages.length) { slides.push({ caption, body: showStandingsTable([], "Pts") }); return; }
-  pages.forEach((part, i) => slides.push({ caption: pages.length > 1 ? `${caption} (${i * 8 + 1}-${i * 8 + part.length}/${rows.length})` : caption, body: showStandingsTable(part as { name: string; pts: number }[], "Pts", i * 8) }));
+  if (!pages.length) { slides.push({ caption, body: showStandingsTable([], unit) }); return; }
+  pages.forEach((part, i) => slides.push({ caption: pages.length > 1 ? `${caption} (${i * 8 + 1}-${i * 8 + part.length}/${rows.length})` : caption, body: showStandingsTable(part as { name: string; pts: number }[], unit, i * 8) }));
 }
 
 function pShowInner(S: State) {
@@ -6424,8 +6455,9 @@ function pShowInner(S: State) {
     phaseLabel = "Phase finale · Survival";
     pushPoolSlides(slides, t);
   } else if (t.finals.format === "battle_royale") {
-    phaseLabel = "Battle Royale";
-    pushStandingSlides(slides, t.finals.standings, "Classement cumulé");
+    const raced = !!t.finals.rank && t.finals.rank !== "points";
+    phaseLabel = raced ? "Course" : t.finals.heats ? "Free For All" : "Battle Royale";
+    pushStandingSlides(slides, raced ? t.finals.standings.map((r: Detail) => ({ ...r, pts: raceTime(t.finals.rank === "best" ? r.best : r.total) })) : t.finals.standings, raced ? (t.finals.rank === "best" ? "Meilleurs temps" : "Temps cumulés") : "Classement cumulé", raced ? "Temps" : "Pts");
     slides.push({ caption: "Parties", body: showBRSlide(t.finals) });
   } else if (t.finals.format === "roundrobin" || t.finals.format === "swiss") {
     phaseLabel = t.finals.format === "swiss" ? `Swiss · ronde ${t.finals.rounds.length}/${t.finals.roundCount}` : "Round Robin";
@@ -9533,9 +9565,9 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     if (!board || !f || f.format !== "battle_royale") return;
     const games: Detail[] = f.games;
     const active = games.find((g: Detail) => g.id === S.brActiveGame) || games.find((g: Detail) => !g.played) || games[games.length - 1];
-    if (!active || active.played) return; // partie déjà jouée (lecture seule) ou aucune partie : rien à projeter, le rendu React normal suffit.
-    const activeIdx = games.findIndex((g: Detail) => g.id === active.id);
-    const players: { id: string }[] = Array.isArray(t.players) ? t.players : [];
+    if (!active || active.played || (f.rank && f.rank !== "points")) return; // partie déjà jouée, course, (lecture seule) ou aucune partie : rien à projeter, le rendu React normal suffit.
+    const activeIdx = f.heats ? (active.round || 1) - 1 : games.findIndex((g: Detail) => g.id === active.id);
+    const players: { id: string }[] = active.players || (Array.isArray(t.players) ? t.players : []);
     const pointsTable: number[] = f.pointsTable, killPoints: number = f.killPoints || 0;
     const projPts = (placement: number, kills: number) => (pointsTable[placement - 1] ?? pointsTable[pointsTable.length - 1] ?? 0) + killPoints * kills;
     const draft = new Map(players.map((p) => {
@@ -9549,7 +9581,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const games2 = (r.games as Detail[]).map((g: Detail, i: number) => (i === activeIdx && d) ? { played: true, rank: d.placement, kills: d.kills, pts: gp, preview: true } : g);
       return { ...r, pts: r.pts + gp, kills: r.kills + (d ? d.kills : 0), wins: r.wins + (d && d.placement === 1 ? 1 : 0), games: games2 };
     }).sort((a: Detail, b: Detail) => b.pts - a.pts);
-    board.innerHTML = brLeaderboardTable(preview, games.length);
+    board.innerHTML = brLeaderboardTable(preview, preview[0]?.games.length ?? games.length);
   }
   /** Enregistre aussitôt un changement de configuration fait depuis la page du tournoi (format, poules, détails, barème). */
   async function cfgSave(patch: Detail, scoring?: [string, number][]) {
@@ -9577,6 +9609,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const nbEl = document.getElementById("cfg-pools") as HTMLSelectElement | null;
     const qEl = document.getElementById("cfg-qualify") as HTMLInputElement | null;
     const nbPools = Math.max(1, parseInt(nbEl?.value || "") || t.nbPools || 1);
+    const heatEl = document.getElementById("cfg-br-heat") as HTMLInputElement | null;
+    if (heatEl) return { nbPools, brHeatSize: Math.max(0, Math.min(64, parseInt(heatEl.value) || 0)), brRank: (document.getElementById("cfg-br-rank") as HTMLSelectElement | null)?.value || "points" };
     if (!qEl) return { nbPools };
     const maxQ = wizMaxQualify(0, nbPools, t.maxPlayers || 0);
     return { nbPools, qualifyPerPool: Math.max(1, Math.min(parseInt(qEl.value) || t.qualifyPerPool || 2, maxQ)) };
@@ -9896,7 +9930,22 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     else if (d.brsubmit) {
       // Placement + éliminations lus directement sur les inputs (non contrôlés, comme le score des
       // poules — voir battleRoyaleCenter) plutôt que depuis un état React tenu à jour à chaque frappe.
-      const players: { id: string }[] = Array.isArray(S.detail?.players) ? S.detail.players : [];
+      const brGame: Detail | undefined = (S.detail?.finals?.games as Detail[] | undefined)?.find((g) => g.id === d.brsubmit);
+      const players: { id: string }[] = brGame?.players || (Array.isArray(S.detail?.players) ? S.detail.players : []);
+      if (S.detail?.finals?.rank && S.detail.finals.rank !== "points") {
+        const times: Record<string, number> = {};
+        for (const p of players) {
+          const raw = ((document.getElementById(`br-tm-${p.id}`) as HTMLInputElement | null)?.value || "").trim();
+          if (!raw) continue;
+          const v = parseRaceTime(raw);
+          if (v === null) { alert(`Temps illisible : « ${raw} ». Écris-le en secondes (83.45) ou en m:ss.cc (1:23.45).`); return; }
+          times[p.id] = v;
+        }
+        if (!Object.keys(times).length) { alert("Saisis au moins un temps."); return; }
+        act(`${API}/api/tournaments/${S.openId}/battle-royale-report`, { gameId: d.brsubmit, ranking: [], times });
+        setS((s) => ({ ...s, brActiveGame: null }));
+        return;
+      }
       const ranked = players
         .map((p) => ({ id: p.id, placement: Math.max(1, parseInt((document.getElementById(`br-pl-${p.id}`) as HTMLInputElement | null)?.value || "") || 1) }))
         .sort((a, b) => a.placement - b.placement);
@@ -10162,6 +10211,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       if (el0("cfg-rankby")) patch.rankBy = el0("cfg-rankby")!.value;
       if (el0("cfg-legs")) patch.rrLegs = parseInt(el0("cfg-legs")!.value) || 1;
       if (el0("cfg-sets")) patch.setsMode = el0("cfg-sets")!.value;
+      if (el0("cfg-placement")) patch.placementMax = parseInt(el0("cfg-placement")!.value) || 3;
       void cfgSave(patch);
     }
     else if (d.cfgsave === "details") { cfgSaveDetails(); }

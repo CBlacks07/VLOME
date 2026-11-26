@@ -66,6 +66,9 @@ export class CreateTournamentDto {
   // élimination — réglables avant lancement, valeurs par défaut du moteur sinon (Engine.DEFAULT_BR_POINTS / 1).
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
   @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(64) brHeatSize?: number;
+  @IsOptional() @IsIn(['points', 'best', 'total']) brRank?: 'points' | 'best' | 'total';
+  @IsOptional() @IsIn([3, 8, 16]) placementMax?: number;
 }
 
 export class UpdateTournamentDto {
@@ -122,6 +125,9 @@ export class UpdateTournamentDto {
   // uniquement tant que le tournoi n'est pas lancé (TournamentsService.update).
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
   @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(64) brHeatSize?: number;
+  @IsOptional() @IsIn(['points', 'best', 'total']) brRank?: 'points' | 'best' | 'total';
+  @IsOptional() @IsIn([3, 8, 16]) placementMax?: number;
 }
 
 export class AddPlayerDto {
@@ -269,6 +275,8 @@ export class BattleRoyaleReportDto {
   // Nombre d'éliminations par joueur (clé = id joueur) — optionnel, validé plus finement côté moteur
   // (Engine.reportBattleRoyale ignore silencieusement une valeur non numérique ou ≤ 0).
   @IsOptional() @IsObject() kills?: Record<string, number>;
+  // Course : temps par joueur, en secondes.
+  @IsOptional() @IsObject() times?: Record<string, number>;
 }
 
 export class AnnouncementDto {

@@ -33,6 +33,15 @@ export interface Bracket {
      *  vraie demi-finale (4 participants ou plus dans l'arbre). null tant qu'elle n'est pas jouable,
      *  et pour les arbres trop petits pour en avoir une (2-3 participants). */
     thirdPlace: BracketMatch | null;
+    /** Matchs de classement : jusqu'à quelle place on départage les éliminés (8 ou 16) — absent : 3e place seulement. */
+    maxPlace?: number;
+    /** Place jouée par le vainqueur de cet arbre (1 pour l'arbre principal, 5, 9 ou 13 pour un arbre de classement). */
+    basePlace?: number;
+    /** Arbres de classement, créés quand un tour est entièrement joué : ses perdants s'y affrontent. */
+    subs?: {
+        round: number;
+        bracket: Bracket;
+    }[];
 }
 export type PoolPhase = 'pending' | 'survival' | 'losers' | 'poolFinal' | 'double' | 'single' | 'roundrobin' | 'done';
 /**
@@ -166,12 +175,21 @@ export interface BRGame {
     id: string;
     ranking: string[] | null;
     kills?: Record<string, number> | null;
+    /** Free For All par séries : les joueurs de CETTE série (absent : tout le monde joue la partie). */
+    playerIds?: string[];
+    round?: number;
+    heat?: number;
+    /** Course : temps de chaque joueur classé, en secondes. */
+    times?: Record<string, number> | null;
 }
+/** Classement d'un format à plusieurs : aux points de placement, au meilleur temps, ou au temps cumulé. */
+export type BrRank = 'points' | 'best' | 'total';
 export interface BattleRoyaleFinals {
     format: 'battle_royale';
     games: BRGame[];
     pointsTable: number[];
     killPoints: number;
+    rank?: BrRank;
 }
 /** Phase finale en mode Survival (poules en Round Robin uniquement — voir startFinalsSurvivalPool) :
  *  simple marqueur, les données réelles (joueurs, matchs, classement) vivent dans t.pools[0], une
@@ -234,6 +252,11 @@ export interface Tournament {
      *  parties déjà jouées). Absents sur d'anciennes données : traiter comme DEFAULT_BR_POINTS / 1. */
     brPointsTable?: number[];
     brKillPoints?: number;
+    /** Joueurs par série (Free For All) — absent ou 0 : tous dans la même partie. */
+    brHeatSize?: number;
+    brRank?: BrRank;
+    /** Matchs de classement en élimination simple, hors Survival : 3 (petite finale seule), 8 ou 16. */
+    placementMax?: number;
     /** Barème de championnat et de Swiss (hors Survival) — absent : 3 / 1 / 0, exempt = victoire. */
     league?: LeaguePoints;
     /** Critère principal du championnat — absent : les points. */
@@ -372,6 +395,11 @@ export declare const POOLED_FORMATS: TournamentFormat[];
  *  finale en ont une dès que l'organisateur demande plus d'une poule. */
 export declare function usesPools(t: Tournament): boolean;
 export declare function launchTournament(t: Tournament): void;
+/** Parties d'un format à plusieurs. En séries, chaque manche répartit tout le monde, en décalant d'une manche à
+ *  l'autre pour qu'on ne retombe pas toujours contre les mêmes. */
+export declare function buildBrGames(ids: string[], rounds: number, heatSize?: number): BRGame[];
+/** Toutes les rencontres d'un arbre : tours, petite finale et arbres de classement. */
+export declare function bracketMatches(b: Bracket): BracketMatch[];
 /** @param compact Si vrai, personne n'est exempt au 1er tour tant que l'effectif de CE tour est pair
  *  — appariement séquentiel (1v2, 3v4…), un seul exempt tournant au tour suivant dès qu'un effectif
  *  intermédiaire devient impair (jamais au 1er tour si l'effectif de départ est pair). Sinon (défaut),
@@ -471,9 +499,20 @@ export declare function reportSwiss(t: Tournament, matchId: string, winnerId: st
  * optionnellement le nombre d'éliminations par joueur (kills[id]) ; chaque joueur marque les points
  * de son palier de classement (f.pointsTable) PLUS f.killPoints par élimination. Enchaîne ou couronne
  * le champion après la dernière partie. */
-export declare function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[], kills?: Record<string, number>): {
+export declare function reportBattleRoyale(t: Tournament, gameId: string, ranking: string[], kills?: Record<string, number>, times?: Record<string, number>): {
     ok: boolean;
 };
+export interface BrRow {
+    id: string;
+    pts: number;
+    firsts: number;
+    played: number;
+    best: number | null;
+    total: number | null;
+}
+/** Classement d'un format à plusieurs : aux points (puis nombre de 1res places), au meilleur temps, ou au temps cumulé
+ *  (celui qui a terminé le plus de manches passe devant). */
+export declare function brStandings(t: Tournament): BrRow[];
 /**
  * Disqualifie un joueur en cours de tournoi : forfait immédiat sur son match en
  * cours (s'il y en a un, poule ou finale — l'adversaire est déclaré vainqueur via

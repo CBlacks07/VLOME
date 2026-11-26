@@ -4265,7 +4265,7 @@ function poolCard(S: State, p: Detail, manage: boolean, poolFormat: "survival" |
 }
 function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "survival" | "double" | "single" | "roundrobin" = "survival", countGoalDiff = true, log: Detail[] = [], wide = false): string {
   let body: string;
-  let extra = ""; // arbre du mini-bracket + historique : à droite en mise en page large
+  let extra = ""; // arbre du mini-bracket
   if (poolFormat === "roundrobin") {
     // Calendrier par journées plutôt qu'un seul "match en cours" mis en avant : les journées déjà
     // jouées et à venir restent visibles, comme un vrai calendrier de championnat. Seul le prochain
@@ -4300,22 +4300,13 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
       const clip = "max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       return `<div style="flex:1 1 0;min-width:0;min-height:120px;container-type:inline-size;border-radius:15px;border:1px solid ${cls === "surv" ? "rgba(34,211,238,.4)" : "rgba(244,63,126,.35)"};background:linear-gradient(180deg,${cls === "surv" ? "rgba(34,211,238,.08)" : "rgba(244,63,126,.05)"},var(--surface));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px 8px"><span title="${escAttr(sub)}" style="${clip};font-size:10px;font-size:clamp(7px,7.4cqw,10.5px);font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:${col}">${escHtml(sub)}</span><span title="${escAttr(name)}" style="${clip};font-family:'Bebas Neue',sans-serif;font-size:30px;font-size:clamp(20px,20cqw,30px);line-height:1.2;color:${col}">${escHtml(name)}</span></div>`;
     };
+    // L'organisateur saisit les scores dans la colonne de contrôle de la régie : la poule ne les répète pas ici et laisse
+    // la place à l'arbre. Les spectateurs, eux, gardent l'affiche du match en direct.
     if (manage) {
-      const inp = "width:64px;height:44px;text-align:center;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;line-height:44px;padding:0";
-      // 30px/8px (et non 44/12) : plus de place pour le texte des deux cadres sur une carte étroite ;
-      // la ligne des champs de score garde les mêmes valeurs pour rester alignée sous les cadres.
-      const divider = "display:flex;align-items:center;justify-content:center;width:30px;flex:none;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:22px";
-      body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:10px">${stageTitle} — saisis le score (FT)</div>
-        <div style="display:flex;align-items:stretch;gap:8px">${vsSide(p.current.aName, "surv", subA)}<div style="${divider}">VS</div>${vsSide(p.current.bName, "chal", subB)}</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:14px">
-          <div style="flex:1;display:flex;justify-content:center"><input id="sc-a-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /></div>
-          <div style="${divider}">–</div>
-          <div style="flex:1;display:flex;justify-content:center"><input id="sc-b-${p.current.poolId}" type="number" min="0" value="0" class="scorenum" style="${inp}" /></div>
-        </div>
-        <div style="display:flex;justify-content:center;margin-top:10px"><button data-reportscore="${p.current.poolId}" ${S.detailBusy ? "disabled" : ""} style="height:44px;background:var(--surface-4);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:0 20px;font-weight:750;font-size:13px;cursor:pointer">Valider le score</button></div>`;
+      body = "";
     } else {
-      body = `<div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:10px">${stageTitle} — en direct</div>
-        <div style="display:flex;align-items:stretch;gap:8px">${vsSide(p.current.aName, "surv", subA)}<div style="display:flex;align-items:center;justify-content:center;width:30px;flex:none;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div>${vsSide(p.current.bName, "chal", subB)}</div>`;
+      body = `<div style="max-width:640px;margin:0 auto"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:700;margin-bottom:10px">${stageTitle} — en direct</div>
+        <div style="display:flex;align-items:stretch;gap:8px">${vsSide(p.current.aName, "surv", subA)}<div style="display:flex;align-items:center;justify-content:center;width:30px;flex:none;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:22px">VS</div>${vsSide(p.current.bName, "chal", subB)}</div></div>`;
     }
   } else if (p.done) {
     body = `<div style="text-align:center;padding:14px 0"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#34D399;font-weight:700;margin-bottom:12px">Poule terminée — qualifiés</div><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">${(Array.isArray(p.qualified) && p.qualified.length ? p.qualified.map((q: Detail) => q.name) : [p.top1, p.top2].filter(Boolean)).map((name: string, i: number) => {
@@ -4333,7 +4324,7 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
   // phase finale, le DTO de p.dbracket ayant exactement la même forme (wb/lb/gf/gf2).
   if (poolFormat === "double" && p.dbracket) {
     // Toujours en lecture seule ici (manage=false) : le moteur ne rapporte les poules que via le
-    // "match du moment" (Engine.currentMatch, carte VS ci-dessus, data-reportscore) — un clic sur une
+    // "match du moment" (Engine.currentMatch, colonne de contrôle de la régie) — un clic sur une
     // case de cet arbre n'a pas d'équivalent dans le moteur pour les poules, contrairement à la phase
     // finale (t.finals, data-activematch). La correction d'un match déjà joué passe par l'historique
     // ci-dessous (poolHistoryList), pas par un crayon sur cet arbre.
@@ -4341,13 +4332,13 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
   }
   // Mini-bracket à élimination directe de la poule (poolFormat 'single') : même arbre que le Bracket simple de phase
   // finale (bracketTree), le DTO de p.sbracket ayant la même forme (rounds). Lecture seule, comme celui du mode double :
-  // le score se saisit via la carte « match en cours » ci-dessus.
+  // le score se saisit dans la colonne de contrôle de la régie.
   if (poolFormat === "single" && p.sbracket) {
     extra += `<div style="margin-top:16px"><div style="font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-muted);font-weight:750;margin-bottom:10px">Bracket de la poule</div>${bracketTree(p.sbracket.rounds, [], false, PARENTS_ELIM, {})}</div>`;
   }
   // Historique (crayon) : seuls "survival" et "double" en ont besoin ici — Round Robin l'a déjà
   // ajouté à son calendrier plus haut, l'appeler une seconde fois ferait doublon.
-  if (poolFormat !== "roundrobin") extra += poolHistoryList(log, p.id, manage);
+  const history = poolFormat !== "roundrobin" ? poolHistoryList(log, p.id, manage) : "";
   // J (joués) / G (gagnés) / P (perdus) : vrai tableau de championnat, comme au football — seul le
   // mode Round Robin produit un classement complet (voir TournamentsService.poolRanking). Diff.
   // (différence de buts/manches) reste conditionnée au réglage "Départager par différence de buts".
@@ -4358,15 +4349,17 @@ function poolCardBase(S: State, p: Detail, manage: boolean, poolFormat: "surviva
     <tbody>${p.ranking.map((r: Detail, i: number) => `<tr style="border-top:1px solid var(--surface-4)"><td style="padding:7px 4px;color:var(--text-faint);font-family:'Bebas Neue',sans-serif;font-size:15px;width:22px">${i + 1}</td><td style="padding:7px 4px;font-weight:600">${escHtml(r.name)}</td>${isRR ? `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.played}</td><td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.wins}</td><td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.losses}</td>` : `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.wins}</td>`}${hasGd ? `<td style="padding:7px 4px;text-align:right;color:var(--text-muted)">${r.gd > 0 ? "+" : ""}${r.gd}</td>` : ""}<td style="padding:7px 4px;text-align:right;font-weight:750;color:#22D3EE">${r.pts}</td></tr>`).join("")}</tbody>
   </table>`;
   const title = `<div style="font-family:'Bebas Neue',sans-serif;font-size:${wide ? 28 : 20}px;letter-spacing:1px;margin-bottom:${wide ? 16 : 12}px">${p.name}</div>`;
-  if (wide) {
-    // Pleine largeur : saisie du match + classement à gauche, arbre du mini-bracket + historique à droite (Round Robin :
-    // classement à gauche, calendrier complet à droite). Repasse sur une seule colonne sur petit écran (.pool-wide).
-    const left = poolFormat === "roundrobin" ? rank : body + rank;
-    const right = poolFormat === "roundrobin" ? body : extra;
-    return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:22px">${title}
-      <div class="pool-wide" style="display:grid;grid-template-columns:minmax(300px,${poolFormat === "roundrobin" ? 380 : 440}px) minmax(0,1fr);gap:28px;align-items:start"><div style="min-width:0">${left}</div><div style="min-width:0;overflow-x:auto">${right}</div></div></div>`;
+  const frame = (pad: number, inner: string) => `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:${pad}px">${title}${inner}</div>`;
+  if (wide && poolFormat === "roundrobin") {
+    // Round Robin : classement à gauche, calendrier complet à droite. Une seule colonne sur petit écran (.pool-wide).
+    return frame(22, `<div class="pool-wide" style="display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:28px;align-items:start"><div style="min-width:0">${rank}</div><div style="min-width:0;overflow-x:auto">${body}</div></div>`);
   }
-  return `<div style="border:1px solid var(--border);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));padding:18px">${title}${body}${extra}${rank}</div>`;
+  if (wide) {
+    // L'arbre prend toute la largeur de la carte (il défile s'il est plus large) ; le classement et l'historique viennent dessous.
+    const tree = extra ? `<div style="overflow-x:auto;padding-bottom:6px">${extra}</div>` : "";
+    return frame(22, `<div style="display:flex;flex-direction:column;gap:24px;min-width:0">${body}${tree}<div style="min-width:0">${rank}</div>${history}</div>`);
+  }
+  return frame(18, `${body}${extra}${history}${rank}`);
 }
 
 /** Une poule par page, en pleine largeur, avec flèches précédent/suivant et pastilles A, B, C… pour sauter directement

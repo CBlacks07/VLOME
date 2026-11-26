@@ -192,6 +192,9 @@ export interface BattleRoyaleFinals {
     pointsTable: number[];
     killPoints: number;
     rank?: BrRank;
+    /** Élimination par tours : les `advance` premiers de chaque série passent au tour suivant, jusqu'à une série finale. */
+    advance?: number;
+    heatSize?: number;
 }
 /** Phase finale en mode Survival (poules en Round Robin uniquement — voir startFinalsSurvivalPool) :
  *  simple marqueur, les données réelles (joueurs, matchs, classement) vivent dans t.pools[0], une
@@ -257,6 +260,10 @@ export interface Tournament {
     /** Joueurs par série (Free For All) — absent ou 0 : tous dans la même partie. */
     brHeatSize?: number;
     brRank?: BrRank;
+    /** Free For All à élimination : qualifiés par série (0 ou absent : tout le monde rejoue, les résultats se cumulent). */
+    brAdvance?: number;
+    /** Phases de poules précédentes, quand l'organisateur en enchaîne plusieurs (la phase en cours reste dans `pools`). */
+    stages?: Pool[][];
     /** Matchs de classement en élimination simple, hors Survival : 3 (petite finale seule), 8 ou 16. */
     placementMax?: number;
     /** Barème de championnat et de Swiss (hors Survival) — absent : 3 / 1 / 0, exempt = victoire. */
@@ -369,6 +376,8 @@ export declare function moveInOrder(pool: Pool, index: number, dir: number): boo
  * dans t.pools) ou +1 (poule suivante). Ajouté en fin d'ordre de la poule cible. Refuse de vider une
  * poule (au moins 1 joueur doit y rester) et refuse hors du statut 'setup'. */
 export declare function movePlayerToPool(t: Tournament, playerId: string, poolId: string, dir: number): boolean;
+/** Nouvelle phase de poules avec les qualifiés de la précédente (hors Survival, avant la phase finale). */
+export declare function nextPoolStage(t: Tournament, nbPools: number): boolean;
 export declare function launch(t: Tournament): void;
 export interface LeagueRow {
     id: string;
@@ -514,6 +523,8 @@ export interface BrRow {
     played: number;
     best: number | null;
     total: number | null;
+    round?: number;
+    rank?: number;
 }
 /** Classement d'un format à plusieurs : aux points (puis nombre de 1res places), au meilleur temps, ou au temps cumulé
  *  (celui qui a terminé le plus de manches passe devant). */

@@ -244,6 +244,16 @@ export class TournamentsService {
     return this.getState(id);
   }
 
+  async nextPoolStage(id: string, nbPools: number, user: JwtUser) {
+    const l = await this.loadEngine(id);
+    if (!l) throw new NotFoundException('Tournoi introuvable');
+    this.assertCanManage(l.record, user);
+    if (!Engine.nextPoolStage(l.t, nbPools)) throw new ConflictException('Nouvelle phase impossible : toutes les poules doivent être terminées et chaque nouvelle poule compter au moins deux qualifiés.');
+    await this.persist(id, l.t);
+    await this.logActivity(id, user, `Nouvelle phase de poules (${nbPools} poule${nbPools > 1 ? 's' : ''})`);
+    return this.getState(id);
+  }
+
   async preview(id: string, user: JwtUser) {
     const l = await this.loadEngine(id);
     if (!l) throw new NotFoundException('Tournoi introuvable');
@@ -344,7 +354,7 @@ export class TournamentsService {
       countGoalDiff: dto.countGoalDiff, tiebreakers: dto.tiebreakers,
       league: this.leagueFrom(dto), rankBy: dto.rankBy, rrLegs: dto.rrLegs, setsMode: dto.setsMode,
       brPointsTable: dto.brPointsTable, brKillPoints: dto.brKillPoints,
-      brHeatSize: dto.brHeatSize, brRank: dto.brRank, placementMax: dto.placementMax,
+      brHeatSize: dto.brHeatSize, brRank: dto.brRank, brAdvance: dto.brAdvance, placementMax: dto.placementMax,
       ...(hasScoring ? {
         scoring: {
           survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -429,7 +439,7 @@ export class TournamentsService {
         countGoalDiff: dto.countGoalDiff ?? prev?.countGoalDiff, tiebreakers: dto.tiebreakers ?? prev?.tiebreakers,
         league: this.leagueFrom(dto, prev?.league), rankBy: dto.rankBy ?? prev?.rankBy, rrLegs: dto.rrLegs ?? prev?.rrLegs, setsMode: dto.setsMode ?? prev?.setsMode,
         brPointsTable: dto.brPointsTable ?? prev?.brPointsTable, brKillPoints: dto.brKillPoints ?? prev?.brKillPoints,
-        brHeatSize: dto.brHeatSize ?? prev?.brHeatSize, brRank: dto.brRank ?? prev?.brRank, placementMax: dto.placementMax ?? prev?.placementMax,
+        brHeatSize: dto.brHeatSize ?? prev?.brHeatSize, brRank: dto.brRank ?? prev?.brRank, brAdvance: dto.brAdvance ?? prev?.brAdvance, placementMax: dto.placementMax ?? prev?.placementMax,
         ...(hasScoring ? {
           scoring: {
             survWin: dto.survWin ?? 1, loserWin: dto.loserWin ?? 0.5, poolFinalWin: dto.poolFinalWin ?? 1.5,
@@ -450,7 +460,7 @@ export class TournamentsService {
     // Poules/points par joueur : pilotent directement le moteur (cagnotte, répartition
     // des poules) — modifiables uniquement tant que le tournoi n'est pas lancé, sinon
     // on romprait des poules déjà constituées ou une cagnotte déjà partiellement distribuée.
-    const rulesChanged = [dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye, dto.rankBy, dto.rrLegs, dto.setsMode, dto.brHeatSize, dto.brRank, dto.placementMax].some((v) => v !== undefined);
+    const rulesChanged = [dto.leagueWin, dto.leagueDraw, dto.leagueLoss, dto.leagueBye, dto.rankBy, dto.rrLegs, dto.setsMode, dto.brHeatSize, dto.brRank, dto.brAdvance, dto.placementMax].some((v) => v !== undefined);
     if (rulesChanged || dto.nbPools !== undefined || dto.pointsPerPlayer !== undefined || dto.finalsFormat !== undefined || dto.poolFormat !== undefined || dto.streakLength !== undefined || dto.qualifyPerPool !== undefined || dto.matchMode !== undefined || dto.countGoalDiff !== undefined || dto.tiebreakers !== undefined || dto.brPointsTable !== undefined || dto.brKillPoints !== undefined) {
       if (r.status !== 'DRAFT') throw new ConflictException('Les poules, les points par joueur et les modes de poule/phase finale/striker ne sont modifiables qu\'avant le lancement du tournoi.');
       if (dto.nbPools !== undefined) data.nbPools = dto.nbPools;
@@ -474,6 +484,7 @@ export class TournamentsService {
       if (dto.brKillPoints !== undefined) t.brKillPoints = dto.brKillPoints;
       if (dto.brHeatSize !== undefined) t.brHeatSize = dto.brHeatSize;
       if (dto.brRank !== undefined) t.brRank = dto.brRank;
+      if (dto.brAdvance !== undefined) t.brAdvance = dto.brAdvance;
       if (dto.placementMax !== undefined) t.placementMax = dto.placementMax;
       // Changer les poules/le mode change le nombre de matchs programmés : réajuste le barème si besoin.
       if (t.format === 'survival' && t.players.length > 0 && !Engine.cagnotte(t).valid) Engine.autoFitScoring(t);
@@ -1870,9 +1881,10 @@ export class TournamentsService {
         }),
       }));
       return {
-        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable, killPoints, rank: f.rank || 'points', heats,
+        format: 'battle_royale' as const, champion, pointsTable: f.pointsTable, killPoints, rank: f.rank || 'points', heats, advance: f.advance || 0,
         games: f.games.map((g, i) => ({
-          id: g.id, label: heats ? `Manche ${g.round} · Série ${g.heat}` : 'Partie ' + (i + 1), played: !!g.ranking, round: g.round ?? i + 1,
+          id: g.id, played: !!g.ranking, round: g.round ?? i + 1,
+          label: f.advance ? (f.games.filter((x) => x.round === g.round).length === 1 ? 'Finale' : `Tour ${g.round} · Série ${g.heat}`) : heats ? `Manche ${g.round} · Série ${g.heat}` : 'Partie ' + (i + 1),
           players: g.playerIds ? g.playerIds.map((pid) => ({ id: pid, name: Engine.playerName(t, pid) })) : null,
           ranking: g.ranking ? g.ranking.map((pid, rk) => ({ id: pid, name: Engine.playerName(t, pid), rank: rk + 1, kills: g.kills?.[pid] || 0, pts: timed ? 0 : gamePts(rk, g.kills?.[pid] || 0), time: g.times?.[pid] ?? null })) : null,
         })),
@@ -1988,6 +2000,12 @@ export class TournamentsService {
       brKillPoints: t.brKillPoints,
       brHeatSize: t.brHeatSize || 0,
       brRank: t.brRank || 'points',
+      brAdvance: t.brAdvance || 0,
+      qualifiedCount: t.pools.length && !t.finals && Engine.allPoolsDone(t) ? Engine.qualifiers(t).length : 0,
+      previousStages: (t.stages || []).map((stage, i) => ({
+        label: `Phase de poules ${i + 1}`,
+        pools: stage.map((p) => ({ name: p.name, ranking: this.poolRanking(t, p).map((r) => ({ ...r })), qualified: Engine.poolQualified(t, p).map((pid) => Engine.playerName(t, pid)) })),
+      })),
       placementMax: t.placementMax || 3,
       streakLength: t.streakLength,
       canUndo: !!(t._undo && t._undo.length),

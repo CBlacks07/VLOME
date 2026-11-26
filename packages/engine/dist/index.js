@@ -42,6 +42,7 @@ exports.distributePools = distributePools;
 exports.shuffleOrder = shuffleOrder;
 exports.moveInOrder = moveInOrder;
 exports.movePlayerToPool = movePlayerToPool;
+exports.nextPoolStage = nextPoolStage;
 exports.launch = launch;
 exports.poolRRRanking = poolRRRanking;
 exports.finalizePool = finalizePool;
@@ -195,6 +196,7 @@ function newTournament(cfg = {}) {
         brKillPoints: cfg.brKillPoints ?? 1,
         brHeatSize: cfg.brHeatSize,
         brRank: cfg.brRank,
+        brAdvance: cfg.brAdvance,
         placementMax: cfg.placementMax,
         ...(cfg.league ? { league: normalizeLeaguePoints(cfg.league) } : {}),
         ...(cfg.rankBy && exports.RANK_BY.includes(cfg.rankBy) ? { rankBy: cfg.rankBy } : {}),
@@ -393,6 +395,7 @@ function correctResult(t, logEntryId, newWinnerId, newSa = 0, newSb = 0) {
 function resetTournament(t) {
     snapshot(t);
     t.pools = [];
+    delete t.stages;
     t.finals = null;
     t.champion = null;
     t.log = [];
@@ -514,6 +517,30 @@ function movePlayerToPool(t, playerId, poolId, dir) {
     from.order = from.order.filter(id => id !== playerId);
     to.playerIds.push(playerId);
     to.order.push(playerId);
+    return true;
+}
+/** Nouvelle phase de poules avec les qualifiés de la précédente (hors Survival, avant la phase finale). */
+function nextPoolStage(t, nbPools) {
+    if (t.format === 'survival' || t.status !== 'live' || t.finals || !allPoolsDone(t))
+        return false;
+    const ids = qualifiers(t);
+    const nb = Math.floor(nbPools);
+    if (nb < 1 || ids.length < nb * 2)
+        return false;
+    snapshot(t);
+    const stage = (t.stages || []).length + 2;
+    (t.stages || (t.stages = [])).push(t.pools);
+    const pools = Array.from({ length: nb }, (_, i) => ({
+        id: uid(), name: `Phase ${stage} · Poule ${POOL_NAMES[i]}`, playerIds: [], order: [], phase: 'pending',
+        wSurvivor: null, wIndex: 0, wLosers: [], wChampion: null, wStreak: 0, wBestStreak: {},
+        lBracket: null, lChampion: null, top1: null, top2: null, dbracket: null, sbracket: null, streaks: {}, streakAwarded: {},
+        rrmatches: null, qualified: [],
+    }));
+    // Serpentin : les mieux classés sont répartis dans des poules différentes.
+    ids.forEach((id, i) => { const row = Math.floor(i / nb), col = i % nb; pools[row % 2 ? nb - 1 - col : col].playerIds.push(id); });
+    pools.forEach(p => { p.order = p.playerIds.slice(); });
+    t.pools = pools;
+    launch(t);
     return true;
 }
 function launch(t) {
@@ -751,9 +778,12 @@ function launchTournament(t) {
     }
     else if (t.format === 'battle_royale') {
         const nGames = Math.max(1, t.nbPools || 3); // réutilise nbPools comme "nombre de parties" pour ce format (pas de poules ici)
+        const heatSize = t.brHeatSize && t.brHeatSize >= 2 ? Math.floor(t.brHeatSize) : 0;
+        const advance = t.brAdvance && heatSize ? Math.max(1, Math.min(Math.floor(t.brAdvance), heatSize - 1)) : 0;
         t.finals = {
             format: 'battle_royale',
-            games: buildBrGames(ids, nGames, t.brHeatSize),
+            games: advance ? knockoutRound(ids, 1, heatSize) : buildBrGames(ids, nGames, t.brHeatSize),
+            ...(advance ? { advance, heatSize } : {}),
             ...(t.brRank && t.brRank !== 'points' ? { rank: t.brRank } : {}),
             pointsTable: t.brPointsTable && t.brPointsTable.length ? t.brPointsTable : exports.DEFAULT_BR_POINTS,
             killPoints: t.brKillPoints ?? 1,
@@ -789,6 +819,35 @@ function buildBrGames(ids, rounds, heatSize) {
         heats.forEach((playerIds, h) => games.push({ id: uid(), ranking: null, kills: null, playerIds, round: r + 1, heat: h + 1 }));
     }
     return games;
+}
+/** Un tour d'élimination : les joueurs répartis en séries de `size` au plus (une seule série = la finale). */
+function knockoutRound(ids, round, size) {
+    const count = Math.max(1, Math.ceil(ids.length / size));
+    const heats = Array.from({ length: count }, () => []);
+    ids.forEach((id, i) => heats[i % count].push(id));
+    return heats.map((playerIds, h) => ({ id: uid(), ranking: null, kills: null, playerIds, round, heat: h + 1 }));
+}
+/** Tour terminé : la série unique couronne son premier ; sinon les premiers de chaque série jouent le tour suivant. */
+function advanceKnockout(t, f) {
+    const round = f.games[f.games.length - 1].round;
+    const current = f.games.filter(g => g.round === round);
+    if (!current.every(g => g.ranking))
+        return;
+    if (current.length === 1) {
+        finishFinals(t, current[0].ranking[0] ?? null);
+        return;
+    }
+    // Au moins un éliminé par série, sinon un petit effectif ne se réduirait jamais.
+    const lists = current.map(g => g.ranking.filter(id => !t.disqualified.includes(id)).slice(0, Math.max(1, Math.min(f.advance, (g.playerIds?.length ?? 2) - 1))));
+    const next = [];
+    for (let rank = 0; rank < f.advance; rank++)
+        lists.forEach(l => { if (l[rank])
+            next.push(l[rank]); });
+    if (next.length < 2) {
+        finishFinals(t, next[0] ?? current[0].ranking[0] ?? null);
+        return;
+    }
+    f.games.push(...knockoutRound(next, round + 1, f.heatSize));
 }
 /** Active les matchs de classement demandés (hors Survival, dont la cagnotte ne les prévoit pas). */
 function withPlacements(t, bracket) {
@@ -1945,7 +2004,9 @@ function reportBattleRoyale(t, gameId, ranking, kills, times) {
             t.log.push({ id: uid(), poolId: 'finals', stage: 'finals', a: pid, b: null, winner: pid, pts, ts: Date.now() });
         }
     });
-    if (f.games.every(g => g.ranking))
+    if (f.advance)
+        advanceKnockout(t, f);
+    else if (f.games.every(g => g.ranking))
         finishFinals(t, brStandings(t)[0]?.id ?? null);
     return { ok: true };
 }
@@ -1971,7 +2032,18 @@ function brStandings(t) {
         }
         return { id: p.id, pts: t.points[p.id] || 0, firsts, played, best, total: played ? Math.round(total * 1000) / 1000 : null };
     });
-    if (f.rank === 'best')
+    if (f.advance) {
+        // Élimination : le tour atteint d'abord, puis la place dans la série de ce tour.
+        for (const row of rows) {
+            const mine = f.games.filter(g => g.playerIds?.includes(row.id));
+            const last = mine[mine.length - 1];
+            row.round = last?.round ?? 0;
+            const at = last?.ranking ? last.ranking.indexOf(row.id) : -1;
+            row.rank = !last?.ranking ? 0 : at < 0 ? 999 : at + 1;
+        }
+        rows.sort((a, b) => b.round - a.round || a.rank - b.rank || b.pts - a.pts);
+    }
+    else if (f.rank === 'best')
         rows.sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity));
     else if (f.rank === 'total')
         rows.sort((a, b) => b.played - a.played || (a.total ?? Infinity) - (b.total ?? Infinity));
@@ -2203,7 +2275,7 @@ function overallRanking(t) {
     const place = new Map();
     if (t.format && t.format !== 'survival' && t.status === 'finished')
         finalPlacements(t).forEach((g, i) => g.forEach(id => place.set(id, i)));
-    else if (t.finals?.format === 'battle_royale' && t.finals.rank && t.finals.rank !== 'points')
+    else if (t.finals?.format === 'battle_royale' && (t.finals.advance || (t.finals.rank && t.finals.rank !== 'points')))
         brStandings(t).forEach((r, i) => place.set(r.id, i));
     return t.players.slice()
         .sort((x, y) => (place.get(x.id) ?? 1e9) - (place.get(y.id) ?? 1e9) || (t.points[y.id] || 0) - (t.points[x.id] || 0) || (wins[y.id] || 0) - (wins[x.id] || 0))
@@ -2228,6 +2300,12 @@ function finalPlacements(t) {
         rrRanking(t).forEach(r => add([r.id]));
     else if (f?.format === 'swiss')
         swissStandings(t).forEach(r => add([r.id]));
+    else if (f?.format === 'battle_royale' && f.advance) {
+        // Éliminés au même tour à la même place de série : ex æquo.
+        const groupsByKey = new Map();
+        brStandings(t).forEach(r => { const key = `${r.round}-${r.rank}`; groupsByKey.set(key, (groupsByKey.get(key) || []).concat(r.id)); });
+        groupsByKey.forEach(ids => add(ids));
+    }
     else if (f?.format === 'battle_royale' && f.rank && f.rank !== 'points')
         brStandings(t).forEach(r => add([r.id]));
     else if (f?.format === 'battle_royale') {
@@ -2258,8 +2336,11 @@ function finalPlacements(t) {
         for (let r = f.lb.length - 1; r >= 0; r--)
             add(f.lb[r].map(loserOf));
     }
-    if (t.pools.length) {
-        const orders = t.pools.map(p => (p.finalOrder ?? (p.phase === 'roundrobin' || p.rrmatches?.length ? poolRRRanking(t, p).map(r => r.id) : poolFinishOrder(t, p))));
+    // La phase de poules en cours, puis les précédentes (de la plus récente à la première).
+    for (const pools of [t.pools, ...(t.stages || []).slice().reverse()]) {
+        if (!pools.length)
+            continue;
+        const orders = pools.map(p => (p.finalOrder ?? (p.phase === 'roundrobin' || p.rrmatches?.length ? poolRRRanking(t, p).map(r => r.id) : poolFinishOrder(t, p))));
         const depth = orders.reduce((m, o) => Math.max(m, o.length), 0);
         for (let rank = 0; rank < depth; rank++)
             add(orders.map(o => o[rank]));

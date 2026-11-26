@@ -643,3 +643,44 @@ test('la petite finale se joue avant la clôture, même après la finale', () =>
   assert.equal(t.status, 'finished');
   assert.equal(E.finalPlacements(t)[2].length, 1);
 });
+
+test('free for all à élimination : les premiers de chaque série avancent jusqu\'à la finale', () => {
+  for (const [n, size, advance] of [[16, 4, 2], [10, 4, 2], [5, 4, 3], [27, 3, 1], [4, 4, 2]]) {
+    const t = E.newTournament({ format: 'battle_royale', nbPools: 3, brHeatSize: size, brAdvance: advance });
+    for (let i = 0; i < n; i++) E.addPlayer(t, 'P' + i);
+    E.launchTournament(t);
+    let guard = 0;
+    while (t.status !== 'finished' && guard++ < 200) {
+      const g = t.finals.games.find((x) => !x.ranking);
+      assert.ok(g, `plus de partie (${n}/${size}/${advance})`);
+      assert.ok(g.playerIds.length <= size);
+      assert.ok(E.reportBattleRoyale(t, g.id, g.playerIds).ok);
+    }
+    assert.equal(t.status, 'finished', `${n}/${size}/${advance}`);
+    const final = t.finals.games[t.finals.games.length - 1];
+    assert.equal(t.champion, final.ranking[0]);
+    const places = E.finalPlacements(t);
+    assert.equal(places.flat().length, n);
+    assert.deepEqual(places[0], [t.champion]);
+  }
+});
+
+test('phases de poules enchaînées puis phase finale', () => {
+  const t = E.newTournament({ format: 'roundrobin', nbPools: 4, qualifyPerPool: 2, finalsFormat: 'single' });
+  for (let i = 0; i < 16; i++) E.addPlayer(t, 'P' + i);
+  E.launchTournament(t);
+  assert.ok(!E.nextPoolStage(t, 2), 'poules encore ouvertes');
+  playPools(t);
+  assert.ok(!E.nextPoolStage(t, 5), 'pas assez de qualifiés');
+  assert.ok(E.nextPoolStage(t, 2));
+  assert.equal(t.stages.length, 1);
+  assert.equal(t.pools.length, 2);
+  assert.equal(t.pools[0].playerIds.length, 4);
+  playPools(t);
+  E.startFinals(t);
+  playAll(t, (m) => m.a);
+  assert.equal(t.status, 'finished');
+  assert.equal(E.finalPlacements(t).flat().length, 16);
+  E.resetTournament(t);
+  assert.equal(t.stages, undefined);
+});

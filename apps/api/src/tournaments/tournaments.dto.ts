@@ -67,6 +67,7 @@ export class CreateTournamentDto {
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
   @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
   @IsOptional() @IsInt() @Min(0) @Max(64) brHeatSize?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(32) brAdvance?: number;
   @IsOptional() @IsIn(['points', 'best', 'total']) brRank?: 'points' | 'best' | 'total';
   @IsOptional() @IsIn([3, 8, 16]) placementMax?: number;
 }
@@ -126,6 +127,7 @@ export class UpdateTournamentDto {
   @IsOptional() @IsArray() @IsNumber({}, { each: true }) brPointsTable?: number[];
   @IsOptional() @IsNumber() @Min(0) brKillPoints?: number;
   @IsOptional() @IsInt() @Min(0) @Max(64) brHeatSize?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(32) brAdvance?: number;
   @IsOptional() @IsIn(['points', 'best', 'total']) brRank?: 'points' | 'best' | 'total';
   @IsOptional() @IsIn([3, 8, 16]) placementMax?: number;
 }
@@ -269,6 +271,10 @@ export class PlayerReportDto {
   @IsOptional() @IsInt() @Min(0) @Max(999) scoreA?: number;
   @IsOptional() @IsInt() @Min(0) @Max(999) scoreB?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
+export class NextStageDto {
+  @IsInt() @Min(1) @Max(16) nbPools!: number;
 }
 
 export class FinalizePoolDto {

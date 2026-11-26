@@ -69,6 +69,9 @@ export class CreateTournamentDto {
 }
 
 export class UpdateTournamentDto {
+  @IsOptional() @IsBoolean() allowPlayerReports?: boolean;
+  // Une question par entrée ; un « * » final la rend obligatoire.
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(160, { each: true }) questions?: string[];
   @IsOptional() @IsString() @MaxLength(120) name?: string;
   @IsOptional() @IsString() @MaxLength(120) game?: string;
   @IsOptional() @IsString() @MaxLength(40) date?: string;
@@ -244,6 +247,20 @@ export class RegisterDto {
   @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) @MaxLength(40, { each: true }) members?: string[];
   @IsOptional() @IsString() @MaxLength(40) paymentMethod?: string;
   @IsOptional() @IsInt() @Min(0) pointsToRedeem?: number;
+  // Réponses aux questions du tournoi, dans l'ordre des questions.
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(300, { each: true }) answers?: string[];
+}
+
+// Score envoyé par un joueur (ou signalement d'un problème, avec « note » seule).
+export class PlayerReportDto {
+  @IsString() @MaxLength(80) matchKey!: string;
+  @IsOptional() @IsInt() @Min(0) @Max(999) scoreA?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(999) scoreB?: number;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
+export class ReviewReportDto {
+  @IsIn(['accept', 'reject']) decision!: 'accept' | 'reject';
 }
 
 export class BattleRoyaleReportDto {

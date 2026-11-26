@@ -183,9 +183,31 @@ model Registration {
   paymentStatus  String     @default("paid") // 'paid' (gratuit ou confirmé) | 'pending' (paiement à confirmer)
   pointsRedeemed Int        @default(0) // points fidélité utilisés pour réduire amountXof
   checkedInAt    DateTime? // présence confirmée sur place (QR code scanné ou pointage manuel) ; null = pas encore arrivé
+  answers        Json? // réponses aux questions du tournoi : [{ label, value }]
   createdAt      DateTime   @default(now())
 
   @@unique([userId, tournamentId])
+}
+
+// Score (ou signalement) envoyé par un joueur pour son match. Un par joueur et par affiche : les noms des deux côtés sont
+// gardés car une même clé (poule) sert à des matchs successifs.
+model ScoreReport {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matchKey     String
+  aName        String
+  bName        String
+  userId       String
+  playerName   String
+  scoreA       Int?
+  scoreB       Int?
+  note         String?
+  status       String     @default("pending") // 'pending' | 'accepted' | 'rejected'
+  createdAt    DateTime   @default(now())
+
+  @@unique([tournamentId, matchKey, aName, bName, userId], map: "ScoreReport_match_user_key")
+  @@index([tournamentId, status])
 }
 
 model Club {
@@ -274,6 +296,9 @@ model Tournament {
   matchPlans        Json? // heure prévue par match, clé = activeKey côté web : { cle: date ISO } (le lieu est le « poste »)
   announcements     Json? // annonces publiques : [{ id, text, ts, by }]
   activity          Json? // journal des actions de l'organisation : [{ ts, by, text }]
+  allowPlayerReports Boolean @default(false) // les joueurs inscrits envoient eux-mêmes le score de leur match
+  questions         Json? // questions posées à l'inscription : [{ id, label, required }]
+  scoreReports      ScoreReport[]
   eventId           String? // événement auquel ce tournoi est rattaché (facultatif)
   event             Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
   scheduleItems     EventScheduleItem[]

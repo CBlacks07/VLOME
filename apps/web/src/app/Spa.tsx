@@ -168,6 +168,7 @@ type State = {
   matchScores: Record<string, { a: number; b: number }>;
   matchSets: Record<string, [number, number][]>;
   orgData: Detail | null;
+  scoreReports: Detail | null;
   // Match DÉJÀ joué en cours de correction (crayon) — id de son entrée de journal (t.log), ou null.
   // Distinct de activeMatchIds/matchScores (qui concernent les matchs à VENIR) : une correction remet
   // en cause un résultat déjà acquis, potentiellement suivi d'autres matchs (cascade, voir
@@ -2485,6 +2486,23 @@ function profileEditor(S: State) {
 }
 
 /** « Mon prochain match » : visible seulement quand un match est prêt pour le joueur dans un tournoi en direct. */
+/** Score en cours de saisie par le joueur, gardé hors du rendu (la carte se rafraîchit toute seule). */
+const REPORT_DRAFT: Record<string, string> = {};
+function playerReportBox(m: Detail): string {
+  if (!m.allowReports) return "";
+  const mine: Detail | null = m.myReport;
+  const k = `${m.tournamentId}-${m.key}`;
+  const field = (id: string, label: string, saved: number | null | undefined) => `<label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--text-muted);font-weight:700;min-width:0;flex:1 1 90px">${escHtml(label)}<input id="${id}" data-draft="1" type="number" min="0" value="${escAttr(REPORT_DRAFT[id] ?? (saved ?? "").toString())}" style="${adminInp};margin-top:0;text-align:center;font-size:18px" /></label>`;
+  const state = !mine ? "" : mine.status === "rejected" ? `<div style="color:#FB7185;font-size:12.5px;margin-bottom:8px">Ton dernier envoi n'a pas été retenu par l'organisateur.</div>`
+    : `<div style="color:#FBBF24;font-size:12.5px;margin-bottom:8px">Envoyé${mine.scoreA !== null && mine.scoreA !== undefined ? ` (${mine.scoreA}–${mine.scoreB})` : ""} : en attente de ton adversaire ou de l'organisateur.</div>`;
+  return `<div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:14px 16px;margin:-10px 0 18px">${state}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">${field(`pr-a-${k}`, m.aName, mine?.scoreA)}${field(`pr-b-${k}`, m.bName, mine?.scoreB)}
+    <button data-preport="${m.tournamentId}|${m.key}" style="background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:10px;padding:12px 18px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Envoyer le score</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"><input id="pr-note-${k}" data-draft="1" value="${escAttr(REPORT_DRAFT[`pr-note-${k}`] ?? "")}" maxlength="300" placeholder="Un problème ? Décris-le (adversaire absent, désaccord…)" style="${adminInp};margin-top:0;flex:1;min-width:200px;width:auto" />
+    <button data-pdispute="${m.tournamentId}|${m.key}" style="background:transparent;border:1px solid rgba(251,113,133,.45);color:#FB7185;border-radius:10px;padding:0 14px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit">Signaler</button></div>
+  </div>`;
+}
+
 function nextMatchCard(S: State): string {
   const list: Detail[] = S.myNext ?? [];
   if (!list.length) return "";
@@ -2496,7 +2514,7 @@ function nextMatchCard(S: State): string {
     ${m.station
       ? `<div style="text-align:center"><div style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Rends-toi à</div><div style="font-family:'Bebas Neue',sans-serif;font-size:34px;color:#22D3EE;line-height:1.1">${escHtml(m.station)}</div></div>`
       : `<div style="text-align:center"><div style="font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:750">Poste</div><div style="font-size:14px;font-weight:700;margin-top:3px">${m.waitingAhead > 0 ? `${m.waitingAhead} match${m.waitingAhead > 1 ? "s" : ""} avant toi` : "Tu es le prochain — poste bientôt annoncé"}</div></div>`}
-  </div>`).join("");
+  </div>${playerReportBox(m)}`).join("");
 }
 function regsCard(S: State) {
   const regs = S.myRegs ?? [];
@@ -5164,7 +5182,20 @@ function orgPanel(S: State, t: Detail): string {
     ${o.isOwner ? `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="coadmin-email" type="email" placeholder="E-mail d'un organisateur" style="${adminInp};margin-top:0;flex:1;min-width:200px;width:auto" /><button data-coadminadd="1" style="background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:0 16px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Ajouter</button></div>` : ""}`;
   const log: Detail[] = o.activity ?? [];
   const journal = `${head("Journal")}<div style="max-height:260px;overflow-y:auto">${log.map((l: Detail) => `<div style="display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--surface-4);font-size:12.5px"><span style="color:var(--text-faint);flex:none;font-family:'JetBrains Mono',monospace;font-size:11px">${escHtml(whenText(new Date(l.ts).toISOString()))}</span><span style="flex:1;min-width:0">${escHtml(l.text)}</span><span style="color:var(--text-faint);flex:none">${escHtml(l.by)}</span></div>`).join("") || `<div style="color:var(--text-faint);font-size:13px">Rien pour l'instant.</div>`}</div>`;
-  return `${announce}${admins}${journal}`;
+  const qs: Detail[] = t.questions ?? [];
+  const players = `${head("Joueurs")}<label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;line-height:1.5;cursor:pointer"><input id="org-reports" type="checkbox" ${t.allowPlayerReports ? "checked" : ""} style="margin-top:3px" /><span>Les joueurs inscrits envoient eux-mêmes le score de leur match (deux envois identiques le valident ; sinon tu tranches).</span></label>
+    <label style="display:block;font-size:12px;color:var(--text-muted);font-weight:650;margin-top:12px">Questions posées à l'inscription (une par ligne, 5 au plus ; ajoute * pour la rendre obligatoire)<textarea id="org-questions" rows="3" placeholder="Pseudo en jeu *&#10;Numéro WhatsApp" style="${adminInp};resize:vertical">${escHtml(qs.map((q: Detail) => `${q.label}${q.required ? " *" : ""}`).join("\n"))}</textarea></label>
+    <button data-orgplayers="1" style="margin-top:8px;background:var(--surface-3);border:1px solid var(--border-strong);color:#22D3EE;border-radius:10px;padding:9px 16px;font-weight:750;font-size:13px;cursor:pointer;font-family:inherit">Enregistrer</button>`;
+  const answers: Detail[] = (o.answers ?? []).filter((a: Detail) => a.answers.length);
+  const answerList = answers.length ? `${head("Réponses des inscrits")}<div style="max-height:220px;overflow-y:auto">${answers.map((a: Detail) => `<div style="padding:7px 0;border-top:1px solid var(--surface-4);font-size:12.5px"><b>${escHtml(a.playerName)}</b>${a.answers.map((x: Detail) => `<div style="color:var(--text-muted)">${escHtml(x.label)} : <span style="color:var(--text)">${escHtml(x.value || "—")}</span></div>`).join("")}</div>`).join("")}</div>` : "";
+  return `${announce}${players}${answerList}${admins}${journal}`;
+}
+
+/** Scores envoyés par les joueurs, à valider ; un désaccord ou un signalement est marqué « litige ». */
+function reportsBox(S: State, t: Detail): string {
+  const list: Detail[] = S.scoreReports && S.scoreReports.tid === t.id ? S.scoreReports.list : [];
+  if (!list.length) return "";
+  return `<div style="border:1px solid rgba(251,191,36,.45);border-radius:12px;background:rgba(251,191,36,.06);padding:12px 14px"><div style="font-size:10.5px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:#FBBF24;margin-bottom:4px">Scores envoyés par les joueurs (${list.length})</div>${list.map((r: Detail) => `<div style="padding:9px 0;border-top:1px solid rgba(251,191,36,.2)"><div style="font-size:13px;font-weight:700">${escHtml(r.aName)} ${r.scoreA !== null ? `<span style="font-family:'JetBrains Mono',monospace">${r.scoreA}–${r.scoreB}</span>` : "vs"} ${escHtml(r.bName)}${r.dispute ? ` <span style="font-size:10px;font-weight:800;color:#FB7185;border:1px solid #FB7185;border-radius:99px;padding:0 7px">LITIGE</span>` : ""}</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">par ${escHtml(r.by)}${r.note ? ` : « ${escHtml(r.note)} »` : ""}</div><div style="display:flex;gap:8px;margin-top:6px">${btnSm(`data-reportrev="${r.id}|reject"`, "Écarter", "#FB7185", "rgba(251,113,133,.35)")}${r.scoreA !== null ? btnSm(`data-reportrev="${r.id}|accept"`, "Valider ce score", "#34D399", "rgba(52,211,153,.4)") : ""}</div></div>`).join("")}</div>`;
 }
 
 /** Overlay Joueurs / Paiements / Réglages ouvert depuis le bas du rail de régie. */
@@ -5201,7 +5232,7 @@ function regiePage(S: State): string {
     <div class="regie-grid" style="display:grid;grid-template-columns:236px 1fr 330px;flex:1;min-height:0">
       ${regieRail(S, t, manage, actives)}
       <div class="regie-center" style="min-width:0;overflow-y:auto">${regieCenter(S, t, manage, actives)}</div>
-      <div class="regie-control" style="border-left:1px solid var(--surface-3);padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${control}${matchQueuePanel(t, actives)}${regieRosterMini(S, t)}</div>
+      <div class="regie-control" style="border-left:1px solid var(--surface-3);padding:22px 20px 30px;display:flex;flex-direction:column;gap:16px;background:#0a0a10;overflow-y:auto">${reportsBox(S, t)}${control}${matchQueuePanel(t, actives)}${regieRosterMini(S, t)}</div>
     </div>
   </div>${regieOverlay(S, t, manage)}${confirmModal(S)}${matchCorrectModal(S)}${cartDrawer(S)}`;
 }
@@ -5398,7 +5429,9 @@ function pTournoi(S: State) {
       </div>`
     : "";
   const org = manage ? `<details style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:12px 16px;margin-bottom:16px" ${S.orgData?.tid === t.id ? "open" : ""}><summary style="cursor:pointer;font-weight:750;font-size:13.5px">Organisation : annonces, co-administrateurs, journal</summary>${orgPanel(S, t)}</details>` : "";
-  const head = `${eventSwitcher}${cover}${infoCard}${announcementsBox(t, manage)}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
+  const myMatches = !manage ? (S.myNext ?? []).filter((m: Detail) => m.tournamentId === t.id) : [];
+  const mineBox = myMatches.length ? nextMatchCard({ ...S, myNext: myMatches }) : "";
+  const head = `${eventSwitcher}${cover}${infoCard}${announcementsBox(t, manage)}${mineBox}${org}<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px">
     <button data-show="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(124,130,255,.14));border:1px solid #22D3EE66;color:#22D3EE;border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.tv, 15)}Mode Show</button>
     <button data-share="tournoi|${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.share, 15)}Partager</button>
     <button data-embed="${t.id}" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface-3);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;cursor:pointer">${ic(I.extlink, 15)}Intégrer</button>
@@ -5478,6 +5511,11 @@ function pTournoi(S: State) {
       </div>`;
     } else {
       action = `<button data-reg="${t.id}" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#22D3EE,#12aec4);color:#04222a;border:0;border-radius:12px;padding:14px 26px;font-weight:750;font-size:16px;cursor:pointer;box-shadow:0 0 34px rgba(34,211,238,.24)">${ic(I.plus, 18)}S'inscrire au tournoi</button>`;
+    }
+    const questions: Detail[] = t.questions ?? [];
+    if (questions.length && !manage && S.user && !isPending && !isReg) {
+      const qInp = "width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:inherit;font-size:14px;padding:11px 13px;margin-top:6px";
+      action = `<div style="border:1px solid var(--border);border-radius:14px;background:var(--surface);padding:18px;width:100%;max-width:380px;text-align:left;margin-bottom:6px">${questions.map((q: Detail, i: number) => `<label style="display:block;font-size:12.5px;color:var(--text-muted);font-weight:650;margin-bottom:10px">${escHtml(q.label)}${q.required ? ` <span style="color:#FB7185">*</span>` : ""}<input id="reg-q-${t.id}-${i}" data-draft="1" value="${escAttr(REPORT_DRAFT[`reg-q-${t.id}-${i}`] ?? "")}" maxlength="300" style="${qInp}" /></label>`).join("")}</div>${action}`;
     }
     if (t.teamSize && !manage && S.user && !isPending && !isReg) {
       const draft = S.teamDraft || { name: "", members: [] as string[] };
@@ -6966,7 +7004,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     albums: null, albumEdit: null, albumOpen: null, galleryQ: "", gallerySort: "recent", boutiqueInStock: false, regsPanel: null,
     partnersEdit: null, adsEdit: null, adSlide: 0, slidesEdit: null,
     editingPlayerId: null, brActiveGame: null,
-    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
+    activeMatchIds: [], matchScores: {}, matchSets: {}, orgData: null, scoreReports: null, correctingId: null, regiePanel: null, bracketView: "tree", poolView: 0, dash: null, rosterQ: "", showSlide: 0, consoleMenuOpen: false,
     wizStep: 1,
     wizData: { teamSize: 0, name: "", game: "", date: "", place: "", format: "SURVIVAL", pointsPerPlayer: 5, nbPools: 2, players: [], entryFeeXof: 0, givesLoyaltyPoint: true, survWin: 1, loserWin: 0.5, poolFinalWin: 1.5, finalsWin: 2, championBonus: 3, streakBonus: 0, finalsFormat: "double", poolFormat: "survival", streakLength: 5, qualifyPerPool: 2, matchMode: "bo", matchValue: 1, countGoalDiff: true, tiebreakers: ["gd", "gf", "h2h"], brPoints: DEFAULT_BR_POINTS.slice(), brKillPoints: DEFAULT_BR_KILL_POINTS, imageUrl: null, tier: null },
     wizRosterSearch: "", wizEditId: null, wizFullEdit: false,
@@ -7790,6 +7828,46 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, orgData: { ...d, tid } }));
     } catch { alert("Action impossible — réessaie dans un instant."); }
   }
+  async function playerSend(tid: string, body: Detail, key: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/player-report`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(Array.isArray(d?.message) ? d.message.join("\n") : d?.message || "Envoi impossible."); return; }
+      for (const f of ["a", "b", "note"]) delete REPORT_DRAFT[`pr-${f}-${tid}-${key}`];
+      showToast(d?.status === "accepted" ? "Résultat validé." : "Envoyé : en attente de validation.");
+      void loadMyNext();
+    } catch { alert("Envoi impossible — réessaie dans un instant."); }
+  }
+  async function loadScoreReports(tid: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/score-reports`, { headers: authHeaders() });
+      if (r.ok) { const list = await r.json(); setS((s) => (s.openId === tid ? { ...s, scoreReports: { tid, list } } : s)); }
+    } catch { /* API hors ligne */ }
+  }
+  async function reviewScore(tid: string, rid: string, decision: string) {
+    try {
+      const r = await fetch(`${API}/api/tournaments/${tid}/score-reports/${rid}`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify({ decision }) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) { alert(d?.message || "Action impossible."); return; }
+      setS((s) => ({ ...s, scoreReports: { tid, list: d } }));
+      const sr = await fetch(`${API}/api/tournaments/${tid}/state`);
+      if (sr.ok) { const detail = await sr.json(); setS((s) => (s.openId === tid ? { ...s, detail } : s)); }
+    } catch { alert("Action impossible — réessaie dans un instant."); }
+  }
+  // Régie : les envois des joueurs sont relus toutes les 15 s (sans interrompre une saisie en cours).
+  useEffect(() => {
+    if (S.page !== "tournoi" || !S.openId || !S.detail?.allowPlayerReports || S.detail?.status !== "live" || !canManage(S)) return;
+    const id = S.openId;
+    void loadScoreReports(id);
+    const timer = setInterval(() => { if (!userIsBusy()) void loadScoreReports(id); }, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.openId, S.detail?.allowPlayerReports, S.detail?.status, S.user?.role]);
+  // Page d'un tournoi : le joueur connecté y retrouve son match en cours.
+  useEffect(() => {
+    if (S.page === "tournoi" && S.detail?.status === "live" && S.detail?.allowPlayerReports && S.user && !canManage(S)) void loadMyNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [S.page, S.openId, S.detail?.status, S.detail?.log?.length]);
   /** Enregistre un match nul confirmé (championnat). */
   function reportDraw(key: string) {
     const t = S.detail;
@@ -8610,6 +8688,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
     const pointsToRedeem = Math.min(S.regPointsToRedeem, maxPoints);
     const netFee = Math.max(0, fee - pointsToRedeem * ly.pointValueXof);
     const payMethod = method ?? S.payPick;
+    const answers: string[] = register ? ((S.detail?.questions as Detail[]) || []).map((_, i) => ((document.getElementById(`reg-q-${S.detail?.id}-${i}`) as HTMLInputElement | null)?.value ?? REPORT_DRAFT[`reg-q-${S.detail?.id}-${i}`] ?? "").trim()) : [];
     const team = register && S.detail?.teamSize ? readTeamForm() : null;
     if (register && S.detail?.teamSize && !team) return;
     if (register && netFee > 0 && !payMethod) { alert("Choisis un moyen de paiement avant de t'inscrire."); return; }
@@ -8617,7 +8696,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       const r = await fetch(`${API}/api/tournaments/${id}/register`, {
         method: register ? "POST" : "DELETE",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: register && (fee > 0 || team) ? JSON.stringify({ ...(fee > 0 ? { paymentMethod: payMethod, pointsToRedeem } : {}), ...(team || {}) }) : undefined,
+        body: register && (fee > 0 || team || answers.length) ? JSON.stringify({ ...(fee > 0 ? { paymentMethod: payMethod, pointsToRedeem } : {}), ...(team || {}), ...(answers.length ? { answers } : {}) }) : undefined,
       });
       if (r.status === 401) { setS((s) => ({ ...s, page: "auth", user: null })); return; }
       const data = await r.json();
@@ -8784,7 +8863,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   // « Mon prochain match » : se remet à jour tout seul tant qu'un match attend le joueur (poste attribué, file qui avance).
   const hasNext = (S.myNext?.length ?? 0) > 0;
   useEffect(() => {
-    if (S.page !== "profil" || !hasNext) return;
+    if ((S.page !== "profil" && S.page !== "tournoi") || !hasNext) return;
     const id = setInterval(() => { if (!userIsBusy()) void loadMyNext(); }, 8000);
     return () => clearInterval(id);
   }, [S.page, hasNext]);
@@ -9099,6 +9178,8 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
   useEffect(() => { fileChangeRef.current = handleFileChange; });
   useEffect(() => {
     const onNativeChange = (e: Event) => {
+      const el = e.target as HTMLInputElement | null;
+      if (el?.dataset?.draft && el.id) REPORT_DRAFT[el.id] = el.value;
       const t = e.target as HTMLInputElement | null;
       if (t && t.tagName === "INPUT" && t.type === "file") fileChangeRef.current(t);
       // Boutique : le sélecteur de catégorie (même raison : HTML injecté, pas de onChange React).
@@ -9744,7 +9825,7 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
       setS((s) => ({ ...s, confirmBox: { title: "Déconnexion", message: "Tu vas être déconnecté de ton compte Miabe.", okLabel: "Se déconnecter", action: "logout" } }));
       return;
     }
-    const el = target.closest<HTMLElement>("[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
+    const el = target.closest<HTMLElement>("[data-preport],[data-pdispute],[data-reportrev],[data-orgplayers],[data-matchtime],[data-annsend],[data-annrm],[data-orgload],[data-coadminadd],[data-coadminrm],[data-setadd],[data-setdel],[data-tiebreak],[data-avatarremove],[data-clubname],[data-myclubjoin],[data-myclubcancel],[data-myclubleave],[data-myclubinvite],[data-assocsearch],[data-associnvite],[data-associnvitemail],[data-associnvcancel],[data-adminclubopen],[data-adminowner],[data-adminclubdel],[data-adminmember],[data-adminmemberrm],[data-adminmerge],[data-adminclaim],[data-poolnav],[data-go],[data-slide],[data-scope],[data-game],[data-cat],[data-act],[data-add-name],[data-themetoggle],[data-evshow],[data-evshowclose],[data-share],[data-shareclose],[data-sharecopy],[data-embed],[data-embedclose],[data-embedcopy],[data-launchnext],[data-notifymatch],[data-prednudge],[data-predround],[data-predexpand],[data-gopronos],[data-tierpointssave],[data-schedadd],[data-schededit],[data-schedcancel],[data-schedsave],[data-scheddel],[data-evgame],[data-predict],[data-duplicate],[data-matchstart],[data-matchminutes],[data-prodopen],[data-prodclose],[data-scanopen],[data-checkin],[data-stationsave],[data-streammatch],[data-exportresults],[data-exportregs],[data-playerprofile],[data-h2h],[data-openevent],[data-evlist],[data-evnew],[data-evedit],[data-evdel],[data-evsave],[data-evcancel],[data-evattach],[data-evdetach],[data-clubreview],[data-payopen],[data-payretry],[data-paychoose],[data-payclose],[data-cart-open],[data-cart-close],[data-cart-vieworders],[data-cart-remove],[data-cart-clear],[data-cartpaypick],[data-cartpts],[data-regpts],[data-checkout],[data-auth-open],[data-auth-tab],[data-auth-submit],[data-stop],[data-open],[data-back],[data-launch],[data-finals-start],[data-brgametab],[data-brsubmit],[data-scorestep],[data-matchvalidate],[data-matchforfeit],[data-activematch],[data-matchclose],[data-editmatch],[data-correctstep],[data-correctvalidate],[data-correctcancel],[data-viewpool],[data-regiepanel],[data-bracketview],[data-livescoresave],[data-reportscore],[data-del],[data-edit],[data-editcancel],[data-editsave],[data-authrole],[data-setrole],[data-userdel],[data-userpwd],[data-show],[data-showclose],[data-print],[data-clearq],[data-profileedit],[data-profilecancel],[data-profilesave],[data-passsave],[data-reg],[data-unreg],[data-admintab],[data-newsnew],[data-newsedit],[data-newscancel],[data-newssave],[data-newspub],[data-newsdel],[data-prodnew],[data-prodedit],[data-prodcancel],[data-prodsave],[data-proddel],[data-ordstatus],[data-filepick],[data-confirm-ok],[data-confirm-cancel],[data-sitesave],[data-loyaltysave],[data-predsettingssave],[data-legalsave],[data-creditssave],[data-confirmcredit],[data-orgapprove],[data-orgreject],[data-creditbuyqty],[data-creditbuypay],[data-creditbuy],[data-creditcancel],[data-herobgclear],[data-paypick],[data-confirmpay],[data-gallerynew],[data-galleryadd],[data-albumnew],[data-albumedit],[data-albumsave],[data-albumcancel],[data-albumdel],[data-albumopen],[data-albumback],[data-gallerysave],[data-gallerycancel],[data-gallerydel],[data-adnew],[data-adsave],[data-adcancel],[data-addel],[data-ptadd],[data-ptdel],[data-sladd],[data-sldel],[data-adslide],[data-gfilter],[data-gtype],[data-gsort],[data-instock],[data-gopen],[data-gclose],[data-gprev],[data-gnext],[data-admsearchclear],[data-prodcat],[data-prodsort],[data-pladd],[data-plrem],[data-plremall],[data-pldq],[data-reset],[data-pools-distribute],[data-pool-shuffle],[data-pool-move],[data-pool-moveto],[data-poolqualify-apply],[data-roster-move],[data-roster-shuffle],[data-changeformat],[data-pledit-open],[data-pledit-save],[data-pledit-cancel],[data-ordarchtoggle],[data-ordarchive],[data-orddel],[data-userfilter],[data-rolemenu],[data-mailtest],[data-attachgo],[data-attachclose],[data-assocattach],[data-assocreview],[data-assocsave],[data-assocrm],[data-assocadmin],[data-copytext],[data-wiztb],[data-cfgtb],[data-cfggame],[data-cfgformat],[data-cfgpoolformat],[data-cfgfinalsformat],[data-cfgsave],[data-cfgautofit],[data-cfgpick],[data-cfgpickall],[data-cfgpickadd],[data-cfgbulk],[data-wizgoto],[data-wiztoggleroster],[data-wizaddall],[data-wizformat],[data-wizpoolformat],[data-wizfinalsformat],[data-wizmatchfmt],[data-wizqualify],[data-wizstreaklen],[data-rostertab],[data-rosteredit],[data-rosterdel],[data-rostersave],[data-rostercancel],[data-clubedit],[data-clubdel],[data-clubsave],[data-clubcancel],[data-gameedit],[data-gamedel],[data-gamesave],[data-gamecancel],[data-wizgame],[data-playerview],[data-playerviewclose],[data-classview],[data-rosterqclear],[data-consolemenu]");
     if (!el) return;
     const d = el.dataset;
     if (d.stop !== undefined) return; // clic à l'intérieur d'une modale : ne pas fermer
@@ -9836,6 +9917,28 @@ export default function Spa({ initialPage = "accueil", initialOpenId, initialEve
         const next = { ...cur, [side]: Math.max(0, cur[side] + (dir === "1" ? 1 : -1)) };
         return { ...s, matchScores: { ...s.matchScores, [key]: next }, ...(pi >= 0 ? { poolView: pi } : {}) };
       });
+    }
+    else if (d.preport) {
+      const [tid, key] = d.preport.split("|");
+      const val = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.value ?? "";
+      const a = val(`pr-a-${tid}-${key}`), b = val(`pr-b-${tid}-${key}`);
+      if (a === "" || b === "") { alert("Indique les deux scores."); return; }
+      void playerSend(tid, { matchKey: key, scoreA: Math.max(0, parseInt(a) || 0), scoreB: Math.max(0, parseInt(b) || 0) }, key);
+    }
+    else if (d.pdispute) {
+      const [tid, key] = d.pdispute.split("|");
+      const note = ((document.getElementById(`pr-note-${tid}-${key}`) as HTMLInputElement | null)?.value || "").trim();
+      if (note.length < 3) { alert("Décris le problème en quelques mots."); return; }
+      void playerSend(tid, { matchKey: key, note }, key);
+    }
+    else if (d.reportrev) {
+      const [rid, decision] = d.reportrev.split("|");
+      if (S.detail) void reviewScore(S.detail.id, rid, decision);
+    }
+    else if (d.orgplayers !== undefined) {
+      const allow = !!(document.getElementById("org-reports") as HTMLInputElement | null)?.checked;
+      const questions = ((document.getElementById("org-questions") as HTMLTextAreaElement | null)?.value || "").split("\n").map((q) => q.trim()).filter(Boolean).slice(0, 5);
+      void cfgSave({ allowPlayerReports: allow, questions });
     }
     else if (d.matchtime) {
       const [tid, key] = d.matchtime.split("|");

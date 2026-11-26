@@ -10,10 +10,10 @@ import { absoluteMedia, fetchBrand, fetchLogoDataUri } from "../../site-logo";
  * - Aucun logo défini : pastille par défaut (dégradé + initiales), jamais une image livrée avec le code.
  */
 const SPECS: Record<string, { px: number; pad: number }> = {
-  "48": { px: 48, pad: 0 },
-  "180": { px: 180, pad: 0 },
-  "192": { px: 192, pad: 0 },
-  "512": { px: 512, pad: 0 },
+  "48": { px: 48, pad: 0.02 },
+  "180": { px: 180, pad: 0.07 }, // un symbole détouré ne doit pas toucher les bords arrondis de l'icône
+  "192": { px: 192, pad: 0.07 },
+  "512": { px: 512, pad: 0.07 },
   // Zone de sécurité des icônes « maskable » : le système peut rogner jusqu'à ~20 % sur chaque bord.
   maskable: { px: 512, pad: 0.2 },
 };

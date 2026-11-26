@@ -435,7 +435,7 @@ function normPartners(S: State): { name: string; logoUrl: string | null; display
 /** Logo du site : image envoyée depuis l'admin, sinon l'éclair par défaut. */
 function brandLogo(S: State, size = 34, iconSize = 20) {
   const url = S.site?.brand?.logoUrl;
-  if (url) return `<img src="${mediaUrl(url)}" alt="logo" style="width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.3)}px;object-fit:cover;box-shadow:0 0 30px rgba(34,211,238,.25)" />`;
+  if (url) return `<img src="${mediaUrl(url)}" alt="logo" style="width:${size}px;height:${size}px;object-fit:contain;flex:none" />`; // entier, sans cadre : le logo peut être un symbole détouré
   return `<span style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.3)}px;background:linear-gradient(140deg,#22D3EE,#7C82FF);color:#04222a;box-shadow:0 0 30px rgba(34,211,238,.35)">${ic(I.bolt, iconSize)}</span>`;
 }
 
